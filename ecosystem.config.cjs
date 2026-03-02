@@ -16,6 +16,7 @@ module.exports = {
       script: 'src/bot.ts',
       interpreter: 'bun',
       cwd: './',
+      args: '--daemon',  // Enable daemon mode for proactive scheduling
 
       // Process management
       instances: 1,

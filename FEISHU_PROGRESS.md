@@ -65,6 +65,111 @@
 - ✅ `feishu_calendar_today` - 获取今日事件
 - ✅ `feishu_calendar_quick_event` - 快速创建事件
 
+### 6. 文档操作 (`src/feishu/tools/docx.ts`) ✅
+**功能**:
+- ✅ 获取块（get）
+- ✅ 列出子块（list_children）
+- ✅ 搜索文档（search）
+- ✅ 创建块（create）
+- ✅ 批量创建（batch_create，50块限制）
+- ✅ 更新块（update）
+- ✅ 删除块（delete）
+- ✅ 追加块（append）
+- ✅ 插入块（insert）
+- ✅ 创建文本块（简化接口）
+- ✅ 创建表格
+- ✅ 插入/删除表格行列
+
+**工具列表**:
+- ✅ `feishu_docx_get` - 获取块
+- ✅ `feishu_docx_list_children` - 列出子块
+- ✅ `feishu_docx_search` - 搜索文档
+- ✅ `feishu_docx_create_text` - 创建文本
+- ✅ `feishu_docx_append` - 追加块
+- ✅ `feishu_docx_update` - 更新块
+- ✅ `feishu_docx_delete` - 删除块
+- ✅ `feishu_docx_create_table` - 创建表格
+
+### 7. 云盘操作 (`src/feishu/tools/drive.ts`) ✅
+**功能**:
+- ✅ 获取根目录token
+- ✅ 列出文件/文件夹
+- ✅ 获取文件信息
+- ✅ 创建文件夹
+- ✅ 移动文件
+- ✅ 复制文件
+- ✅ 重命名文件
+- ✅ 删除文件
+- ✅ 搜索文件
+- ✅ 下载文件
+- ✅ 上传文件
+- ✅ 创建分享链接
+
+**工具列表**:
+- ✅ `feishu_drive_list` - 列出文件
+- ✅ `feishu_drive_get` - 获取文件信息
+- ✅ `feishu_drive_create_folder` - 创建文件夹
+- ✅ `feishu_drive_move` - 移动文件
+- ✅ `feishu_drive_copy` - 复制文件
+- ✅ `sfeishu_drive_rename` - 重命名
+- ✅ `feishu_drive_delete` - 删除文件
+- ✅ `feishu_drive_search` - 搜索文件
+- ✅ `feishu_drive_download` - 下载文件
+- less:
+- ✅ `feishu_drive_upload` - 上传文件
+- ✅ `feishu_drive_share` - 创建分享链接
+
+### 8. 知识库操作 (`src/feishu/tools/wiki.ts`) ✅ **NEW**
+**功能**:
+- ✅ 列出知识库空间
+- ✅ 获取空间信息
+- ✅ 列出节点（页面列表）
+- ✅ 获取节点信息
+- ✅ 创建页面
+- ✅ 移动节点
+- ✅ 重命名节点
+- ✅ 删除节点
+- ✅ 搜索知识库
+
+**工具列表**:
+- ✅ `feishu_wiki_spaces` - 列出知识库
+- ✅ `feishu_wiki_get` - 获取空间信息
+- ✅ `feishu_wiki_nodes` - 列出节点
+- ✅ `feishu_wiki_get_node` - 获取节点信息
+- ✅ `feishu_wiki_create_page` - 创建页面
+- ✅ `feishu_wiki_move_node` - 移动节点
+- ✅ `feishu_wiki_rename_node` - 重命名节点
+- ✅ `feishu_wiki_delete_node` - 删除节点
+- ✅ `feishu_wiki_search` - 搜索知识库
+
+### 9. 多维表格操作 (`src/feishu/tools/bitable.ts`) ✅ **NEW**
+**功能**:
+- ✅ URL 解析
+- ✅ 获取 Bitable 元数据
+- ✅ 列出表格
+- ✅ 获取表格信息
+- ✅ 列出字段
+- ✅ 创建字段
+- ✅ 列出记录
+- ✅ 获取记录
+- ✅ 创建记录
+- ✅ 更新记录
+- ✅ 删除记录
+- ✅ 创建 Bitable
+
+**工具列表**:
+- ✅ `feishu_bitable_get_meta` - 获取元数据
+- ✅ `feishu_bitable_list_tables` - 列出表格
+- ✅ `feishu_bitable_get_table` - 获取表格信息
+- ✅ `feishu_bitable_list_fields` - 列出字段
+- ✅ `feishu_bitable_create_field` - 创建字段
+- ✅ `feishu_bitable_list_records` - 列出记录
+- ✅ `feishu_bitable_get_record` - 获取记录
+- ✅ `feishu_bitable_create_record` - 创建记录
+- ✅ `feishu_bitable_update_record` - 更新记录
+- ✅ `feishu_bitable_delete_record` - 删除记录
+- ✅ `feishu_bitable_create` - 创建 Bitable
+
 ### 6. 文档操作 (`src/feishu/tools/docx.ts`) ✅ **NEW**
 **功能**:
 - ✅ 获取块（get）
