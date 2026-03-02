@@ -334,6 +334,9 @@ export class Scheduler {
   private calculateNextRun(cronExpr: string): Date | null {
     // Enhanced cron parser for common patterns
     // Format: minute hour day-of-month month day-of-week
+    // NOTE: Uses LOCAL timezone (not UTC) for user-friendly scheduling
+    // All cron expressions are interpreted in the system's local timezone
+    // Example: "14 0 * * *" means "run at 00:14 local time every day"
     const parts = cronExpr.trim().split(/\s+/);
     if (parts.length !== 5) return null;
 

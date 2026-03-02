@@ -13,7 +13,7 @@ import { getNotificationsLazy } from '../store';
 export const proactiveTools = {
   proactive_schedule: {
     name: 'proactive_schedule',
-    description: 'Create a scheduled task that runs automatically. Use this for recurring reminders, goal progress checks, etc.',
+    description: 'Create a scheduled task that runs automatically. Use this for recurring reminders, goal progress checks, Note: Cron expressions use LOCAL timezone (e.g., "14 0 * * *" means "run at 00:14 local time every day").',
     parameters: {
       type: 'object' as const,
       properties: {
@@ -27,7 +27,7 @@ export const proactiveTools = {
         },
         cron: {
           type: 'string',
-          description: 'Cron expression (e.g., "0 9 * * *" for daily at 9am, "*/30 * * * *" for every 30 minutes)',
+          description: 'Cron expression in LOCAL timezone (e.g., "0 9 * * *" for daily at 9am local time, "*/30 * * * *" for every 30 minutes. NOT UTC!)',
         },
         taskType: {
           type: 'string',
@@ -86,7 +86,7 @@ export const proactiveTools = {
 
   proactive_list: {
     name: 'proactive_list',
-    description: 'List all schedules and patterns.',
+    description: 'List all schedules and patterns. Returns nextRun in both ISO format (UTC) and local time format for clarity.',
     parameters: {
       type: 'object' as const,
       properties: {
@@ -272,16 +272,28 @@ export function executeProactiveTool(name: string, params: Record<string, unknow
         const result: { schedules?: unknown[]; patterns?: unknown[] } = {};
 
         if (parsed.data.type === 'schedules' || parsed.data.type === 'all') {
-          result.schedules = scheduler.listSchedules({ enabled: parsed.data.enabled }).map(s => ({
-            id: s.id,
-            name: s.name,
-            cron: s.cron,
-            enabled: s.enabled,
-            taskType: s.task.type,
-            lastRun: s.lastRun,
-            nextRun: s.nextRun,
-            runCount: s.runCount,
-          }));
+          result.schedules = scheduler.listSchedules({ enabled: parsed.data.enabled }).map(s => {
+            const nextRunDate = s.nextRun ? new Date(s.nextRun) : null;
+            return {
+              id: s.id,
+              name: s.name,
+              cron: s.cron,
+              enabled: s.enabled,
+              taskType: s.task.type,
+              lastRun: s.lastRun,
+              nextRun: s.nextRun,
+              nextRunLocal: nextRunDate ? nextRunDate.toLocaleString('zh-CN', {
+                timeZone: 'Asia/Shanghai',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                weekday: 'short'
+              }) : undefined,
+              runCount: s.runCount,
+            };
+          });
         }
 
         if (parsed.data.type === 'patterns' || parsed.data.type === 'all') {
