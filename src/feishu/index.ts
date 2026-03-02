@@ -178,3 +178,54 @@ export type {
   FeishuCalendar,
   FeishuEvent,
 } from './tools/calendar';
+
+// Document Tools
+export {
+  getBlock,
+  listChildren,
+  searchDocument,
+  createBlock,
+  batchCreateBlocks,
+  updateBlock,
+  deleteBlock,
+  appendBlocks,
+  insertBlocks,
+  createTextBlock,
+  createTable,
+  insertTableRow,
+  insertTableColumn,
+  deleteTableRow,
+  deleteTableColumn,
+  executeDocxTool,
+  docxToolDefinitions,
+} from './tools/docx';
+
+export type {
+  BlockCreateRequest,
+  TextContent,
+  FeishuBlock,
+} from './tools/docx';
+
+// Drive Tools
+export {
+  getRootFolderToken,
+  listFiles,
+  getFileInfo,
+  createFolder,
+  moveFile,
+  deleteFile,
+  copyFile,
+  renameFile,
+  searchFiles,
+  downloadFile,
+  uploadFile,
+  getFilePermissions,
+  createShareLink,
+  executeDriveTool,
+  driveToolDefinitions,
+} from './tools/drive';
+
+export type {
+  FeishuFile,
+  FeishuPermission,
+} from './tools/drive';
