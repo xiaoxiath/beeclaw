@@ -58,7 +58,33 @@ bun run cli
 
 # Bot 模式（飞书）
 bun run bot
+
+# Bot 模式 + Daemon（支持定时任务）
+bun run bot --daemon
+
+# 使用 PM2 管理（推荐生产环境）
+bun run pm2:start
 ```
+
+### 定时任务（Daemon 模式）
+
+Beeclaw 支持定时任务功能，包括：
+- 每日内存压缩（凌晨 3 点）
+- 目标进度检查
+- 自定义提醒和任务
+
+启用方式：
+```bash
+# 方式 1: 直接启动（带 daemon）
+bun run bot --daemon
+
+# 方式 2: 使用 PM2（推荐）
+bun run pm2:start
+```
+
+详细说明请查看：
+- [PM2 Daemon 模式快速参考](./docs/pm2-quick-reference.md)
+- [PM2 Daemon 模式详细指南](./docs/pm2-daemon-guide.md)
 
 ## CLI 命令
 
@@ -93,6 +119,8 @@ bun run bot
 | [系统架构](./ARCHITECTURE.md) | 核心系统设计 |
 | [飞书集成](./docs/feishu-integration.md) | 飞书 Bot 配置 |
 | [配置指南](./docs/configuration.md) | 完整配置参考 |
+| [PM2 Daemon 快速参考](./docs/pm2-quick-reference.md) | PM2 管理定时任务（快速参考） |
+| [PM2 Daemon 详细指南](./docs/pm2-daemon-guide.md) | PM2 管理定时任务（详细版） |
 
 ## 项目结构
 

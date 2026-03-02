@@ -11,11 +11,22 @@
     "lint": "bun lint",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:start:prod": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:start:no-daemon": "pm2 start ecosystem.flexible.cjs --env no_daemon",
     "pm2:stop": "pm2 stop beeclaw",
     "pm2:restart": "pm2 restart beeclaw",
+    "pm2:reload": "pm2 reload beeclaw",
+    "pm2:delete": "pm2 delete beeclaw",
     "pm2:logs": "pm2 logs beeclaw",
+    "pm2:logs:err": "pm2 logs beeclaw --err",
     "pm2:monit": "pm2 monit",
-    "pm2:status": "pm2 list"
+    "pm2:status": "pm2 list",
+    "pm2:info": "pm2 show beeclaw",
+    "pm2:save": "pm2 save",
+    "pm2:startup": "pm2 startup",
+    "pm2:flush": "pm2 flush",
+    "pm2:reset": "pm2 reset beeclaw",
+    "check:daemon": "./scripts/check-daemon.sh",
+    "check:daemon:fix": "./scripts/check-daemon.sh --fix"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "1.59.0",
