@@ -327,8 +327,7 @@ export class Agent {
         {
           maxTokens: this.contextConfig.maxTokens,
           currentTokens: this.estimatedTokens,
-          keepRecent: 0, // We already split messages
-          llmModel: 'glm-4-flash', // Use cheap model for compression
+          config: this.options.compressionConfig,  // Use configured model
         }
       );
 

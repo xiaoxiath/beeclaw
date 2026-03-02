@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AIProvider } from '../config/schema';
+import type { AIProvider, CompressionConfig } from '../config/schema';
 
 // OpenAI-compatible tool schema
 export interface OpenAITool {
@@ -94,6 +94,7 @@ export interface AgentOptions {
   tools?: OpenAITool[];
   toolExecutor?: ToolExecutor;
   maxToolIterations?: number;
+  compressionConfig?: Partial<CompressionConfig>;  // Context compression config
 }
 
 // Conversation context

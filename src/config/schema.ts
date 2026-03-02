@@ -149,6 +149,16 @@ export const AgentDisplayConfigSchema = z.object({
   tokenStatsFormat: z.enum(['inline', 'block']).default('inline'),
 });
 
+// Context compression configuration schema
+export const CompressionConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  model: z.string().default('glm-4-flash'),  // LLM for compression
+  threshold: z.number().min(0.5).max(0.95).default(0.8),  // Trigger at 80% context
+  keepRecent: z.number().min(2).max(20).default(8),  // Keep recent messages
+  maxSummaryTokens: z.number().min(200).max(2000).default(1000),
+  strategy: z.enum(['llm', 'rule', 'hybrid']).default('hybrid'),
+});
+
 // Main configuration schema
 export const AppConfigSchema = z.object({
   server: ServerConfigSchema.default({}),
@@ -168,6 +178,7 @@ export const AppConfigSchema = z.object({
   search: SearchConfigSchema.default({}),
   finance: FinanceConfigSchema.default({}),
   agentDisplay: AgentDisplayConfigSchema.default({}),
+  compression: CompressionConfigSchema.default({}),
 });
 
 // Type exports
@@ -187,4 +198,5 @@ export type WeatherConfig = z.infer<typeof WeatherConfigSchema>;
 export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type FinanceConfig = z.infer<typeof FinanceConfigSchema>;
 export type AgentDisplayConfig = z.infer<typeof AgentDisplayConfigSchema>;
+export type CompressionConfig = z.infer<typeof CompressionConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

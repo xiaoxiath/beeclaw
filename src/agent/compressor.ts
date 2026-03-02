@@ -5,10 +5,20 @@
  * important information like code blocks, decisions, and user questions.
  */
 
-import type { AIProvider } from '../config/schema';
+import type { AIProvider, CompressionConfig } from '../config/schema';
 import type { ChatMessage } from './types';
 import { estimateTokens, estimateTotalTokens } from './context';
 import { callAI } from './api';
+
+// Default compression config
+export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
+  enabled: true,
+  model: 'glm-4-flash',  // Default to cheap model
+  threshold: 0.8,  // Trigger at 80% context
+  keepRecent: 8,  // Keep recent messages
+  maxSummaryTokens: 1000,
+  strategy: 'hybrid',  // Use LLM for important content
+};
 
 // Compression prompt
 const COMPRESSION_PROMPT = `你是一个对话压缩专家。请将以下对话历史压缩成一个简洁的摘要。
@@ -53,8 +63,11 @@ export interface CompressionResult {
 export async function compressWithLLM(
   messages: ChatMessage[],
   provider: AIProvider,
-  model: string = 'glm-4-flash'  // Use cheap model for compression
+  config: Partial<CompressionConfig> = {}
 ): Promise<CompressionResult> {
+  const model = config.model || DEFAULT_COMPRESSION_CONFIG.model;
+  const maxSummaryTokens = config.maxSummaryTokens || DEFAULT_COMPRESSION_CONFIG.maxSummaryTokens;
+
   const originalTokens = estimateTotalTokens(messages);
 
   // Skip if already small enough
@@ -88,7 +101,7 @@ export async function compressWithLLM(
           content: prompt,
         },
       ],
-      maxTokens: 1000,
+      maxTokens: maxSummaryTokens,
     });
 
     const summary = response.choices[0]?.message?.content || '';
@@ -227,21 +240,30 @@ function formatToolResult(content: string | any[], maxLength: number = 300): str
  * - Number of messages
  * - Estimated compression benefit
  * - Presence of code blocks or important content
+ * - User config preference
  */
 export function selectCompressionStrategy(
   messages: ChatMessage[],
   currentTokens: number,
-  maxTokens: number
+  maxTokens: number,
+  config: Partial<CompressionConfig> = {}
 ): {
   strategy: 'llm' | 'rule' | 'none';
   reason: string;
   targetMessages?: ChatMessage[];
 } {
+  const threshold = config.threshold || DEFAULT_COMPRESSION_CONFIG.threshold;
+  const strategy = config.strategy || DEFAULT_COMPRESSION_CONFIG.strategy;
   const utilization = currentTokens / maxTokens;
 
   // No compression needed
-  if (utilization < 0.8) {
-    return { strategy: 'none', reason: 'Context under 80% utilization' };
+  if (utilization < threshold) {
+    return { strategy: 'none', reason: `Context under ${Math.round(threshold * 100)}% utilization` };
+  }
+
+  // If user explicitly wants rule-based only
+  if (strategy === 'rule') {
+    return { strategy: 'rule', reason: 'User configured rule-based strategy' };
   }
 
   // Count important content
@@ -258,21 +280,31 @@ export function selectCompressionStrategy(
     return { strategy: 'rule', reason: 'Few messages, rule-based is sufficient' };
   }
 
+  // If user explicitly wants LLM only
+  if (strategy === 'llm') {
+    return {
+      strategy: 'llm',
+      reason: 'User configured LLM strategy',
+      targetMessages: messages.slice(0, -6),
+    };
+  }
+
+  // Hybrid strategy (default)
   // High utilization with important content, use LLM
   if (utilization > 0.9 && (hasCodeBlocks || hasToolCalls)) {
     return {
       strategy: 'llm',
       reason: 'High utilization with important content, LLM preserves key info',
-      targetMessages: messages.slice(0, -4),  // Compress all but recent 4
+      targetMessages: messages.slice(0, -4),
     };
   }
 
-  // Medium utilization, use LLM for better quality
-  if (utilization > 0.8 && messageCount > 8) {
+  // Medium utilization with many messages, use LLM for better quality
+  if (utilization > threshold && messageCount > 8) {
     return {
       strategy: 'llm',
       reason: 'Many messages, LLM provides better compression quality',
-      targetMessages: messages.slice(0, -6),  // Compress all but recent 6
+      targetMessages: messages.slice(0, -6),
     };
   }
 
@@ -289,8 +321,7 @@ export async function hybridCompress(
   options: {
     maxTokens: number;
     currentTokens: number;
-    keepRecent: number;
-    llmModel?: string;
+    config?: Partial<CompressionConfig>;
   }
 ): Promise<{
   summary: string;
@@ -298,10 +329,11 @@ export async function hybridCompress(
   compressionRatio: number;
   method: 'llm' | 'rule' | 'none';
 }> {
-  const { maxTokens, currentTokens, keepRecent, llmModel = 'glm-4-flash' } = options;
+  const { maxTokens, currentTokens, config = {} } = options;
+  const keepRecent = config.keepRecent || DEFAULT_COMPRESSION_CONFIG.keepRecent;
 
   // Select strategy
-  const decision = selectCompressionStrategy(messages, currentTokens, maxTokens);
+  const decision = selectCompressionStrategy(messages, currentTokens, maxTokens, config);
 
   if (decision.strategy === 'none') {
     return {
@@ -328,7 +360,7 @@ export async function hybridCompress(
   if (decision.strategy === 'llm') {
     try {
       console.log(`[HybridCompressor] Using LLM compression for ${oldMessages.length} messages`);
-      const result = await compressWithLLM(oldMessages, provider, llmModel);
+      const result = await compressWithLLM(oldMessages, provider, config);
 
       console.log(
         `[HybridCompressor] LLM compression: ${result.originalTokens} → ${result.compressedTokens} tokens ` +

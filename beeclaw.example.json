@@ -62,5 +62,13 @@
   "logging": {
     "level": "info",
     "format": "pretty"
+  },
+  "compression": {
+    "enabled": true,
+    "model": "glm-4-flash",
+    "threshold": 0.8,
+    "keepRecent": 8,
+    "maxSummaryTokens": 1000,
+    "strategy": "hybrid"
   }
 }
