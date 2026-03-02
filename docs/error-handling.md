@@ -1,21 +1,23 @@
-# 错误处理和重试机制 - 使用指南
+# 错误处理和重试机制
 
-> **状态**: Phase 1 已完成 ✅
+> **状态**: Phase 1 已完成
 > **最后更新**: 2026-03-01
 
-## 🎯 概览
+## 概览
 
-Beeclaw 现已具备强大的错误处理和自动重试能力，能够长时间稳定运行。
+Beeclaw 具备强大的错误处理和自动重试能力，能够长时间稳定运行。
 
-### 已实现功能 (Phase 1)
+### 已实现功能
 
-- ✅ **智能错误分类** - 自动识别错误类型和重试能力
-- ✅ **自动重试机制** - Agent 和 Subagent 失败后自动重试
-- ✅ **指数退避** - 避免重试风暴，智能延迟
-- ✅ **错误追踪** - 统计错误类型和频率
-- ✅ **友好提示** - 中文错误消息
+- **智能错误分类** - 自动识别错误类型和重试能力
+- **自动重试机制** - Agent 和 Subagent 失败后自动重试
+- **指数退避** - 避免重试风暴，智能延迟
+- **错误追踪** - 统计错误类型和频率
+- **友好提示** - 中文错误消息
 
-## 📊 错误分类
+---
+
+## 错误分类
 
 ### 可重试错误 (自动重试)
 
@@ -35,7 +37,9 @@ Beeclaw 现已具备强大的错误处理和自动重试能力，能够长时间
 | **VALIDATION_ERROR** | 参数错误 | 参数错误: [详细信息] |
 | **BUSINESS_ERROR** | 业务逻辑错误 | [具体错误信息] |
 
-## 🔄 重试策略
+---
+
+## 重试策略
 
 ### Agent (主代理)
 
@@ -61,14 +65,9 @@ Beeclaw 现已具备强大的错误处理和自动重试能力，能够长时间
 - **退避策略**: 指数退避 (2x)
 - **抖动**: ±15%
 
-**重试时间线**:
-```
-尝试 1: 失败 → 等待 1秒
-尝试 2: 失败 → 等待 2秒
-尝试 3: 失败 → 最终失败 (共3次尝试)
-```
+---
 
-## ⚙️ 配置
+## 配置
 
 ### 环境变量
 
@@ -107,7 +106,9 @@ export SUBAGENT_MAX_RETRIES=2  # 默认: 2
 }
 ```
 
-## 📝 日志示例
+---
+
+## 日志示例
 
 ### 成功重试
 
@@ -129,26 +130,14 @@ export SUBAGENT_MAX_RETRIES=2  # 默认: 2
 [Session] Attempt 1/4 failed: Network error
   Retrying in 2s...
 
-[Session] Attempt 2/4 failed: Network error
-  Retrying in 4s...
-
-[Session] Attempt 3/4 failed: Network error
-  Retrying in 8s...
-
 [Session] Attempt 4/4 failed: Network error
 
 ❌ Error: AI 响应失败，已重试 3 次: Network error
 ```
 
-### 不可重试错误
+---
 
-```
-[Session] Non-retryable error: Insufficient balance
-
-❌ Error: API 余额不足，请充值后继续使用
-```
-
-## 🛠️ 开发者使用
+## 开发者使用
 
 ### 在代码中使用错误分类
 
@@ -189,7 +178,9 @@ const stats = errorTracker.getStats();
 console.log('Total errors:', errorTracker.getTotalErrors());
 ```
 
-## 📈 监控和健康检查
+---
+
+## 监控和健康检查
 
 ### 查看错误统计
 
@@ -201,7 +192,7 @@ const report = tracker.formatHealthStatus();
 console.log(report);
 
 // 示例输出:
-// ## 📊 系统健康状态
+// ## 系统健康状态
 //
 // ✅ 系统运行正常
 //
@@ -216,14 +207,9 @@ console.log(report);
 // | NETWORK_ERROR | 2 | 1小时前 |
 ```
 
-### 健康检查API (TODO)
+---
 
-```bash
-# 未来将支持
-curl http://localhost:3000/health
-```
-
-## 🎯 最佳实践
+## 最佳实践
 
 ### 1. 调整超时和重试
 
@@ -247,7 +233,6 @@ const stats = errorTracker.getStats();
 // 如果某个错误频繁出现
 if (stats[0].count > 50) {
   console.warn(`高频错误: ${stats[0].type} (${stats[0].count} 次)`);
-  // 可能需要调整配置或修复问题
 }
 ```
 
@@ -256,9 +241,11 @@ if (stats[0].count > 50) {
 - **临时错误**: 网络、超时、限流 → 自动重试即可
 - **永久错误**: 认证、余额、参数 → 需要人工干预
 
-## 🐛 故障排查
+---
 
-### 问题 1: 重试仍然失败
+## 故障排查
+
+### 问题: 重试仍然失败
 
 **可能原因**:
 - 网络持续不稳定
@@ -278,17 +265,7 @@ export AGENT_TIMEOUT_MS=600000
 export AGENT_MAX_RETRIES=5
 ```
 
-### 问题 2: 错误信息不清晰
-
-**解决方法**:
-```typescript
-// 查看详细错误上下文
-const classified = classifyError(error);
-console.log('Full error context:', classified.context);
-console.log('Original error:', classified.originalError);
-```
-
-### 问题 3: 想禁用某些重试
+### 问题: 想禁用某些重试
 
 **解决方法**:
 ```bash
@@ -299,27 +276,23 @@ export AGENT_MAX_RETRIES=0
 export SUBAGENT_MAX_RETRIES=0
 ```
 
-## 📚 相关文档
+---
 
-- [错误处理设计文档](./error-handling-design.md) - 完整架构设计
-- [超时配置](./timeout-configuration.md) - 超时设置详解
-- [API 参考](./api-reference.md) - 错误处理 API
+## 未来计划
 
-## 🚀 下一步
-
-### Phase 2 - 熔断保护 (计划中)
+### Phase 2 - 熔断保护
 
 - Circuit Breaker 模式
 - 连续失败自动熔断
 - 自动恢复机制
 
-### Phase 3 - 检查点恢复 (计划中)
+### Phase 3 - 检查点恢复
 
 - 任务状态保存
 - 失败后恢复执行
 - 断点续传
 
-### Phase 4 - 优雅降级 (计划中)
+### Phase 4 - 优雅降级
 
 - 工具失败降级
 - Memory 加载失败降级
@@ -327,10 +300,10 @@ export SUBAGENT_MAX_RETRIES=0
 
 ---
 
-**系统可靠性大幅提升！** 🎉
+**系统可靠性大幅提升！**
 
-现在 beeclaw 能够:
-- ✅ 自动处理临时故障
-- ✅ 智能重试避免雪崩
-- ✅ 提供清晰的错误信息
-- ✅ 长时间稳定运行
+现在 Beeclaw 能够:
+- 自动处理临时故障
+- 智能重试避免雪崩
+- 提供清晰的错误信息
+- 长时间稳定运行
