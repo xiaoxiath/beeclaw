@@ -5,7 +5,7 @@
  */
 
 import type { Pattern } from './types';
-import { getScheduler } from './scheduler';
+import { getSchedulerLazy } from '../store';
 import { pushNotification } from './pusher';
 import { getGoalStore } from '../goal/store';
 
@@ -317,7 +317,7 @@ export async function executePatternAction(pattern: Pattern): Promise<{ success:
  * Evaluate all patterns and trigger actions
  */
 export async function evaluatePatterns(context?: Partial<TriggerContext>): Promise<TriggerResult[]> {
-  const scheduler = getScheduler();
+  const scheduler = getSchedulerLazy();
   const patterns = scheduler.listPatterns({ enabled: true });
 
   // Build context

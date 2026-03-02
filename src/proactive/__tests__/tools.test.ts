@@ -5,29 +5,29 @@ import {
   getProactiveToolsForAI,
   PROACTIVE_TOOL_NAMES,
 } from '../tools';
-import { getScheduler, resetScheduler } from '../scheduler';
-import { getNotificationManager, resetNotificationManager } from '../notifications';
+import { initStores, resetStores } from '../../store';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 
 const TEST_DATA_PATH = './test-proactive-data';
 
 describe('Proactive Tools', () => {
   beforeAll(() => {
+    // Reset stores first in case other tests initialized them
+    resetStores();
+
     // Clean up and create test directory
     if (existsSync(TEST_DATA_PATH)) {
       rmSync(TEST_DATA_PATH, { recursive: true });
     }
     mkdirSync(TEST_DATA_PATH, { recursive: true });
 
-    // Initialize scheduler and notification manager
-    getScheduler(TEST_DATA_PATH);
-    getNotificationManager(TEST_DATA_PATH);
+    // Initialize stores with test path
+    initStores({ basePath: TEST_DATA_PATH });
   });
 
   afterAll(() => {
     // Clean up
-    resetScheduler();
-    resetNotificationManager();
+    resetStores();
     if (existsSync(TEST_DATA_PATH)) {
       rmSync(TEST_DATA_PATH, { recursive: true });
     }

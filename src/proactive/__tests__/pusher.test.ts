@@ -11,7 +11,7 @@ import {
   registerDeliveryHandler,
   pushPendingNotifications,
 } from '../pusher';
-import { getNotificationManager, resetNotificationManager } from '../notifications';
+import { initStores, resetStores } from '../../store';
 
 const TEST_PUSHER_PATH = './test-pusher-data';
 
@@ -19,16 +19,18 @@ describe('Pusher', () => {
   let deliveredMessages: string[] = [];
 
   beforeEach(() => {
+    // Reset stores first in case other tests initialized them
+    resetStores();
+
     // Clean up test directory
     if (existsSync(TEST_PUSHER_PATH)) {
       rmSync(TEST_PUSHER_PATH, { recursive: true });
     }
     mkdirSync(TEST_PUSHER_PATH, { recursive: true });
-    resetNotificationManager();
     deliveredMessages = [];
 
-    // Initialize notification manager
-    getNotificationManager(TEST_PUSHER_PATH);
+    // Initialize stores with test path
+    initStores({ basePath: TEST_PUSHER_PATH });
 
     // Set up CLI delivery handler
     setCliDeliveryHandler((message: string) => {
@@ -37,7 +39,7 @@ describe('Pusher', () => {
   });
 
   afterEach(() => {
-    resetNotificationManager();
+    resetStores();
     if (existsSync(TEST_PUSHER_PATH)) {
       rmSync(TEST_PUSHER_PATH, { recursive: true });
     }

@@ -5,7 +5,7 @@
  */
 
 import type { PendingNotification, NotificationPriority } from '../proactive/types';
-import { getNotificationManager } from '../proactive/notifications';
+import { getNotificationsLazy } from '../store';
 
 export interface PushOptions {
   message: string;
@@ -54,7 +54,7 @@ export function registerDeliveryHandler(channel: string, handler: DeliveryHandle
  */
 export async function pushNotification(options: PushOptions): Promise<PushResult> {
   try {
-    const manager = getNotificationManager();
+    const manager = getNotificationsLazy();
 
     // Create the notification
     const result = manager.create({
@@ -136,7 +136,7 @@ export async function pushPendingNotifications(): Promise<{
   failed: number;
   notifications: PendingNotification[];
 }> {
-  const manager = getNotificationManager();
+  const manager = getNotificationsLazy();
   const notifications = manager.getPending('cli-user');
 
   let pushed = 0;

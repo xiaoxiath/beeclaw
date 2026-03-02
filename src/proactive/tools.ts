@@ -6,8 +6,8 @@
 
 import { z } from 'zod';
 import type { ProactiveToolResult, CreateScheduleOptions } from './types';
-import { getScheduler } from './scheduler';
-import { getNotificationManager } from './notifications';
+import { getSchedulerLazy } from '../store';
+import { getNotificationsLazy } from '../store';
 
 // Tool definitions for AI function calling
 export const proactiveTools = {
@@ -205,8 +205,8 @@ export const proactiveTools = {
 // Tool executor
 export function executeProactiveTool(name: string, params: Record<string, unknown>): ProactiveToolResult {
   try {
-    const scheduler = getScheduler();
-    const notificationManager = getNotificationManager();
+    const scheduler = getSchedulerLazy();
+    const notificationManager = getNotificationsLazy();
 
     switch (name) {
       case 'proactive_schedule': {
