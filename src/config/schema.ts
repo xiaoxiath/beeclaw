@@ -159,6 +159,27 @@ export const CompressionConfigSchema = z.object({
   strategy: z.enum(['llm', 'rule', 'hybrid']).default('hybrid'),
 });
 
+// Auto knowledge extraction configuration schema
+export const ExtractionConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  triggerPhrases: z.array(z.string()).default([
+    '记住', '别忘了', '记一下', '记住这个', '保存',
+    '记录', '存下来', '帮我记', '这个很重要'
+  ]),
+  periodicInterval: z.number().min(1).max(50).default(10),  // Every N messages
+  confidenceThreshold: z.number().min(0.5).max(1).default(0.9),  // High confidence
+  lowConfidenceThreshold: z.number().min(0.3).max(0.8).default(0.7),  // Low confidence
+  maxExtractionsPerRun: z.number().min(1).max(50).default(20),
+  notifyOnHighConfidence: z.boolean().default(true),
+  sensitivePatterns: z.array(z.string()).default([
+    'password', 'passwd', 'pwd',
+    'secret', 'api_key', 'apikey', 'api-key',
+    'token', 'access_token', 'accessToken',
+    'private_key', 'privatekey', 'private-key',
+    '密钥', '密码', '口令', '私钥',
+  ]),
+});
+
 // Main configuration schema
 export const AppConfigSchema = z.object({
   server: ServerConfigSchema.default({}),
@@ -179,6 +200,7 @@ export const AppConfigSchema = z.object({
   finance: FinanceConfigSchema.default({}),
   agentDisplay: AgentDisplayConfigSchema.default({}),
   compression: CompressionConfigSchema.default({}),
+  extraction: ExtractionConfigSchema.default({}),
 });
 
 // Type exports
@@ -199,4 +221,5 @@ export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type FinanceConfig = z.infer<typeof FinanceConfigSchema>;
 export type AgentDisplayConfig = z.infer<typeof AgentDisplayConfigSchema>;
 export type CompressionConfig = z.infer<typeof CompressionConfigSchema>;
+export type ExtractionConfigSchemaType = z.infer<typeof ExtractionConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

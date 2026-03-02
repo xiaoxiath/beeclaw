@@ -70,5 +70,15 @@
     "keepRecent": 8,
     "maxSummaryTokens": 1000,
     "strategy": "hybrid"
+  },
+  "extraction": {
+    "enabled": true,
+    "triggerPhrases": ["记住", "别忘了", "记一下", "记住这个", "保存", "记录", "存下来", "帮我记", "这个很重要"],
+    "periodicInterval": 10,
+    "confidenceThreshold": 0.9,
+    "lowConfidenceThreshold": 0.7,
+    "maxExtractionsPerRun": 20,
+    "notifyOnHighConfidence": true,
+    "sensitivePatterns": ["password", "passwd", "secret", "api_key", "token", "private_key", "密钥", "密码"]
   }
 }

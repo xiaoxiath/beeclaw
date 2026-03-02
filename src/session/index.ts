@@ -5,6 +5,7 @@
  * - Persistence to disk (survives restarts)
  * - History loading (continue previous conversations)
  * - Context compression (handle long conversations)
+ * - Auto knowledge extraction
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'fs';
@@ -13,7 +14,13 @@ import type { ChatMessage, MultimodalContent } from '../agent/types';
 import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, formatSkillsForPrompt, type TokenStatsConfig } from '../agent';
 import { getMemoryStore } from '../memory';
 import { getSkillStore } from '../skills/store';
-import type { AIProvider } from '../config/schema';
+import type { AIProvider, ExtractionConfigSchemaType } from '../config/schema';
+import {
+  initExtractionManager,
+  getExtractionManager,
+  resetExtractionManager,
+  type ExtractionManager,
+} from '../extraction';
 
 export interface SessionOptions {
   sessionId: string;
@@ -77,6 +84,8 @@ let agentConfig: {
   systemPrompt?: string;
   useTools?: boolean;
   tokenStatsConfig?: Partial<TokenStatsConfig>;
+  extractionConfig?: Partial<ExtractionConfigSchemaType>;
+  memoryDir?: string;
 } | null = null;
 
 // Channel handlers
@@ -103,12 +112,29 @@ export function initSessionManager(config: {
   systemPrompt?: string;
   useTools?: boolean;
   tokenStatsConfig?: Partial<TokenStatsConfig>;
+  extractionConfig?: Partial<ExtractionConfigSchemaType>;
+  memoryDir?: string;
 }): void {
   agentConfig = config;
 
   // Ensure storage directory exists
   if (!existsSync(sessionConfig.storagePath)) {
     mkdirSync(sessionConfig.storagePath, { recursive: true });
+  }
+
+  // Initialize extraction manager
+  if (config.extractionConfig?.enabled !== false) {
+    try {
+      initExtractionManager(
+        config.provider,
+        config.model,
+        config.memoryDir || './data/memory',
+        config.extractionConfig || {}
+      );
+      console.log('[Session] Extraction manager initialized');
+    } catch (error) {
+      console.error('[Session] Failed to initialize extraction manager:', error);
+    }
   }
 }
 
@@ -530,6 +556,9 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     // Save session to disk
     saveSession(session);
 
+    // Trigger knowledge extraction (background)
+    runExtractionInBackground(session);
+
     // Notify channel handler
     const handler = channelHandlers.get(channel);
     if (handler) {
@@ -633,4 +662,55 @@ export function clearOldSessions(daysOld: number = 30): number {
   }
 
   return cleared;
+}
+
+/**
+ * Run knowledge extraction in background
+ */
+async function runExtractionInBackground(session: Session): Promise<void> {
+  try {
+    const extractionManager = getExtractionManager();
+
+    // Convert session messages to ChatMessage format
+    const messages: ChatMessage[] = session.messages.map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    // Check for conversation end signals
+    const lastMessage = session.messages[session.messages.length - 1];
+    const isConversationEnd = lastMessage?.role === 'user' &&
+      extractionManager.shouldTrigger(messages, { isConversationEnd: false }).reason.includes('Trigger phrase');
+
+    // Run extraction
+    const result = await extractionManager.extract(messages, {
+      isConversationEnd,
+    });
+
+    if (result.triggered && result.notifications.length > 0) {
+      console.log('[Session] Extraction notifications:', result.notifications);
+      // TODO: Send notifications to user via channel handler
+    }
+  } catch (error) {
+    // Extraction errors should not affect the main conversation
+    console.error('[Session] Background extraction failed:', error);
+  }
+}
+
+/**
+ * Get extraction manager (for external use)
+ */
+export function getExtraction(): ExtractionManager | null {
+  try {
+    return getExtractionManager();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reset extraction manager
+ */
+export function resetExtraction(): void {
+  resetExtractionManager();
 }
