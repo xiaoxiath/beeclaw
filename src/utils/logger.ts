@@ -110,4 +110,9 @@ class ChildLogger {
 }
 
 export const logger = new Logger();
+
+export function getLogger(context: string) {
+  return logger.child({ context });
+}
+
 export type { LoggerConfig, LogLevel };

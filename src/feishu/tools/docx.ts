@@ -5,7 +5,7 @@
  */
 
 import type { Client } from '@larksuiteoapi/node-sdk';
-import { getLogger } from '../utils/logger';
+import { getLogger } from '../../utils/logger';
 import { z } from 'zod';
 
 const logger = getLogger('feishu:docx');
