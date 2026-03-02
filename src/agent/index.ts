@@ -27,6 +27,7 @@ import {
   type TokenStatsConfig,
   type TokenStats,
 } from './context';
+import { hybridCompress, type CompressionResult } from './compressor';
 import { groupToolCalls, getGroupingStats, isParallelTool } from './tool-dependencies';
 
 // Re-export from tools
@@ -292,6 +293,92 @@ export class Agent {
     console.log(`[Agent] Context compressed: freed ${tokensFreed} tokens, now at ${this.estimatedTokens}`);
   }
 
+  // Compressed context summary (from LLM compression)
+  private compressedSummary: string = '';
+
+  /**
+   * Compress old messages using LLM for intelligent summarization
+   * This is called proactively when context grows large
+   */
+  async compressContextWithLLM(): Promise<CompressionResult> {
+    if (!this.options.provider) {
+      return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
+    }
+
+    const systemIndex = this.messages.findIndex(m => m.role === 'system');
+    const keepRecent = 8; // Keep more recent messages for LLM compression
+    const startIndex = systemIndex >= 0 ? systemIndex + 1 : 0;
+    const endIndex = this.messages.length - keepRecent;
+
+    if (endIndex <= startIndex) {
+      return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
+    }
+
+    const oldMessages = this.messages.slice(startIndex, endIndex);
+    const recentMessages = this.messages.slice(-keepRecent);
+    const systemMessage = systemIndex >= 0 ? this.messages[systemIndex] : null;
+
+    console.log(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
+
+    try {
+      const result = await hybridCompress(
+        oldMessages,
+        this.options.provider,
+        {
+          maxTokens: this.contextConfig.maxTokens,
+          currentTokens: this.estimatedTokens,
+          keepRecent: 0, // We already split messages
+          llmModel: 'glm-4-flash', // Use cheap model for compression
+        }
+      );
+
+      if (result.summary) {
+        // Update compressed summary
+        this.compressedSummary = this.compressedSummary
+          ? `${this.compressedSummary}\n\n---\n${result.summary}`
+          : result.summary;
+
+        // Rebuild messages: system + summary + recent
+        const newMessages: ChatMessage[] = [];
+        if (systemMessage) {
+          // Update system message to include summary
+          newMessages.push({
+            ...systemMessage,
+            content: systemMessage.content + `\n\n## 历史对话摘要\n${this.compressedSummary}`,
+          });
+        }
+        newMessages.push(...recentMessages);
+
+        // Calculate new token count
+        const oldTokens = this.estimatedTokens;
+        this.messages = newMessages;
+        this.estimatedTokens = estimateTotalTokens(newMessages);
+
+        console.log(
+          `[Agent] LLM compression complete: ${oldTokens} → ${this.estimatedTokens} tokens ` +
+          `(${Math.round((1 - this.estimatedTokens / oldTokens) * 100)}% reduction)`
+        );
+      }
+
+      return {
+        summary: result.summary,
+        originalTokens: this.estimatedTokens,
+        compressedTokens: estimateTokens(result.summary),
+        compressionRatio: result.compressionRatio,
+      };
+    } catch (error) {
+      console.error('[Agent] LLM compression failed:', error);
+      // Fall back to rule-based compression
+      this.trimContextIfNeeded();
+      return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
+    }
+  }
+
+  // Get compressed summary
+  getCompressedSummary(): string {
+    return this.compressedSummary;
+  }
+
   // Chat with the agent
   async chat(userMessage: string | MultimodalContent[], options?: {
     tools?: OpenAITool[];
@@ -318,6 +405,19 @@ export class Agent {
       content: userMessage,
     });
     this.estimatedTokens += estimateMessageTokens({ role: 'user', content: userMessage });
+
+    // Proactive LLM compression when context is getting full
+    // Use LLM compression when > 80% of max tokens (smarter than rule-based)
+    const compressionThreshold = this.contextConfig.maxTokens * 0.8;
+    if (this.estimatedTokens > compressionThreshold && this.messages.length > 10) {
+      console.log(`[Agent] Context at ${Math.round(this.estimatedTokens / 1000)}k tokens, triggering LLM compression...`);
+      try {
+        await this.compressContextWithLLM();
+      } catch (error) {
+        console.warn('[Agent] LLM compression failed, using rule-based fallback');
+        this.trimContextIfNeeded();
+      }
+    }
 
     // Get tools
     const tools = options?.tools || this.options.tools || getAllToolsForAI();
