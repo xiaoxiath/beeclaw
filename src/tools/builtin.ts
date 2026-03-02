@@ -1,0 +1,2543 @@
+/**
+ * Built-in Tools for Beeclaw
+ *
+ * These tools provide essential capabilities like web search, file operations, etc.
+ */
+
+import { z } from 'zod';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'fs';
+import { join, resolve, dirname, basename, extname } from 'path';
+import type { MemoryToolResult } from '../memory/types';
+import {
+  getSearchOrchestrator,
+  getContentExtractor,
+  SearchRegion,
+  type SearchConfig,
+} from '../search';
+import {
+  getFinanceOrchestrator,
+} from '../finance';
+import {
+  createSearchTask,
+  createSkillTask,
+  createReminderTask,
+  getTaskStatus,
+  cancelTask,
+  getQueueStatistics,
+} from '../queue';
+import {
+  spawnSubagentTool,
+  spawnParallelTool,
+} from '../subagent/tools';
+import {
+  executeSpawnSubagent,
+  executeSpawnParallel,
+} from '../subagent/executor';
+import {
+  stateSetTool,
+  stateGetTool,
+  stateDeleteTool,
+  stateUpdateTool,
+  stateExistsTool,
+  stateListTool,
+  stateStatsTool,
+  stateLockTool,
+  stateUnlockTool,
+} from '../subagent/state-tools';
+
+// Tool result type
+export type BuiltinToolResult = MemoryToolResult;
+
+/**
+ * Clean up text to save tokens - remove excessive whitespace and newlines
+ */
+function cleanText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')       // Remove trailing spaces before newlines
+    .replace(/\n[ \t]+/g, '\n')       // Remove leading spaces after newlines
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // Multiple newlines with spaces -> 2 newlines
+    .replace(/\n{3,}/g, '\n\n')       // Max 2 consecutive newlines
+    .replace(/[ \t]{2,}/g, ' ')       // Max 1 consecutive space
+    .trim();
+}
+
+// ============================================================================
+// Web Search Tool (using multi-provider search system)
+// ============================================================================
+
+export const WebSearchSchema = z.object({
+  query: z.string().describe('Search query'),
+  num_results: z.number().min(1).max(20).optional().default(10).describe('Number of results to return'),
+  region: z.enum(['global', 'cn', 'us', 'auto']).optional().default('auto').describe('Search region'),
+  time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range filter'),
+});
+
+export const webSearchTool = {
+  name: 'web_search',
+  description: 'Search the web for information using multiple search engines. Supports Chinese and English queries with automatic region detection.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Search query string',
+      },
+      num_results: {
+        type: 'number',
+        description: 'Number of results to return (1-20, default 10)',
+      },
+      region: {
+        type: 'string',
+        enum: ['global', 'cn', 'us', 'auto'],
+        description: 'Search region (default: auto-detect from query)',
+      },
+      time_range: {
+        type: 'string',
+        enum: ['day', 'week', 'month', 'year'],
+        description: 'Filter results by time range',
+      },
+    },
+    required: ['query'],
+  },
+};
+
+export async function executeWebSearch(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = WebSearchSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { query, num_results, region, time_range } = parsed.data;
+
+  try {
+    const orchestrator = getSearchOrchestrator();
+
+    const regionMap: Record<string, SearchRegion> = {
+      global: SearchRegion.GLOBAL,
+      cn: SearchRegion.CN,
+      us: SearchRegion.US,
+      auto: SearchRegion.AUTO,
+    };
+
+    const results = await orchestrator.search({
+      query,
+      numResults: num_results,
+      region: regionMap[region || 'auto'],
+      timeRange: time_range,
+    });
+
+    if (results.length === 0) {
+      return { success: true, data: `No results found for: ${query}` };
+    }
+
+    const formatted = results.map((r, i) =>
+      `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   ${cleanText(r.snippet)}${r.source ? ` [${r.source}]` : ''}`
+    ).join('\n\n');
+
+    return { success: true, data: formatted };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Search error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Web Fetch Tool (using content extractor)
+// ============================================================================
+
+export const WebFetchSchema = z.object({
+  url: z.string().url().describe('URL to fetch'),
+  format: z.enum(['text', 'markdown', 'json']).optional().default('markdown').describe('Output format'),
+  max_length: z.number().min(100).max(50000).optional().default(10000).describe('Maximum content length'),
+});
+
+export const webFetchTool = {
+  name: 'web_fetch',
+  description: 'Fetch and read content from a URL. Extracts main content and converts to readable format.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      url: {
+        type: 'string',
+        description: 'The URL to fetch content from',
+      },
+      format: {
+        type: 'string',
+        enum: ['text', 'markdown', 'json'],
+        description: 'Output format (default: markdown)',
+      },
+      max_length: {
+        type: 'number',
+        description: 'Maximum content length in characters (default: 10000)',
+      },
+    },
+    required: ['url'],
+  },
+};
+
+export async function executeWebFetch(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = WebFetchSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { url, format, max_length } = parsed.data;
+
+  try {
+    const extractor = getContentExtractor();
+
+    // Use the content extractor which handles HTML to markdown conversion
+    let content = await extractor.extract(url, {
+      maxLength: max_length,
+      includeImages: false,
+    });
+
+    // Apply final cleanup
+    content = cleanText(content);
+
+    if (format === 'text') {
+      // Strip markdown formatting for plain text
+      const text = content
+        .replace(/[#*`_\[\]]/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/```[\s\S]*?```/g, match => match.replace(/```\n?/g, ''));
+      return { success: true, data: cleanText(text) };
+    }
+
+    return { success: true, data: content };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Time Tool
+// ============================================================================
+
+export const TimeSchema = z.object({
+  timezone: z.string().optional().describe('Timezone (e.g., "Asia/Shanghai", "America/New_York")'),
+  format: z.string().optional().default('YYYY-MM-DD HH:mm:ss').describe('Time format'),
+});
+
+export const timeTool = {
+  name: 'time_now',
+  description: 'Get the current date and time. Uses user timezone from config (default: Asia/Shanghai).',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      timezone: {
+        type: 'string',
+        description: 'Override timezone (e.g., "America/New_York"). Default: user configured timezone',
+      },
+      format: {
+        type: 'string',
+        description: 'Custom format string (default: YYYY-MM-DD HH:mm:ss)',
+      },
+    },
+    required: [],
+  },
+};
+
+export async function executeTime(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = TimeSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { timezone: paramTimezone } = parsed.data;
+  const now = new Date();
+
+  // Get user timezone from config, fallback to Asia/Shanghai
+  let defaultTimezone = 'Asia/Shanghai';
+  try {
+    const { getConfig } = require('../config');
+    const config = getConfig();
+    if (config?.user?.timezone) {
+      defaultTimezone = config.user.timezone;
+    }
+  } catch {
+    // Config not loaded, use default
+  }
+
+  const timezone = paramTimezone || defaultTimezone;
+
+  try {
+    const options: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      weekday: 'long',
+      timeZoneName: 'long',
+    };
+
+    options.timeZone = timezone;
+
+    const formatted = now.toLocaleString('zh-CN', options);
+
+    // Additional info
+    const iso = now.toISOString();
+    const unix = Math.floor(now.getTime() / 1000);
+
+    const result = `当前时间: ${formatted}
+ISO 格式: ${iso}
+Unix 时间戳: ${unix}
+时区: ${timezone}`;
+
+    return { success: true, data: result };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Time error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Calculator Tool
+// ============================================================================
+
+export const CalcSchema = z.object({
+  expression: z.string().describe('Mathematical expression to evaluate (e.g., "2 + 2", "sqrt(16)", "sin(pi/4)")'),
+});
+
+export const calcTool = {
+  name: 'calc',
+  description: 'Evaluate mathematical expressions. Supports basic math, trigonometry, logarithms, etc.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      expression: {
+        type: 'string',
+        description: 'Mathematical expression (e.g., "2 + 2", "sqrt(16)", "sin(pi/4)")',
+      },
+    },
+    required: ['expression'],
+  },
+};
+
+export async function executeCalc(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = CalcSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { expression } = parsed.data;
+
+  try {
+    // Create a safe math context
+    const mathContext = {
+      pi: Math.PI,
+      e: Math.E,
+      sqrt: Math.sqrt,
+      abs: Math.abs,
+      sin: Math.sin,
+      cos: Math.cos,
+      tan: Math.tan,
+      asin: Math.asin,
+      acos: Math.acos,
+      atan: Math.atan,
+      log: Math.log,
+      log10: Math.log10,
+      log2: Math.log2,
+      exp: Math.exp,
+      pow: Math.pow,
+      floor: Math.floor,
+      ceil: Math.ceil,
+      round: Math.round,
+      min: Math.min,
+      max: Math.max,
+      random: Math.random,
+    };
+
+    // Sanitize expression - only allow safe characters
+    const sanitized = expression
+      .replace(/[^0-9+\-*/().a-zA-Z_\s]/g, '')
+      .toLowerCase();
+
+    // Check for dangerous patterns
+    if (sanitized.includes('eval') || sanitized.includes('function') || sanitized.includes('=>')) {
+      return { success: false, error: 'Invalid expression: potentially dangerous code detected' };
+    }
+
+    // Build function with math context
+    const contextKeys = Object.keys(mathContext);
+    const contextValues = Object.values(mathContext);
+
+    // Replace function names with context-prefixed versions
+    let processedExpr = sanitized;
+    for (const key of contextKeys) {
+      const regex = new RegExp(`\\b${key}\\b`, 'g');
+      processedExpr = processedExpr.replace(regex, key);
+    }
+
+    // Evaluate
+    const fn = new Function(...contextKeys, `return ${processedExpr}`);
+    const result = fn(...contextValues);
+
+    if (typeof result !== 'number' || !isFinite(result)) {
+      return { success: false, error: `Invalid result: ${result}` };
+    }
+
+    return {
+      success: true,
+      data: `${expression} = ${result}`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Calculation error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Code Execute Tool (safe sandboxed execution)
+// ============================================================================
+
+export const CodeExecuteSchema = z.object({
+  code: z.string().describe('JavaScript/TypeScript code to execute'),
+  language: z.enum(['javascript', 'typescript']).optional().default('javascript').describe('Programming language'),
+  timeout: z.number().min(100).max(10000).optional().default(5000).describe('Execution timeout in ms'),
+});
+
+export const codeExecuteTool = {
+  name: 'code_execute',
+  description: 'Execute JavaScript code in a sandbox. Useful for data processing, calculations, and quick scripts.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      code: {
+        type: 'string',
+        description: 'JavaScript code to execute',
+      },
+      language: {
+        type: 'string',
+        enum: ['javascript', 'typescript'],
+        description: 'Programming language (default: javascript)',
+      },
+      timeout: {
+        type: 'number',
+        description: 'Execution timeout in ms (default: 5000, max: 10000)',
+      },
+    },
+    required: ['code'],
+  },
+};
+
+export async function executeCode(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = CodeExecuteSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { code, timeout } = parsed.data;
+
+  try {
+    // Check for dangerous patterns
+    const dangerousPatterns = [
+      /require\s*\(/,
+      /import\s+/,
+      /eval\s*\(/,
+      /Function\s*\(/,
+      /process\s*\./,
+      /child_process/,
+      /fs\s*\.\s*(?!readFileSync|writeFileSync)/,
+      /exec\s*\(/,
+      /spawn\s*\(/,
+    ];
+
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(code)) {
+        return { success: false, error: `Code contains restricted pattern: ${pattern}` };
+      }
+    }
+
+    // Output array must be defined before sandbox
+    const output: string[] = [];
+
+    // Create a safe sandbox with limited globals
+    const sandbox = {
+      console: {
+        log: (...args: unknown[]) => {
+          output.push(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+        },
+        error: (...args: unknown[]) => {
+          output.push('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+        },
+        warn: (...args: unknown[]) => {
+          output.push('[WARN] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+        },
+      },
+      Math: Math,
+      Date: Date,
+      JSON: JSON,
+      Array: Array,
+      Object: Object,
+      String: String,
+      Number: Number,
+      Boolean: Boolean,
+      Map: Map,
+      Set: Set,
+      Promise: Promise,
+      setTimeout: setTimeout,
+      clearTimeout: clearTimeout,
+      setInterval: setInterval,
+      clearInterval: clearInterval,
+    };
+
+    const sandboxKeys = Object.keys(sandbox);
+    const sandboxValues = Object.values(sandbox);
+
+    // Wrap code in async function for timeout support
+    const wrappedCode = `(async () => { ${code} })()`;
+
+    // Execute with timeout
+    const result = await Promise.race([
+      (async () => {
+        const fn = new Function(...sandboxKeys, `return ${wrappedCode}`);
+        return await fn(...sandboxValues);
+      })(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Execution timeout')), timeout)
+      ),
+    ]);
+
+    // Format output
+    let response = '';
+    if (output.length > 0) {
+      response += 'Output:\n' + output.join('\n') + '\n';
+    }
+    if (result !== undefined) {
+      response += 'Result: ' + (typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result));
+    }
+    if (!response) {
+      response = 'Code executed successfully (no output)';
+    }
+
+    return { success: true, data: response };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Execution error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Weather Tool (using wttr.in - no API key needed)
+// ============================================================================
+
+export const WeatherSchema = z.object({
+  location: z.string().describe('City name or location (e.g., "Beijing", "New York")'),
+  format: z.enum(['current', 'forecast', 'detailed']).optional().default('current').describe('Weather format'),
+});
+
+export const weatherTool = {
+  name: 'weather',
+  description: 'Get current weather information for a location.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      location: {
+        type: 'string',
+        description: 'City name or location (e.g., "Beijing", "New York")',
+      },
+      format: {
+        type: 'string',
+        enum: ['current', 'forecast', 'detailed'],
+        description: 'Weather format (default: current)',
+      },
+    },
+    required: ['location'],
+  },
+};
+
+export async function executeWeather(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = WeatherSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { location, format } = parsed.data;
+
+  try {
+    // Use wttr.in - free weather API with no key required
+    // Format options: 0=current only, 1=3-day, 2=more details, v2=detailed
+    let formatParam = '0';
+    let langParam = 'zh';
+
+    if (format === 'forecast') {
+      formatParam = '1';
+    } else if (format === 'detailed') {
+      formatParam = 'v2&format=j1';  // JSON format for detailed
+    }
+
+    const url = `https://wttr.in/${encodeURIComponent(location)}?format=${formatParam}&lang=${langParam}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'curl/7.68.0',  // wttr.in returns text for curl UA
+        'Accept': 'text/plain',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `Weather fetch failed: ${response.status}` };
+    }
+
+    const text = await response.text();
+
+    // If detailed format with JSON, parse it
+    if (format === 'detailed' && text.startsWith('{')) {
+      try {
+        const json = JSON.parse(text);
+        const current = json.current_condition?.[0];
+        if (current) {
+          const result = `📍 ${location} 天气详情
+
+🌡️ 温度: ${current.temp_C}°C (体感 ${current.FeelsLikeC}°C)
+☁️ 天气: ${current.weatherDesc?.[0]?.value || current.lang_zh?.[0]?.value || '未知'}
+💨 风速: ${current.windspeedKmph} km/h ${current.winddir16Point}
+💧 湿度: ${current.humidity}%
+👁️ 能见度: ${current.visibility} km
+气压: ${current.pressure} mb
+UV 指数: ${current.uvIndex}`;
+          return { success: true, data: result };
+        }
+      } catch {
+        // Fall through to text response
+      }
+    }
+
+    const data = text.trim();
+    if (!data || data.includes('Sorry')) {
+      return { success: false, error: `无法获取 ${location} 的天气信息` };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Weather error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Stock Quote Tool (Finance Data)
+// ============================================================================
+
+export const StockQuoteSchema = z.object({
+  symbol: z.string().describe('股票代码，如 600000, sh600000, sh.600000'),
+  symbols: z.array(z.string()).optional().describe('批量查询股票代码列表'),
+});
+
+export const stockQuoteTool = {
+  name: 'stock_quote',
+  description: '获取A股实时行情。支持单个或批量查询，返回价格、涨跌幅、成交量等信息。',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      symbol: {
+        type: 'string',
+        description: '股票代码，如 600000, sh600000, sh.600000',
+      },
+      symbols: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '批量查询股票代码列表',
+      },
+    },
+    required: ['symbol'],
+  },
+};
+
+export async function executeStockQuote(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = StockQuoteSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { symbol, symbols } = parsed.data;
+
+  try {
+    const orchestrator = getFinanceOrchestrator();
+    const quotes = await orchestrator.getQuote({ symbol, symbols });
+
+    if (quotes.length === 0) {
+      return { success: false, error: `未找到股票: ${symbol}` };
+    }
+
+    const formatted = quotes.map(q => {
+      const changeIcon = q.change >= 0 ? '📈' : '📉';
+      return `${changeIcon} **${q.symbol}** ${q.name}
+   当前: ¥${q.price.toFixed(2)} ${q.change >= 0 ? '+' : ''}${q.change.toFixed(2)} (${q.change >= 0 ? '+' : ''}${q.changePercent.toFixed(2)}%)
+   今开: ¥${q.open.toFixed(2)} 昨收: ¥${q.preClose.toFixed(2)}
+   最高: ¥${q.high.toFixed(2)} 最低: ¥${q.low.toFixed(2)}
+   成交量: ${(q.volume / 10000).toFixed(2)}万手 成交额: ${(q.amount / 100000000).toFixed(2)}亿
+   ${q.peRatio ? `市盈率: ${q.peRatio.toFixed(2)}` : ''} ${q.pbRatio ? `市净率: ${q.pbRatio.toFixed(2)}` : ''}
+   ${q.totalMarketValue ? `总市值: ${(q.totalMarketValue / 100000000).toFixed(2)}亿` : ''}
+   数据来源: ${q.source}`;
+    }).join('\n\n');
+
+    return { success: true, data: formatted };
+  } catch (error) {
+    return {
+      success: false,
+      error: `股票行情获取失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Stock History Tool (Finance Data)
+// ============================================================================
+
+export const StockHistorySchema = z.object({
+  symbol: z.string().describe('股票代码'),
+  start_date: z.string().optional().describe('开始日期 YYYY-MM-DD'),
+  end_date: z.string().optional().describe('结束日期 YYYY-MM-DD'),
+  period: z.enum(['daily', 'weekly', 'monthly']).optional().default('daily').describe('K线周期'),
+  adjust: z.enum(['none', 'hfq', 'qfq']).optional().default('none').describe('复权方式: none=不复权, hfq=后复权, qfq=前复权'),
+  limit: z.number().min(1).max(365).optional().default(30).describe('返回数据条数'),
+});
+
+export const stockHistoryTool = {
+  name: 'stock_history',
+  description: '获取股票历史K线数据。支持日K、周K、月K，以及前复权、后复权。',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      symbol: {
+        type: 'string',
+        description: '股票代码',
+      },
+      start_date: {
+        type: 'string',
+        description: '开始日期 YYYY-MM-DD',
+      },
+      end_date: {
+        type: 'string',
+        description: '结束日期 YYYY-MM-DD',
+      },
+      period: {
+        type: 'string',
+        enum: ['daily', 'weekly', 'monthly'],
+        description: 'K线周期 (默认: daily)',
+      },
+      adjust: {
+        type: 'string',
+        enum: ['none', 'hfq', 'qfq'],
+        description: '复权方式: none=不复权, hfq=后复权, qfq=前复权',
+      },
+      limit: {
+        type: 'number',
+        description: '返回数据条数 (默认: 30, 最大: 365)',
+      },
+    },
+    required: ['symbol'],
+  },
+};
+
+export async function executeStockHistory(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = StockHistorySchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { symbol, start_date, end_date, period, adjust, limit } = parsed.data;
+
+  try {
+    const orchestrator = getFinanceOrchestrator();
+    const history = await orchestrator.getHistory({
+      symbol,
+      start_date,
+      end_date,
+      period,
+      adjust,
+      limit,
+    });
+
+    if (history.items.length === 0) {
+      return { success: false, error: `未找到股票历史数据: ${symbol}` };
+    }
+
+    const adjustLabel = adjust === 'qfq' ? '前复权' : adjust === 'hfq' ? '后复权' : '不复权';
+    const periodLabel = period === 'daily' ? '日K' : period === 'weekly' ? '周K' : '月K';
+
+    const header = `📊 **${symbol}** ${history.name || ''} ${periodLabel} ${adjustLabel}\n`;
+    const table = '| 日期 | 开盘 | 最高 | 最低 | 收盘 | 成交量(万手) | 成交额(亿) |\n|------|------|------|------|------|-------------|-------------|\n';
+
+    const rows = history.items.map(item => {
+      return `| ${item.date} | ${item.open.toFixed(2)} | ${item.high.toFixed(2)} | ${item.low.toFixed(2)} | ${item.close.toFixed(2)} | ${(item.volume / 10000).toFixed(2)} | ${(item.amount / 100000000).toFixed(2)} |`;
+    }).join('\n');
+
+    return {
+      success: true,
+      data: header + table + rows + `\n\n数据来源: ${history.source}`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `股票历史数据获取失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Stock Financial Tool (Finance Data)
+// ============================================================================
+
+export const StockFinancialSchema = z.object({
+  symbol: z.string().describe('股票代码'),
+  report_type: z.enum(['income', 'balance', 'cashflow']).describe('报表类型: income=利润表, balance=资产负债表, cashflow=现金流量表'),
+  period: z.enum(['annual', 'quarterly']).optional().default('annual').describe('报告周期: annual=年报, quarterly=季报'),
+  limit: z.number().min(1).max(8).optional().default(4).describe('返回报告期数'),
+});
+
+export const stockFinancialTool = {
+  name: 'stock_financial',
+  description: '获取上市公司财务报表数据。支持利润表、资产负债表、现金流量表。',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      symbol: {
+        type: 'string',
+        description: '股票代码',
+      },
+      report_type: {
+        type: 'string',
+        enum: ['income', 'balance', 'cashflow'],
+        description: '报表类型: income=利润表, balance=资产负债表, cashflow=现金流量表',
+      },
+      period: {
+        type: 'string',
+        enum: ['annual', 'quarterly'],
+        description: '报告周期: annual=年报, quarterly=季报 (默认: annual)',
+      },
+      limit: {
+        type: 'number',
+        description: '返回报告期数 (默认: 4, 最大: 8)',
+      },
+    },
+    required: ['symbol', 'report_type'],
+  },
+};
+
+export async function executeStockFinancial(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = StockFinancialSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { symbol, report_type, period, limit } = parsed.data;
+
+  try {
+    const orchestrator = getFinanceOrchestrator();
+    const financial = await orchestrator.getFinancial({
+      symbol,
+      report_type,
+      period,
+      limit,
+    });
+
+    if (financial.items.length === 0) {
+      return { success: false, error: `未找到财务数据: ${symbol}。注意：财务数据需要Tushare Token。` };
+    }
+
+    const reportLabel = report_type === 'income' ? '利润表' :
+                        report_type === 'balance' ? '资产负债表' : '现金流量表';
+    const periodLabel = period === 'annual' ? '年报' : '季报';
+
+    let content = `📈 **${symbol}** ${financial.name || ''} ${reportLabel} (${periodLabel})\n\n`;
+
+    for (const item of financial.items) {
+      content += `**报告期: ${item.endDate}**\n`;
+
+      if (report_type === 'income') {
+        content += `- 营业收入: ${item.revenue ? (item.revenue / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+        content += `- 净利润: ${item.netProfit ? (item.netProfit / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+        content += `- 归母净利润: ${item.netProfitAttrib ? (item.netProfitAttrib / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+        if (item.roe) content += `- ROE: ${item.roe.toFixed(2)}%\n`;
+      } else if (report_type === 'balance') {
+        content += `- 总资产: ${item.totalAssets ? (item.totalAssets / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+        content += `- 总负债: ${item.totalLiabilities ? (item.totalLiabilities / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+        content += `- 股东权益: ${item.totalEquity ? (item.totalEquity / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+      } else {
+        content += `- 经营现金流: ${item.operatingCashFlow ? (item.operatingCashFlow / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+        content += `- 投资现金流: ${item.investingCashFlow ? (item.investingCashFlow / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+        content += `- 筹资现金流: ${item.financingCashFlow ? (item.financingCashFlow / 100000000).toFixed(2) + '亿' : 'N/A'}\n`;
+      }
+      content += '\n';
+    }
+
+    return { success: true, data: content + `数据来源: ${financial.source}` };
+  } catch (error) {
+    return {
+      success: false,
+      error: `财务数据获取失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Stock Info Tool (Finance Data)
+// ============================================================================
+
+export const StockInfoSchema = z.object({
+  symbol: z.string().describe('股票代码'),
+});
+
+export const stockInfoTool = {
+  name: 'stock_info',
+  description: '获取上市公司基本信息。包括行业、上市日期、主营业务等。',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      symbol: {
+        type: 'string',
+        description: '股票代码',
+      },
+    },
+    required: ['symbol'],
+  },
+};
+
+export async function executeStockInfo(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = StockInfoSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { symbol } = parsed.data;
+
+  try {
+    const orchestrator = getFinanceOrchestrator();
+    const info = await orchestrator.getInfo({ symbol });
+
+    const content = `🏢 **${info.symbol}** ${info.name}
+${info.fullName && info.fullName !== info.name ? `全称: ${info.fullName}\n` : ''}${info.industry ? `行业: ${info.industry}\n` : ''}${info.sector ? `板块: ${info.sector}\n` : ''}${info.market ? `市场: ${info.market}\n` : ''}${info.listDate ? `上市日期: ${info.listDate}\n` : ''}${info.chairman ? `董事长: ${info.chairman}\n` : ''}${info.employees ? `员工数: ${info.employees.toLocaleString()}\n` : ''}${info.province || info.city ? `地区: ${[info.province, info.city].filter(Boolean).join(' ')}\n` : ''}${info.website ? `网站: ${info.website}\n` : ''}
+${info.mainBusiness ? `主营业务:\n${info.mainBusiness}` : ''}
+数据来源: ${info.source}`;
+
+    return { success: true, data: content };
+  } catch (error) {
+    return {
+      success: false,
+      error: `公司信息获取失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// URL Shorten Tool
+// ============================================================================
+
+export const UrlShortenSchema = z.object({
+  url: z.string().url().describe('URL to shorten'),
+});
+
+export const urlShortenTool = {
+  name: 'url_shorten',
+  description: 'Shorten a long URL using is.gd service.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      url: {
+        type: 'string',
+        description: 'The URL to shorten',
+      },
+    },
+    required: ['url'],
+  },
+};
+
+export async function executeUrlShorten(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = UrlShortenSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { url } = parsed.data;
+
+  try {
+    const response = await fetch(`https://is.gd/create.php?format=simple&url=${encodeURIComponent(url)}`);
+
+    if (!response.ok) {
+      return { success: false, error: `URL shortening failed: ${response.status}` };
+    }
+
+    const shortUrl = await response.text();
+    return {
+      success: true,
+      data: `Original: ${url}\nShortened: ${shortUrl}`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `URL shortening error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// QR Code Tool
+// ============================================================================
+
+export const QrCodeSchema = z.object({
+  text: z.string().describe('Text or URL to encode as QR code'),
+  size: z.number().min(100).max(500).optional().default(200).describe('QR code size in pixels'),
+});
+
+export const qrCodeTool = {
+  name: 'qrcode',
+  description: 'Generate a QR code image URL for text or URL.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      text: {
+        type: 'string',
+        description: 'Text or URL to encode',
+      },
+      size: {
+        type: 'number',
+        description: 'QR code size in pixels (default: 200)',
+      },
+    },
+    required: ['text'],
+  },
+};
+
+export async function executeQrCode(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = QrCodeSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { text, size } = parsed.data;
+
+  try {
+    // Use QR code API
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}`;
+
+    return {
+      success: true,
+      data: `QR Code generated:\nURL: ${qrUrl}\n\nScan this QR code to access: ${text}`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `QR code error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Claude Code Tool
+// ============================================================================
+
+import { $ } from 'bun';
+
+export const ClaudeCodeSchema = z.object({
+  prompt: z.string().describe('The task or prompt to send to Claude Code'),
+  working_dir: z.string().optional().describe('Working directory for the task (default: current directory)'),
+  timeout: z.number().min(10000).max(300000).optional().default(60000).describe('Timeout in ms (default: 60000, max: 300000)'),
+  model: z.string().optional().describe('Model to use (e.g., "claude-sonnet-4-20250514", "claude-opus-4-6")'),
+});
+
+export const claudeCodeTool = {
+  name: 'claude_code',
+  description: 'Execute a task using Claude Code SDK. Use this for complex tasks that require file operations, code analysis, or multi-step reasoning. Claude Code has access to file system, bash commands, and can work autonomously on tasks.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      prompt: {
+        type: 'string',
+        description: 'The task or question to send to Claude Code',
+      },
+      working_dir: {
+        type: 'string',
+        description: 'Working directory (default: current directory)',
+      },
+      timeout: {
+        type: 'number',
+        description: 'Timeout in ms (default: 60000, max: 300000)',
+      },
+      model: {
+        type: 'string',
+        description: 'Model to use (optional)',
+      },
+    },
+    required: ['prompt'],
+  },
+};
+
+export async function executeClaudeCode(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = ClaudeCodeSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { prompt, working_dir, timeout, model } = parsed.data;
+
+  try {
+    // Build command
+    let cmd = 'claude -p';
+    if (model) {
+      cmd += ` --model ${model}`;
+    }
+    // Escape the prompt for shell
+    const escapedPrompt = prompt.replace(/'/g, "'\\''");
+    cmd += ` '${escapedPrompt}'`;
+
+    // Execute using Bun's shell
+    const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>(async (resolve) => {
+      const timer = setTimeout(() => {
+        resolve({ stdout: '', stderr: 'Timeout reached', exitCode: 124 });
+      }, timeout);
+
+      try {
+        const proc = Bun.spawn(['bash', '-c', cmd], {
+          cwd: working_dir || process.cwd(),
+          env: { ...process.env, CLAUDECODE: undefined },
+        });
+
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+
+        clearTimeout(timer);
+        resolve({ stdout, stderr, exitCode });
+      } catch (err) {
+        clearTimeout(timer);
+        resolve({ stdout: '', stderr: err instanceof Error ? err.message : 'Unknown error', exitCode: 1 });
+      }
+    });
+
+    if (result.exitCode === 124) {
+      return { success: false, error: 'Timeout reached' };
+    }
+
+    if (result.exitCode !== 0) {
+      return {
+        success: false,
+        error: `Claude Code exited with code ${result.exitCode}: ${result.stderr || result.stdout.slice(0, 500)}`,
+      };
+    }
+
+    // Format the output
+    const output = result.stdout.trim();
+
+    if (!output) {
+      return { success: true, data: 'Claude Code completed successfully (no output)' };
+    }
+
+    // Truncate if too long
+    const maxLength = 10000;
+    const truncated = output.length > maxLength
+      ? output.slice(0, maxLength) + '\n\n... (output truncated)'
+      : output;
+
+    return { success: true, data: truncated };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('ENOENT')) {
+        return { success: false, error: 'Claude CLI not found. Please install Claude Code CLI first.' };
+      }
+      return { success: false, error: `Claude Code error: ${error.message}` };
+    }
+    return { success: false, error: 'Unknown error executing Claude Code' };
+  }
+}
+
+// ============================================================================
+// Tool Registry
+// ============================================================================
+
+// ============================================================================
+// Task Management Tools
+// ============================================================================
+
+export const TaskCreateSchema = z.object({
+  type: z.enum(['search', 'skill', 'reminder']).describe('Task type'),
+  action: z.string().describe('Action to perform'),
+  params: z.record(z.unknown()).describe('Task parameters'),
+  schedule: z.object({
+    delay: z.number().optional().describe('Delay in milliseconds'),
+    cron: z.string().optional().describe('Cron expression for recurring tasks'),
+  }).optional(),
+});
+
+export const taskCreateTool = {
+  name: 'task_create',
+  description: 'Create a background task. Use this for long-running operations like searches, skill executions, or scheduled reminders. Returns a job ID for tracking.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      type: {
+        type: 'string',
+        enum: ['search', 'skill', 'reminder'],
+        description: 'Type of task to create',
+      },
+      action: {
+        type: 'string',
+        description: 'Specific action to perform',
+      },
+      params: {
+        type: 'object',
+        description: 'Parameters for the task',
+      },
+      schedule: {
+        type: 'object',
+        properties: {
+          delay: { type: 'number', description: 'Delay in ms' },
+          cron: { type: 'string', description: 'Cron expression' },
+        },
+      },
+    },
+    required: ['type', 'action', 'params'],
+  },
+};
+
+export async function executeTaskCreate(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = TaskCreateSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { type, action, params: taskParams, schedule } = parsed.data;
+
+  try {
+    let result;
+
+    switch (type) {
+      case 'search':
+        result = await createSearchTask(
+          (taskParams.query as string) || action,
+          {
+            numResults: taskParams.numResults as number | undefined,
+            region: taskParams.region as string | undefined,
+            timeRange: taskParams.timeRange as string | undefined,
+          }
+        );
+        break;
+
+      case 'skill':
+        result = await createSkillTask(
+          action,
+          (taskParams.skillAction as string) || 'execute',
+          taskParams as Record<string, unknown>,
+        );
+        break;
+
+      case 'reminder':
+        result = await createReminderTask(
+          (taskParams.userId as string) || 'default',
+          (taskParams.message as string) || action,
+          schedule,
+        );
+        break;
+
+      default:
+        return { success: false, error: `Unknown task type: ${type}` };
+    }
+
+    return {
+      success: true,
+      data: `Task created successfully. Job ID: ${result.jobId}`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+export const TaskStatusSchema = z.object({
+  job_id: z.string().describe('Job ID to check'),
+});
+
+export const taskStatusTool = {
+  name: 'task_status',
+  description: 'Check the status of a background task by its job ID.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      job_id: {
+        type: 'string',
+        description: 'The job ID returned by task_create',
+      },
+    },
+    required: ['job_id'],
+  },
+};
+
+export async function executeTaskStatus(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = TaskStatusSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { job_id } = parsed.data;
+
+  try {
+    const status = await getTaskStatus(job_id);
+
+    if (!status) {
+      return { success: false, error: `Job not found: ${job_id}` };
+    }
+
+    const progress = status.progress ? ` (${status.progress}%)` : '';
+    const result = status.result ? `\nResult: ${JSON.stringify(status.result).slice(0, 500)}` : '';
+    const error = status.error ? `\nError: ${status.error}` : '';
+
+    return {
+      success: true,
+      data: `Job ${job_id}\nStatus: ${status.state}${progress}\nQueue: ${status.queue}${result}${error}`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to get task status: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+export const TaskListSchema = z.object({});
+
+export const taskListTool = {
+  name: 'task_list',
+  description: 'List all queue statistics and recent tasks.',
+  parameters: {
+    type: 'object' as const,
+    properties: {},
+  },
+};
+
+export async function executeTaskList(_params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  try {
+    const stats = await getQueueStatistics();
+
+    const lines = ['## Queue Statistics', ''];
+
+    for (const [queue, stat] of Object.entries(stats)) {
+      lines.push(`### ${queue}`);
+      lines.push(`- Waiting: ${stat.waiting}`);
+      lines.push(`- Active: ${stat.active}`);
+      lines.push(`- Completed: ${stat.completed}`);
+      lines.push(`- Failed: ${stat.failed}`);
+      lines.push('');
+    }
+
+    return { success: true, data: lines.join('\n') };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to list tasks: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+export const TaskCancelSchema = z.object({
+  job_id: z.string().describe('Job ID to cancel'),
+});
+
+export const taskCancelTool = {
+  name: 'task_cancel',
+  description: 'Cancel a pending or running task.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      job_id: {
+        type: 'string',
+        description: 'The job ID to cancel',
+      },
+    },
+    required: ['job_id'],
+  },
+};
+
+export async function executeTaskCancel(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = TaskCancelSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { job_id } = parsed.data;
+
+  try {
+    const success = await cancelTask(job_id);
+
+    if (success) {
+      return { success: true, data: `Task ${job_id} cancelled successfully` };
+    } else {
+      return { success: false, error: `Failed to cancel task ${job_id} (not found or already completed)` };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to cancel task: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+// ============================================================================
+// Deep Research Tool
+// ============================================================================
+
+export const DeepResearchSchema = z.object({
+  topic: z.string().describe('The main topic or question to research'),
+  aspects: z.array(z.string()).optional().describe('Specific aspects or angles to investigate (optional, will auto-discover if not provided)'),
+  depth: z.enum(['quick', 'standard', 'comprehensive']).optional().default('standard').describe('Research depth: quick (3 searches), standard (5 searches), comprehensive (8+ searches)'),
+  time_range: z.enum(['day', 'week', 'month', 'year']).optional().describe('Time range filter for results'),
+});
+
+export const deepResearchTool = {
+  name: 'deep_research',
+  description: 'Conduct systematic multi-angle research on a topic. Performs parallel searches, fetches key sources, and synthesizes findings into a comprehensive report. Use this when you need thorough research beyond a simple web search.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      topic: {
+        type: 'string',
+        description: 'The main topic or question to research',
+      },
+      aspects: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Specific aspects to investigate (optional)',
+      },
+      depth: {
+        type: 'string',
+        enum: ['quick', 'standard', 'comprehensive'],
+        description: 'Research depth (default: standard)',
+      },
+      time_range: {
+        type: 'string',
+        enum: ['day', 'week', 'month', 'year'],
+        description: 'Time range filter for results',
+      },
+    },
+    required: ['topic'],
+  },
+};
+
+interface ResearchSource {
+  title: string;
+  url: string;
+  snippet: string;
+  content?: string;
+  source?: string;
+}
+
+interface ResearchFinding {
+  aspect: string;
+  keyFacts: string[];
+  sources: ResearchSource[];
+}
+
+export async function executeDeepResearch(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = DeepResearchSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { topic, aspects, depth, time_range } = parsed.data;
+
+  try {
+    const orchestrator = getSearchOrchestrator();
+    const extractor = getContentExtractor();
+
+    // Determine search count based on depth
+    const searchCounts = {
+      quick: 3,
+      standard: 5,
+      comprehensive: 8,
+    };
+    const numSearches = searchCounts[depth || 'standard'];
+
+    // Phase 1: Generate search queries
+    const queries: string[] = [];
+
+    // Primary query
+    queries.push(topic);
+
+    // If aspects provided, use them; otherwise generate derived queries
+    if (aspects && aspects.length > 0) {
+      aspects.slice(0, numSearches - 1).forEach(aspect => {
+        queries.push(`${topic} ${aspect}`);
+      });
+    } else {
+      // Auto-generate diverse search angles
+      const anglePatterns = [
+        `${topic} 最新 2024 2025`,
+        `${topic} 趋势 分析`,
+        `${topic} 案例 研究`,
+        `${topic} 统计 数据`,
+        `${topic} 挑战 问题`,
+        `${topic} 专家 观点`,
+        `${topic} 对比 比较`,
+        `${topic} 报告 研究`,
+      ];
+      queries.push(...anglePatterns.slice(0, numSearches - 1));
+    }
+
+    // Phase 2: Execute parallel searches
+    const searchPromises = queries.slice(0, numSearches).map(async (query) => {
+      try {
+        const results = await orchestrator.search({
+          query,
+          numResults: 5,
+          timeRange: time_range,
+        });
+        return { query, results };
+      } catch {
+        return { query, results: [] };
+      }
+    });
+
+    const searchResults = await Promise.all(searchPromises);
+
+    // Phase 3: Collect and deduplicate sources
+    const allSources = new Map<string, ResearchSource>();
+
+    for (const { query, results } of searchResults) {
+      for (const result of results) {
+        if (!allSources.has(result.url)) {
+          allSources.set(result.url, {
+            title: result.title,
+            url: result.url,
+            snippet: result.snippet,
+            source: result.source,
+          });
+        }
+      }
+    }
+
+    // Phase 4: Fetch top sources for full content
+    const topSources = Array.from(allSources.values())
+      .sort((a, b) => b.snippet.length - a.snippet.length)
+      .slice(0, depth === 'comprehensive' ? 6 : depth === 'standard' ? 4 : 2);
+
+    const fetchPromises = topSources.map(async (source) => {
+      try {
+        const content = await extractor.extract(source.url, {
+          maxLength: 3000,
+          includeImages: false,
+        });
+        source.content = cleanText(content);
+        return source;
+      } catch {
+        return source;
+      }
+    });
+
+    const fetchedSources = await Promise.all(fetchPromises);
+
+    // Update sources with fetched content
+    for (const source of fetchedSources) {
+      if (source.content) {
+        allSources.set(source.url, source);
+      }
+    }
+
+    // Phase 5: Synthesize findings
+    const findings: ResearchFinding[] = [];
+    const sourceList = Array.from(allSources.values());
+
+    // Group findings by aspect
+    const aspectsToAnalyze = aspects || ['概述', '趋势', '案例', '数据', '挑战'];
+
+    for (const aspect of aspectsToAnalyze) {
+      const relevantSources = sourceList.filter(s =>
+        s.snippet.toLowerCase().includes(aspect.toLowerCase()) ||
+        (s.content && s.content.toLowerCase().includes(aspect.toLowerCase()))
+      );
+
+      if (relevantSources.length > 0) {
+        const keyFacts: string[] = [];
+
+        for (const source of relevantSources.slice(0, 3)) {
+          if (source.content) {
+            // Extract key sentences
+            const sentences = source.content.split(/[。.!?\n]/).filter(s => s.length > 20 && s.length < 200);
+            keyFacts.push(...sentences.slice(0, 2));
+          } else {
+            keyFacts.push(source.snippet);
+          }
+        }
+
+        findings.push({
+          aspect,
+          keyFacts: [...new Set(keyFacts)].slice(0, 5),
+          sources: relevantSources.slice(0, 3),
+        });
+      }
+    }
+
+    // Phase 6: Generate report
+    const report: string[] = [];
+
+    report.push(`# "${topic}" 深度研究报告`);
+    report.push('');
+    report.push(`*研究深度: ${depth} | 搜索次数: ${queries.length} | 来源数: ${sourceList.length}*`);
+    report.push('');
+
+    // Executive Summary
+    report.push('## 执行摘要');
+    const summaryFacts = findings.flatMap(f => f.keyFacts.slice(0, 1)).slice(0, 3);
+    if (summaryFacts.length > 0) {
+      report.push(summaryFacts.map(f => `- ${f}`).join('\n'));
+    } else {
+      report.push('基于多角度搜索收集的信息综合分析如下。');
+    }
+    report.push('');
+
+    // Key Findings by Aspect
+    report.push('## 关键发现');
+
+    for (const finding of findings) {
+      if (finding.keyFacts.length > 0) {
+        report.push(``);
+        report.push(`### ${finding.aspect}`);
+        for (const fact of finding.keyFacts) {
+          report.push(`- ${fact}`);
+        }
+      }
+    }
+
+    // Sources
+    report.push('');
+    report.push('## 来源');
+    const uniqueUrls = [...new Set(sourceList.map(s => s.url))].slice(0, 10);
+    uniqueUrls.forEach((url, i) => {
+      const source = sourceList.find(s => s.url === url);
+      if (source) {
+        report.push(`${i + 1}. [${source.title}](${url})${source.source ? ` (${source.source})` : ''}`);
+      }
+    });
+
+    // Research Methodology
+    report.push('');
+    report.push('## 研究方法');
+    report.push(`- 搜索查询: ${queries.slice(0, numSearches).map(q => `"${q}"`).join(', ')}`);
+    report.push(`- 深度内容抓取: ${fetchedSources.filter(s => s.content).length} 个来源`);
+
+    return {
+      success: true,
+      data: cleanText(report.join('\n')),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Deep research error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// File Read Tool
+// ============================================================================
+
+// Allowed base directories for file operations (security restriction)
+const ALLOWED_BASE_DIRS = [
+  process.cwd(),
+  join(process.cwd(), 'data'),
+  join(process.cwd(), 'output'),
+  join(process.cwd(), 'reports'),
+  join(process.cwd(), 'temp'),
+];
+
+// Ensure output directories exist
+function ensureOutputDirs(): void {
+  for (const dir of ['output', 'reports', 'temp']) {
+    const fullPath = join(process.cwd(), dir);
+    if (!existsSync(fullPath)) {
+      mkdirSync(fullPath, { recursive: true });
+    }
+  }
+}
+
+// Check if path is within allowed directories
+function isPathAllowed(filePath: string): boolean {
+  const resolved = resolve(filePath);
+  return ALLOWED_BASE_DIRS.some(base => resolved.startsWith(resolve(base)));
+}
+
+export const FileReadSchema = z.object({
+  path: z.string().describe('File path to read (relative to project root or absolute)'),
+  encoding: z.enum(['utf-8', 'base64', 'json']).optional().default('utf-8').describe('File encoding'),
+  max_length: z.number().min(100).max(100000).optional().default(50000).describe('Maximum content length'),
+});
+
+export const fileReadTool = {
+  name: 'file_read',
+  description: 'Read content from a local file. Supports text files, JSON, and base64 encoding for binary files. Restricted to project directory and output folders.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      path: {
+        type: 'string',
+        description: 'File path to read (relative to project root)',
+      },
+      encoding: {
+        type: 'string',
+        enum: ['utf-8', 'base64', 'json'],
+        description: 'File encoding (default: utf-8)',
+      },
+      max_length: {
+        type: 'number',
+        description: 'Maximum content length (default: 50000)',
+      },
+    },
+    required: ['path'],
+  },
+};
+
+export async function executeFileRead(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = FileReadSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { path: filePath, encoding, max_length } = parsed.data;
+
+  try {
+    const resolvedPath = resolve(filePath);
+
+    // Security check
+    if (!isPathAllowed(resolvedPath)) {
+      return {
+        success: false,
+        error: `Access denied: path outside allowed directories. Allowed: project root, data/, output/, reports/, temp/`
+      };
+    }
+
+    if (!existsSync(resolvedPath)) {
+      return { success: false, error: `File not found: ${filePath}` };
+    }
+
+    const stats = statSync(resolvedPath);
+    if (stats.isDirectory()) {
+      // List directory contents
+      const files = readdirSync(resolvedPath);
+      const fileList = files.map(f => {
+        const fp = join(resolvedPath, f);
+        const s = statSync(fp);
+        return `${s.isDirectory() ? 'd' : 'f'} ${f}`;
+      }).join('\n');
+      return { success: true, data: `Directory: ${filePath}\n${fileList}` };
+    }
+
+    // Read file
+    if (encoding === 'json') {
+      const content = readFileSync(resolvedPath, 'utf-8');
+      const json = JSON.parse(content);
+      const formatted = JSON.stringify(json, null, 2);
+      return {
+        success: true,
+        data: formatted.slice(0, max_length) + (formatted.length > max_length ? '\n... (truncated)' : '')
+      };
+    } else if (encoding === 'base64') {
+      const buffer = readFileSync(resolvedPath);
+      const base64 = buffer.toString('base64');
+      return {
+        success: true,
+        data: base64.slice(0, max_length) + (base64.length > max_length ? '... (truncated)' : '')
+      };
+    } else {
+      const content = readFileSync(resolvedPath, 'utf-8');
+      return {
+        success: true,
+        data: content.slice(0, max_length) + (content.length > max_length ? '\n... (truncated)' : '')
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `File read error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// File Write Tool
+// ============================================================================
+
+export const FileWriteSchema = z.object({
+  path: z.string().describe('File path to write (relative to project root)'),
+  content: z.string().describe('Content to write to the file'),
+  mode: z.enum(['write', 'append']).optional().default('write').describe('Write mode: write (overwrite) or append'),
+  create_dirs: z.boolean().optional().default(true).describe('Create parent directories if they don\'t exist'),
+});
+
+export const fileWriteTool = {
+  name: 'file_write',
+  description: 'Write content to a local file. Can create new files or append to existing ones. Best for generating reports, saving research results, creating HTML/Markdown files. Restricted to output/, reports/, temp/, and data/ directories.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      path: {
+        type: 'string',
+        description: 'File path to write (will be saved to output/ if not in allowed dir)',
+      },
+      content: {
+        type: 'string',
+        description: 'Content to write to the file',
+      },
+      mode: {
+        type: 'string',
+        enum: ['write', 'append'],
+        description: 'Write mode (default: write)',
+      },
+      create_dirs: {
+        type: 'boolean',
+        description: 'Create parent directories (default: true)',
+      },
+    },
+    required: ['path', 'content'],
+  },
+};
+
+export async function executeFileWrite(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = FileWriteSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { path: filePath, content, mode, create_dirs } = parsed.data;
+
+  try {
+    // Ensure output directories exist
+    ensureOutputDirs();
+
+    let resolvedPath = resolve(filePath);
+
+    // If path is not in allowed directories, redirect to output/
+    if (!isPathAllowed(resolvedPath)) {
+      // Extract just the filename and put in output/
+      const filename = basename(filePath);
+      resolvedPath = resolve(join('output', filename));
+    }
+
+    // Create parent directories if needed
+    if (create_dirs) {
+      const parentDir = dirname(resolvedPath);
+      if (!existsSync(parentDir)) {
+        mkdirSync(parentDir, { recursive: true });
+      }
+    }
+
+    // Write or append
+    const writeContent = mode === 'append' && existsSync(resolvedPath)
+      ? readFileSync(resolvedPath, 'utf-8') + '\n' + content
+      : content;
+
+    writeFileSync(resolvedPath, writeContent, 'utf-8');
+
+    const relativePath = resolvedPath.replace(resolve('.'), '.');
+    const size = writeContent.length;
+
+    return {
+      success: true,
+      data: `File saved successfully:\n  Path: ${relativePath}\n  Size: ${size} bytes\n  Mode: ${mode}`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `File write error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// File List Tool
+// ============================================================================
+
+export const FileListSchema = z.object({
+  path: z.string().optional().default('.').describe('Directory path to list'),
+  recursive: z.boolean().optional().default(false).describe('List recursively'),
+  pattern: z.string().optional().describe('File pattern to filter (e.g., "*.md", "*.html")'),
+});
+
+export const fileListTool = {
+  name: 'file_list',
+  description: 'List files in a directory. Useful for finding generated reports or exploring project structure.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      path: {
+        type: 'string',
+        description: 'Directory path to list (default: current directory)',
+      },
+      recursive: {
+        type: 'boolean',
+        description: 'List recursively (default: false)',
+      },
+      pattern: {
+        type: 'string',
+        description: 'File pattern to filter (e.g., "*.md")',
+      },
+    },
+    required: [],
+  },
+};
+
+function listDirectory(dirPath: string, recursive: boolean, pattern?: string, prefix: string = ''): string[] {
+  const results: string[] = [];
+
+  if (!existsSync(dirPath)) {
+    return [`Directory not found: ${dirPath}`];
+  }
+
+  const files = readdirSync(dirPath);
+
+  for (const file of files) {
+    // Skip hidden files and node_modules
+    if (file.startsWith('.') || file === 'node_modules') continue;
+
+    const fullPath = join(dirPath, file);
+    const stats = statSync(fullPath);
+    const relativePath = prefix + file;
+
+    if (stats.isDirectory()) {
+      results.push(`📁 ${relativePath}/`);
+      if (recursive) {
+        results.push(...listDirectory(fullPath, true, pattern, relativePath + '/'));
+      }
+    } else {
+      // Apply pattern filter
+      if (pattern) {
+        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+        if (!regex.test(file)) continue;
+      }
+      const size = stats.size;
+      const sizeStr = size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)}MB` :
+                      size > 1024 ? `${(size / 1024).toFixed(1)}KB` : `${size}B`;
+      results.push(`📄 ${relativePath} (${sizeStr})`);
+    }
+  }
+
+  return results;
+}
+
+export async function executeFileList(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = FileListSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { path: dirPath, recursive, pattern } = parsed.data;
+
+  try {
+    const resolvedPath = resolve(dirPath);
+
+    // Security check
+    if (!isPathAllowed(resolvedPath)) {
+      return {
+        success: false,
+        error: `Access denied: path outside allowed directories`
+      };
+    }
+
+    const results = listDirectory(resolvedPath, recursive, pattern);
+
+    if (results.length === 0) {
+      return { success: true, data: `No files found in ${dirPath}${pattern ? ` matching ${pattern}` : ''}` };
+    }
+
+    return {
+      success: true,
+      data: `Files in ${dirPath}:\n\n${results.join('\n')}`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `File list error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// File Delete Tool
+// ============================================================================
+
+export const FileDeleteSchema = z.object({
+  path: z.string().describe('File path to delete'),
+});
+
+export const fileDeleteTool = {
+  name: 'file_delete',
+  description: 'Delete a file. For safety, only works in output/, reports/, and temp/ directories.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      path: {
+        type: 'string',
+        description: 'File path to delete',
+      },
+    },
+    required: ['path'],
+  },
+};
+
+export async function executeFileDelete(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = FileDeleteSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { path: filePath } = parsed.data;
+
+  try {
+    const resolvedPath = resolve(filePath);
+
+    // Only allow deletion in safe directories
+    const safeDirs = ['output', 'reports', 'temp'];
+    const isInSafeDir = safeDirs.some(dir => resolvedPath.startsWith(resolve(dir)));
+
+    if (!isInSafeDir) {
+      return {
+        success: false,
+        error: `For safety, file_delete only works in: ${safeDirs.join(', ')}`
+      };
+    }
+
+    if (!existsSync(resolvedPath)) {
+      return { success: false, error: `File not found: ${filePath}` };
+    }
+
+    unlinkSync(resolvedPath);
+
+    return {
+      success: true,
+      data: `File deleted: ${filePath}`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `File delete error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Safe Shell Tool
+// ============================================================================
+
+// Dangerous commands that should never be allowed
+const BLOCKED_COMMANDS = [
+  // System destruction
+  'rm -rf /', 'mkfs', 'dd if=', 'fdisk', 'format',
+  // Privilege escalation
+  'sudo', 'su ', 'chmod 777', 'chown root',
+  // Network attacks
+  'nmap', 'nc -l', 'netcat', 'ssh', 'scp', 'rsync',
+  // Process manipulation
+  'kill -9 1', 'pkill -9', 'killall',
+  // System modification
+  'apt', 'yum', 'brew', 'npm install -g', 'pip install',
+  // Credential access
+  'cat /etc/passwd', 'cat /etc/shadow', '.ssh/',
+  // Fork bomb
+  ':(){:|:&};:',
+  // Download and execute
+  'curl | sh', 'curl | bash', 'wget | sh', 'wget | bash',
+];
+
+// Allowed commands whitelist (pattern matching)
+const ALLOWED_PATTERNS = [
+  // File operations (in allowed dirs)
+  /^ls(\s|$)/,
+  /^ls -la(\s|$)/,
+  /^cat\s+/,
+  /^head\s+/,
+  /^tail\s+/,
+  /^wc\s+/,
+  /^find\s+/,
+  /^grep\s+/,
+  /^mkdir\s+/,
+  /^touch\s+/,
+  /^cp\s+/,
+  /^mv\s+/,
+  /^rm\s+(?!-rf\s+\/)/,  // Allow rm but not rm -rf /
+  // Git operations
+  /^git\s+/,
+  // Package managers (read-only)
+  /^npm\s+list/,
+  /^npm\s+outdated/,
+  /^bun\s+--version/,
+  // Development tools
+  /^node\s+/,
+  /^bun\s+/,
+  /^npx\s+/,
+  /^tsc\s+/,
+  /^eslint\s+/,
+  /^prettier\s+/,
+  // Process info
+  /^ps\s*/,
+  /^top\s*$/,
+  /^htop\s*$/,
+  // Disk usage
+  /^df\s*/,
+  /^du\s+/,
+  // Network info (safe)
+  /^ping\s+/,
+  /^curl\s+/,
+  /^wget\s+/,
+  // Text processing
+  /^echo\s+/,
+  /^printf\s+/,
+  /^sed\s+/,
+  /^awk\s+/,
+  /^sort\s+/,
+  /^uniq\s+/,
+  /^cut\s+/,
+  /^tr\s+/,
+  // Misc
+  /^which\s+/,
+  /^whereis\s+/,
+  /^date\s*/,
+  /^whoami\s*$/,
+  /^pwd\s*$/,
+  /^env\s*$/,
+  /^uptime\s*$/,
+  /^uname\s+/,
+];
+
+// Check if command is safe to execute
+function isCommandSafe(command: string): { safe: boolean; reason?: string } {
+  const cmd = command.trim().toLowerCase();
+
+  // Check for blocked commands
+  for (const blocked of BLOCKED_COMMANDS) {
+    if (cmd.includes(blocked.toLowerCase())) {
+      return { safe: false, reason: `Blocked command pattern: ${blocked}` };
+    }
+  }
+
+  // Check for dangerous patterns
+  const dangerousPatterns = [
+    /\$\(/,           // Command substitution
+    /`/,              // Backtick command substitution
+    /\|\s*sh/,        // Pipe to shell
+    /\|\s*bash/,      // Pipe to bash
+    />\s*\/dev\//,    // Device access
+    /;\s*rm/,         // Command chain with rm
+    /&&\s*rm/,        // Command chain with rm
+    /\|\s*rm/,        // Pipe to rm
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(cmd)) {
+      return { safe: false, reason: `Dangerous pattern detected: ${pattern}` };
+    }
+  }
+
+  // Check against allowed patterns
+  const isAllowed = ALLOWED_PATTERNS.some(pattern => pattern.test(command.trim()));
+
+  if (!isAllowed) {
+    return { safe: false, reason: 'Command not in allowed whitelist' };
+  }
+
+  return { safe: true };
+}
+
+export const ShellSchema = z.object({
+  command: z.string().describe('Shell command to execute'),
+  timeout: z.number().min(1000).max(30000).optional().default(10000).describe('Timeout in ms (default: 10000, max: 30000)'),
+  cwd: z.string().optional().describe('Working directory (default: project root)'),
+});
+
+export const shellTool = {
+  name: 'shell',
+  description: 'Execute safe shell commands in a controlled environment. Only whitelisted commands are allowed (ls, cat, git, npm, bun, curl, etc.). Dangerous operations like sudo, rm -rf /, and system modifications are blocked.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      command: {
+        type: 'string',
+        description: 'Shell command to execute (must be in allowed whitelist)',
+      },
+      timeout: {
+        type: 'number',
+        description: 'Timeout in ms (default: 10000, max: 30000)',
+      },
+      cwd: {
+        type: 'string',
+        description: 'Working directory (default: project root)',
+      },
+    },
+    required: ['command'],
+  },
+};
+
+export async function executeShell(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const parsed = ShellSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.message };
+  }
+
+  const { command, timeout, cwd } = parsed.data;
+
+  // Security check
+  const safetyCheck = isCommandSafe(command);
+  if (!safetyCheck.safe) {
+    return {
+      success: false,
+      error: `Command rejected: ${safetyCheck.reason}. Only safe, whitelisted commands are allowed.`
+    };
+  }
+
+  try {
+    const proc = Bun.spawn(['bash', '-c', command], {
+      cwd: cwd ? resolve(cwd) : process.cwd(),
+      env: {
+        ...process.env,
+        // Remove sensitive env vars
+        OPENAI_API_KEY: undefined,
+        ANTHROPIC_API_KEY: undefined,
+        ZHIPU_API_KEY: undefined,
+        MINIMAX_API_KEY: undefined,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      proc.kill();
+    }, timeout);
+
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+
+    clearTimeout(timeoutId);
+
+    // Truncate output if too long
+    const maxLength = 5000;
+    const truncated = stdout.length > maxLength;
+    const output = stdout.slice(0, maxLength) + (truncated ? '\n... (output truncated)' : '');
+
+    if (exitCode !== 0) {
+      return {
+        success: false,
+        error: `Command exited with code ${exitCode}: ${stderr || output}`
+      };
+    }
+
+    if (stderr && !stdout) {
+      return { success: true, data: stderr };
+    }
+
+    return { success: true, data: output || 'Command completed successfully' };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Shell error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
+// Subagent Tools
+// ============================================================================
+
+export const spawnSubagentToolDef = {
+  name: 'spawn_subagent',
+  description: `Spawn a specialized subagent to handle a specific task.
+
+Use this tool when you need to delegate a focused task to a specialized agent.
+The subagent will have access to a limited set of tools appropriate for its type.
+
+Available subagent types:
+- research: Information gathering, web search, reading documents
+- memory: Memory operations, knowledge management
+- skill: Skill creation, execution, evaluation
+- code: Code generation, file operations
+- general: General-purpose tasks with full tool access
+
+Best practices:
+1. Choose the appropriate subagent type
+2. Provide a clear, focused task description
+3. Include relevant context
+4. Set reasonable timeout for complex tasks`,
+
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      type: {
+        type: 'string',
+        enum: ['research', 'memory', 'skill', 'code', 'general'],
+        description: 'Type of subagent (determines available tools)',
+      },
+      task: {
+        type: 'string',
+        description: 'Clear description of the task to accomplish',
+      },
+      context: {
+        type: 'string',
+        description: 'Additional context or requirements',
+      },
+      timeout: {
+        type: 'number',
+        description: 'Timeout in milliseconds (default: 60000)',
+      },
+    },
+    required: ['type', 'task'],
+  },
+};
+
+export const spawnParallelToolDef = {
+  name: 'spawn_parallel',
+  description: `Spawn multiple subagents in parallel to handle independent tasks.
+
+Use this tool when you have multiple independent tasks that can be executed simultaneously.
+This is more efficient than spawning subagents one by one.
+
+Best practices:
+1. Only include truly independent tasks (no dependencies)
+2. Keep the number reasonable (2-5 tasks)
+3. Use appropriate subagent types for each task
+4. Set maxParallelism based on task complexity`,
+
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      tasks: {
+        type: 'array',
+        description: 'List of subagent tasks to execute in parallel',
+        items: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['research', 'memory', 'skill', 'code', 'general'],
+            },
+            task: {
+              type: 'string',
+            },
+            context: {
+              type: 'string',
+            },
+            timeout: {
+              type: 'number',
+            },
+          },
+          required: ['type', 'task'],
+        },
+      },
+      maxParallelism: {
+        type: 'number',
+        description: 'Maximum number of parallel executions (default: 3)',
+      },
+    },
+    required: ['tasks'],
+  },
+};
+
+export async function executeSpawnSubagentTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeSpawnSubagent } = await import('../subagent/executor');
+  return executeSpawnSubagent(params as any);
+}
+
+export async function executeSpawnParallelTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeSpawnParallel } = await import('../subagent/executor');
+  return executeSpawnParallel(params as any);
+}
+
+// ============================================================================
+// State Management Tools
+// ============================================================================
+
+export async function executeStateSetTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateSet } = await import('../subagent/state-executor');
+  return executeStateSet(params as any);
+}
+
+export async function executeStateGetTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateGet } = await import('../subagent/state-executor');
+  return executeStateGet(params as any);
+}
+
+export async function executeStateDeleteTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateDelete } = await import('../subagent/state-executor');
+  return executeStateDelete(params as any);
+}
+
+export async function executeStateUpdateTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateUpdate } = await import('../subagent/state-executor');
+  return executeStateUpdate(params as any);
+}
+
+export async function executeStateExistsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateExists } = await import('../subagent/state-executor');
+  return executeStateExists(params as any);
+}
+
+export async function executeStateListTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateList } = await import('../subagent/state-executor');
+  return executeStateList(params as any);
+}
+
+export async function executeStateStatsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateStats } = await import('../subagent/state-executor');
+  return executeStateStats();
+}
+
+export async function executeStateLockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateLock } = await import('../subagent/state-executor');
+  return executeStateLock(params as any);
+}
+
+export async function executeStateUnlockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  const { executeStateUnlock } = await import('../subagent/state-executor');
+  return executeStateUnlock(params as any);
+}
+
+// ============================================================================
+// Tool Registry
+// ============================================================================
+
+export const builtinTools = {
+  web_search: webSearchTool,
+  web_fetch: webFetchTool,
+  time_now: timeTool,
+  calc: calcTool,
+  code_execute: codeExecuteTool,
+  weather: weatherTool,
+  stock_quote: stockQuoteTool,
+  stock_history: stockHistoryTool,
+  stock_financial: stockFinancialTool,
+  stock_info: stockInfoTool,
+  url_shorten: urlShortenTool,
+  qrcode: qrCodeTool,
+  claude_code: claudeCodeTool,
+  task_create: taskCreateTool,
+  task_status: taskStatusTool,
+  task_list: taskListTool,
+  task_cancel: taskCancelTool,
+  deep_research: deepResearchTool,
+  file_read: fileReadTool,
+  file_write: fileWriteTool,
+  file_list: fileListTool,
+  file_delete: fileDeleteTool,
+  shell: shellTool,
+  spawn_subagent: spawnSubagentToolDef,
+  spawn_parallel: spawnParallelToolDef,
+  state_set: stateSetTool,
+  state_get: stateGetTool,
+  state_delete: stateDeleteTool,
+  state_update: stateUpdateTool,
+  state_exists: stateExistsTool,
+  state_list: stateListTool,
+  state_stats: stateStatsTool,
+  state_lock: stateLockTool,
+  state_unlock: stateUnlockTool,
+};
+
+export const builtinToolNames = Object.keys(builtinTools);
+
+// Get all builtin tools in OpenAI format
+export function getBuiltinToolsForAI() {
+  return Object.values(builtinTools).map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+  }));
+}
+
+// Execute a builtin tool
+export async function executeBuiltinTool(name: string, params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  switch (name) {
+    case 'web_search':
+      return executeWebSearch(params);
+    case 'web_fetch':
+      return executeWebFetch(params);
+    case 'time_now':
+      return executeTime(params);
+    case 'calc':
+      return executeCalc(params);
+    case 'code_execute':
+      return executeCode(params);
+    case 'weather':
+      return executeWeather(params);
+    case 'stock_quote':
+      return executeStockQuote(params);
+    case 'stock_history':
+      return executeStockHistory(params);
+    case 'stock_financial':
+      return executeStockFinancial(params);
+    case 'stock_info':
+      return executeStockInfo(params);
+    case 'url_shorten':
+      return executeUrlShorten(params);
+    case 'qrcode':
+      return executeQrCode(params);
+    case 'claude_code':
+      return executeClaudeCode(params);
+    case 'task_create':
+      return executeTaskCreate(params);
+    case 'task_status':
+      return executeTaskStatus(params);
+    case 'task_list':
+      return executeTaskList(params);
+    case 'task_cancel':
+      return executeTaskCancel(params);
+    case 'deep_research':
+      return executeDeepResearch(params);
+    case 'file_read':
+      return executeFileRead(params);
+    case 'file_write':
+      return executeFileWrite(params);
+    case 'file_list':
+      return executeFileList(params);
+    case 'file_delete':
+      return executeFileDelete(params);
+    case 'shell':
+      return executeShell(params);
+    case 'spawn_subagent':
+      return executeSpawnSubagentTool(params);
+    case 'spawn_parallel':
+      return executeSpawnParallelTool(params);
+    case 'state_set':
+      return executeStateSetTool(params);
+    case 'state_get':
+      return executeStateGetTool(params);
+    case 'state_delete':
+      return executeStateDeleteTool(params);
+    case 'state_update':
+      return executeStateUpdateTool(params);
+    case 'state_exists':
+      return executeStateExistsTool(params);
+    case 'state_list':
+      return executeStateListTool(params);
+    case 'state_stats':
+      return executeStateStatsTool(params);
+    case 'state_lock':
+      return executeStateLockTool(params);
+    case 'state_unlock':
+      return executeStateUnlockTool(params);
+    default:
+      return { success: false, error: `Unknown builtin tool: ${name}` };
+  }
+}
+
+// Check if a tool is a builtin tool
+export function isBuiltinTool(name: string): boolean {
+  return builtinToolNames.includes(name);
+}

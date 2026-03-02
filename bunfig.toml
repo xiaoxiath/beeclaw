@@ -1,0 +1,6 @@
+# Bun configuration
+[install]
+exact = true
+
+[run]
+# Enable hot reload in development

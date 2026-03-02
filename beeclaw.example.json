@@ -1,0 +1,66 @@
+{
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "auth": {
+    "enabled": false,
+    "tokens": [],
+    "password": null
+  },
+  "cors": {
+    "enabled": true,
+    "origins": ["*"],
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allowHeaders": ["Content-Type", "Authorization"],
+    "exposeHeaders": [],
+    "maxAge": 86400,
+    "credentials": true
+  },
+  "providers": [
+    {
+      "name": "openai",
+      "type": "openai",
+      "apiKey": "${OPENAI_API_KEY}",
+      "baseUrl": "https://api.openai.com/v1",
+      "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+      "default": true
+    }
+  ],
+  "agents": [
+    {
+      "id": "default",
+      "name": "Default Assistant",
+      "description": "A helpful AI assistant with memory capabilities",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "systemPrompt": "You are a helpful AI assistant. You have access to memory tools to remember information about the user and recall past conversations.",
+      "temperature": 0.7,
+      "maxTokens": 4096,
+      "tools": ["memory_ls", "memory_grep", "memory_read", "memory_write", "memory_record"]
+    }
+  ],
+  "sessionStorage": {
+    "type": "jsonl",
+    "path": "./data/sessions"
+  },
+  "memory": {
+    "type": "filesystem",
+    "path": "./data/memory",
+    "tools": {
+      "enabled": ["memory_ls", "memory_grep", "memory_read", "memory_write", "memory_record"],
+      "autoRecord": true
+    },
+    "retention": {
+      "conversations": "90d",
+      "facts": "forever",
+      "decisions": "forever"
+    }
+  },
+  "channels": {},
+  "tools": {},
+  "logging": {
+    "level": "info",
+    "format": "pretty"
+  }
+}

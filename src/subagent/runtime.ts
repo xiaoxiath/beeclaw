@@ -1,0 +1,276 @@
+/**
+ * Subagent Runtime
+ *
+ * Core runtime for spawning and executing subagents
+ */
+
+import { createAgent, getAllToolsForAI } from '../agent';
+import { buildSubagentSystemPrompt } from './prompts';
+import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
+import type { AIProvider } from '../config/schema';
+import type { OpenAITool } from '../agent/types';
+
+/**
+ * Subagent Runtime - manages subagent execution
+ */
+export class SubagentRuntime {
+  private provider: AIProvider;
+  private model: string;
+  private stats: SubagentStats = {
+    totalSpawned: 0,
+    successful: 0,
+    failed: 0,
+    totalTokens: 0,
+    totalDuration: 0,
+    avgDuration: 0,
+  };
+
+  constructor(options: {
+    provider: AIProvider;
+    model: string;
+  }) {
+    this.provider = options.provider;
+    this.model = options.model;
+  }
+
+  /**
+   * Get available tools for a subagent type
+   */
+  private getToolsForType(type: SubagentType): OpenAITool[] {
+    const allTools = getAllToolsForAI();
+
+    // For 'general' type, all tools are available
+    if (type === 'general') {
+      return allTools;
+    }
+
+    // Filter tools based on type
+    const allowedTools = SUBAGENT_TOOL_SETS[type];
+    return allTools.filter(tool =>
+      allowedTools.includes(tool.function.name)
+    );
+  }
+
+  /**
+   * Spawn a single subagent
+   */
+  async spawn(config: SubagentConfig): Promise<SubagentResult> {
+    const startTime = Date.now();
+    const subagentId = config.id || `subagent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    console.log(`[Subagent] Spawning ${config.type} subagent: ${subagentId}`);
+    console.log(`[Subagent] Task: ${config.task.substring(0, 100)}...`);
+
+    this.stats.totalSpawned++;
+
+    try {
+      // Build system prompt
+      const systemPrompt = buildSubagentSystemPrompt(
+        config.type,
+        config.task,
+        config.context
+      );
+
+      // Get tools
+      const tools = config.tools
+        ? getAllToolsForAI().filter(t => config.tools!.includes(t.function.name))
+        : this.getToolsForType(config.type);
+
+      // Create agent
+      const agent = createAgent({
+        provider: config.provider || this.provider,
+        model: config.model || this.model,
+        systemPrompt,
+        tools,
+        maxTokens: config.maxTokens,
+        loadCoreMemory: false, // Don't load core memory for subagents
+        autoRefreshMemory: false,
+        tokenStatsConfig: { showTokenStats: false }, // Don't show token stats
+      });
+
+      // Execute with timeout and retry
+      // Default 3 minutes for large models
+      // Can be configured via SUBAGENT_TIMEOUT_MS environment variable or config.timeout
+      const defaultTimeout = parseInt(process.env.SUBAGENT_TIMEOUT_MS || '180000', 10);
+      const timeout = config.timeout || defaultTimeout;
+      const MAX_RETRIES = 2; // Subagent has fewer retries than main agent
+
+      let output: string | undefined;
+      let lastError: Error | undefined;
+
+      // Retry loop
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Subagent timeout after ${timeout}ms`)), timeout)
+          );
+
+          output = await Promise.race([
+            agent.chat(config.task),
+            timeoutPromise,
+          ]);
+
+          // Success! Break out of retry loop
+          if (attempt > 0) {
+            console.log(`[Subagent] ${subagentId} succeeded after ${attempt + 1} attempts`);
+          }
+          break;
+
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          const errorMsg = lastError.message;
+
+          // Check if this is the last attempt
+          if (attempt === MAX_RETRIES) {
+            console.error(`[Subagent] ${subagentId} failed after ${MAX_RETRIES + 1} attempts:`, errorMsg);
+            throw lastError;
+          }
+
+          // Check if error is retryable
+          const isRetryable =
+            errorMsg.includes('timeout') ||
+            errorMsg.includes('network') ||
+            errorMsg.includes('ECONNRESET') ||
+            errorMsg.includes('ETIMEDOUT') ||
+            errorMsg.includes('rate limit');
+
+          if (!isRetryable) {
+            console.error(`[Subagent] ${subagentId} non-retryable error:`, errorMsg);
+            throw lastError;
+          }
+
+          // Calculate delay with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+
+          console.warn(
+            `[Subagent] ${subagentId} attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errorMsg}\n` +
+            `  Retrying in ${Math.round(delay / 1000)}s...`
+          );
+
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+
+      if (!output) {
+        throw new Error('No output from subagent');
+      }
+
+      const duration = Date.now() - startTime;
+
+      // Update stats
+      this.stats.successful++;
+      this.stats.totalDuration += duration;
+      this.stats.avgDuration = this.stats.totalDuration / this.stats.totalSpawned;
+
+      console.log(`[Subagent] ${subagentId} completed in ${duration}ms`);
+
+      return {
+        success: true,
+        output,
+        tokensUsed: 0, // TODO: extract from agent
+        duration,
+        id: subagentId,
+      };
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      this.stats.failed++;
+      this.stats.totalDuration += duration;
+
+      console.error(`[Subagent] ${subagentId} failed:`, errorMessage);
+
+      return {
+        success: false,
+        output: '',
+        tokensUsed: 0,
+        duration,
+        error: errorMessage,
+        id: subagentId,
+      };
+    }
+  }
+
+  /**
+   * Spawn multiple subagents in parallel
+   */
+  async spawnParallel(configs: SubagentConfig[]): Promise<SubagentResult[]> {
+    console.log(`[Subagent] Spawning ${configs.length} subagents in parallel`);
+
+    const startTime = Date.now();
+
+    const results = await Promise.all(
+      configs.map(config => this.spawn(config))
+    );
+
+    const totalDuration = Date.now() - startTime;
+    const successful = results.filter(r => r.success).length;
+
+    console.log(`[Subagent] Parallel spawn completed: ${successful}/${configs.length} successful in ${totalDuration}ms`);
+
+    return results;
+  }
+
+  /**
+   * Get runtime statistics
+   */
+  getStats(): SubagentStats {
+    return { ...this.stats };
+  }
+
+  /**
+   * Reset statistics
+   */
+  resetStats(): void {
+    this.stats = {
+      totalSpawned: 0,
+      successful: 0,
+      failed: 0,
+      totalTokens: 0,
+      totalDuration: 0,
+      avgDuration: 0,
+    };
+  }
+}
+
+// Singleton instance
+let runtimeInstance: SubagentRuntime | null = null;
+
+/**
+ * Initialize the subagent runtime
+ */
+export function initSubagentRuntime(options: {
+  provider: AIProvider;
+  model: string;
+}): SubagentRuntime {
+  runtimeInstance = new SubagentRuntime(options);
+  return runtimeInstance;
+}
+
+/**
+ * Get the subagent runtime instance
+ */
+export function getSubagentRuntime(): SubagentRuntime {
+  if (!runtimeInstance) {
+    throw new Error('SubagentRuntime not initialized. Call initSubagentRuntime() first.');
+  }
+  return runtimeInstance;
+}
+
+/**
+ * Spawn a single subagent (convenience function)
+ */
+export async function spawnSubagent(config: SubagentConfig): Promise<SubagentResult> {
+  const runtime = getSubagentRuntime();
+  return runtime.spawn(config);
+}
+
+/**
+ * Spawn multiple subagents in parallel (convenience function)
+ */
+export async function spawnParallelSubagents(configs: SubagentConfig[]): Promise<SubagentResult[]> {
+  const runtime = getSubagentRuntime();
+  return runtime.spawnParallel(configs);
+}

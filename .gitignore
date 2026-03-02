@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Configuration (contains secrets)
+beeclaw.json
+beeclaw.yaml
+beeclaw.yml
+
+# Session data
+data/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+
+reports/
+output/
