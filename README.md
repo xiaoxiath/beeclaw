@@ -1,28 +1,34 @@
 # Beeclaw
 
-AI 助手 - 支持 CLI 和飞书 Bot 两种使用方式。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 使用方式
+一个可进化的 AI 助手，支持 CLI 和飞书 Bot 两种使用方式。
 
-```bash
-# CLI 模式 - 交互式命令行
-bun run cli
+## 特性
 
-# Bot 模式 - 飞书机器人
-bun run bot
-```
+- **多 Provider 支持** - OpenAI、智谱 GLM、MiniMax、Anthropic
+- **记忆系统** - 持久化存储，自动压缩，智能检索
+- **技能系统** - 可复用的技能模块，支持自动创建和优化
+- **子代理系统** - 并行任务执行，DAG 任务编排
+- **飞书集成** - WebSocket 长连接，无需公网 IP
+- **自我进化** - 从对话中学习偏好和技能
 
 ## 快速开始
 
-### 1. 安装
+### 安装
 
 ```bash
+# 克隆仓库
+git clone https://github.com/xiaoxiath/beeclaw.git
+cd beeclaw
+
+# 安装依赖
 bun install
 ```
 
-### 2. 配置 AI Provider
+### 配置
 
-创建 `beeclaw.json`：
+创建 `beeclaw.json`（参考 `beeclaw.example.json`）：
 
 ```json
 {
@@ -38,42 +44,19 @@ bun install
 }
 ```
 
-### 3. 设置环境变量
+设置环境变量：
 
 ```bash
 export ZHIPU_API_KEY=your-key-here
 ```
 
-### 4. 启动 CLI
+### 运行
 
 ```bash
+# CLI 模式
 bun run cli
-```
 
-## 飞书 Bot
-
-### 1. 创建飞书应用
-
-1. 访问 [飞书开放平台](https://open.feishu.cn/)
-2. 创建企业自建应用
-3. 启用机器人能力
-4. 获取 App ID 和 App Secret
-
-### 2. 配置权限
-
-- `im:message` - 获取与发送消息
-- `im:message:send_as_bot` - 以应用身份发送消息
-
-### 3. 设置环境变量
-
-```bash
-export LARK_BEECLAW_APPID="cli_xxxxxxxxxxxx"
-export LARK_BEECLAW_AS="your-app-secret"
-```
-
-### 4. 启动 Bot
-
-```bash
+# Bot 模式（飞书）
 bun run bot
 ```
 
@@ -84,22 +67,32 @@ bun run bot
 /quit              退出
 /clear             清除对话历史
 /model list        列出可用模型
-/model switch <name> [model]  切换模型
+/model switch      切换模型
 
 # 记忆管理
-/memory ls <path>          列出记忆目录
-/memory grep <query>       搜索记忆
-/memory record <cat> <fact> 记录事实
+/memory ls         列出记忆目录
+/memory grep       搜索记忆
+/memory record     记录事实
 
 # 目标管理
-/goal                       列出所有目标
-/goal create <title>        创建新目标
-/goal update <id> <state>   更新目标状态
+/goal              列出所有目标
+/goal create       创建新目标
+/goal update       更新目标状态
 
 # 技能管理
-/skill list                 列出所有技能
-/skill get <name>           获取技能详情
+/skill list        列出所有技能
+/skill get         获取技能详情
 ```
+
+## 文档
+
+| 文档 | 描述 |
+|------|------|
+| [快速开始](./docs/getting-started.md) | 详细安装和配置指南 |
+| [CLI 参考](./docs/cli-reference.md) | CLI 命令详解 |
+| [系统架构](./ARCHITECTURE.md) | 核心系统设计 |
+| [飞书集成](./docs/feishu-integration.md) | 飞书 Bot 配置 |
+| [配置指南](./docs/configuration.md) | 完整配置参考 |
 
 ## 项目结构
 
@@ -108,37 +101,17 @@ src/
 ├── cli.ts            # CLI 入口
 ├── bot.ts            # 飞书 Bot 入口
 ├── agent/            # AI Agent 核心
+├── subagent/         # 子代理系统
+├── session/          # 会话管理
 ├── memory/           # 记忆系统
-│   ├── store.ts      # 存储管理
-│   ├── indexer.ts    # 关键词索引
-│   ├── compression.ts # 压缩系统
-│   └── tools.ts      # 记忆工具
-├── goal/             # 目标系统
 ├── skills/           # 技能系统
-├── feishu/           # 飞书集成
-└── routes/           # 集成逻辑
+├── goal/             # 目标系统
+└── feishu/           # 飞书集成
 
-data/memory/
-├── SOUL.md           # AI 人格设定
-├── USER.md           # 用户信息（精简）
-├── facts/            # 动态事实（日/周级）
-│   ├── events.md     # 近期事件
-│   ├── investments.md # 投资持仓
-│   ├── lessons.md    # 经验教训
-│   └── preferences.md # 偏好设置
-└── knowledge/        # 稳定知识（月/年级）
-    ├── career.md     # 职业与FIRE
-    ├── family.md     # 家庭详情
-    ├── finance.md    # 财务概况
-    └── health.md     # 健康信息
+data/memory/          # 记忆存储
+skills/               # 技能定义
+docs/                 # 文档
 ```
-
-## 文档
-
-| 文档 | 描述 |
-|------|------|
-| [架构设计](./ARCHITECTURE.md) | 系统架构和核心设计 |
-| [进化系统](./skills/beeclaw-reflection/SKILL.md) | 自我进化和学习机制 |
 
 ## License
 

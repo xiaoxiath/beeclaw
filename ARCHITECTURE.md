@@ -1,5 +1,30 @@
 # Beeclaw 架构设计
 
+本文档描述 Beeclaw 的核心系统架构。
+
+## 系统概览
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Orchestrator Agent                          │
+│  (主代理 - 任务分解、调度、结果聚合)                              │
+└───────────────────────┬─────────────────────────────────────────┘
+                        │
+          ┌─────────────┼─────────────┬─────────────┐
+          ▼             ▼             ▼             ▼
+    ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+    │ Research │  │  Memory  │  │  Skill   │  │  Code    │
+    │ Subagent │  │ Subagent │  │ Subagent │  │ Subagent │
+    └──────────┘  └──────────┘  └──────────┘  └──────────┘
+          │             │             │             │
+          └─────────────┴─────────────┴─────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  Shared State   │
+                    └─────────────────┘
+```
+
 ## 核心系统
 
 ### 1. Agent 系统
@@ -10,41 +35,55 @@ Agent 是 AI 对话的核心，负责：
 - 执行工具调用
 - 上下文管理
 
-#### 上下文管理（Context Management）
-
-基于 Token 的智能上下文管理，防止对话超出模型限制：
+**上下文管理**：基于 Token 的智能上下文管理，防止对话超出模型限制。
 
 ```typescript
-// 配置
 interface ContextConfig {
-  maxTokens: 120000;           // 最大 token 数（留 8k 给响应）
-  keepRecent: 6;               // 始终保留最近 N 条消息
-  keepSystem: true;            // 始终保留 system prompt
+  maxTokens: 120000;           // 最大 token 数
+  keepRecent: 6;               // 保留最近 N 条消息
+  keepSystem: true;            // 保留 system prompt
   compressionThreshold: 0.8;   // 80% 时触发压缩
 }
 ```
 
-**压缩策略：**
-1. 当 tokens > maxTokens × 0.8 时触发
-2. 保留：system prompt + 最近 6 条消息
-3. 压缩中间消息：
-   - Tool result：截断长数组、长字符串
-   - Assistant：摘要 tool calls、压缩代码块
-4. 不调用额外 AI，纯规则压缩
+**文件**：`src/agent/`
 
-**文件：**
-- `src/agent/index.ts` - Agent 类
-- `src/agent/context.ts` - Token 估算和压缩工具
-- `src/agent/tools.ts` - System Prompt 构建
+### 2. 子代理系统
 
-### 2. 记忆系统
+支持并行任务执行和 DAG 任务编排：
+
+| 类型 | 职责 | 可用工具 |
+|------|------|----------|
+| `research` | 搜索、调研、信息收集 | web_search, web_fetch, memory_read |
+| `memory` | 记忆读写、知识管理 | memory_read, memory_write |
+| `skill` | 技能创建、执行、评估 | skill_* tools |
+| `code` | 代码生成、文件操作 | file_*, shell |
+| `general` | 通用任务 | 所有工具 |
+
+**工具接口**：
+```typescript
+// 生成单个子代理
+spawn_subagent({ type: "research", task: "Search React 19 features" })
+
+// 并行生成多个子代理
+spawn_parallel({
+  tasks: [
+    { type: "research", task: "Search docs" },
+    { type: "memory", task: "Read knowledge" }
+  ]
+})
+```
+
+**文件**：`src/subagent/`
+
+### 3. 记忆系统
 
 双层存储架构：
 
 ```
 data/memory/
 ├── SOUL.md           # AI 人格设定
-├── USER.md           # 用户信息（精简）
+├── USER.md           # 用户信息
 ├── facts/            # 动态事实（日/周级更新）
 │   ├── events.md     # 近期事件
 │   ├── preferences.md # 偏好设置
@@ -52,73 +91,57 @@ data/memory/
 ├── knowledge/        # 稳定知识（月/年级更新）
 │   ├── career.md     # 职业信息
 │   └── family.md     # 家庭信息
-├── conversations/    # 对话记录（按月/天）
-├── consolidated/     # 压缩摘要
+├── sessions/         # 会话持久化
 └── archive/          # 长期存档
 ```
 
-**记忆压缩：**
-- 7 天后自动压缩为摘要
-- 90 天后归档
-- 基于重要性评分决定保留/摘要/删除
+**记忆压缩**：7 天后自动压缩为摘要，90 天后归档。
 
-**文件：**
-- `src/memory/store.ts` - 存储管理
-- `src/memory/indexer.ts` - 关键词索引
-- `src/memory/compression.ts` - 压缩系统
-- `src/memory/scoring.ts` - 重要性评分
+**文件**：`src/memory/`
 
-### 3. 进化系统（Evolution）
+### 4. 会话系统
 
-LLM 驱动的自我进化能力：
-
-**偏好学习：**
-- LLM 在对话中自动检测用户偏好
-- 通过 `memory_write` 保存到 `facts/preferences.md`
-
-**技能沉淀：**
-- LLM 发现重复模式时自动创建技能
-- 通过 `skill_create` 创建新技能
-- 通过 `skill_update` 改进技能
-
-**反思改进：**
-- LLM 收到纠正时分析原因
-- 通过 `skill_record` 记录成功/失败
-- 改进后的技能自动可用
-
-**自我进化（Self-Evolution）：**
-- 定期审视 `facts/lessons.md` 中的经验教训
-- 提炼成抽象原则，更新到 `SOUL.md`
-- 保持 SOUL.md 风格：英文、简洁、有力
-- 每天凌晨 4:00 自动执行（daemon 模式）
-- 最多保留 6 条核心原则
+CLI 和 Bot 共享统一的会话管理：
 
 ```
-每天 4:00 AM
-    │
-    ▼
-读取 SOUL.md (当前身份)
-    │
-    ▼
-读取 lessons.md (最近教训)
-    │
-    ▼
-分析模式、提炼原则
-    │
-    ▼
-需要更新？
-    ├─ 是 → 更新 SOUL.md
-    └─ 否 → 跳过
+┌─────────────────────────────────────────────────────┐
+│                   统一会话管理                        │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐        │
+│  │   CLI    │   │ Feishu   │   │   API    │        │
+│  └────┬─────┘   └────┬─────┘   └────┬─────┘        │
+│       └──────────────┼──────────────┘                │
+│                      │                               │
+│           ┌──────────┴──────────┐                   │
+│           │  SessionManager     │                   │
+│           └──────────┬──────────┘                   │
+│                      │                               │
+│           ┌──────────┴──────────┐                   │
+│           │  Memory System      │                   │
+│           └─────────────────────┘                   │
+└─────────────────────────────────────────────────────┘
 ```
 
-**文件：**
-- `src/evolution/reflection-trigger.ts` - 统计记录
-- `src/evolution/preference-learning.ts` - 类型定义
-- `src/evolution/self-evolution.ts` - 自我进化调度
-- `skills/beeclaw-reflection/SKILL.md` - 反思技能
-- `skills/beeclaw-self-evolution/SKILL.md` - 自我进化技能
+**会话 ID 格式**：`{channel}-{userId}-{timestamp}`
 
-### 4. 技能系统
+**文件**：`src/session/`
+
+### 5. 共享状态
+
+子代理间共享数据的机制：
+
+| 工具 | 说明 |
+|------|------|
+| `state_set` | 存储值（支持 TTL） |
+| `state_get` | 获取值 |
+| `state_update` | 原子更新（increment/append/merge） |
+| `state_lock` | 获取锁 |
+| `state_unlock` | 释放锁 |
+
+**Key 命名规范**：`category:subcategory:item`
+
+**文件**：`src/subagent/state.ts`
+
+### 6. 技能系统
 
 动态技能管理：
 
@@ -128,78 +151,22 @@ skills/
 │   ├── SKILL.md          # 技能定义（必需）
 │   ├── scripts/          # 可执行脚本
 │   ├── references/       # 参考文档
-│   ├── agents/           # Agent 指令
 │   └── evals/            # 评估测试
 ```
 
-**技能工具：**
+**技能工具**：`skill_ensure`, `skill_search`, `skill_record`, `skill_maturity`
 
-| 工具 | 用途 | 推荐度 |
-|------|------|--------|
-| `skill_ensure` | 创建或更新技能（自动判断） | ⭐ 推荐 |
-| `skill_create` | 仅创建新技能 | 特殊场景 |
-| `skill_update` | 仅更新已有技能 | 特殊场景 |
-| `skill_search` | 搜索技能 | 查找时用 |
-| `skill_record` | 记录使用结果 | 成熟度追踪 |
-| `skill_maturity` | 检查成熟度 | 发布前用 |
+**文件**：`src/skills/`
 
-**推荐流程：**
-```
-skill_ensure → skill_record → skill_maturity
-```
+### 7. 飞书集成
 
-**skill_ensure 优势：**
-- 自动检测技能是否存在
-- 存在则更新，不存在则创建
-- 无需先搜索再决定用哪个工具
-- 返回明确结果（created/updated）
-
-**文件：**
-- `src/skills/store.ts` - 技能存储
-- `src/skills/tools.ts` - 技能工具
-
-### 5. 会话系统
-
-跨会话对话管理：
-
-```typescript
-interface Session {
-  id: string;
-  userId: string;
-  messages: SessionMessage[];
-  summary?: string;     // 历史摘要
-}
-```
-
-- 存储路径：`data/memory/sessions/{sessionId}.json`
-- 内存缓存活跃会话
-- 消息数超过 20 时压缩为摘要
-
-**文件：**
-- `src/session/index.ts` - 会话管理
-
-## 飞书集成
-
-### 消息流程
+WebSocket 长连接，无需公网 IP：
 
 ```
-用户消息 → WebSocket → 添加表情确认 → Session Manager → Agent → 回复
+用户消息 → WebSocket → 表情确认 → Session Manager → Agent → 回复
 ```
 
-**文件：**
-- `src/feishu/ws-client.ts` - WebSocket 客户端
-- `src/feishu/client.ts` - API 客户端
-- `src/routes/proactive.ts` - 消息处理
-
-### 表情回复
-
-随机从以下表情中选择：
-- Typing
-- Get
-- LGTM
-- Coffee
-- Status_PrivateMessage
-- OK
+**文件**：`src/feishu/`
 
 ## 配置
 
@@ -230,42 +197,29 @@ LARK_BEECLAW_APPID=cli_xxx
 LARK_BEECLAW_AS=your-secret
 ```
 
-## 测试
+## 设计决策
 
-```bash
-# 运行所有测试
-bun test
-
-# 运行特定测试
-bun test src/agent/__tests__/context.test.ts
-```
-
-## 关键设计决策
-
-### 1. 为什么用文件系统而非数据库？
+### 为什么用文件系统而非数据库？
 
 - 简单、透明、易于调试
 - AI 可以直接读写文件
 - 版本控制友好
 - 无需额外依赖
 
-### 2. 为什么上下文压缩不用 AI？
+### 为什么上下文压缩不用 AI？
 
 - 速度：无额外 API 调用
 - 成本：不增加 token 消耗
 - 可靠性：规则稳定可控
-- 足够好：保留关键信息
 
-### 3. 为什么进化检测用 LLM 而非正则？
+### 为什么需要子代理系统？
 
-- 语义理解：能理解复杂表达
-- 零维护：无需手动维护模式
-- 上下文：结合对话判断
-- 无额外成本：主对话 LLM 顺便处理
+- 并行执行：多个独立任务同时进行
+- 专业分工：不同类型任务使用专门工具集
+- 隔离性：单个子代理失败不影响整体
 
-### 4. 为什么自我进化要定时执行？
+## 相关文档
 
-- 避免频繁修改：原则应该稳定，不是每条消息都变
-- 批量处理：积累多条教训后一起提炼更高效
-- 异步执行：不阻塞用户对话
-- 可控性：用户可以手动触发或关闭
+- [详细架构文档](./docs/architecture.md)
+- [工具参考](./docs/tools-reference.md)
+- [错误处理](./docs/error-handling.md)
