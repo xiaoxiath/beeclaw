@@ -65,7 +65,7 @@
   },
   "compression": {
     "enabled": true,
-    "model": "glm-4-flash",
+    "model": "glm-4.7-flash",
     "threshold": 0.8,
     "keepRecent": 8,
     "maxSummaryTokens": 1000,

@@ -13,7 +13,7 @@ import { callAI } from './api';
 // Default compression config
 export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
   enabled: true,
-  model: 'glm-4-flash',  // Default to cheap model
+  model: 'glm-4.7-flash',  // Default to cheap model
   threshold: 0.8,  // Trigger at 80% context
   keepRecent: 8,  // Keep recent messages
   maxSummaryTokens: 1000,

@@ -152,7 +152,7 @@ export const AgentDisplayConfigSchema = z.object({
 // Context compression configuration schema
 export const CompressionConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  model: z.string().default('glm-4-flash'),  // LLM for compression
+  model: z.string().default('glm-4.7-flash'),  // LLM for compression
   threshold: z.number().min(0.5).max(0.95).default(0.8),  // Trigger at 80% context
   keepRecent: z.number().min(2).max(20).default(8),  // Keep recent messages
   maxSummaryTokens: z.number().min(200).max(2000).default(1000),
