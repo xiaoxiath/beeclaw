@@ -1,7 +1,7 @@
 /**
  * Feishu Integration Module
  *
- * Provides integration with Feishu/Lark Open Platform
+ * Provides complete integration with Feishu/Lark Open Platform
  * Supports both Webhook and WebSocket (long connection) modes
  */
 
@@ -88,3 +88,93 @@ export type {
   CardActionElement,
   CardButtonElement,
 } from './ws-client';
+
+// Message Sending
+export {
+  sendTextMessage,
+  sendPostMessage,
+  sendCardMessage,
+  sendMarkdownCard,
+  editMessage,
+  replyMessage,
+  getMessage,
+} from './send';
+
+export type {
+  MentionTarget,
+  PostContentElement as SendPostContentElement,
+  FeishuCard,
+  CardAction,
+  FeishuMessage,
+} from './send';
+
+// Media Upload
+export {
+  uploadImage,
+  uploadFile,
+  downloadImage,
+  downloadMessageResource,
+  sendImageMessage,
+  sendFileMessage,
+  sendMedia,
+} from './media';
+
+// Card Builder
+export {
+  CardBuilder,
+  createCard,
+  buildMarkdownCard,
+  buildTextCard,
+  buildFormCard,
+  buildListCard,
+} from './card';
+
+export type {
+  CardConfig as CardConfigType,
+  CardHeader as CardHeaderType,
+  CardElement as CardElementType,
+  CardAction as CardActionType,
+  FeishuCard as FeishuCardType,
+} from './card';
+
+// Mention System
+export {
+  extractMentionTargets,
+  isMentionForwardRequest,
+  extractMessageBody,
+  formatMentionForText,
+  formatMentionForCard,
+  formatMentionAllForText,
+  formatMentionAllForCard,
+  buildMentionedMessage,
+  buildMentionedCardContent,
+  parseMentionsFromText,
+  parseMentionsFromCard,
+  stripMentions,
+} from './mention';
+
+export type {
+  MentionTarget as MentionTargetType,
+  FeishuMessageEvent,
+} from './mention';
+
+// Calendar Tools
+export {
+  getCalendarList,
+  getCalendar,
+  createEvent,
+  getEvent,
+  listEvents,
+  updateEvent,
+  deleteEvent,
+  searchEvents,
+  getTodayEvents,
+  createQuickEvent,
+  executeCalendarTool,
+  calendarToolDefinitions,
+} from './tools/calendar';
+
+export type {
+  FeishuCalendar,
+  FeishuEvent,
+} from './tools/calendar';
