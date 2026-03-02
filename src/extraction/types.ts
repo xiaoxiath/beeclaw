@@ -85,10 +85,7 @@ export interface ExtractionConfig {
 // 默认配置
 export const DEFAULT_EXTRACTION_CONFIG: ExtractionConfig = {
   enabled: true,
-  triggerPhrases: [
-    '记住', '别忘了', '记一下', '记住这个', '保存',
-    '记录', '存下来', '帮我记', '这个很重要'
-  ],
+  triggerPhrases: [],  // 不再使用硬编码短语，让 LLM 自己判断
   periodicInterval: 10,  // 每 10 轮对话
   confidenceThreshold: 0.9,  // ≥ 0.9 视为高置信度
   lowConfidenceThreshold: 0.7,  // < 0.7 标记为待确认

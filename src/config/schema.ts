@@ -162,10 +162,7 @@ export const CompressionConfigSchema = z.object({
 // Auto knowledge extraction configuration schema
 export const ExtractionConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  triggerPhrases: z.array(z.string()).default([
-    '记住', '别忘了', '记一下', '记住这个', '保存',
-    '记录', '存下来', '帮我记', '这个很重要'
-  ]),
+  triggerPhrases: z.array(z.string()).default([]),  // 留空则让 LLM 自己判断
   periodicInterval: z.number().min(1).max(50).default(10),  // Every N messages
   confidenceThreshold: z.number().min(0.5).max(1).default(0.9),  // High confidence
   lowConfidenceThreshold: z.number().min(0.3).max(0.8).default(0.7),  // Low confidence
