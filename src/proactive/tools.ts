@@ -31,12 +31,12 @@ export const proactiveTools = {
         },
         taskType: {
           type: 'string',
-          enum: ['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'custom'],
-          description: 'Type of task to execute',
+          enum: ['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom'],
+          description: 'Type of task to execute. Use llm_proactive_chat for LLM-generated proactive messages.',
         },
         taskParams: {
           type: 'object',
-          description: 'Parameters for the task',
+          description: 'Parameters for the task. For llm_proactive_chat: { prompt?: string, channel?: "cli"|"feishu", userId?: string }',
         },
         enabled: {
           type: 'boolean',
@@ -72,8 +72,8 @@ export const proactiveTools = {
         },
         actionType: {
           type: 'string',
-          enum: ['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'custom'],
-          description: 'Action to take when triggered',
+          enum: ['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom'],
+          description: 'Action to take when triggered. Use llm_proactive_chat for LLM-generated messages.',
         },
         actionParams: {
           type: 'object',
@@ -214,7 +214,7 @@ export function executeProactiveTool(name: string, params: Record<string, unknow
           name: z.string().min(1),
           description: z.string().optional(),
           cron: z.string(),
-          taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'custom']),
+          taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
           taskParams: z.record(z.unknown()).optional().default({}),
           enabled: z.boolean().optional().default(true),
         }).safeParse(params);

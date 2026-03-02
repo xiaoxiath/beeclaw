@@ -16,6 +16,7 @@ export type ProactiveTaskType =
   | 'run_skill'
   | 'send_reminder'
   | 'memory_compress'
+  | 'llm_proactive_chat'  // LLM 主动沟通
   | 'custom';
 
 // Schedule state
@@ -30,7 +31,7 @@ export const ScheduleSchema = z.object({
   enabled: z.boolean().default(true).describe('Whether schedule is active'),
   state: z.enum(['enabled', 'disabled', 'paused']).default('enabled'),
   task: z.object({
-    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'custom']),
+    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
     params: z.record(z.unknown()).optional().default({}),
   }).describe('Task to execute'),
   lastRun: z.string().optional().describe('Last execution time'),
@@ -53,7 +54,7 @@ export const PatternSchema = z.object({
     condition: z.string().describe('Condition expression'),
   }).describe('Trigger definition'),
   action: z.object({
-    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'custom']),
+    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
     params: z.record(z.unknown()).optional().default({}),
   }).describe('Action to take'),
   enabled: z.boolean().default(true),
@@ -148,7 +149,7 @@ export const CreateScheduleOptionsSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   cron: z.string(),
-  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'custom']),
+  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
   taskParams: z.record(z.unknown()).optional().default({}),
   enabled: z.boolean().optional().default(true),
 });
@@ -158,7 +159,7 @@ export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptionsSchema>;
 // Proactive job data for queue
 export const ProactiveJobDataSchema = z.object({
   scheduleId: z.string(),
-  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'custom']),
+  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
   params: z.record(z.unknown()).optional().default({}),
   triggeredAt: z.string(),
   triggeredBy: z.enum(['cron', 'pattern', 'manual']),

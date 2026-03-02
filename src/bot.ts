@@ -132,8 +132,9 @@ async function main() {
         name: 'Daily Memory Compression',
         description: 'Compress old memories daily at 3 AM',
         cron: '0 3 * * *',
+        taskType: 'memory_compress',
+        taskParams: {},
         enabled: true,
-        task: { type: 'memory_compress', params: {} },
       });
     }
 
@@ -175,10 +176,69 @@ async function main() {
               }
               break;
 
-            case 'self_evolution':
-              console.log('[Daemon] Running self-evolution...');
+            case 'custom':
+              console.log('[Daemon] Running custom task...');
               console.log('[Daemon] Use beeclaw-self-evolution skill to review lessons.md and update SOUL.md');
               break;
+
+            case 'llm_proactive_chat': {
+              console.log('[Daemon] LLM proactive chat triggered...');
+              try {
+                const { sendProactiveMessage } = await import('./session');
+                const { getMemoryStore } = await import('./memory');
+
+                // 获取用户上下文
+                let context = '';
+                try {
+                  const memoryStore = getMemoryStore();
+                  const coreContext = memoryStore.getCoreContext();
+                  if (coreContext.user) {
+                    context += `用户信息: ${coreContext.user}\n`;
+                  }
+                  if (coreContext.facts) {
+                    context += `用户事实: ${coreContext.facts}\n`;
+                  }
+                } catch {
+                  // Memory store not initialized
+                }
+
+                // 构建提示
+                const prompt = job.params?.prompt as string ||
+                  '现在是定时主动沟通时间。根据用户上下文，发起一个简短、有意义的问候或提醒。保持友好和个性化。';
+
+                const fullPrompt = context
+                  ? `${context}\n\n${prompt}`
+                  : prompt;
+
+                const chatId = job.params?.chatId as string;
+                const userId = job.params?.userId as string || 'feishu-user';
+
+                const result = await sendProactiveMessage({
+                  message: fullPrompt,
+                  userId,
+                  channel: 'feishu',
+                  sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
+                });
+
+                if (result.success && result.response) {
+                  console.log(`[Daemon] LLM generated: ${result.response.substring(0, 100)}...`);
+
+                  // 推送到飞书
+                  if (chatId) {
+                    const client = getFeishuWSClient();
+                    if (client) {
+                      await client.sendTextMessage(chatId, 'chat_id', result.response);
+                      console.log(`[Daemon] Message pushed to Feishu chat: ${chatId}`);
+                    }
+                  }
+                } else {
+                  console.error('[Daemon] LLM proactive chat failed:', result.error);
+                }
+              } catch (error) {
+                console.error('[Daemon] LLM proactive chat error:', error);
+              }
+              break;
+            }
 
             default:
               console.log(`[Daemon] Unknown task type: ${job.taskType}`);

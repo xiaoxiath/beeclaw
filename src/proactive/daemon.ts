@@ -231,6 +231,60 @@ export class Daemon {
 
   private async executeDefaultJobHandler(job: ProactiveJobData): Promise<void> {
     switch (job.taskType) {
+      case 'llm_proactive_chat': {
+        // LLM 主动沟通：调用 LLM 生成内容并推送
+        const { sendProactiveMessage } = await import('../session');
+        const { getMemoryStore } = await import('../memory');
+
+        // 获取用户上下文
+        let context = '';
+        try {
+          const memoryStore = getMemoryStore();
+          const coreContext = memoryStore.getCoreContext();
+          if (coreContext.user) {
+            context += `用户信息: ${coreContext.user}\n`;
+          }
+          if (coreContext.facts) {
+            context += `用户事实: ${coreContext.facts}\n`;
+          }
+        } catch {
+          // Memory store not initialized
+        }
+
+        // 构建 LLM 提示
+        const prompt = job.params?.prompt as string ||
+          '现在是定时主动沟通时间。根据用户上下文，发起一个简短、有意义的问候或提醒。保持友好和个性化。';
+
+        const fullPrompt = context
+          ? `${context}\n\n${prompt}`
+          : prompt;
+
+        // 调用 LLM 生成内容
+        const result = await sendProactiveMessage({
+          message: fullPrompt,
+          userId: job.params?.userId as string || 'cli-user',
+          channel: (job.params?.channel as 'cli' | 'feishu' | 'webhook') || 'cli',
+          sessionId: job.params?.sessionId as string,
+        });
+
+        if (result.success && result.response) {
+          console.log(`[Daemon] LLM proactive message sent: ${result.response.substring(0, 100)}...`);
+
+          // 如果配置了推送，也推送到对应渠道
+          if (job.params?.push !== false) {
+            const { pushNotification } = await import('./pusher');
+            await pushNotification({
+              message: result.response,
+              priority: 'normal',
+              category: 'proactive-chat',
+            });
+          }
+        } else {
+          console.error('[Daemon] LLM proactive message failed:', result.error);
+        }
+        break;
+      }
+
       case 'check_goal_progress': {
         const goalStore = getGoalStore();
         const goals = goalStore.list({ state: 'active' });
