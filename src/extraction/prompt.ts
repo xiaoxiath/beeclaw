@@ -191,10 +191,20 @@ export function formatConversationForExtraction(
  * 解析 LLM 提取结果
  */
 export function parseExtractionResult(response: string): ExtractionItem[] {
+  // Handle empty or invalid response
+  if (!response || !response.trim()) {
+    return [];
+  }
+
   try {
     // 尝试提取 JSON
     const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
     const jsonStr = jsonMatch ? jsonMatch[1] : response;
+
+    // Check for empty JSON string
+    if (!jsonStr || !jsonStr.trim()) {
+      return [];
+    }
 
     const parsed = JSON.parse(jsonStr.trim());
 
@@ -220,7 +230,8 @@ export function parseExtractionResult(response: string): ExtractionItem[] {
 
     return [];
   } catch (error) {
-    console.error('[Extraction] Failed to parse result:', error);
+    // Silently return empty array for parse errors (common when LLM returns non-JSON)
+    console.debug('[Extraction] Failed to parse result, returning empty array');
     return [];
   }
 }
