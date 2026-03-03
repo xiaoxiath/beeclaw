@@ -57,17 +57,9 @@ export class MemoryStore {
   }
 
   private ensureCoreMemoryFiles(): void {
-    // USER.md - 用户信息（你是谁）
-    const userPath = join(this.basePath, 'USER.md');
-    if (!existsSync(userPath)) {
-      writeFileSync(userPath, `# USER\n\n描述关于用户的信息：背景、偏好、目标等。\n\n`, 'utf-8');
-    }
-
-    // SOUL.md - AI人格定义（我是谁）
-    const soulPath = join(this.basePath, 'SOUL.md');
-    if (!existsSync(soulPath)) {
-      writeFileSync(soulPath, `# SOUL\n\n定义AI的人格、价值观、行为准则。\n\n`, 'utf-8');
-    }
+    // USER.md and SOUL.md will be created by onboarding wizard
+    // This method is now a no-op, kept for compatibility
+    // The onboarding system will handle creation of these files
   }
 
   private ensureIndexFile(): void {

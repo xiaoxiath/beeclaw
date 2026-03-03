@@ -15,6 +15,7 @@ import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../s
 import { initializeMCP, getMCPManager, shutdownMCP } from '../mcp';
 import { getHookRunner, resetHookRunner } from '../hooks';
 import { logger } from '../utils/logger';
+import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
 import type { AIProvider, AppConfig } from '../config/schema';
 import type { TokenStatsConfig } from '../agent/context';
 
@@ -86,6 +87,30 @@ export async function initApp(options: InitOptions = {}): Promise<{
   const memoryPath = options.memoryPath || config.memory.path;
   initStores({ basePath: memoryPath, autoInit: true });
   console.log(`   📁 Memory: ${memoryPath}`);
+
+  // 4.5. Check for onboarding (SOUL.md and USER.md)
+  if (needsOnboarding(memoryPath)) {
+    console.log('\n🎬 First-time setup detected!');
+
+    // Check if running in interactive mode (TTY)
+    const isInteractive = process.stdin.isTTY && process.stdout.isTTY;
+
+    if (isInteractive) {
+      try {
+        // Run interactive wizard
+        await runOnboardingWizard(memoryPath);
+      } catch (error) {
+        logger.warn('Onboarding wizard failed, using quick setup:', error);
+        // Fallback to quick setup with defaults
+        await quickSetup(memoryPath);
+      }
+    } else {
+      // Non-interactive mode (e.g., daemon, bot): use quick setup
+      logger.info('Non-interactive mode, using quick setup for onboarding');
+      await quickSetup(memoryPath);
+      console.log('   📝 Created default SOUL.md and USER.md (quick setup)');
+    }
+  }
 
   // 5. Get default provider
   const defaultProvider = config.providers.find(p => p.default);
