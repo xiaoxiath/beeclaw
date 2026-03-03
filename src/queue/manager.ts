@@ -22,6 +22,7 @@ const QUEUE_CONFIGS: Record<QueueName, { priority: number }> = {
   'eval-jobs': { priority: 2 },
   'cleanup-jobs': { priority: 1 },
   'proactive-jobs': { priority: 3 },
+  'analysis-jobs': { priority: 6 },  // Higher priority for deep analysis
 };
 
 class TaskManager {

@@ -17,9 +17,10 @@ export type QueueName =
   | 'eval-jobs'
   | 'report-jobs'
   | 'cleanup-jobs'
-  | 'proactive-jobs';
+  | 'proactive-jobs'
+  | 'analysis-jobs';
 
-export type TaskType = 'skill' | 'search' | 'reminder' | 'report' | 'eval' | 'cleanup' | 'proactive';
+export type TaskType = 'skill' | 'search' | 'reminder' | 'report' | 'eval' | 'cleanup' | 'proactive' | 'analysis';
 
 export interface JobOptions {
   priority?: number;        // 1-10, default 5
@@ -76,6 +77,7 @@ export interface QueueConfig {
     report?: WorkerConfig;
     cleanup?: WorkerConfig;
     proactive?: WorkerConfig;
+    analysis?: WorkerConfig;
   };
   defaultJobOptions?: JobOptions;
 }
@@ -135,4 +137,14 @@ export interface ProactiveJobData {
   params?: Record<string, unknown>;
   triggeredAt: string;
   triggeredBy: 'cron' | 'pattern' | 'manual';
+}
+
+export interface AnalysisJobData {
+  sessionId: string;
+  userId: string;
+  chatId: string;
+  originalMessage: string;
+  analysisTasks: string[];
+  context?: string;
+  createdAt: string;
 }

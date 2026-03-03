@@ -13,6 +13,7 @@ export {
   handleReminderJob,
   getPendingNotifications,
   hasPendingNotifications,
+  handleAnalysisJob,
 } from './handlers';
 
 // Import for internal use
@@ -32,6 +33,7 @@ import type {
   ReportJobData,
   EvalJobData,
   CleanupJobData,
+  AnalysisJobData,
 } from './types';
 
 /**
@@ -140,4 +142,29 @@ export async function getQueueStatistics(): Promise<Record<string, QueueStats>> 
   const manager = getTaskManager();
   await manager.initialize();
   return manager.getAllStats();
+}
+
+/**
+ * Create a deep analysis task
+ */
+export async function createAnalysisTask(options: {
+  sessionId: string;
+  userId: string;
+  chatId: string;
+  originalMessage: string;
+  analysisTasks: string[];
+  context?: string;
+}): Promise<{ jobId: string }> {
+  const manager = getTaskManager();
+  await manager.initialize();
+
+  return manager.addJob('analysis-jobs', 'deep-analysis', {
+    sessionId: options.sessionId,
+    userId: options.userId,
+    chatId: options.chatId,
+    originalMessage: options.originalMessage,
+    analysisTasks: options.analysisTasks,
+    context: options.context,
+    createdAt: new Date().toISOString(),
+  });
 }

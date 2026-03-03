@@ -44,6 +44,11 @@ import {
   stateLockTool,
   stateUnlockTool,
 } from '../subagent/state-tools';
+import {
+  requestDeepAnalysisTool,
+  executeRequestDeepAnalysis,
+  isDeepAnalysisTool,
+} from './deep-analysis';
 
 // Tool result type
 export type BuiltinToolResult = MemoryToolResult;
@@ -2448,6 +2453,7 @@ export const builtinTools = {
   state_stats: stateStatsTool,
   state_lock: stateLockTool,
   state_unlock: stateUnlockTool,
+  request_deep_analysis: requestDeepAnalysisTool,
 };
 
 export const builtinToolNames = Object.keys(builtinTools);
@@ -2532,6 +2538,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeStateLockTool(params);
     case 'state_unlock':
       return executeStateUnlockTool(params);
+    case 'request_deep_analysis':
+      return executeRequestDeepAnalysis(params);
     default:
       return { success: false, error: `Unknown builtin tool: ${name}` };
   }

@@ -10,3 +10,4 @@ export {
   hasPendingNotifications,
 } from './reminder-handler';
 export { handleProactiveJob } from './proactive-handler';
+export { handleAnalysisJob } from './analysis-handler';

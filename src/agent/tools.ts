@@ -93,7 +93,7 @@ export const TOOL_CATEGORIES = {
   skill: ['skill_list', 'skill_get', 'skill_create', 'skill_update', 'skill_delete', 'skill_search', 'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set', 'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create'],
   goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],
   proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'notification_send', 'notification_list'],
-  builtin: builtinToolNames,
+  builtin: [...builtinToolNames],
   persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],
   feishu: [
     // Calendar

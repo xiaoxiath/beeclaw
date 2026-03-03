@@ -5,3 +5,4 @@
  */
 
 export * from './builtin';
+export * from './deep-analysis';
