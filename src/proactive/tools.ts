@@ -231,7 +231,7 @@ export const proactiveTools = {
 };
 
 // Tool executor
-export function executeProactiveTool(name: string, params: Record<string, unknown>): ProactiveToolResult {
+export async function executeProactiveTool(name: string, params: Record<string, unknown>): Promise<ProactiveToolResult> {
   try {
     const scheduler = getSchedulerLazy();
     const notificationManager = getNotificationsLazy();
