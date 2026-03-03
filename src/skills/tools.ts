@@ -70,7 +70,11 @@ export const skillTools = {
 
   skill_create: {
     name: 'skill_create',
-    description: 'Create a new skill. NOTE: For creating skills with proper testing and optimization, use the skill-creator skill (path: skills/skill-creator) which provides a complete workflow including test cases, benchmarking, and iteration. Use skill_create only for quick, simple skill creation when you don\'t need testing.',
+    description: `[DEPRECATED] Use skill_ensure instead.
+
+This tool is kept for backward compatibility only. For new code, always use skill_ensure which handles both creating and updating automatically.
+
+Create a new skill. NOTE: For creating skills with proper testing and optimization, use the skill-creator skill (path: skills/skill-creator) which provides a complete workflow including test cases, benchmarking, and iteration. Use skill_create only for quick, simple skill creation when you don't need testing.`,
     parameters: {
       type: 'object' as const,
       properties: {
@@ -103,7 +107,11 @@ export const skillTools = {
 
   skill_update: {
     name: 'skill_update',
-    description: 'Update an existing skill. NOTE: For substantial improvements, testing, or optimization, use the skill-creator skill instead (path: skills/skill-creator) which provides a complete workflow with evals, benchmarking, and iteration. Use skill_update only for simple, targeted changes like fixing typos or updating descriptions.',
+    description: `[DEPRECATED] Use skill_ensure instead.
+
+This tool is kept for backward compatibility only. For new code, always use skill_ensure which handles both creating and updating automatically.
+
+Update an existing skill. NOTE: For substantial improvements, testing, or optimization, use the skill-creator skill instead (path: skills/skill-creator) which provides a complete workflow with evals, benchmarking, and iteration. Use skill_update only for simple, targeted changes like fixing typos or updating descriptions.`,
     parameters: {
       type: 'object' as const,
       properties: {
@@ -131,7 +139,19 @@ export const skillTools = {
 
   skill_ensure: {
     name: 'skill_ensure',
-    description: 'Create a skill if it doesn\'t exist, or update it if it does. NOTE: For substantial skill work (testing, optimization, iteration), use the skill-creator skill (path: skills/skill-creator) instead. Use skill_ensure for quick create-or-update operations when you don\'t need the full workflow.',
+    description: `[RECOMMENDED] Create or update a skill automatically.
+
+This is the preferred tool for saving skills. It intelligently:
+- Creates the skill if it doesn't exist
+- Updates the skill if it already exists
+- Handles all edge cases automatically
+
+NOTE: For substantial skill work (testing, optimization, iteration), use the skill-creator skill (path: skills/skill-creator) instead. Use skill_ensure for quick create-or-update operations when you don't need the full workflow.
+
+Examples:
+- First time saving a pattern → creates new skill
+- Improving an existing skill → updates it
+- Unsure if skill exists → handles both cases`,
     parameters: {
       type: 'object' as const,
       properties: {

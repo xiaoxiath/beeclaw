@@ -12,6 +12,7 @@ import {
   handleSkillJob,
   handleReminderJob,
   handleAnalysisJob,
+  handleProactiveJob,
 } from '../handlers';
 
 /**
@@ -38,6 +39,10 @@ export async function initWorkers(config?: QueueConfig): Promise<void> {
 
   manager.registerWorker('analysis-jobs', handleAnalysisJob as (job: Job) => Promise<unknown>, {
     concurrency: config?.workers?.analysis?.concurrency ?? 2,
+  });
+
+  manager.registerWorker('proactive-jobs', handleProactiveJob as (job: Job) => Promise<unknown>, {
+    concurrency: config?.workers?.proactive?.concurrency ?? 3,
   });
 
   console.log('[Queue] All workers initialized');

@@ -103,7 +103,7 @@ export const TOOL_CATEGORIES = {
   memory: ['memory_ls', 'memory_grep', 'memory_read', 'memory_write', 'memory_record'],
   skill: ['skill_list', 'skill_get', 'skill_create', 'skill_update', 'skill_delete', 'skill_search', 'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set', 'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create'],
   goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],
-  proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once'],
+  proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once', 'notification_send', 'notification_list', 'notification_mark_read', 'notification_delete', 'notification_history', 'notification_stats'],
   builtin: [...builtinToolNames],
   persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],
   feishu: [
@@ -153,9 +153,41 @@ You can use skill tools to:
 
 **IMPORTANT: Always use skill_ensure to save skills.** It handles both creating new skills and updating existing ones, so you don't need to check first.
 
+**Deprecated tools**: skill_create and skill_update are kept for backward compatibility. Use skill_ensure instead.
+
 When you notice yourself doing the same task multiple times:
 1. Use skill_ensure to save the pattern as a skill
 2. Check maturity after several successful uses
+
+## Proactive Tools & Notifications
+You can use proactive tools to schedule future tasks and send persistent notifications.
+
+### Scheduling Tools
+- **proactive_schedule**: Create recurring scheduled tasks (cron-based)
+- **schedule_once**: Create one-time delayed tasks (auto-deletes after execution)
+- **proactive_list**: List all schedules and patterns
+- **proactive_cancel/enable/disable**: Manage schedules
+
+### Notification System
+Notifications are persistent messages with delivery tracking and multi-channel support.
+
+**When to use notifications:**
+- Important reminders that need to persist across sessions
+- Messages that need delivery tracking and history
+- Multi-channel delivery (CLI, Feishu, Webhook)
+- Priority-based alerts (urgent, high, normal, low)
+
+**Notification tools:**
+- **notification_send**: Create a persistent notification
+- **notification_list**: List pending notifications
+- **notification_mark_read**: Mark a notification as delivered
+- **notification_delete**: Cancel a pending notification
+- **notification_history**: View delivery history
+- **notification_stats**: Get queue statistics
+
+**schedule_once vs notification_send:**
+- Use **schedule_once** for: one-time simple reminders, delayed tasks, auto-cleanup
+- Use **notification_send** for: important alerts, delivery tracking, multi-channel, manual control
 
 ## Goal Tools
 You can use goal tools to:

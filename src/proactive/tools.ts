@@ -228,6 +228,61 @@ export const proactiveTools = {
       required: [],
     },
   },
+
+  notification_mark_read: {
+    name: 'notification_mark_read',
+    description: 'Mark a notification as read/delivered. Use this after showing or handling a notification to prevent it from appearing again.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Notification ID to mark as read',
+        },
+      },
+      required: ['id'],
+    },
+  },
+
+  notification_delete: {
+    name: 'notification_delete',
+    description: 'Delete a pending notification before it is delivered. Use this to cancel unnecessary or outdated notifications.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Notification ID to delete',
+        },
+      },
+      required: ['id'],
+    },
+  },
+
+  notification_history: {
+    name: 'notification_history',
+    description: 'Get notification delivery history. Shows past notifications that were delivered or expired.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of history entries to return (default: 20, max: 100)',
+        },
+      },
+      required: [],
+    },
+  },
+
+  notification_stats: {
+    name: 'notification_stats',
+    description: 'Get notification statistics (pending count, history count, by priority). Use this to understand the current notification queue status.',
+    parameters: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 };
 
 // Tool executor
@@ -460,6 +515,48 @@ export async function executeProactiveTool(name: string, params: Record<string, 
 
         const notifications = notificationManager.getPending(parsed.data.userId);
         return { success: true, data: notifications };
+      }
+
+      case 'notification_mark_read': {
+        const parsed = z.object({
+          id: z.string(),
+        }).safeParse(params);
+
+        if (!parsed.success) {
+          return { success: false, error: parsed.error.message };
+        }
+
+        return notificationManager.markDelivered(parsed.data.id, 'cli');
+      }
+
+      case 'notification_delete': {
+        const parsed = z.object({
+          id: z.string(),
+        }).safeParse(params);
+
+        if (!parsed.success) {
+          return { success: false, error: parsed.error.message };
+        }
+
+        return notificationManager.delete(parsed.data.id);
+      }
+
+      case 'notification_history': {
+        const parsed = z.object({
+          limit: z.number().min(1).max(100).optional().default(20),
+        }).safeParse(params);
+
+        if (!parsed.success) {
+          return { success: false, error: parsed.error.message };
+        }
+
+        const history = notificationManager.getHistory(parsed.data.limit);
+        return { success: true, data: history };
+      }
+
+      case 'notification_stats': {
+        const stats = notificationManager.getStats();
+        return { success: true, data: stats };
       }
 
       default:
