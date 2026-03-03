@@ -41,6 +41,11 @@ export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<un
         break;
       }
 
+      case 'llm_proactive_chat': {
+        result = await handleLlmProactiveChat(params);
+        break;
+      }
+
       case 'custom': {
         result = await handleCustomTask(params);
         break;
@@ -180,4 +185,76 @@ async function handleCustomTask(params?: Record<string, unknown>): Promise<unkno
     params,
     executed: true,
   };
+}
+
+async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise<unknown> {
+  const prompt = (params?.prompt as string) || '发起一个简短的问候';
+  const chatId = params?.chatId as string;
+  const userId = (params?.userId as string) || 'proactive-user';
+
+  console.log(`[Worker:proactive] LLM proactive chat: ${prompt.substring(0, 50)}...`);
+
+  try {
+    // Dynamic import to avoid circular dependency
+    const { sendProactiveMessage } = await import('../../session');
+    const { getMemoryStore } = await import('../../memory');
+
+    // Get context
+    let context = '';
+    try {
+      const memoryStore = getMemoryStore();
+      const coreContext = memoryStore.getCoreContext();
+      if (coreContext.user) {
+        context += `用户信息: ${coreContext.user}\n`;
+      }
+      if (coreContext.facts) {
+        context += `用户事实: ${coreContext.facts}\n`;
+      }
+    } catch {
+      // Memory store not initialized
+    }
+
+    const fullPrompt = context ? `${context}\n\n${prompt}` : prompt;
+
+    // Call LLM
+    const result = await sendProactiveMessage({
+      message: fullPrompt,
+      userId,
+      channel: 'feishu',
+      sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
+    });
+
+    if (result.success && result.response) {
+      // Push to Feishu if chatId available
+      if (chatId) {
+        try {
+          const { getFeishuWSClient } = await import('../../feishu');
+          const client = getFeishuWSClient();
+          if (client) {
+            await client.sendTextMessage(chatId, 'chat_id', result.response);
+            console.log(`[Worker:proactive] Message pushed to Feishu chat: ${chatId}`);
+          }
+        } catch (pushError) {
+          console.error('[Worker:proactive] Failed to push to Feishu:', pushError);
+        }
+      }
+
+      return {
+        generated: true,
+        pushed: !!chatId,
+        responseLength: result.response.length,
+      };
+    } else {
+      return {
+        generated: false,
+        error: result.error || 'LLM returned empty response',
+      };
+    }
+  } catch (error) {
+    console.error('[Worker:proactive] LLM proactive chat failed:', error);
+    return {
+      generated: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }

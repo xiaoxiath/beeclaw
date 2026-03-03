@@ -154,6 +154,34 @@ export const proactiveTools = {
     },
   },
 
+  schedule_once: {
+    name: 'schedule_once',
+    description: 'Create a one-time task that runs after a delay. Use this for reminders or actions that should happen once in the future. Unlike proactive_schedule, this creates a queue job that auto-deletes after execution.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        delay_seconds: {
+          type: 'number',
+          description: 'Delay in seconds before executing the task. E.g., 300 for 5 minutes, 3600 for 1 hour.',
+        },
+        taskType: {
+          type: 'string',
+          enum: ['send_reminder', 'llm_proactive_chat', 'run_skill', 'custom'],
+          description: 'Type of task. Use llm_proactive_chat for LLM-generated messages, send_reminder for simple reminders.',
+        },
+        taskParams: {
+          type: 'object',
+          description: 'Parameters for the task. For llm_proactive_chat: { prompt, chatId?, userId? }. For send_reminder: { message, priority? }',
+        },
+        name: {
+          type: 'string',
+          description: 'Optional name for tracking the task',
+        },
+      },
+      required: ['delay_seconds', 'taskType'],
+    },
+  },
+
   notification_send: {
     name: 'notification_send',
     description: 'Send a persistent notification to the user. Use for reminders that should survive across sessions.',
@@ -343,6 +371,61 @@ export function executeProactiveTool(name: string, params: Record<string, unknow
         return scheduler.disableSchedule(parsed.data.id);
       }
 
+      case 'schedule_once': {
+        const parsed = z.object({
+          delay_seconds: z.number().min(1),
+          taskType: z.enum(['send_reminder', 'llm_proactive_chat', 'run_skill', 'custom']),
+          taskParams: z.record(z.unknown()).optional().default({}),
+          name: z.string().optional(),
+        }).safeParse(params);
+
+        if (!parsed.success) {
+          return { success: false, error: parsed.error.message };
+        }
+
+        try {
+          // Use the queue system for one-time tasks
+          const { getTaskManager } = require('../queue/manager');
+          const manager = getTaskManager();
+          await manager.initialize();
+
+          const jobName = parsed.data.name || `once-${parsed.data.taskType}-${Date.now()}`;
+          const delayMs = parsed.data.delay_seconds * 1000;
+
+          const { jobId } = await manager.addJob(
+            'proactive-jobs',
+            jobName,
+            {
+              scheduleId: `once-${jobName}`,
+              taskType: parsed.data.taskType,
+              params: parsed.data.taskParams,
+              triggeredAt: new Date(Date.now() + delayMs).toISOString(),
+              triggeredBy: 'delay',
+            },
+            { delay: delayMs }
+          );
+
+          const delayDesc = formatDelay(parsed.data.delay_seconds);
+          console.log(`[schedule_once] Created one-time task "${jobName}" (${parsed.data.taskType}) to run in ${delayDesc}`);
+
+          return {
+            success: true,
+            data: {
+              jobId,
+              taskType: parsed.data.taskType,
+              delaySeconds: parsed.data.delay_seconds,
+              executeAt: new Date(Date.now() + delayMs).toISOString(),
+              message: `One-time task scheduled to run in ${delayDesc}`,
+            },
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: `Failed to create one-time task: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          };
+        }
+      }
+
       case 'notification_send': {
         const parsed = z.object({
           message: z.string().min(1),
@@ -388,6 +471,22 @@ export function executeProactiveTool(name: string, params: Record<string, unknow
       success: false,
       error: `Proactive system not initialized: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
+  }
+}
+
+// Helper to format delay in human-readable form
+function formatDelay(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}秒`;
+  } else if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}分钟`;
+  } else if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600);
+    return `${hours}小时`;
+  } else {
+    const days = Math.floor(seconds / 86400);
+    return `${days}天`;
   }
 }
 
