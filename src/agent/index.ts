@@ -1,7 +1,7 @@
 import type { AIProvider } from '../config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent } from './types';
 import { callAI, executeToolCalls, hasToolCalls, extractToolCalls, extractContent } from './api';
-import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt } from './tools';
+import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
 import { getMemoryStore } from '../memory';
 import { getSkillStore } from '../skills/store';
 import { executeMemoryTool } from '../memory/tools';
@@ -39,7 +39,7 @@ import { hybridCompress, type CompressionResult } from './compressor';
 import { groupToolCalls, getGroupingStats, isParallelTool } from './tool-dependencies';
 
 // Re-export from tools
-export { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt };
+export { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext };
 export { getMemoryTools, getSkillTools, getToolsByCategory, TOOL_CATEGORIES } from './tools';
 export { getBuiltinToolsForAI, executeBuiltinTool, isBuiltinTool, builtinToolNames } from '../tools';
 export { recordSkillFailure, type ReflectionTrigger } from '../evolution';
@@ -252,6 +252,29 @@ export class Agent {
     }
   }
 
+  // Refresh time context in system message (called before each chat)
+  refreshTime(): void {
+    const systemIndex = this.messages.findIndex(m => m.role === 'system');
+    if (systemIndex < 0) return;
+
+    const systemContent = this.messages[systemIndex].content;
+    if (typeof systemContent !== 'string') return;
+
+    // Generate fresh time context
+    const newTimeContext = getCurrentTimeContext();
+
+    // Replace the existing time context block
+    // Pattern matches "# Current Context" through the "---" separator
+    const timeContextPattern = /# Current Context\n\n\*\*Date\*\*:.*?\n\*\*Time\*\*:.*?\n\*\*Timezone\*\*:.*?\n\n---/s;
+
+    if (timeContextPattern.test(systemContent)) {
+      const oldTokens = estimateMessageTokens(this.messages[systemIndex]);
+      this.messages[systemIndex].content = systemContent.replace(timeContextPattern, newTimeContext);
+      const newTokens = estimateMessageTokens(this.messages[systemIndex]);
+      this.estimatedTokens = this.estimatedTokens - oldTokens + newTokens;
+    }
+  }
+
   // Get conversation history
   getMessages(): ChatMessage[] {
     return [...this.messages];
@@ -450,6 +473,9 @@ export class Agent {
     onStream?: (chunk: string) => void;
     onReflectionTrigger?: (trigger: ReflectionTrigger) => void;
   }): Promise<string> {
+    // Always refresh time context before each chat (ensures real-time accuracy)
+    this.refreshTime();
+
     // Auto-refresh memory if enabled (get latest facts/*.md)
     if (this.autoRefreshMemory) {
       this.refreshMemory();

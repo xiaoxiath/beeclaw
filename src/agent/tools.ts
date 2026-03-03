@@ -346,6 +346,31 @@ State is shared across all subagents in a conversation.
 8. Explain your tool usage to the user`,
 };
 
+// Get current time context string
+export function getCurrentTimeContext(): string {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  });
+  const timeStr = now.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  return `# Current Context
+
+**Date**: ${dateStr}
+**Time**: ${timeStr}
+**Timezone**: ${timezone}
+
+---`;
+}
+
 // Build system prompt with USER.md, SOUL.md and facts/ content
 export function buildSystemPrompt(
   basePrompt: string,
@@ -362,27 +387,8 @@ export function buildSystemPrompt(
   }
 
   // Add dynamic date/time context at the top
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
-  });
-  const timeStr = now.toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  prompt = `# Current Context
-
-**Date**: ${dateStr}
-**Time**: ${timeStr}
-**Timezone**: ${timezone}
-
----
+  const timeContext = getCurrentTimeContext();
+  prompt = `${timeContext}
 
 ${prompt}`;
 
