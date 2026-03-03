@@ -304,13 +304,39 @@ export class Scheduler {
     if (!nextRun) return;
 
     const delay = nextRun.getTime() - Date.now();
-    if (delay < 0) {
+
+    // Check if delay exceeds setTimeout max (2147483647 ms ≈ 24.8 days)
+    const MAX_SET_TIMEOUT = 2147483647;
+
+    if (delay <= 0) {
       // Already past due, run immediately
       callback(schedule);
       return;
     }
 
-    // Set timer for next run
+    if (delay > MAX_SET_TIMEOUT) {
+      // Delay too large for setTimeout, use a check interval instead
+      // Check every hour until we're within the safe range
+      const checkInterval = setInterval(() => {
+        const remainingTime = nextRun.getTime() - Date.now();
+        if (remainingTime <= 0) {
+          clearInterval(checkInterval);
+          this.cronTimers.delete(schedule.id);
+          callback(schedule);
+        } else if (remainingTime <= MAX_SET_TIMEOUT) {
+          // Now we can use setTimeout safely
+          clearInterval(checkInterval);
+          this.startSchedule(schedule, callback);
+        }
+      }, 60 * 60 * 1000); // Check every hour
+
+      // Store the interval as if it were a timer (for cleanup)
+      this.cronTimers.set(schedule.id, checkInterval as unknown as NodeJS.Timeout);
+      console.log(`[Scheduler] Schedule "${schedule.name}" next run is far in the future (${nextRun.toISOString()}), using interval check`);
+      return;
+    }
+
+    // Set timer for next run (delay is within safe range)
     const timer = setTimeout(async () => {
       await callback(schedule);
       // Reschedule
