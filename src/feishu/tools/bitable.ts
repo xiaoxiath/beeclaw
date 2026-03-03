@@ -46,25 +46,25 @@ export function parseBitableUrl(url: string): {
     app_token: string;
     table_id: string | null;
     view_id: string | null;
-  } {
-
+  } | null {
+  try {
     // Pattern 1: /base/XXXXX?table=YYY
     const baseMatch = url.match(/\/base\/([^?]+)\?table=([^&]+)/);
     if (baseMatch) {
-      app_token = baseMatch[1];
-      table_id = baseMatch[2];
-      return { app_token, table_id };
+      const app_token = baseMatch[1];
+      const table_id = baseMatch[2];
+      return { app_token, table_id, view_id: null };
     }
 
     // Pattern 2: /wiki/XXXXX?table=YYY
     const wikiMatch = url.match(/\/wiki\/([^?]+)\?table=([^&]+)/);
     if (wikiMatch) {
       const nodeToken = wikiMatch[1];
-      table_id = wikiMatch[2];
+      const table_id = wikiMatch[2];
 
       // Note: Need to resolve node_token to obj_token
       // For now, return as-is (caller should handle conversion)
-      return { app_token: nodeToken, table_id, table_id };
+      return { app_token: nodeToken, table_id, view_id: null };
     }
 
     return null;
@@ -475,7 +475,7 @@ async function cleanupNewBitable(
       // Delete empty records
       const records = await listRecords(client, appToken, table.table_id, { pageSize: 100 });
       const emptyRecords = records.filter(r => {
-        return Object.values(r.fields || {}).every(v => !v || v v === '');
+        return Object.values(r.fields || {}).every(v => !v || v === '');
       });
 
       for (const record of emptyRecords) {

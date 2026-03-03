@@ -7,20 +7,30 @@ import { getPersonaToolsForAI, getTraitSystemPrompt } from '../persona';
 import { getGoalStore } from '../goal/store';
 import { getDateContext } from '../utils/holiday';
 import { getWeatherContext } from '../utils/weather';
+import {
+  calendarToolDefinitions,
+  docxToolDefinitions,
+  driveToolDefinitions,
+  bitableToolDefinitions,
+  wikiToolDefinitions,
+} from '../feishu';
 import { logger } from '../utils/logger';
 import type { OpenAITool } from './types';
 import type { Session } from '../session';
 
-// Convert tool definition to OpenAI format
-function toOpenAITool(tool: {
+// Tool definition type that accepts various formats
+type ToolDefinition = {
   name: string;
   description: string;
   parameters: {
-    type: 'object';
+    type: string;
     properties: Record<string, unknown>;
     required?: string[];
   };
-}): OpenAITool {
+};
+
+// Convert tool definition to OpenAI format
+function toOpenAITool(tool: ToolDefinition): OpenAITool {
   return {
     type: 'function' as const,
     function: {
@@ -44,6 +54,15 @@ export function getAllTools(): OpenAITool[] {
   const builtinTools = getBuiltinToolsForAI();
   const personaTools = getPersonaToolsForAI();  // Already in OpenAI format
 
+  // Feishu tools
+  const feishuTools = [
+    ...Object.values(calendarToolDefinitions),
+    ...Object.values(docxToolDefinitions),
+    ...Object.values(driveToolDefinitions),
+    ...Object.values(bitableToolDefinitions),
+    ...Object.values(wikiToolDefinitions),
+  ];
+
   return [
     ...memoryTools.map(toOpenAITool),
     ...skillTools.map(toOpenAITool),
@@ -51,6 +70,7 @@ export function getAllTools(): OpenAITool[] {
     ...proactiveTools.map(toOpenAITool),
     ...builtinTools.map(toOpenAITool),
     ...personaTools,  // Already OpenAITool format, no conversion needed
+    ...feishuTools.map(toOpenAITool),
   ];
 }
 
@@ -75,10 +95,22 @@ export const TOOL_CATEGORIES = {
   proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'notification_send', 'notification_list'],
   builtin: builtinToolNames,
   persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],
+  feishu: [
+    // Calendar
+    'feishu_calendar_list', 'feishu_calendar_get', 'feishu_calendar_event_create', 'feishu_calendar_event_list', 'feishu_calendar_event_get', 'feishu_calendar_event_update', 'feishu_calendar_event_delete', 'feishu_calendar_event_search', 'feishu_calendar_today', 'feishu_calendar_quick_event',
+    // Docx
+    'feishu_docx_get', 'feishu_docx_list_children', 'feishu_docx_search', 'feishu_docx_create_text', 'feishu_docx_append', 'feishu_docx_update', 'feishu_docx_delete', 'feishu_docx_create_table',
+    // Drive
+    'feishu_drive_list', 'feishu_drive_get', 'feishu_drive_create_folder', 'feishu_drive_move', 'feishu_drive_copy', 'feishu_drive_rename', 'feishu_drive_delete', 'feishu_drive_search', 'feishu_drive_download', 'feishu_drive_upload', 'feishu_drive_share',
+    // Bitable
+    'feishu_bitable_get_meta', 'feishu_bitable_list_tables', 'feishu_bitable_list_fields', 'feishu_bitable_create_field', 'feishu_bitable_list_records', 'feishu_bitable_get_record', 'feishu_bitable_create_record', 'feishu_bitable_update_record', 'feishu_bitable_delete_record', 'feishu_bitable_create_app',
+    // Wiki
+    'feishu_wiki_list_spaces', 'feishu_wiki_get_space', 'feishu_wiki_list_nodes', 'feishu_wiki_get_node', 'feishu_wiki_create_page', 'feishu_wiki_move_node', 'feishu_wiki_rename_node', 'feishu_wiki_delete_node', 'feishu_wiki_copy_node', 'feishu_wiki_search', 'feishu_wiki_tree',
+  ],
 };
 
 // Filter tools by category
-export function getToolsByCategory(categories: ('memory' | 'skill' | 'goal' | 'proactive' | 'builtin' | 'persona')[]): OpenAITool[] {
+export function getToolsByCategory(categories: ('memory' | 'skill' | 'goal' | 'proactive' | 'builtin' | 'persona' | 'feishu')[]): OpenAITool[] {
   const allTools = getAllToolsForAI();
   const toolNames = categories.flatMap(c => TOOL_CATEGORIES[c]);
 

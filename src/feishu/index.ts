@@ -229,3 +229,48 @@ export type {
   FeishuFile,
   FeishuPermission,
 } from './tools/drive';
+
+// Bitable (Multi-dimensional Table) Tools
+export {
+  getBitableMeta,
+  listTables,
+  listFields,
+  createField,
+  listRecords,
+  getRecord,
+  createRecord,
+  updateRecord,
+  deleteRecord,
+  createBitable,
+  executeBitableTool,
+  bitableToolDefinitions,
+} from './tools/bitable';
+
+export type {
+  FeishuBitable,
+  FeishuTable,
+  FeishuField,
+  FeishuRecord,
+} from './tools/bitable';
+
+// Wiki (Knowledge Base) Tools
+export {
+  listSpaces,
+  getSpaceInfo,
+  listNodes,
+  getNodeInfo,
+  createPage,
+  moveNode,
+  renameNode,
+  deleteNode,
+  copyNode,
+  searchPages,
+  getNodeTree,
+  executeWikiTool,
+  wikiToolDefinitions,
+} from './tools/wiki';
+
+export type {
+  FeishuWikiSpace,
+  FeishuWikiNode,
+} from './tools/wiki';

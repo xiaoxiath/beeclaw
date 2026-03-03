@@ -12,6 +12,14 @@ import { executePersonaTool } from '../persona/tools';
 import { executeBuiltinTool, isBuiltinTool } from '../tools';
 import { recordSkillFailure, type ReflectionTrigger } from '../evolution';
 import {
+  executeCalendarTool,
+  executeDocxTool,
+  executeDriveTool,
+  executeBitableTool,
+  executeWikiTool,
+  getFeishuWSClient,
+} from '../feishu';
+import {
   estimateMessageTokens,
   estimateTotalTokens,
   estimateTokens,
@@ -39,7 +47,7 @@ export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
 export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
 export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects } from './tool-dependencies';
 
-// Default tool executor that handles memory, skill, goal, proactive, persona, and builtin tools
+// Default tool executor that handles memory, skill, goal, proactive, persona, builtin, and feishu tools
 export function createDefaultToolExecutor(): ToolExecutor {
   return async (name: string, params: Record<string, unknown>) => {
     // Memory tools
@@ -70,6 +78,62 @@ export function createDefaultToolExecutor(): ToolExecutor {
     // Builtin tools
     if (isBuiltinTool(name)) {
       return executeBuiltinTool(name, params);
+    }
+
+    // Feishu tools
+    if (name.startsWith('feishu_')) {
+      const wsClient = getFeishuWSClient();
+      if (!wsClient) {
+        return {
+          success: false,
+          error: 'Feishu client not initialized. Make sure the bot is connected to Feishu.',
+        };
+      }
+
+      const client = wsClient.getApiClient();
+      if (!client) {
+        return {
+          success: false,
+          error: 'Feishu API client not available.',
+        };
+      }
+
+      try {
+        let result: Record<string, unknown>;
+        if (name.startsWith('feishu_calendar_')) {
+          result = await executeCalendarTool(client, name, params);
+        } else if (name.startsWith('feishu_docx_')) {
+          result = await executeDocxTool(client, name, params);
+        } else if (name.startsWith('feishu_drive_')) {
+          result = await executeDriveTool(client, name, params);
+        } else if (name.startsWith('feishu_bitable_')) {
+          result = await executeBitableTool(client, name, params);
+        } else if (name.startsWith('feishu_wiki_')) {
+          result = await executeWikiTool(client, name, params);
+        } else {
+          return {
+            success: false,
+            error: `Unknown Feishu tool: ${name}`,
+          };
+        }
+
+        // Ensure the result has the expected format
+        if (typeof result.success === 'boolean') {
+          return result as { success: boolean; data?: unknown; error?: string };
+        }
+
+        // Wrap the result if it doesn't have success field
+        return {
+          success: true,
+          data: result,
+        };
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        return {
+          success: false,
+          error: `Feishu tool execution failed: ${errorMsg}`,
+        };
+      }
     }
 
     return {
