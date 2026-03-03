@@ -14,6 +14,7 @@ import type { ChatMessage, MultimodalContent } from '../agent/types';
 import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, formatSkillsForPrompt, type TokenStatsConfig } from '../agent';
 import { getMemoryStore } from '../memory';
 import { getSkillStore } from '../skills/store';
+import { setDeepAnalysisContext, clearDeepAnalysisContext } from '../tools/deep-analysis';
 import type { AIProvider, ExtractionConfigSchemaType } from '../config/schema';
 import {
   initExtractionManager,
@@ -332,6 +333,18 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       metadata: options.context,
     });
 
+    // Set deep analysis context for tools that need it
+    const chatId = (options.context?.chatId as string) || '';
+    const messageString = typeof options.message === 'string'
+      ? options.message
+      : '[Multimodal message]';
+    setDeepAnalysisContext({
+      sessionId,
+      userId: options.userId || 'proactive-user',
+      chatId,
+      originalMessage: messageString,
+    });
+
     // Check if compression is needed
     if (session.messages.length >= sessionConfig.maxMessages) {
       console.log('[Session] Compressing session', sessionId, `(${session.messages.length} messages)`);
@@ -413,10 +426,8 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
 
     // Replay conversation history
     for (const msg of session.messages) {
-      // Skip multimodal messages to avoid sending large base64 to API
-      if (msg.content.includes('[图片消息]') || msg.content.includes('[Multimodal:')) {
-        continue;
-      }
+      // For multimodal messages, replay the text description (not the base64)
+      // This preserves context about what was discussed
       if (msg.role === 'user') {
         agent.addMessage({ role: 'user', content: msg.content });
       } else if (msg.role === 'assistant') {
@@ -534,12 +545,25 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     }
 
     // Record messages
-    // Convert multimodal content to simplified string for storage
-    const userContentString = typeof options.message === 'string'
-      ? options.message
-      : Array.isArray(options.message)
-        ? '[图片消息] ' + options.message.find(p => p.type === 'image_url')?.image_url?.url?.substring(0, 50) + '...' || 'text'
-        : 'unknown';
+    // Convert multimodal content to descriptive string for storage
+    let userContentString: string;
+    if (typeof options.message === 'string') {
+      userContentString = options.message;
+    } else if (Array.isArray(options.message)) {
+      // Extract text part from multimodal message for better context preservation
+      const textPart = options.message.find(p => p.type === 'text');
+      const hasImage = options.message.some(p => p.type === 'image_url');
+      if (hasImage && textPart && 'text' in textPart) {
+        // Save with text description so LLM can reference it later
+        userContentString = `[图片消息] ${textPart.text}`;
+      } else if (hasImage) {
+        userContentString = '[图片消息] (用户发送了一张图片)';
+      } else {
+        userContentString = textPart?.text || '[Multimodal message]';
+      }
+    } else {
+      userContentString = 'unknown';
+    }
 
     session.messages.push({
       role: 'user',
@@ -565,8 +589,14 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       await handler(sessionId, response);
     }
 
+    // Clear deep analysis context
+    clearDeepAnalysisContext();
+
     return { success: true, sessionId, response };
   } catch (error) {
+    // Clear deep analysis context on error too
+    clearDeepAnalysisContext();
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : '';
     console.error('[Session] ❌ sendProactiveMessage failed:', errorMessage);
