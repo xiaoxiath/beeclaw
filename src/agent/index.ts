@@ -67,7 +67,7 @@ export function createDefaultToolExecutor(): ToolExecutor {
     }
 
     // Proactive tools
-    if (name.startsWith('proactive_') || name.startsWith('notification_')) {
+    if (name.startsWith('proactive_') || name.startsWith('notification_') || name === 'schedule_once') {
       return executeProactiveTool(name, params);
     }
 
