@@ -31,8 +31,8 @@ export const proactiveTools = {
         },
         taskType: {
           type: 'string',
-          enum: ['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom'],
-          description: 'Type of task to execute. Use llm_proactive_chat for LLM-generated proactive messages.',
+          enum: ['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'self_evolution', 'custom'],
+          description: 'Type of task to execute. Use llm_proactive_chat for LLM-generated proactive messages. Use self_evolution for self-reflection and SOUL.md updates.',
         },
         taskParams: {
           type: 'object',

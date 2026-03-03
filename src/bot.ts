@@ -184,18 +184,48 @@ async function main() {
             case 'self_evolution': {
               console.log('[Daemon] Self-evolution triggered...');
               try {
-                // Run the beeclaw-self-evolution skill
-                const { getSkillStore } = await import('./skills/store');
-                const skillStore = getSkillStore();
-                const skill = await skillStore.get('beeclaw-self-evolution');
+                const { sendProactiveMessage } = await import('./session');
+                const { getMemoryStore } = await import('./memory');
 
-                if (skill) {
-                  console.log('[Daemon] Running beeclaw-self-evolution skill...');
-                  // The skill content contains instructions for self-reflection
-                  // For now, log the action - actual execution would require agent integration
-                  console.log('[Daemon] Self-evolution: Review facts/lessons.md and update SOUL.md if needed');
+                // 获取当前记忆上下文
+                let context = '';
+                try {
+                  const memoryStore = getMemoryStore();
+                  const coreContext = memoryStore.getCoreContext();
+                  if (coreContext.facts) {
+                    context += `## 用户事实和经验教训\n${coreContext.facts}\n`;
+                  }
+                  if (coreContext.soul) {
+                    context += `## 当前 SOUL.md\n${coreContext.soul}\n`;
+                  }
+                } catch {
+                  // Memory store not initialized
+                }
+
+                // 构建自我进化提示
+                const evolutionPrompt = `你是一个自我进化系统。请执行以下任务：
+
+${context}
+
+## 任务
+1. 分析 facts/lessons.md 中的经验教训
+2. 检查是否有新的原则或模式值得加入 SOUL.md
+3. 如果有，更新 SOUL.md；如果没有，说明原因
+
+请使用 memory_read 读取 facts/lessons.md 和 SOUL.md，分析后使用 memory_write 更新 SOUL.md（如果需要）。`;
+
+                // 调用 LLM 执行自我进化
+                const result = await sendProactiveMessage({
+                  message: evolutionPrompt,
+                  userId: 'self-evolution',
+                  channel: 'cli',
+                  sessionId: 'self-evolution-session',
+                });
+
+                if (result.success && result.response) {
+                  console.log(`[Daemon] Self-evolution completed: ${result.response.substring(0, 200)}...`);
                 } else {
-                  console.log('[Daemon] beeclaw-self-evolution skill not found');
+                  console.error('[Daemon] Self-evolution failed:', result.error);
                 }
               } catch (error) {
                 console.error('[Daemon] Self-evolution failed:', error);

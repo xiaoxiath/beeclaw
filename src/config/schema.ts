@@ -69,6 +69,30 @@ export const MemoryConfigSchema = z.object({
     facts: z.string().default('forever'),
     decisions: z.string().default('forever'),
   }).default({}),
+  // 混合搜索配置
+  search: z.object({
+    vector: z.object({
+      enabled: z.boolean().default(true),
+      provider: z.enum(['openai', 'zhipu', 'local', 'auto']).default('auto'),
+      model: z.string().optional(),
+      dims: z.number().optional(),
+    }).default({}),
+    fts: z.object({
+      enabled: z.boolean().default(true),
+    }).default({}),
+    hybrid: z.object({
+      vectorWeight: z.number().min(0).max(1).default(0.7),
+      textWeight: z.number().min(0).max(1).default(0.3),
+      mmr: z.object({
+        enabled: z.boolean().default(false),
+        lambda: z.number().min(0).max(1).default(0.5),
+      }).optional(),
+      temporalDecay: z.object({
+        enabled: z.boolean().default(false),
+        halfLifeDays: z.number().min(1).default(30),
+      }).optional(),
+    }).default({}),
+  }).default({}),
 });
 
 // Skills configuration schema
@@ -177,6 +201,46 @@ export const ExtractionConfigSchema = z.object({
   ]),
 });
 
+// MCP Server configuration schema
+export const MCPServerConfigSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  transport: z.enum(['stdio', 'http', 'sse']),
+  // stdio 配置
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+  cwd: z.string().optional(),
+  // http 配置
+  url: z.string().optional(),
+  headers: z.record(z.string()).optional(),
+  // 通用配置
+  enabled: z.boolean().default(true),
+  timeout: z.number().optional(),
+  // 工具过滤
+  tools: z.object({
+    include: z.array(z.string()).optional(),
+    exclude: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+// MCP configuration schema
+export const MCPConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  servers: z.array(MCPServerConfigSchema).default([]),
+});
+
+// Hooks configuration schema
+export const HooksConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  directories: z.array(z.string()).default([]),
+  handlers: z.array(z.object({
+    event: z.string(),
+    module: z.string(),
+    export: z.string().optional(),
+  })).optional(),
+});
+
 // Main configuration schema
 export const AppConfigSchema = z.object({
   server: ServerConfigSchema.default({}),
@@ -198,6 +262,8 @@ export const AppConfigSchema = z.object({
   agentDisplay: AgentDisplayConfigSchema.default({}),
   compression: CompressionConfigSchema.default({}),
   extraction: ExtractionConfigSchema.default({}),
+  mcp: MCPConfigSchema.default({}),
+  hooks: HooksConfigSchema.default({}),
 });
 
 // Type exports
@@ -219,4 +285,7 @@ export type FinanceConfig = z.infer<typeof FinanceConfigSchema>;
 export type AgentDisplayConfig = z.infer<typeof AgentDisplayConfigSchema>;
 export type CompressionConfig = z.infer<typeof CompressionConfigSchema>;
 export type ExtractionConfigSchemaType = z.infer<typeof ExtractionConfigSchema>;
+export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
+export type MCPConfig = z.infer<typeof MCPConfigSchema>;
+export type HooksConfig = z.infer<typeof HooksConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

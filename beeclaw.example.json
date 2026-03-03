@@ -80,5 +80,35 @@
     "maxExtractionsPerRun": 20,
     "notifyOnHighConfidence": true,
     "sensitivePatterns": ["password", "passwd", "secret", "api_key", "token", "private_key", "密钥", "密码"]
+  },
+  "mcp": {
+    "enabled": true,
+    "servers": [
+      {
+        "id": "filesystem",
+        "name": "File System",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data/workspace"],
+        "enabled": true
+      },
+      {
+        "id": "github",
+        "name": "GitHub",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {
+          "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+        },
+        "tools": {
+          "include": ["search_repositories", "get_file_contents", "create_issue", "list_issues"]
+        }
+      }
+    ]
+  },
+  "hooks": {
+    "enabled": true,
+    "directories": ["./hooks"]
   }
 }

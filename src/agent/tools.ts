@@ -14,6 +14,7 @@ import {
   bitableToolDefinitions,
   wikiToolDefinitions,
 } from '../feishu';
+import { getMCPManager } from '../mcp';
 import { logger } from '../utils/logger';
 import type { OpenAITool } from './types';
 import type { Session } from '../session';
@@ -63,6 +64,15 @@ export function getAllTools(): OpenAITool[] {
     ...Object.values(wikiToolDefinitions),
   ];
 
+  // MCP tools
+  let mcpTools: OpenAITool[] = [];
+  try {
+    const mcpManager = getMCPManager();
+    mcpTools = mcpManager.getAllToolsAsOpenAI();
+  } catch {
+    // MCP not initialized or no servers connected
+  }
+
   return [
     ...memoryTools.map(toOpenAITool),
     ...skillTools.map(toOpenAITool),
@@ -71,6 +81,7 @@ export function getAllTools(): OpenAITool[] {
     ...builtinTools.map(toOpenAITool),
     ...personaTools,  // Already OpenAITool format, no conversion needed
     ...feishuTools.map(toOpenAITool),
+    ...mcpTools,
   ];
 }
 

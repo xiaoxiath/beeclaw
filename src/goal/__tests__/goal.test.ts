@@ -11,7 +11,6 @@ describe('GoalStore', () => {
   let store: GoalStore;
 
   beforeEach(() => {
-    // Clean up test directory
     if (existsSync(TEST_GOAL_PATH)) {
       rmSync(TEST_GOAL_PATH, { recursive: true });
     }
@@ -20,7 +19,6 @@ describe('GoalStore', () => {
   });
 
   afterEach(() => {
-    // Clean up test directory
     if (existsSync(TEST_GOAL_PATH)) {
       rmSync(TEST_GOAL_PATH, { recursive: true });
     }
@@ -48,15 +46,13 @@ describe('GoalStore', () => {
       const result = store.create(options);
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.title).toBe('Test Goal');
-        expect(result.data.state).toBe('active');
-        expect(result.data.priority).toBe('medium');
-        expect(result.data.progress).toBe(0);
-        expect(result.data.id).toBeDefined();
-        expect(result.data.createdAt).toBeDefined();
-        expect(result.data.updatedAt).toBeDefined();
-      }
+      expect(result.data?.title).toBe('Test Goal');
+      expect(result.data?.state).toBe('active');
+      expect(result.data?.priority).toBe('medium');
+      expect(result.data?.progress).toBe(0);
+      expect(result.data?.id).toBeDefined();
+      expect(result.data?.createdAt).toBeDefined();
+      expect(result.data?.updatedAt).toBeDefined();
     });
 
     test('creates a goal with all options', () => {
@@ -76,24 +72,21 @@ describe('GoalStore', () => {
       const result = store.create(options);
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.title).toBe('Complete Goal');
-        expect(result.data.description).toBe('A detailed description');
-        expect(result.data.priority).toBe('high');
-        expect(result.data.targetDate).toBe('2026-03-15');
-        expect(result.data.tags).toEqual(['work', 'urgent']);
-        expect(result.data.context?.why).toBe('Important for project');
-      }
+      expect(result.data?.title).toBe('Complete Goal');
+      expect(result.data?.description).toBe('A detailed description');
+      expect(result.data?.priority).toBe('high');
+      expect(result.data?.targetDate).toBe('2026-03-15');
+      expect(result.data?.tags).toEqual(['work', 'urgent']);
+      expect(result.data?.context?.why).toBe('Important for project');
     });
 
     test('creates goal in active directory', () => {
       const result = store.create({ title: 'Test' });
-
       expect(result.success).toBe(true);
-      if (result.success) {
-        const goalPath = join(TEST_GOAL_PATH, 'active', `${result.data.id}.json`);
-        expect(existsSync(goalPath)).toBe(true);
-      }
+      expect(result.data?.id).toBeDefined();
+
+      const goalPath = join(TEST_GOAL_PATH, 'active', `${result.data!.id}.json`);
+      expect(existsSync(goalPath)).toBe(true);
     });
 
     test('generates unique IDs', () => {
@@ -102,9 +95,7 @@ describe('GoalStore', () => {
 
       expect(result1.success).toBe(true);
       expect(result2.success).toBe(true);
-      if (result1.success && result2.success) {
-        expect(result1.data.id).not.toBe(result2.data.id);
-      }
+      expect(result1.data?.id).not.toBe(result2.data?.id);
     });
   });
 
@@ -112,9 +103,9 @@ describe('GoalStore', () => {
     test('returns goal by ID', () => {
       const createResult = store.create({ title: 'Find Me' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const goal = store.get(createResult.data.id);
+      const goal = store.get(createResult.data!.id);
       expect(goal).not.toBeNull();
       expect(goal?.title).toBe('Find Me');
     });
@@ -127,14 +118,11 @@ describe('GoalStore', () => {
     test('finds goal in any state directory', () => {
       const createResult = store.create({ title: 'Move Me' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const goalId = createResult.data.id;
-
-      // Move to completed
+      const goalId = createResult.data!.id;
       store.update(goalId, { state: 'completed' });
 
-      // Should still find it
       const goal = store.get(goalId);
       expect(goal).not.toBeNull();
       expect(goal?.state).toBe('completed');
@@ -158,10 +146,11 @@ describe('GoalStore', () => {
 
       expect(result1.success).toBe(true);
       expect(result2.success).toBe(true);
-      if (!result1.success || !result2.success) return;
 
-      store.update(result1.data.id, { state: 'paused' });
-      store.update(result2.data.id, { state: 'completed' });
+      if (result1.data && result2.data) {
+        store.update(result1.data.id, { state: 'paused' });
+        store.update(result2.data.id, { state: 'completed' });
+      }
 
       const activeGoals = store.list({ state: 'active' });
       expect(activeGoals.length).toBe(1);
@@ -222,9 +211,9 @@ describe('GoalStore', () => {
     test('updates goal fields', () => {
       const createResult = store.create({ title: 'Original' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const updateResult = store.update(createResult.data.id, {
+      const updateResult = store.update(createResult.data!.id, {
         title: 'Updated',
         description: 'New description',
         priority: 'high',
@@ -232,27 +221,22 @@ describe('GoalStore', () => {
       });
 
       expect(updateResult.success).toBe(true);
-      if (updateResult.success) {
-        expect(updateResult.data.title).toBe('Updated');
-        expect(updateResult.data.description).toBe('New description');
-        expect(updateResult.data.priority).toBe('high');
-        expect(updateResult.data.progress).toBe(50);
-      }
+      expect(updateResult.data?.title).toBe('Updated');
+      expect(updateResult.data?.description).toBe('New description');
+      expect(updateResult.data?.priority).toBe('high');
+      expect(updateResult.data?.progress).toBe(50);
     });
 
     test('moves goal to new state directory', () => {
       const createResult = store.create({ title: 'To Complete' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const goalId = createResult.data.id;
-
-      // Should be in active
+      const goalId = createResult.data!.id;
       expect(existsSync(join(TEST_GOAL_PATH, 'active', `${goalId}.json`))).toBe(true);
 
       store.update(goalId, { state: 'completed' });
 
-      // Should now be in completed
       expect(existsSync(join(TEST_GOAL_PATH, 'active', `${goalId}.json`))).toBe(false);
       expect(existsSync(join(TEST_GOAL_PATH, 'completed', `${goalId}.json`))).toBe(true);
     });
@@ -260,15 +244,13 @@ describe('GoalStore', () => {
     test('sets completedAt when state is completed', () => {
       const createResult = store.create({ title: 'To Complete' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const updateResult = store.update(createResult.data.id, { state: 'completed' });
+      const updateResult = store.update(createResult.data!.id, { state: 'completed' });
 
       expect(updateResult.success).toBe(true);
-      if (updateResult.success) {
-        expect(updateResult.data.completedAt).toBeDefined();
-        expect(updateResult.data.progress).toBe(100);
-      }
+      expect(updateResult.data?.completedAt).toBeDefined();
+      expect(updateResult.data?.progress).toBe(100);
     });
 
     test('returns error for non-existent goal', () => {
@@ -284,16 +266,14 @@ describe('GoalStore', () => {
         priority: 'high',
       });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const updateResult = store.update(createResult.data.id, { title: 'New Title' });
+      const updateResult = store.update(createResult.data!.id, { title: 'New Title' });
 
       expect(updateResult.success).toBe(true);
-      if (updateResult.success) {
-        expect(updateResult.data.title).toBe('New Title');
-        expect(updateResult.data.description).toBe('Original desc');
-        expect(updateResult.data.priority).toBe('high');
-      }
+      expect(updateResult.data?.title).toBe('New Title');
+      expect(updateResult.data?.description).toBe('Original desc');
+      expect(updateResult.data?.priority).toBe('high');
     });
   });
 
@@ -301,10 +281,9 @@ describe('GoalStore', () => {
     test('deletes an existing goal', () => {
       const createResult = store.create({ title: 'To Delete' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const goalId = createResult.data.id;
-
+      const goalId = createResult.data!.id;
       const deleteResult = store.delete(goalId);
       expect(deleteResult.success).toBe(true);
 
@@ -320,10 +299,9 @@ describe('GoalStore', () => {
     test('removes from index', () => {
       const createResult = store.create({ title: 'To Delete' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const goalId = createResult.data.id;
-
+      const goalId = createResult.data!.id;
       store.delete(goalId);
 
       const summary = store.getSummary();
@@ -335,17 +313,15 @@ describe('GoalStore', () => {
     test('adds a checkpoint to goal', () => {
       const createResult = store.create({ title: 'Goal with Checkpoint' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const result = store.addCheckpoint(createResult.data.id, 'First milestone', 'Details');
+      const result = store.addCheckpoint(createResult.data!.id, 'First milestone', 'Details');
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.checkpoints?.length).toBe(1);
-        expect(result.data.checkpoints?.[0].title).toBe('First milestone');
-        expect(result.data.checkpoints?.[0].description).toBe('Details');
-        expect(result.data.checkpoints?.[0].completed).toBe(false);
-      }
+      expect(result.data?.checkpoints?.length).toBe(1);
+      expect(result.data?.checkpoints?.[0].title).toBe('First milestone');
+      expect(result.data?.checkpoints?.[0].description).toBe('Details');
+      expect(result.data?.checkpoints?.[0].completed).toBe(false);
     });
 
     test('returns error for non-existent goal', () => {
@@ -357,14 +333,12 @@ describe('GoalStore', () => {
     test('generates checkpoint ID', () => {
       const createResult = store.create({ title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const result = store.addCheckpoint(createResult.data.id, 'Checkpoint');
+      const result = store.addCheckpoint(createResult.data!.id, 'Checkpoint');
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.checkpoints?.[0].id).toBeDefined();
-      }
+      expect(result.data?.checkpoints?.[0].id).toBeDefined();
     });
   });
 
@@ -372,9 +346,9 @@ describe('GoalStore', () => {
     test('marks checkpoint as completed', () => {
       const createResult = store.create({ title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const goalId = createResult.data.id;
+      const goalId = createResult.data!.id;
       store.addCheckpoint(goalId, 'Checkpoint');
       const goal = store.get(goalId);
       const checkpointId = goal?.checkpoints?.[0]?.id;
@@ -382,18 +356,16 @@ describe('GoalStore', () => {
       const result = store.completeCheckpoint(goalId, checkpointId!);
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.checkpoints?.[0]?.completed).toBe(true);
-        expect(result.data.checkpoints?.[0]?.completedAt).toBeDefined();
-      }
+      expect(result.data?.checkpoints?.[0]?.completed).toBe(true);
+      expect(result.data?.checkpoints?.[0]?.completedAt).toBeDefined();
     });
 
     test('updates progress', () => {
       const createResult = store.create({ title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const goalId = createResult.data.id;
+      const goalId = createResult.data!.id;
       store.addCheckpoint(goalId, 'C1');
       store.addCheckpoint(goalId, 'C2');
 
@@ -403,15 +375,15 @@ describe('GoalStore', () => {
       store.completeCheckpoint(goalId, checkpointId!);
 
       const updatedGoal = store.get(goalId);
-      expect(updatedGoal?.progress).toBe(50); // 1 of 2 completed
+      expect(updatedGoal?.progress).toBe(50);
     });
 
     test('returns error for non-existent checkpoint', () => {
       const createResult = store.create({ title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const result = store.completeCheckpoint(createResult.data.id, 'non-existent');
+      const result = store.completeCheckpoint(createResult.data!.id, 'non-existent');
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
     });
@@ -421,46 +393,40 @@ describe('GoalStore', () => {
     test('creates sub-goals from parent', () => {
       const createResult = store.create({ title: 'Parent Goal', priority: 'high' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const result = store.decompose(createResult.data.id, ['Sub 1', 'Sub 2', 'Sub 3']);
+      const result = store.decompose(createResult.data!.id, ['Sub 1', 'Sub 2', 'Sub 3']);
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const data = result.data as { parentGoal: typeof createResult.data; subGoalIds: string[] };
-        expect(data.subGoalIds.length).toBe(3);
-        expect(data.parentGoal.subGoals?.length).toBe(3);
-      }
+      const data = result.data as { parentGoal: typeof createResult.data; subGoalIds: string[] };
+      expect(data.subGoalIds.length).toBe(3);
+      expect(data.parentGoal?.subGoals?.length).toBe(3);
     });
 
     test('sub-goals inherit parent priority', () => {
       const createResult = store.create({ title: 'Parent', priority: 'critical' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const result = store.decompose(createResult.data.id, ['Sub Goal']);
+      const result = store.decompose(createResult.data!.id, ['Sub Goal']);
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const data = result.data as { subGoalIds: string[] };
-        const subGoal = store.get(data.subGoalIds[0]);
-        expect(subGoal?.priority).toBe('critical');
-      }
+      const data = result.data as { subGoalIds: string[] };
+      const subGoal = store.get(data.subGoalIds[0]);
+      expect(subGoal?.priority).toBe('critical');
     });
 
     test('sub-goals reference parent', () => {
       const createResult = store.create({ title: 'Parent' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
+      expect(createResult.data?.id).toBeDefined();
 
-      const result = store.decompose(createResult.data.id, ['Sub Goal']);
+      const result = store.decompose(createResult.data!.id, ['Sub Goal']);
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const data = result.data as { subGoalIds: string[] };
-        const subGoal = store.get(data.subGoalIds[0]);
-        expect(subGoal?.parentGoal).toBe(createResult.data.id);
-      }
+      const data = result.data as { subGoalIds: string[] };
+      const subGoal = store.get(data.subGoalIds[0]);
+      expect(subGoal?.parentGoal).toBe(createResult.data!.id);
     });
 
     test('returns error for non-existent parent', () => {
@@ -474,11 +440,11 @@ describe('GoalStore', () => {
     test('returns counts by state', () => {
       const r1 = store.create({ title: 'A1' });
       const r2 = store.create({ title: 'A2' });
-      const r3 = store.create({ title: 'P1' });
-      const r4 = store.create({ title: 'C1' });
+      store.create({ title: 'P1' });
+      store.create({ title: 'C1' });
 
-      if (r1.success) store.update(r1.data.id, { state: 'completed' });
-      if (r2.success) store.update(r2.data.id, { state: 'paused' });
+      if (r1.success && r1.data) store.update(r1.data.id, { state: 'completed' });
+      if (r2.success && r2.data) store.update(r2.data.id, { state: 'paused' });
 
       const summary = store.getSummary();
 
@@ -521,27 +487,23 @@ describe('Goal Tools', () => {
       const result = executeGoalTool('goal_list', {});
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const goals = result.data as Array<{ title: string }>;
-        expect(goals.length).toBe(2);
-      }
+      const goals = result.data as Array<{ title: string }>;
+      expect(goals.length).toBe(2);
     });
 
     test('filters by state', () => {
       executeGoalTool('goal_create', { title: 'Active' });
       const r = executeGoalTool('goal_create', { title: 'To Pause' });
-      if (r.success) {
-        executeGoalTool('goal_update', { id: r.data.id, state: 'paused' });
+      if (r.success && r.data) {
+        executeGoalTool('goal_update', { id: (r.data as { id: string }).id, state: 'paused' });
       }
 
       const result = executeGoalTool('goal_list', { state: 'paused' });
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const goals = result.data as Array<{ state: string }>;
-        expect(goals.length).toBe(1);
-        expect(goals[0].state).toBe('paused');
-      }
+      const goals = result.data as Array<{ state: string }>;
+      expect(goals.length).toBe(1);
+      expect(goals[0].state).toBe('paused');
     });
   });
 
@@ -549,14 +511,11 @@ describe('Goal Tools', () => {
     test('returns goal by ID', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Get Me' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const result = executeGoalTool('goal_get', { id: (createResult.data as { id: string }).id });
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect((result.data as { title: string }).title).toBe('Get Me');
-      }
+      expect((result.data as { title: string }).title).toBe('Get Me');
     });
 
     test('returns error for non-existent goal', () => {
@@ -571,11 +530,9 @@ describe('Goal Tools', () => {
       const result = executeGoalTool('goal_create', { title: 'New Goal' });
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const goal = result.data as { title: string; state: string };
-        expect(goal.title).toBe('New Goal');
-        expect(goal.state).toBe('active');
-      }
+      const goal = result.data as { title: string; state: string };
+      expect(goal.title).toBe('New Goal');
+      expect(goal.state).toBe('active');
     });
 
     test('creates goal with all options', () => {
@@ -589,12 +546,10 @@ describe('Goal Tools', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const goal = result.data as Record<string, unknown>;
-        expect(goal.title).toBe('Full Goal');
-        expect(goal.priority).toBe('critical');
-        expect(goal.context).toBeDefined();
-      }
+      const goal = result.data as Record<string, unknown>;
+      expect(goal.title).toBe('Full Goal');
+      expect(goal.priority).toBe('critical');
+      expect(goal.context).toBeDefined();
     });
 
     test('validates required title', () => {
@@ -607,7 +562,6 @@ describe('Goal Tools', () => {
     test('updates goal fields', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Original' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_update', {
@@ -617,22 +571,19 @@ describe('Goal Tools', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const goal = result.data as { title: string; progress: number };
-        expect(goal.title).toBe('Updated');
-        expect(goal.progress).toBe(75);
-      }
+      const goal = result.data as { title: string; progress: number };
+      expect(goal.title).toBe('Updated');
+      expect(goal.progress).toBe(75);
     });
 
     test('validates progress range', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_update', {
         id: goalId,
-        progress: 150, // Invalid: > 100
+        progress: 150,
       });
 
       expect(result.success).toBe(false);
@@ -643,7 +594,6 @@ describe('Goal Tools', () => {
     test('adds checkpoint', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_checkpoint', {
@@ -654,23 +604,20 @@ describe('Goal Tools', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const goal = result.data as { checkpoints: Array<{ title: string }> };
-        expect(goal.checkpoints.length).toBe(1);
-        expect(goal.checkpoints[0].title).toBe('First Milestone');
-      }
+      const goal = result.data as { checkpoints: Array<{ title: string }> };
+      expect(goal.checkpoints.length).toBe(1);
+      expect(goal.checkpoints[0].title).toBe('First Milestone');
     });
 
     test('completes checkpoint', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       executeGoalTool('goal_checkpoint', { goalId, action: 'add', title: 'C1' });
 
       const goal = executeGoalTool('goal_get', { id: goalId });
-      const checkpointId = ((goal as { data: { checkpoints: Array<{ id: string }> } }).data as { checkpoints: Array<{ id: string }> }).checkpoints[0].id;
+      const checkpointId = ((goal.data as { checkpoints: Array<{ id: string }> })).checkpoints[0].id;
 
       const result = executeGoalTool('goal_checkpoint', {
         goalId,
@@ -684,13 +631,11 @@ describe('Goal Tools', () => {
     test('requires title for add action', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_checkpoint', {
         goalId,
         action: 'add',
-        // No title
       });
 
       expect(result.success).toBe(false);
@@ -700,13 +645,11 @@ describe('Goal Tools', () => {
     test('requires checkpointId for complete action', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Goal' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_checkpoint', {
         goalId,
         action: 'complete',
-        // No checkpointId
       });
 
       expect(result.success).toBe(false);
@@ -718,7 +661,6 @@ describe('Goal Tools', () => {
     test('creates sub-goals', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Parent' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_decompose', {
@@ -727,21 +669,17 @@ describe('Goal Tools', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const data = result.data as { subGoalIds: string[] };
-        expect(data.subGoalIds.length).toBe(2);
-      }
+      const data = result.data as { subGoalIds: string[] };
+      expect(data.subGoalIds.length).toBe(2);
     });
 
     test('requires subGoals array', () => {
       const createResult = executeGoalTool('goal_create', { title: 'Parent' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_decompose', {
         id: goalId,
-        // No subGoals
       });
 
       expect(result.success).toBe(false);
@@ -752,7 +690,6 @@ describe('Goal Tools', () => {
     test('deletes goal', () => {
       const createResult = executeGoalTool('goal_create', { title: 'To Delete' });
       expect(createResult.success).toBe(true);
-      if (!createResult.success) return;
 
       const goalId = (createResult.data as { id: string }).id;
       const result = executeGoalTool('goal_delete', { id: goalId });
@@ -774,19 +711,17 @@ describe('Goal Tools', () => {
       executeGoalTool('goal_create', { title: 'A1' });
       executeGoalTool('goal_create', { title: 'A2' });
       const r = executeGoalTool('goal_create', { title: 'C1' });
-      if (r.success) {
+      if (r.success && r.data) {
         executeGoalTool('goal_update', { id: (r.data as { id: string }).id, state: 'completed' });
       }
 
       const result = executeGoalTool('goal_summary', {});
 
       expect(result.success).toBe(true);
-      if (result.success) {
-        const summary = result.data as { active: number; completed: number; total: number };
-        expect(summary.active).toBe(2);
-        expect(summary.completed).toBe(1);
-        expect(summary.total).toBe(3);
-      }
+      const summary = result.data as { active: number; completed: number; total: number };
+      expect(summary.active).toBe(2);
+      expect(summary.completed).toBe(1);
+      expect(summary.total).toBe(3);
     });
   });
 

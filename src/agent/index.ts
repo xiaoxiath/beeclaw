@@ -10,6 +10,7 @@ import { executeGoalTool } from '../goal/tools';
 import { executeProactiveTool } from '../proactive/tools';
 import { executePersonaTool } from '../persona/tools';
 import { executeBuiltinTool, isBuiltinTool } from '../tools';
+import { getMCPManager, MCPClientManager } from '../mcp';
 import { recordSkillFailure, type ReflectionTrigger } from '../evolution';
 import {
   executeCalendarTool,
@@ -132,6 +133,32 @@ export function createDefaultToolExecutor(): ToolExecutor {
         return {
           success: false,
           error: `Feishu tool execution failed: ${errorMsg}`,
+        };
+      }
+    }
+
+    // MCP tools (format: mcp_{serverId}_{toolName})
+    if (MCPClientManager.isMCPToolName(name)) {
+      try {
+        const manager = getMCPManager();
+        const parsed = MCPClientManager.parseMCPToolName(name);
+        if (!parsed) {
+          return {
+            success: false,
+            error: `Invalid MCP tool name format: ${name}`,
+          };
+        }
+        const result = await manager.executeTool(parsed.serverId, parsed.toolName, params);
+        return {
+          success: result.success,
+          data: result.data,
+          error: result.error,
+        };
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        return {
+          success: false,
+          error: `MCP tool execution failed: ${errorMsg}`,
         };
       }
     }

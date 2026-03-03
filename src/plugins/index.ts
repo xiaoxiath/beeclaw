@@ -1,8 +1,21 @@
+/**
+ * Plugin System
+ *
+ * 统一插件系统，支持：
+ * - 传统 Channel/Tool 插件
+ * - 新的统一插件 API（工具、钩子、命令、服务、路由）
+ */
+
+// Legacy plugin types
 import { PluginType, type ChannelPlugin, type ToolPlugin } from './types';
 
 // Plugin types
 export { PluginType };
 export type { ChannelPlugin, ToolPlugin, PluginConfig, ChannelConfig, ToolConfig } from './types';
+
+// New unified plugin system
+export * from './registry';
+export { default as examplePlugin } from './example-plugin';
 
 // Plugin loader
 import { loadChannelPlugin, loadToolPlugin } from './loader';

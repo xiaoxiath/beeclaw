@@ -9,6 +9,9 @@ export * from './types';
 export * from './prompts';
 export * from './runtime';
 
+// Phase 2.5: Subagent Registry (new)
+export * from './registry';
+
 // Phase 3: Task Decomposition & Orchestration
 export * from './orchestration-types';
 export * from './decompose';

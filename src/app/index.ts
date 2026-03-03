@@ -12,6 +12,8 @@ import { createAgent, getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt } from
 import { sessionService } from '../services/session';
 import { initSessionManager, loadAllSessions, getOrCreateSession, type Session } from '../session';
 import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../subagent';
+import { initializeMCP, getMCPManager, shutdownMCP } from '../mcp';
+import { getHookRunner, resetHookRunner } from '../hooks';
 import { logger } from '../utils/logger';
 import type { AIProvider, AppConfig } from '../config/schema';
 import type { TokenStatsConfig } from '../agent/context';
@@ -132,6 +134,23 @@ export async function initApp(options: InitOptions = {}): Promise<{
     defaultTtl: 3600000, // Default TTL: 1 hour
   });
 
+  // 9.7. Initialize MCP connections
+  if (config.mcp?.enabled && config.mcp.servers?.length > 0) {
+    const mcpResult = await initializeMCP(config.mcp);
+    if (mcpResult.success > 0) {
+      console.log(`   🔌 MCP: ${mcpResult.success} server(s) connected`);
+    }
+    if (mcpResult.errors.length > 0) {
+      mcpResult.errors.forEach(e => {
+        console.warn(`   ⚠️  MCP ${e.serverId}: ${e.error}`);
+      });
+    }
+  }
+
+  // 9.8. Initialize hook system (built-in hooks)
+  const hookRunner = getHookRunner();
+  // Note: Custom hooks can be registered via config.hooks later
+
   // 10. Create agent (singleton)
   const agent = createAgent({
     provider: defaultProvider,
@@ -243,7 +262,17 @@ export function switchModel(modelName?: string, providerName?: string): {
 /**
  * Reset app state (for testing)
  */
-export function resetApp(): void {
+export async function resetApp(): Promise<void> {
+  // Shutdown MCP connections
+  try {
+    await shutdownMCP();
+  } catch {
+    // Ignore errors during shutdown
+  }
+
+  // Reset hook runner
+  resetHookRunner();
+
   appState = {
     initialized: false,
     config: null,

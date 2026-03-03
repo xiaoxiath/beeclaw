@@ -356,8 +356,8 @@ export class MemoryStore {
     }
 
     return {
-      user: userResult.success ? userResult.data || '' : '',
-      soul: soulResult.success ? soulResult.data || '' : '',
+      user: userResult.success ? String(userResult.data || '') : '',
+      soul: soulResult.success ? String(soulResult.data || '') : '',
       facts: factsContent.trim(),
     };
   }
