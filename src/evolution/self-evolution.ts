@@ -16,10 +16,10 @@ export function initSelfEvolution(basePath: string): void {
   const scheduler = getScheduler(join(basePath, 'proactive'));
   scheduler.init();
 
-  // Check if self-evolution schedule already exists
+  // Check if self-evolution schedule already exists (by name or task type)
   const existingSchedules = scheduler.listSchedules({ enabled: true });
   const hasSelfEvolution = existingSchedules.some(
-    s => s.task?.type === 'self_evolution'
+    s => s.name === 'Daily Self-Evolution' || s.task?.type === 'self_evolution'
   );
 
   if (!hasSelfEvolution) {
