@@ -322,14 +322,61 @@ Files in reports:
 
 ### weather
 
-获取天气信息。
+获取天气信息和多日预报（使用和风天气 API）。
 
 **参数**:
 
 | 参数 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| location | string | ✅ | 位置 |
-| format | string | - | 格式: current, forecast, detailed |
+| location | string | ✅ | 城市名称，支持中文或英文（如 "北京", "Shanghai"） |
+| format | string | - | 格式: current (简洁), forecast (多日预报), detailed (详细) |
+| days | string | - | 预报天数: 3d, 7d, 10d, 15d, 30d (仅当 format=forecast 时有效，默认 3d) |
+
+**配置要求**:
+
+需要在 `.env` 文件中配置和风天气 API 密钥：
+- `QWEATHER_KEY`: API KEY（推荐，简单易用）
+- `QWEATHER_TOKEN`: JWT Token（可选，更安全）
+- `QWEATHER_LOCATION`: 默认城市（默认: 北京）
+
+获取密钥: https://dev.qweather.com/
+
+**示例**:
+
+```json
+// 简洁格式 - 当前天气
+{ "location": "北京", "format": "current" }
+// 返回: 北京当前天气：雨夹雪，温度0°C，东风1-3级，湿度91%
+
+// 详细格式 - 当前天气详情
+{ "location": "上海", "format": "detailed" }
+// 返回: 包含位置ID、温度、天气、风向风力、湿度、更新时间等详细信息
+
+// 预报格式 - 3天预报
+{ "location": "深圳", "format": "forecast", "days": "3d" }
+// 返回:
+📍 深圳 未来3天天气预报
+
+📅 2026-03-03 (周二)
+   🌡️  15°C ~ 20°C
+   ☀️  白天: 大雨，北风1-3
+   🌙  夜间: 小雨，北风1-3
+   💧 湿度: 81%，降水: 34.8mm
+   🌅 日出: 06:45，日落: 18:29
+...
+
+// 预报格式 - 7天预报
+{ "location": "广州", "format": "forecast", "days": "7d" }
+// 返回: 7天的详细预报数据
+```
+
+**功能特点**:
+
+- ✅ 支持中英文城市名称
+- ✅ 提供实时天气和1-30天预报
+- ✅ 包含温度、天气状况、风力、湿度、降水量、日出日落等信息
+- ✅ 支持多种预报天数（3d/7d/10d/15d/30d）
+- ✅ 自动缓存城市ID，提高性能
 
 ### url_shorten
 

@@ -30,6 +30,28 @@ export interface WeatherInfo {
   updateTime: string;         // 更新时间
 }
 
+export interface DailyWeatherInfo {
+  location: string;           // 城市名称
+  locationId: string;         // 城市ID
+  updateTime: string;         // 更新时间
+  daily: Array<{
+    fxDate: string;           // 预报日期
+    sunrise: string;          // 日出时间
+    sunset: string;           // 日落时间
+    tempMax: string;          // 最高温度
+    tempMin: string;          // 最低温度
+    textDay: string;          // 白天天气
+    textNight: string;        // 夜间天气
+    windDirDay: string;       // 白天风向
+    windScaleDay: string;     // 白天风力
+    windDirNight: string;     // 夜间风向
+    windScaleNight: string;   // 夜间风力
+    humidity: string;         // 湿度
+    precip: string;           // 降水量
+    uvIndex: string;          // 紫外线指数
+  }>;
+}
+
 interface CityLookupResponse {
   code: string;
   location: Array<{
@@ -68,6 +90,41 @@ interface WeatherHourlyResponse {
     pressure: string;
     cloud: string;
     dew: string;
+  }>;
+}
+
+interface WeatherDailyResponse {
+  code: string;
+  updateTime: string;
+  fxLink: string;
+  daily: Array<{
+    fxDate: string;
+    sunrise: string;
+    sunset: string;
+    moonrise: string;
+    moonset: string;
+    moonPhase: string;
+    moonPhaseIcon: string;
+    tempMax: string;
+    tempMin: string;
+    iconDay: string;
+    textDay: string;
+    iconNight: string;
+    textNight: string;
+    wind360Day: string;
+    windDirDay: string;
+    windScaleDay: string;
+    windSpeedDay: string;
+    wind360Night: string;
+    windDirNight: string;
+    windScaleNight: string;
+    windSpeedNight: string;
+    humidity: string;
+    precip: string;
+    pressure: string;
+    vis: string;
+    cloud: string;
+    uvIndex: string;
   }>;
 }
 
@@ -174,6 +231,43 @@ async function fetchHourlyWeather(locationId: string): Promise<WeatherHourlyResp
 }
 
 /**
+ * Fetch daily weather forecast
+ * @param locationId 城市ID
+ * @param days 预报天数: 3d, 7d, 10d, 15d, 30d
+ */
+async function fetchDailyWeather(locationId: string, days: string = '3d'): Promise<WeatherDailyResponse | null> {
+  const config = getConfig();
+  if (!config.apiKey && !config.token) {
+    return null;
+  }
+
+  try {
+    const url = `https://${config.apiHost}/v7/weather/${days}?location=${locationId}&lang=zh`;
+    const response = await fetch(url, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.warn(`Weather API returned ${response.status}: ${errorText}`);
+      return null;
+    }
+
+    const data: WeatherDailyResponse = await response.json();
+
+    if (data.code !== '200') {
+      logger.warn('Weather API returned error code:', data.code);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    logger.error('Failed to fetch daily weather:', error);
+    return null;
+  }
+}
+
+/**
  * Get current hour index (0-23)
  */
 function getCurrentHourIndex(): number {
@@ -260,6 +354,63 @@ export async function fetchWeatherInfo(location?: string): Promise<WeatherInfo |
 }
 
 /**
+ * Fetch daily weather forecast
+ * @param location 城市名称
+ * @param days 预报天数: 3d, 7d, 10d, 15d, 30d
+ */
+export async function fetchDailyWeatherInfo(location?: string, days: string = '3d'): Promise<DailyWeatherInfo | null> {
+  const config = getConfig();
+  const targetLocation = location || config.defaultLocation;
+
+  try {
+    // Step 1: Get location ID (use cache if available)
+    if (!cachedLocationId || cachedLocationName !== targetLocation) {
+      const cityInfo = await searchCity(targetLocation);
+      if (!cityInfo) {
+        return null;
+      }
+      cachedLocationId = cityInfo.id;
+      cachedLocationName = cityInfo.name;
+    }
+
+    // Step 2: Fetch daily weather data
+    const weatherData = await fetchDailyWeather(cachedLocationId, days);
+    if (!weatherData || !weatherData.daily || weatherData.daily.length === 0) {
+      return null;
+    }
+
+    // Step 3: Build DailyWeatherInfo
+    const info: DailyWeatherInfo = {
+      location: cachedLocationName,
+      locationId: cachedLocationId,
+      updateTime: weatherData.updateTime,
+      daily: weatherData.daily.map(day => ({
+        fxDate: day.fxDate,
+        sunrise: day.sunrise,
+        sunset: day.sunset,
+        tempMax: day.tempMax,
+        tempMin: day.tempMin,
+        textDay: day.textDay,
+        textNight: day.textNight,
+        windDirDay: day.windDirDay,
+        windScaleDay: day.windScaleDay,
+        windDirNight: day.windDirNight,
+        windScaleNight: day.windScaleNight,
+        humidity: day.humidity,
+        precip: day.precip,
+        uvIndex: day.uvIndex,
+      })),
+    };
+
+    logger.info(`Daily weather forecast fetched: ${info.location}, ${info.daily.length} days`);
+    return info;
+  } catch (error) {
+    logger.error('Failed to fetch daily weather info:', error);
+    return null;
+  }
+}
+
+/**
  * Get human-readable description of the weather
  */
 export function formatWeatherDescription(info: WeatherInfo): string {
@@ -271,6 +422,34 @@ export function formatWeatherDescription(info: WeatherInfo): string {
   parts.push(`湿度${info.humidity}%`);
 
   return parts.join('，');
+}
+
+/**
+ * Format daily weather forecast
+ */
+export function formatDailyWeatherDescription(info: DailyWeatherInfo): string {
+  const lines: string[] = [];
+  lines.push(`📍 ${info.location} 未来${info.daily.length}天天气预报`);
+  lines.push('');
+
+  for (const day of info.daily) {
+    const date = new Date(day.fxDate);
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const weekday = weekdays[date.getDay()];
+
+    lines.push(`📅 ${day.fxDate} (${weekday})`);
+    lines.push(`   🌡️  ${day.tempMin}°C ~ ${day.tempMax}°C`);
+    lines.push(`   ☀️  白天: ${day.textDay}，${day.windDirDay}${day.windScaleDay}`);
+    lines.push(`   🌙  夜间: ${day.textNight}，${day.windDirNight}${day.windScaleNight}`);
+    lines.push(`   💧 湿度: ${day.humidity}%，降水: ${day.precip}mm`);
+    lines.push(`   🌅 日出: ${day.sunrise}，日落: ${day.sunset}`);
+    lines.push('');
+  }
+
+  lines.push(`🕐 更新时间: ${info.updateTime}`);
+  lines.push('📊 数据来源: 和风天气');
+
+  return lines.join('\n');
 }
 
 /**

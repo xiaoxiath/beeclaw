@@ -532,28 +532,34 @@ export async function executeCode(params: Record<string, unknown>): Promise<Buil
 }
 
 // ============================================================================
-// Weather Tool (using wttr.in - no API key needed)
+// Weather Tool (using QWeather API)
 // ============================================================================
 
 export const WeatherSchema = z.object({
   location: z.string().describe('City name or location (e.g., "Beijing", "New York")'),
   format: z.enum(['current', 'forecast', 'detailed']).optional().default('current').describe('Weather format'),
+  days: z.enum(['3d', '7d', '10d', '15d', '30d']).optional().default('3d').describe('Forecast days (only for forecast format)'),
 });
 
 export const weatherTool = {
   name: 'weather',
-  description: 'Get current weather information for a location.',
+  description: 'Get current weather information and forecast for a location using QWeather (和风天气) API. Supports Chinese cities with detailed weather data.',
   parameters: {
     type: 'object' as const,
     properties: {
       location: {
         type: 'string',
-        description: 'City name or location (e.g., "Beijing", "New York")',
+        description: 'City name or location in Chinese or English (e.g., "北京", "Beijing", "上海")',
       },
       format: {
         type: 'string',
         enum: ['current', 'forecast', 'detailed'],
-        description: 'Weather format (default: current)',
+        description: 'Weather format: current (simple), detailed (full info), forecast (multi-day forecast)',
+      },
+      days: {
+        type: 'string',
+        enum: ['3d', '7d', '10d', '15d', '30d'],
+        description: 'Number of days for forecast (only used when format=forecast, default: 3d)',
       },
     },
     required: ['location'],
@@ -566,67 +572,66 @@ export async function executeWeather(params: Record<string, unknown>): Promise<B
     return { success: false, error: parsed.error.message };
   }
 
-  const { location, format } = parsed.data;
+  const { location, format, days } = parsed.data;
 
   try {
-    // Use wttr.in - free weather API with no key required
-    // Format options: 0=current only, 1=3-day, 2=more details, v2=detailed
-    let formatParam = '0';
-    let langParam = 'zh';
+    // Import weather utilities
+    const {
+      fetchWeatherInfo,
+      formatWeatherDescription,
+      fetchDailyWeatherInfo,
+      formatDailyWeatherDescription
+    } = await import('../utils/weather.js');
 
+    // Handle different formats
     if (format === 'forecast') {
-      formatParam = '1';
-    } else if (format === 'detailed') {
-      formatParam = 'v2&format=j1';  // JSON format for detailed
-    }
+      // Fetch multi-day forecast
+      const dailyWeatherInfo = await fetchDailyWeatherInfo(location, days);
 
-    const url = `https://wttr.in/${encodeURIComponent(location)}?format=${formatParam}&lang=${langParam}`;
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'curl/7.68.0',  // wttr.in returns text for curl UA
-        'Accept': 'text/plain',
-      },
-    });
-
-    if (!response.ok) {
-      return { success: false, error: `Weather fetch failed: ${response.status}` };
-    }
-
-    const text = await response.text();
-
-    // If detailed format with JSON, parse it
-    if (format === 'detailed' && text.startsWith('{')) {
-      try {
-        const json = JSON.parse(text);
-        const current = json.current_condition?.[0];
-        if (current) {
-          const result = `📍 ${location} 天气详情
-
-🌡️ 温度: ${current.temp_C}°C (体感 ${current.FeelsLikeC}°C)
-☁️ 天气: ${current.weatherDesc?.[0]?.value || current.lang_zh?.[0]?.value || '未知'}
-💨 风速: ${current.windspeedKmph} km/h ${current.winddir16Point}
-💧 湿度: ${current.humidity}%
-👁️ 能见度: ${current.visibility} km
-气压: ${current.pressure} mb
-UV 指数: ${current.uvIndex}`;
-          return { success: true, data: result };
-        }
-      } catch {
-        // Fall through to text response
+      if (!dailyWeatherInfo) {
+        return {
+          success: false,
+          error: `无法获取 ${location} 的天气预报。请检查 QWEATHER_KEY 或 QWEATHER_TOKEN 配置。`
+        };
       }
-    }
 
-    const data = text.trim();
-    if (!data || data.includes('Sorry')) {
-      return { success: false, error: `无法获取 ${location} 的天气信息` };
-    }
+      const result = formatDailyWeatherDescription(dailyWeatherInfo);
+      return { success: true, data: result };
+    } else {
+      // Fetch current weather for 'current' and 'detailed' formats
+      const weatherInfo = await fetchWeatherInfo(location);
 
-    return { success: true, data };
+      if (!weatherInfo) {
+        return {
+          success: false,
+          error: `无法获取 ${location} 的天气信息。请检查 QWEATHER_KEY 或 QWEATHER_TOKEN 配置。`
+        };
+      }
+
+      let result: string;
+
+      if (format === 'current') {
+        // Simple current weather
+        result = formatWeatherDescription(weatherInfo);
+      } else {
+        // Detailed format
+        result = `📍 ${weatherInfo.location} (ID: ${weatherInfo.locationId})
+
+🌡️ 温度: ${weatherInfo.temp}°C
+☁️ 天气: ${weatherInfo.text}
+💨 风向风力: ${weatherInfo.windDir} ${weatherInfo.windScale}级
+💧 湿度: ${weatherInfo.humidity}%
+🕐 更新时间: ${weatherInfo.updateTime}
+
+📊 数据来源: 和风天气`;
+      }
+
+      return { success: true, data: result };
+    }
   } catch (error) {
     return {
       success: false,
-      error: `Weather error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      error: `天气查询失败: ${error instanceof Error ? error.message : '未知错误'}`
     };
   }
 }
