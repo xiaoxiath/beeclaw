@@ -389,6 +389,10 @@ export class FeishuWSClient {
   private wsClient: Lark.WSClient | null = null;
   private isConnected: boolean = false;
 
+  // Track last active chat for proactive messaging
+  private _lastActiveChatId: string | null = null;
+  private _lastActiveUserId: string | null = null;
+
   // Event handlers
   private messageHandlers: MessageHandler[] = [];
   private messageReadHandlers: MessageReadHandler[] = [];
@@ -420,6 +424,20 @@ export class FeishuWSClient {
    */
   get connected(): boolean {
     return this.isConnected;
+  }
+
+  /**
+   * Get last active chat ID (for proactive messaging)
+   */
+  get lastActiveChatId(): string | null {
+    return this._lastActiveChatId;
+  }
+
+  /**
+   * Get last active user ID (for proactive messaging)
+   */
+  get lastActiveUserId(): string | null {
+    return this._lastActiveUserId;
   }
 
   /**
@@ -702,6 +720,14 @@ export class FeishuWSClient {
    * Handle incoming message
    */
   private async handleMessage(data: MessageEventData): Promise<void> {
+    // Track last active chat/user for proactive messaging
+    if (data.message?.chat_id) {
+      this._lastActiveChatId = data.message.chat_id;
+    }
+    if (data.sender?.sender_id?.union_id) {
+      this._lastActiveUserId = data.sender.sender_id.union_id;
+    }
+
     for (const handler of this.messageHandlers) {
       try {
         await handler(data);

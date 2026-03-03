@@ -210,8 +210,15 @@ async function main() {
                   ? `${context}\n\n${prompt}`
                   : prompt;
 
-                const chatId = job.params?.chatId as string;
-                const userId = job.params?.userId as string || 'feishu-user';
+                // 优先使用参数中的 chatId，否则使用最近活跃的 chatId
+                const client = getFeishuWSClient();
+                const chatId = (job.params?.chatId as string) || client?.lastActiveChatId;
+                const userId = (job.params?.userId as string) || client?.lastActiveUserId || 'feishu-user';
+
+                if (!chatId) {
+                  console.warn('[Daemon] No chatId available for proactive chat, skipping push');
+                  break;
+                }
 
                 const result = await sendProactiveMessage({
                   message: fullPrompt,
@@ -224,12 +231,9 @@ async function main() {
                   console.log(`[Daemon] LLM generated: ${result.response.substring(0, 100)}...`);
 
                   // 推送到飞书
-                  if (chatId) {
-                    const client = getFeishuWSClient();
-                    if (client) {
-                      await client.sendTextMessage(chatId, 'chat_id', result.response);
-                      console.log(`[Daemon] Message pushed to Feishu chat: ${chatId}`);
-                    }
+                  if (client) {
+                    await client.sendTextMessage(chatId, 'chat_id', result.response);
+                    console.log(`[Daemon] Message pushed to Feishu chat: ${chatId}`);
                   }
                 } else {
                   console.error('[Daemon] LLM proactive chat failed:', result.error);
