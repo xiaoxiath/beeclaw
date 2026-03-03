@@ -334,14 +334,23 @@ export class Scheduler {
   private calculateNextRun(cronExpr: string): Date | null {
     // Enhanced cron parser for common patterns
     // Format: minute hour day-of-month month day-of-week
-    // NOTE: Uses ASIA/SHANGHAI timezone (Beijing time, UTC+8)
-    // All cron expressions are interpreted in Beijing time
-    // Example: "0 8 * * *" means "run at 8:00 AM Beijing time every day"
+    // NOTE: Uses configured timezone (default: Asia/Shanghai)
+    // The timezone can be set in config.json under user.timezone
     const parts = cronExpr.trim().split(/\s+/);
     if (parts.length !== 5) return null;
 
-    // Use Asia/Shanghai timezone for all calculations
-    const TZ = 'Asia/Shanghai';
+    // Get timezone from config (fallback to Asia/Shanghai)
+    let TZ = 'Asia/Shanghai';
+    try {
+      const { getConfig } = require('../config');
+      const config = getConfig();
+      if (config?.user?.timezone) {
+        TZ = config.user.timezone;
+      }
+    } catch {
+      // Config not loaded, use default
+    }
+
     const now = new Date();
 
     // Get current time in Beijing timezone
@@ -408,8 +417,8 @@ export class Scheduler {
       return new Date(now.getTime() + 60 * 60 * 1000);
     }
 
-    // Helper to get Beijing time components from a Date
-    const getBeijingComponents = (date: Date) => {
+    // Helper to get time components in configured timezone from a Date
+    const getTzComponents = (date: Date) => {
       const parts = beijingFormatter.formatToParts(date);
       const get = (type: string) => {
         const part = parts.find(p => p.type === type);
@@ -424,22 +433,38 @@ export class Scheduler {
       };
     };
 
-    // Helper to create a Date from Beijing time components
-    const createFromBeijingTime = (year: number, month: number, day: number, hour: number, minute: number): Date => {
-      // Create a date string in Beijing timezone format
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+08:00`;
+    // Helper to get timezone offset for a specific date in the configured timezone
+    const getTzOffset = (year: number, month: number, day: number): number => {
+      // Create a reference date and get the offset
+      const testDate = new Date(Date.UTC(year, month - 1, day));
+      const utcDate = new Date(testDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+      const tzDate = new Date(testDate.toLocaleString('en-US', { timeZone: TZ }));
+      return (tzDate.getTime() - utcDate.getTime()) / (1000 * 60);
+    };
+
+    // Helper to create a Date from timezone-specific components
+    const createFromTzTime = (year: number, month: number, day: number, hour: number, minute: number): Date => {
+      // Get the timezone offset for this specific date
+      const offsetMinutes = getTzOffset(year, month, day);
+      const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+      const offsetMins = Math.abs(offsetMinutes) % 60;
+      const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+
+      // Create ISO string with timezone offset
+      const offsetStr = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMins).padStart(2, '0')}`;
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00${offsetStr}`;
       return new Date(dateStr);
     };
 
-    // Get current Beijing time
-    const currentBeijing = getBeijingComponents(now);
+    // Get current time in configured timezone
+    const currentTz = getTzComponents(now);
 
     // Start searching from the next minute
-    let searchYear = currentBeijing.year;
-    let searchMonth = currentBeijing.month;
-    let searchDay = currentBeijing.day;
-    let searchHour = currentBeijing.hour;
-    let searchMinute = currentBeijing.minute;
+    let searchYear = currentTz.year;
+    let searchMonth = currentTz.month;
+    let searchDay = currentTz.day;
+    let searchHour = currentTz.hour;
+    let searchMinute = currentTz.minute;
 
     // Increment by one minute to start search
     searchMinute++;
@@ -476,7 +501,7 @@ export class Scheduler {
         daysOfWeek.includes(dow)
       ) {
         // Found a match! Create the Date object
-        return createFromBeijingTime(searchYear, searchMonth, searchDay, searchHour, searchMinute);
+        return createFromTzTime(searchYear, searchMonth, searchDay, searchHour, searchMinute);
       }
 
       // Increment by one minute
