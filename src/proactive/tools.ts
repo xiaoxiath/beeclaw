@@ -13,13 +13,13 @@ import { getNotificationsLazy } from '../store';
 export const proactiveTools = {
   proactive_schedule: {
     name: 'proactive_schedule',
-    description: 'Create a scheduled task that runs automatically. Use this for recurring reminders, goal progress checks. IMPORTANT: Cron expressions use the configured timezone (default: Asia/Shanghai). Check user.timezone in config for the current setting.',
+    description: 'Create a scheduled task that runs automatically. Use this for recurring reminders, goal progress checks. IMPORTANT: (1) Cron expressions use the configured timezone (check user.timezone in config). (2) Reserved names that should NOT be used: "Daily Memory Compression", "Daily Self-Evolution" - these are auto-created by the system.',
     parameters: {
       type: 'object' as const,
       properties: {
         name: {
           type: 'string',
-          description: 'Name for this schedule',
+          description: 'Name for this schedule. DO NOT use reserved names: "Daily Memory Compression", "Daily Self-Evolution"',
         },
         description: {
           type: 'string',

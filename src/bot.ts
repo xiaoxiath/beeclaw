@@ -178,8 +178,30 @@ async function main() {
 
             case 'custom':
               console.log('[Daemon] Running custom task...');
-              console.log('[Daemon] Use beeclaw-self-evolution skill to review lessons.md and update SOUL.md');
+              console.log('[Daemon] Custom task params:', job.params);
               break;
+
+            case 'self_evolution': {
+              console.log('[Daemon] Self-evolution triggered...');
+              try {
+                // Run the beeclaw-self-evolution skill
+                const { getSkillStore } = await import('./skills/store');
+                const skillStore = getSkillStore();
+                const skill = await skillStore.get('beeclaw-self-evolution');
+
+                if (skill) {
+                  console.log('[Daemon] Running beeclaw-self-evolution skill...');
+                  // The skill content contains instructions for self-reflection
+                  // For now, log the action - actual execution would require agent integration
+                  console.log('[Daemon] Self-evolution: Review facts/lessons.md and update SOUL.md if needed');
+                } else {
+                  console.log('[Daemon] beeclaw-self-evolution skill not found');
+                }
+              } catch (error) {
+                console.error('[Daemon] Self-evolution failed:', error);
+              }
+              break;
+            }
 
             case 'llm_proactive_chat': {
               console.log('[Daemon] LLM proactive chat triggered...');
