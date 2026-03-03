@@ -18,14 +18,6 @@ import {
   getFinanceOrchestrator,
 } from '../finance';
 import {
-  createSearchTask,
-  createSkillTask,
-  createReminderTask,
-  getTaskStatus,
-  cancelTask,
-  getQueueStatistics,
-} from '../queue';
-import {
   spawnSubagentTool,
   spawnParallelTool,
 } from '../subagent/tools';
@@ -1171,234 +1163,6 @@ export async function executeClaudeCode(params: Record<string, unknown>): Promis
 // ============================================================================
 
 // ============================================================================
-// Task Management Tools
-// ============================================================================
-
-export const TaskCreateSchema = z.object({
-  type: z.enum(['search', 'skill', 'reminder']).describe('Task type'),
-  action: z.string().describe('Action to perform'),
-  params: z.record(z.unknown()).describe('Task parameters'),
-  schedule: z.object({
-    delay: z.number().optional().describe('Delay in milliseconds'),
-    cron: z.string().optional().describe('Cron expression for recurring tasks'),
-  }).optional(),
-});
-
-export const taskCreateTool = {
-  name: 'task_create',
-  description: 'Create a background task. Use this for long-running operations like searches, skill executions, or scheduled reminders. Returns a job ID for tracking.',
-  parameters: {
-    type: 'object' as const,
-    properties: {
-      type: {
-        type: 'string',
-        enum: ['search', 'skill', 'reminder'],
-        description: 'Type of task to create',
-      },
-      action: {
-        type: 'string',
-        description: 'Specific action to perform',
-      },
-      params: {
-        type: 'object',
-        description: 'Parameters for the task',
-      },
-      schedule: {
-        type: 'object',
-        properties: {
-          delay: { type: 'number', description: 'Delay in ms' },
-          cron: { type: 'string', description: 'Cron expression' },
-        },
-      },
-    },
-    required: ['type', 'action', 'params'],
-  },
-};
-
-export async function executeTaskCreate(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const parsed = TaskCreateSchema.safeParse(params);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.message };
-  }
-
-  const { type, action, params: taskParams, schedule } = parsed.data;
-
-  try {
-    let result;
-
-    switch (type) {
-      case 'search':
-        result = await createSearchTask(
-          (taskParams.query as string) || action,
-          {
-            numResults: taskParams.numResults as number | undefined,
-            region: taskParams.region as string | undefined,
-            timeRange: taskParams.timeRange as string | undefined,
-          }
-        );
-        break;
-
-      case 'skill':
-        result = await createSkillTask(
-          action,
-          (taskParams.skillAction as string) || 'execute',
-          taskParams as Record<string, unknown>,
-        );
-        break;
-
-      case 'reminder':
-        result = await createReminderTask(
-          (taskParams.userId as string) || 'default',
-          (taskParams.message as string) || action,
-          schedule,
-        );
-        break;
-
-      default:
-        return { success: false, error: `Unknown task type: ${type}` };
-    }
-
-    return {
-      success: true,
-      data: `Task created successfully. Job ID: ${result.jobId}`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
-  }
-}
-
-export const TaskStatusSchema = z.object({
-  job_id: z.string().describe('Job ID to check'),
-});
-
-export const taskStatusTool = {
-  name: 'task_status',
-  description: 'Check the status of a background task by its job ID.',
-  parameters: {
-    type: 'object' as const,
-    properties: {
-      job_id: {
-        type: 'string',
-        description: 'The job ID returned by task_create',
-      },
-    },
-    required: ['job_id'],
-  },
-};
-
-export async function executeTaskStatus(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const parsed = TaskStatusSchema.safeParse(params);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.message };
-  }
-
-  const { job_id } = parsed.data;
-
-  try {
-    const status = await getTaskStatus(job_id);
-
-    if (!status) {
-      return { success: false, error: `Job not found: ${job_id}` };
-    }
-
-    const progress = status.progress ? ` (${status.progress}%)` : '';
-    const result = status.result ? `\nResult: ${JSON.stringify(status.result).slice(0, 500)}` : '';
-    const error = status.error ? `\nError: ${status.error}` : '';
-
-    return {
-      success: true,
-      data: `Job ${job_id}\nStatus: ${status.state}${progress}\nQueue: ${status.queue}${result}${error}`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to get task status: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
-  }
-}
-
-export const TaskListSchema = z.object({});
-
-export const taskListTool = {
-  name: 'task_list',
-  description: 'List all queue statistics and recent tasks.',
-  parameters: {
-    type: 'object' as const,
-    properties: {},
-  },
-};
-
-export async function executeTaskList(_params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  try {
-    const stats = await getQueueStatistics();
-
-    const lines = ['## Queue Statistics', ''];
-
-    for (const [queue, stat] of Object.entries(stats)) {
-      lines.push(`### ${queue}`);
-      lines.push(`- Waiting: ${stat.waiting}`);
-      lines.push(`- Active: ${stat.active}`);
-      lines.push(`- Completed: ${stat.completed}`);
-      lines.push(`- Failed: ${stat.failed}`);
-      lines.push('');
-    }
-
-    return { success: true, data: lines.join('\n') };
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to list tasks: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
-  }
-}
-
-export const TaskCancelSchema = z.object({
-  job_id: z.string().describe('Job ID to cancel'),
-});
-
-export const taskCancelTool = {
-  name: 'task_cancel',
-  description: 'Cancel a pending or running task.',
-  parameters: {
-    type: 'object' as const,
-    properties: {
-      job_id: {
-        type: 'string',
-        description: 'The job ID to cancel',
-      },
-    },
-    required: ['job_id'],
-  },
-};
-
-export async function executeTaskCancel(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const parsed = TaskCancelSchema.safeParse(params);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.message };
-  }
-
-  const { job_id } = parsed.data;
-
-  try {
-    const success = await cancelTask(job_id);
-
-    if (success) {
-      return { success: true, data: `Task ${job_id} cancelled successfully` };
-    } else {
-      return { success: false, error: `Failed to cancel task ${job_id} (not found or already completed)` };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to cancel task: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
-  }
-}
-
-// ============================================================================
 // Deep Research Tool
 // ============================================================================
 
@@ -2432,10 +2196,6 @@ export const builtinTools = {
   url_shorten: urlShortenTool,
   qrcode: qrCodeTool,
   claude_code: claudeCodeTool,
-  task_create: taskCreateTool,
-  task_status: taskStatusTool,
-  task_list: taskListTool,
-  task_cancel: taskCancelTool,
   deep_research: deepResearchTool,
   file_read: fileReadTool,
   file_write: fileWriteTool,
@@ -2496,14 +2256,6 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeQrCode(params);
     case 'claude_code':
       return executeClaudeCode(params);
-    case 'task_create':
-      return executeTaskCreate(params);
-    case 'task_status':
-      return executeTaskStatus(params);
-    case 'task_list':
-      return executeTaskList(params);
-    case 'task_cancel':
-      return executeTaskCancel(params);
     case 'deep_research':
       return executeDeepResearch(params);
     case 'file_read':
