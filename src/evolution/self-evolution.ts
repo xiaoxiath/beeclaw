@@ -8,20 +8,6 @@
 import { getScheduler } from '../proactive';
 import { join } from 'path';
 
-// Self-evolution schedule configuration
-const SELF_EVOLUTION_CONFIG = {
-  id: 'self-evolution-daily',
-  name: 'Daily Self-Evolution',
-  description: 'Review lessons and update SOUL.md principles',
-  cron: '0 4 * * *', // 4:00 AM daily (after memory compression at 3 AM)
-  enabled: true,
-  taskType: 'self_evolution',
-  taskParams: {
-    skill: 'beeclaw-self-evolution',
-    action: 'Review facts/lessons.md and update SOUL.md if new principles emerge',
-  },
-};
-
 /**
  * Initialize self-evolution schedule
  * Called during bot startup with --daemon flag
@@ -39,12 +25,15 @@ export function initSelfEvolution(basePath: string): void {
   if (!hasSelfEvolution) {
     console.log('   Creating daily self-evolution schedule...');
     scheduler.createSchedule({
-      name: SELF_EVOLUTION_CONFIG.name,
-      description: SELF_EVOLUTION_CONFIG.description,
-      cron: SELF_EVOLUTION_CONFIG.cron,
-      enabled: SELF_EVOLUTION_CONFIG.enabled,
-      taskType: SELF_EVOLUTION_CONFIG.taskType,
-      taskParams: SELF_EVOLUTION_CONFIG.taskParams,
+      name: 'Daily Self-Evolution',
+      description: 'Review lessons and update SOUL.md principles',
+      cron: '0 4 * * *', // 4:00 AM daily (after memory compression at 3 AM)
+      taskType: 'self_evolution',
+      taskParams: {
+        skill: 'beeclaw-self-evolution',
+        action: 'Review facts/lessons.md and update SOUL.md if new principles emerge',
+      },
+      enabled: true,
     });
     console.log('   ✓ Self-evolution scheduled at 4:00 AM daily');
   } else {
