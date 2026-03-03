@@ -334,19 +334,27 @@ export class Scheduler {
   private calculateNextRun(cronExpr: string): Date | null {
     // Enhanced cron parser for common patterns
     // Format: minute hour day-of-month month day-of-week
-    // NOTE: Uses LOCAL timezone (not UTC) for user-friendly scheduling
-    // All cron expressions are interpreted in the system's local timezone
-    // Example: "14 0 * * *" means "run at 00:14 local time every day"
+    // NOTE: Uses ASIA/SHANGHAI timezone (Beijing time, UTC+8)
+    // All cron expressions are interpreted in Beijing time
+    // Example: "0 8 * * *" means "run at 8:00 AM Beijing time every day"
     const parts = cronExpr.trim().split(/\s+/);
     if (parts.length !== 5) return null;
 
+    // Use Asia/Shanghai timezone for all calculations
+    const TZ = 'Asia/Shanghai';
     const now = new Date();
-    const next = new Date(now);
 
-    // Parse each part
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+    // Get current time in Beijing timezone
+    const beijingFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
 
-    // Helper to parse field (handles *, numbers, */n, and n,m,o lists)
     const parseField = (field: string, min: number, max: number): number[] | null => {
       if (field === '*') {
         return Array.from({ length: max - min + 1 }, (_, i) => min + i);
@@ -386,6 +394,9 @@ export class Scheduler {
       return [num];
     };
 
+    // Parse each part
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
     const minutes = parseField(minute, 0, 59);
     const hours = parseField(hour, 0, 23);
     const daysOfMonth = parseField(dayOfMonth, 1, 31);
@@ -394,31 +405,99 @@ export class Scheduler {
 
     if (!minutes || !hours || !daysOfMonth || !months || !daysOfWeek) {
       // Fallback for unsupported patterns: 1 hour from now
-      next.setHours(next.getHours() + 1);
-      return next;
+      return new Date(now.getTime() + 60 * 60 * 1000);
     }
 
-    // Find next matching time
-    // Start from current time and search forward (max 366 days)
-    next.setSeconds(0, 0);
-    const maxIterations = 366 * 24 * 60; // Max 1 year of minutes
-    for (let i = 0; i < maxIterations; i++) {
-      next.setMinutes(next.getMinutes() + 1);
+    // Helper to get Beijing time components from a Date
+    const getBeijingComponents = (date: Date) => {
+      const parts = beijingFormatter.formatToParts(date);
+      const get = (type: string) => {
+        const part = parts.find(p => p.type === type);
+        return part ? parseInt(part.value, 10) : 0;
+      };
+      return {
+        year: get('year'),
+        month: get('month'),
+        day: get('day'),
+        hour: get('hour'),
+        minute: get('minute'),
+      };
+    };
 
-      const m = next.getMinutes();
-      const h = next.getHours();
-      const dom = next.getDate();
-      const mon = next.getMonth() + 1;
-      const dow = next.getDay();
+    // Helper to create a Date from Beijing time components
+    const createFromBeijingTime = (year: number, month: number, day: number, hour: number, minute: number): Date => {
+      // Create a date string in Beijing timezone format
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+08:00`;
+      return new Date(dateStr);
+    };
+
+    // Get current Beijing time
+    const currentBeijing = getBeijingComponents(now);
+
+    // Start searching from the next minute
+    let searchYear = currentBeijing.year;
+    let searchMonth = currentBeijing.month;
+    let searchDay = currentBeijing.day;
+    let searchHour = currentBeijing.hour;
+    let searchMinute = currentBeijing.minute;
+
+    // Increment by one minute to start search
+    searchMinute++;
+    if (searchMinute >= 60) {
+      searchMinute = 0;
+      searchHour++;
+      if (searchHour >= 24) {
+        searchHour = 0;
+        searchDay++;
+        // Handle month overflow
+        const daysInMonth = new Date(searchYear, searchMonth, 0).getDate();
+        if (searchDay > daysInMonth) {
+          searchDay = 1;
+          searchMonth++;
+          if (searchMonth > 12) {
+            searchMonth = 1;
+            searchYear++;
+          }
+        }
+      }
+    }
+
+    // Find next matching time (max 366 days)
+    const maxIterations = 366 * 24 * 60;
+    for (let i = 0; i < maxIterations; i++) {
+      // Check if current search time matches cron expression
+      const dow = new Date(searchYear, searchMonth - 1, searchDay).getDay();
 
       if (
-        minutes.includes(m) &&
-        hours.includes(h) &&
-        daysOfMonth.includes(dom) &&
-        months.includes(mon) &&
+        minutes.includes(searchMinute) &&
+        hours.includes(searchHour) &&
+        daysOfMonth.includes(searchDay) &&
+        months.includes(searchMonth) &&
         daysOfWeek.includes(dow)
       ) {
-        return next;
+        // Found a match! Create the Date object
+        return createFromBeijingTime(searchYear, searchMonth, searchDay, searchHour, searchMinute);
+      }
+
+      // Increment by one minute
+      searchMinute++;
+      if (searchMinute >= 60) {
+        searchMinute = 0;
+        searchHour++;
+        if (searchHour >= 24) {
+          searchHour = 0;
+          searchDay++;
+          // Get days in current month
+          const daysInMonth = new Date(searchYear, searchMonth, 0).getDate();
+          if (searchDay > daysInMonth) {
+            searchDay = 1;
+            searchMonth++;
+            if (searchMonth > 12) {
+              searchMonth = 1;
+              searchYear++;
+            }
+          }
+        }
       }
     }
 

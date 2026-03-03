@@ -13,7 +13,7 @@ import { getNotificationsLazy } from '../store';
 export const proactiveTools = {
   proactive_schedule: {
     name: 'proactive_schedule',
-    description: 'Create a scheduled task that runs automatically. Use this for recurring reminders, goal progress checks, Note: Cron expressions use LOCAL timezone (e.g., "14 0 * * *" means "run at 00:14 local time every day").',
+    description: 'Create a scheduled task that runs automatically. Use this for recurring reminders, goal progress checks. IMPORTANT: Cron expressions use BEIJING TIME (Asia/Shanghai, UTC+8). Example: "0 8 * * *" means run at 8:00 AM Beijing time every day.',
     parameters: {
       type: 'object' as const,
       properties: {
@@ -27,7 +27,7 @@ export const proactiveTools = {
         },
         cron: {
           type: 'string',
-          description: 'Cron expression in LOCAL timezone (e.g., "0 9 * * *" for daily at 9am local time, "*/30 * * * *" for every 30 minutes. NOT UTC!)',
+          description: 'Cron expression in BEIJING TIME (Asia/Shanghai, UTC+8). Example: "0 9 * * *" for daily at 9:00 AM Beijing time, "*/30 * * * *" for every 30 minutes.',
         },
         taskType: {
           type: 'string',
