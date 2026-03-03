@@ -545,24 +545,33 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     }
 
     // Record messages
-    // Convert multimodal content to descriptive string for storage
+    // For multimodal (image) messages, fill back the recognition result into user message
+    // This preserves image context for future conversations
     let userContentString: string;
+    let assistantContentString: string;
+
     if (typeof options.message === 'string') {
       userContentString = options.message;
+      assistantContentString = response;
     } else if (Array.isArray(options.message)) {
-      // Extract text part from multimodal message for better context preservation
       const textPart = options.message.find(p => p.type === 'text');
       const hasImage = options.message.some(p => p.type === 'image_url');
-      if (hasImage && textPart && 'text' in textPart) {
-        // Save with text description so LLM can reference it later
-        userContentString = `[图片消息] ${textPart.text}`;
-      } else if (hasImage) {
-        userContentString = '[图片消息] (用户发送了一张图片)';
+      const userText = textPart && 'text' in textPart ? textPart.text : '';
+
+      if (hasImage) {
+        // For image messages, fill back recognition result to preserve image context
+        // Format: [图片] 用户文字描述 [识别结果]: LLM的图片识别内容
+        userContentString = `[图片] ${userText || '(图片)'}\n[识别结果]: ${response}`;
+        // Assistant response becomes a brief confirmation
+        assistantContentString = '我已经分析了这张图片，如有需要可以继续讨论。';
+        console.log('[Session] 📷 Image message saved with recognition result filled back');
       } else {
-        userContentString = textPart?.text || '[Multimodal message]';
+        userContentString = userText || '[Multimodal message]';
+        assistantContentString = response;
       }
     } else {
       userContentString = 'unknown';
+      assistantContentString = response;
     }
 
     session.messages.push({
@@ -572,7 +581,7 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     });
     session.messages.push({
       role: 'assistant',
-      content: response,
+      content: assistantContentString,
       timestamp: new Date().toISOString(),
     });
     session.updatedAt = new Date().toISOString();
