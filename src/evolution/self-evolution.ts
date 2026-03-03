@@ -15,12 +15,10 @@ const SELF_EVOLUTION_CONFIG = {
   description: 'Review lessons and update SOUL.md principles',
   cron: '0 4 * * *', // 4:00 AM daily (after memory compression at 3 AM)
   enabled: true,
-  task: {
-    type: 'self_evolution',
-    params: {
-      skill: 'beeclaw-self-evolution',
-      action: 'Review facts/lessons.md and update SOUL.md if new principles emerge',
-    },
+  taskType: 'self_evolution',
+  taskParams: {
+    skill: 'beeclaw-self-evolution',
+    action: 'Review facts/lessons.md and update SOUL.md if new principles emerge',
   },
 };
 
@@ -45,7 +43,8 @@ export function initSelfEvolution(basePath: string): void {
       description: SELF_EVOLUTION_CONFIG.description,
       cron: SELF_EVOLUTION_CONFIG.cron,
       enabled: SELF_EVOLUTION_CONFIG.enabled,
-      task: SELF_EVOLUTION_CONFIG.task,
+      taskType: SELF_EVOLUTION_CONFIG.taskType,
+      taskParams: SELF_EVOLUTION_CONFIG.taskParams,
     });
     console.log('   ✓ Self-evolution scheduled at 4:00 AM daily');
   } else {
