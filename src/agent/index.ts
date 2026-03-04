@@ -70,7 +70,29 @@ export function createDefaultToolExecutor(): ToolExecutor {
 
     // Skill tools
     if (name.startsWith('skill_')) {
-      return executeSkillTool(name, params);
+      const result = executeSkillTool(name, params);
+
+      // Handle skill_ensure requiring skill-creator workflow
+      if (name === 'skill_ensure' && result.success === false && result.error === 'NEW_SKILL_REQUIRES_CREATOR') {
+        // Return a clear instruction to use skill-creator instead
+        return {
+          success: false,
+          error: `Creating new skill "${result.data?.skillName}" requires skill-creator workflow.
+
+Please use skill_get to read the skill-creator skill first, then follow its workflow:
+  skill_get({ name: "skill-creator" })
+
+The skill-creator provides:
+- Proper skill structure (SKILL.md, scripts/, references/, evals/)
+- Test cases and evaluation
+- Iterative refinement
+- Quality benchmarking
+
+This ensures high-quality, well-tested skills.`,
+        };
+      }
+
+      return result;
     }
 
     // Goal tools

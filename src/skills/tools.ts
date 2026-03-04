@@ -139,19 +139,23 @@ Update an existing skill. NOTE: For substantial improvements, testing, or optimi
 
   skill_ensure: {
     name: 'skill_ensure',
-    description: `[RECOMMENDED] Create or update a skill automatically.
+    description: `[RECOMMENDED] Create or update a skill with full quality workflow.
 
 This is the preferred tool for saving skills. It intelligently:
-- Creates the skill if it doesn't exist
-- Updates the skill if it already exists
-- Handles all edge cases automatically
+- Creates the skill if it doesn't exist (using skill-creator for full workflow)
+- Updates the skill if it already exists (direct update)
 
-NOTE: For substantial skill work (testing, optimization, iteration), use the skill-creator skill (path: skills/skill-creator) instead. Use skill_ensure for quick create-or-update operations when you don't need the full workflow.
+**For creating new skills:**
+Automatically delegates to skill-creator to ensure:
+- Proper structure (SKILL.md, scripts/, references/, evals/)
+- Test cases and evaluation
+- Iterative refinement
+- Quality benchmarking
 
-Examples:
-- First time saving a pattern → creates new skill
-- Improving an existing skill → updates it
-- Unsure if skill exists → handles both cases`,
+**For updating existing skills:**
+Directly updates the skill content.
+
+Use this tool for all skill creation/updating. The skill-creator workflow ensures high-quality, well-tested skills.`,
     parameters: {
       type: 'object' as const,
       properties: {
@@ -448,7 +452,7 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
 
       const existing = store.get(parsed.data.name);
       if (existing) {
-        // Update existing skill
+        // Update existing skill - direct update is fine
         const result = store.update(parsed.data.name, {
           description: parsed.data.description,
           content: parsed.data.content,
@@ -463,22 +467,21 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
         }
         return result;
       } else {
-        // Create new skill
-        const result = store.create({
-          name: parsed.data.name,
-          description: parsed.data.description,
-          content: parsed.data.content,
-          tags: parsed.data.tags,
-          triggers: parsed.data.triggers,
-        });
-        if (result.success) {
-          return {
-            success: true,
-            data: { action: 'created', name: parsed.data.name },
-            message: `Skill "${parsed.data.name}" created successfully`,
-          };
-        }
-        return result;
+        // Creating new skill - must use skill-creator for quality workflow
+        // Return a special response to tell agent to use skill-creator
+        return {
+          success: false,
+          error: 'NEW_SKILL_REQUIRES_CREATOR',
+          message: `Creating new skill "${parsed.data.name}" requires skill-creator workflow for quality assurance.`,
+          data: {
+            needsSkillCreator: true,
+            skillName: parsed.data.name,
+            skillDescription: parsed.data.description,
+            skillContent: parsed.data.content,
+            skillTags: parsed.data.tags,
+            skillTriggers: parsed.data.triggers,
+          },
+        };
       }
     }
 
