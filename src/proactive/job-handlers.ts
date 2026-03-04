@@ -77,8 +77,8 @@ ${JSON.stringify(skillParams, null, 2)}
 
       // Push to Feishu if channel is feishu and we have chatId
       if (channel === 'feishu' && chatId && client) {
-        // Use rich text message for better formatting
-        await client.sendPostMessage(chatId, 'chat_id', result.response);
+        // Use markdown card for proper formatting
+        await client.sendMarkdownCard(chatId, 'chat_id', result.response);
         console.log(`[Daemon] 📤 Skill result pushed to Feishu chat: ${chatId}`);
       } else if (job.params?.push !== false) {
         // Fallback: push as notification if push is not explicitly disabled
@@ -154,9 +154,9 @@ export async function handleLlmProactiveChatJob(
 
       // 推送到飞书（需要 chatId）
       if (chatId && client) {
-        // Use rich text message for better formatting
-        await client.sendPostMessage(chatId, 'chat_id', result.response);
-        console.log(`[Daemon] Message pushed to Feishu chat: ${chatId}`);
+        // Use markdown card for proper formatting
+        await client.sendMarkdownCard(chatId, 'chat_id', result.response);
+        console.log(`[Daemon] 📤 Message pushed to Feishu chat: ${chatId}`);
       } else if (!chatId) {
         console.warn('[Daemon] No chatId available, message not pushed to Feishu');
       }
@@ -269,7 +269,14 @@ export async function handleSendReminderJob(
   if (job.params?.chatId && job.params?.message) {
     const client = options?.getFeishuClient?.();
     if (client) {
-      await client.sendTextMessage(job.params.chatId as string, 'chat_id', job.params.message as string);
+      // Use markdown card for proper formatting
+      await client.sendMarkdownCard(
+        job.params.chatId as string,
+        'chat_id',
+        job.params.message as string,
+        { title: '⏰ 提醒' }
+      );
+      console.log(`[Daemon] 📤 Reminder sent to chat: ${job.params.chatId}`);
     }
   }
 }
