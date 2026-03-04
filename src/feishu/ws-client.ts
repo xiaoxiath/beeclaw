@@ -943,6 +943,26 @@ export class FeishuWSClient {
   }
 
   /**
+   * Send markdown card message (Schema 2.0)
+   */
+  async sendMarkdownCard(
+    receiveId: string,
+    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
+    markdown: string,
+    options?: {
+      title?: string;
+      mentionTargets?: Array<{ openId: string; name?: string }>;
+    }
+  ): Promise<void> {
+    if (!this.client) {
+      throw new Error('[FeishuWS] Client not initialized');
+    }
+
+    const { sendMarkdownCard } = await import('./send');
+    await sendMarkdownCard(this.client, receiveId, receiveIdType, markdown, options);
+  }
+
+  /**
    * Reply to a message
    */
   async replyText(messageId: string, text: string): Promise<void> {
