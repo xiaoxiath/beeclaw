@@ -74,13 +74,34 @@ export function createDefaultToolExecutor(): ToolExecutor {
 
       // Handle skill_ensure requiring skill-creator workflow
       if (name === 'skill_ensure' && result.success === false && result.error === 'NEW_SKILL_REQUIRES_CREATOR') {
-        // Return a clear instruction to use skill-creator instead
+        // Get skill store base path
+        const { getSkillStore } = await import('../skills/store');
+        const store = getSkillStore();
+        const skillBasePath = store.getBasePath();
+
+        // Return a clear instruction to use skill-creator with path guidance
         return {
           success: false,
-          error: `Creating new skill "${result.data?.skillName}" requires skill-creator workflow.
+          error: `Creating new skill "${(result.data as any)?.skillName}" requires skill-creator workflow.
 
-Please use skill_get to read the skill-creator skill first, then follow its workflow:
-  skill_get({ name: "skill-creator" })
+**IMPORTANT: User skills must be created in the correct directory:**
+📁 Target directory: ${skillBasePath}
+
+Please follow these steps:
+
+1. **Read skill-creator skill:**
+   skill_get({ name: "skill-creator" })
+
+2. **Follow skill-creator workflow to design the skill**
+
+3. **Create the skill in the correct directory:**
+   - Use file_write or shell commands to create skill files
+   - Skill directory: ${skillBasePath}/${(result.data as any)?.skillName}/
+   - Required file: ${skillBasePath}/${(result.data as any)?.skillName}/SKILL.md
+   - Optional: scripts/, references/, evals/, assets/ subdirectories
+
+4. **Verify creation:**
+   skill_get({ name: "${(result.data as any)?.skillName}" })
 
 The skill-creator provides:
 - Proper skill structure (SKILL.md, scripts/, references/, evals/)
@@ -88,7 +109,11 @@ The skill-creator provides:
 - Iterative refinement
 - Quality benchmarking
 
-This ensures high-quality, well-tested skills.`,
+**Skill Location:**
+- User skills (AI-created): ${skillBasePath}/
+- Built-in skills (project): skills/ (DO NOT create here)
+
+This ensures skills are in the correct location and follow quality standards.`,
         };
       }
 
