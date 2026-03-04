@@ -46,7 +46,6 @@ module.exports = {
       combine_logs: true,
 
       // Advanced options
-      cron_restart: '0 4 * * *',  // Daily restart at 4 AM
       time: true,  // Timestamp logs
     },
 
