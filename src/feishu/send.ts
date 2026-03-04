@@ -88,6 +88,50 @@ export async function sendPostMessage(
 }
 
 /**
+ * Send markdown message to Feishu (using md tag for proper rendering)
+ */
+export async function sendMarkdownMessage(
+  client: Client,
+  receiveId: string,
+  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id',
+  markdown: string,
+  options?: {
+    title?: string;
+  }
+): Promise<{ messageId: string }> {
+  try {
+    // Use the 'md' tag for proper markdown rendering
+    const postContent = [[{ tag: 'md', text: markdown }]];
+
+    const response = await client.im.message.create({
+      params: {
+        receive_id_type: receiveIdType,
+      },
+      data: {
+        receive_id: receiveId,
+        msg_type: 'post',
+        content: JSON.stringify({
+          zh_cn: {
+            title: options?.title || '',
+            content: postContent,
+          },
+        }),
+      },
+    });
+
+    if (response.code !== 0) {
+      throw new Error(`Failed to send markdown message: ${response.msg}`);
+    }
+
+    logger.info(`✅ Markdown message sent: ${response.data?.message_id}`);
+    return { messageId: response.data?.message_id || '' };
+  } catch (error) {
+    logger.error('Failed to send markdown message:', error);
+    throw error;
+  }
+}
+
+/**
  * Send interactive card message
  */
 export async function sendCardMessage(
@@ -269,16 +313,17 @@ export async function getMessage(
 // ============================================================
 
 /**
- * Build post content from text with mentions
+ * Build post content from markdown text
+ * Supports: headers, lists, bold, italic, code blocks
  */
 function buildPostContent(
-  text: string,
+  markdown: string,
   mentionTargets?: MentionTarget[]
 ): Array<Array<PostContentElement>> {
   const elements: Array<PostContentElement> = [];
 
+  // Add mentions at the beginning
   if (mentionTargets && mentionTargets.length > 0) {
-    // Add mentions at the beginning
     for (const target of mentionTargets) {
       elements.push({
         tag: 'at',
@@ -292,34 +337,127 @@ function buildPostContent(
   }
 
   // Convert markdown to post elements
-  const lines = text.split('\n');
-  for (const line of lines) {
-    // Simple markdown conversion (can be enhanced)
-    if (line.startsWith('**') && line.endsWith('**')) {
-      // Bold text
+  const lines = markdown.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Skip empty lines but preserve spacing
+    if (line.trim() === '') {
+      continue;
+    }
+
+    // Headers: # ## ### etc
+    if (line.startsWith('### ')) {
       elements.push({
         tag: 'text',
-        text: line.slice(2, -2),
+        text: line.substring(3),
         style: ['bold'],
       });
-    } else if (line.startsWith('`') && line.endsWith('`')) {
-      // Inline code
+    } else if (line.startsWith('## ')) {
       elements.push({
         tag: 'text',
-        text: line.slice(1, -1),
-        style: ['code'],
+        text: line.substring(2),
+        style: ['bold'],
       });
-    } else {
-      // Regular text
+    } else if (line.startsWith('# ')) {
+      elements.push({
+        tag: 'text',
+        text: line.substring(1),
+        style: ['bold'],
+      });
+    }
+    // Lists: - * 1.
+    else if (line.startsWith('- ') || line.startsWith('* ')) {
+      const text = line.substring(2).trim();
+      elements.push({
+        tag: 'text',
+        text: '• ' + text,
+      });
+    }
+    // Numbered lists: 1. 2. 3.
+    else if (/^\d+\.\s/.test(line)) {
+      const match = line.match(/^(\d+)\.\s(.+)/);
+      if (match) {
+        elements.push({
+          tag: 'text',
+          text: match[1] + '. ' + match[2],
+        });
+      }
+    }
+    // Blockquotes: >
+    else if (line.startsWith('> ')) {
+      elements.push({
+        tag: 'text',
+        text: line.substring(2),
+        style: ['italic'],
+      });
+    }
+    // Bold: **text**
+    else if (line.includes('**')) {
+      // Split by ** and process parts
+      const parts = line.split('**');
+      for (let j = 0; j < parts.length; j++) {
+        if (j % 2 === 1) {
+          // Odd parts are bold
+          elements.push({
+            tag: 'text',
+            text: parts[j],
+            style: ['bold'],
+          });
+        } else if (parts[j]) {
+          // Even parts are regular
+          elements.push({
+            tag: 'text',
+            text: parts[j],
+          });
+        }
+      }
+    }
+    // Inline code: `code`
+    else if (line.includes('`')) {
+      // Split by ` and process parts
+      const parts = line.split('`');
+      for (let j = 0; j < parts.length; j++) {
+        if (j % 2 === 1) {
+            // Odd parts are code
+            elements.push({
+              tag: 'text',
+              text: parts[j],
+              style: ['code'],
+            });
+          } else if (parts[j]) {
+            // Even parts are regular
+            elements.push({
+              tag: 'text',
+              text: parts[j],
+          });
+        }
+      }
+    }
+    // Links: [text](url)
+    else if (line.includes('](')) {
+      // Simple link conversion - just show as text for now
       elements.push({
         tag: 'text',
         text: line,
       });
     }
-    elements.push({
-      tag: 'text',
-      text: '\n',
-    });
+    // Regular text
+    else {
+      elements.push({
+        tag: 'text',
+        text: line,
+      });
+    }
+
+    // Add newline after each line (except last)
+    if (i < lines.length - 1) {
+      elements.push({
+        tag: 'text',
+        text: '\n',
+      });
+    }
   }
 
   return [elements];

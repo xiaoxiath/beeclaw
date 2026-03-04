@@ -93,6 +93,7 @@ export type {
 export {
   sendTextMessage,
   sendPostMessage,
+  sendMarkdownMessage,
   sendCardMessage,
   sendMarkdownCard,
   editMessage,
