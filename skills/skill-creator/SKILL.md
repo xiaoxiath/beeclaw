@@ -51,6 +51,38 @@ It's OK to briefly explain terms if you're in doubt, and feel free to clarify te
 
 ---
 
+## Skill Location
+
+**CRITICAL: User skills must be created in the correct directory!**
+
+When creating a new skill, you MUST create it in the user skills directory, NOT in the project's built-in skills directory:
+
+- **User skills (AI-created):** `data/memory/skills/<skill-name>/`
+  - This is where ALL user-created skills go
+  - This is where YOU should create skills
+  - Path is configurable via skill store base path
+
+- **Built-in skills (project):** `skills/<skill-name>/`
+  - Only for project-level built-in skills
+  - DO NOT create skills here unless explicitly told to
+  - These are part of the Beeclaw codebase
+
+**How to determine the correct path:**
+1. Use `skill_list()` to see existing skills and their paths
+2. Check if skill store provides base path information
+3. Default user skills path: `data/memory/skills/`
+
+**Example:**
+```
+Creating skill "my-workflow":
+✅ CORRECT: data/memory/skills/my-workflow/SKILL.md
+❌ WRONG: skills/my-workflow/SKILL.md (this is for built-in skills only)
+```
+
+When in doubt, create the skill in `data/memory/skills/` directory.
+
+---
+
 ## Creating a skill
 
 ### Capture Intent
