@@ -3,6 +3,8 @@ import { rmSync, existsSync, mkdirSync } from 'fs';
 import { handleProactiveJob } from '../handlers/proactive-handler';
 import { getGoalStore, resetGoalStore } from '../../goal/store';
 import { getNotificationManager, resetNotificationManager } from '../../proactive/notifications';
+import { setCliDeliveryHandler } from '../../proactive/pusher';
+import { initStores, resetStores } from '../../store';
 import type { ProactiveJobData } from '../../types';
 import type { Job } from 'bunqueue/client';
 
@@ -27,7 +29,12 @@ function createMockJob<T>(data: T): Job<T> {
 }
 
 describe('Proactive Handler', () => {
+  let deliveredMessages: Array<{ message: string; priority: string }> = [];
+
   beforeEach(() => {
+    // Reset stores first in case other tests initialized them
+    resetStores();
+
     // Clean up test directory
     if (existsSync(TEST_PROACTIVE_HANDLER_PATH)) {
       rmSync(TEST_PROACTIVE_HANDLER_PATH, { recursive: true });
@@ -35,6 +42,15 @@ describe('Proactive Handler', () => {
     mkdirSync(TEST_PROACTIVE_HANDLER_PATH, { recursive: true });
     resetGoalStore();
     resetNotificationManager();
+    deliveredMessages = [];
+
+    // Initialize stores with test path
+    initStores({ basePath: TEST_PROACTIVE_HANDLER_PATH });
+
+    // Set up CLI delivery handler to track deliveries
+    setCliDeliveryHandler((message: string, priority: any) => {
+      deliveredMessages.push({ message, priority });
+    });
   });
 
   afterEach(() => {
@@ -44,6 +60,7 @@ describe('Proactive Handler', () => {
     }
     resetGoalStore();
     resetNotificationManager();
+    resetStores();
   });
 
   describe('handleProactiveJob', () => {
@@ -130,6 +147,13 @@ describe('Proactive Handler', () => {
       expect(result).toBeDefined();
       expect((result as any).success).toBe(true);
       expect((result as any).result.message).toBe('Test reminder message');
+      expect((result as any).result.delivered).toBe(true);
+      expect((result as any).result.notificationId).toBeDefined();
+
+      // Verify the message was delivered via CLI handler
+      expect(deliveredMessages.length).toBe(1);
+      expect(deliveredMessages[0].message).toBe('Test reminder message');
+      expect(deliveredMessages[0].priority).toBe('high');
     });
 
     test('send_reminder throws without message', async () => {

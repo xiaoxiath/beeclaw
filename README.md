@@ -119,6 +119,10 @@ bun run pm2:start
 | [系统架构](./ARCHITECTURE.md) | 核心系统设计 |
 | [飞书集成](./docs/feishu-integration.md) | 飞书 Bot 配置 |
 | [配置指南](./docs/configuration.md) | 完整配置参考 |
+| [主动式能力指南](./docs/proactive-capabilities-guide.md) | 定时任务和主动消息 |
+| [定时执行技能](./docs/scheduled-skill-execution.md) | 如何定时执行技能 |
+| [任务处理架构](./docs/job-handler-refactoring.md) | 任务处理系统架构设计 |
+| [日志指南](./docs/logging-guide.md) | 增强的日志系统（工具调用、技能使用） |
 | [PM2 Daemon 快速参考](./docs/pm2-quick-reference.md) | PM2 管理定时任务（快速参考） |
 | [PM2 Daemon 详细指南](./docs/pm2-daemon-guide.md) | PM2 管理定时任务（详细版） |
 

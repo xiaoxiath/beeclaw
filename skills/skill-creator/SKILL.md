@@ -1,6 +1,15 @@
 ---
 name: skill-creator
-description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, update or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
+description: "Create new skills, modify and improve existing skills, and measure skill performance. **CRITICAL: Use this skill whenever:**
+- User mentions 'skill', '技能', 'ability', 'capability', 'workflow'
+- User wants to save/record/document a process or workflow
+- User shares documentation, API docs, or instructions for reuse
+- User wants to automate repetitive tasks or workflows
+- User asks to 'remember', 'save', 'record', 'document' any process
+- User provides step-by-step instructions that could be reused
+- User wants to create a reusable procedure
+
+**DO NOT manually create SKILL.md files.** Always use this skill to ensure proper structure with scripts/, references/, evals/ and automated workflow detection."
 ---
 
 # Skill Creator

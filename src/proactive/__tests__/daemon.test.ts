@@ -2,19 +2,35 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { rmSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { Daemon, getDaemon, resetDaemon } from '../daemon';
+import { setCliDeliveryHandler } from '../pusher';
+import { initStores, resetStores } from '../../store';
 
 const TEST_DAEMON_PATH = './test-daemon-data';
 
 describe('Daemon', () => {
   let daemon: Daemon;
+  let deliveredMessages: Array<{ message: string; priority: string }> = [];
 
   beforeEach(() => {
+    // Reset stores first in case other tests initialized them
+    resetStores();
+
     // Clean up test directory
     if (existsSync(TEST_DAEMON_PATH)) {
       rmSync(TEST_DAEMON_PATH, { recursive: true });
     }
     mkdirSync(TEST_DAEMON_PATH, { recursive: true });
     resetDaemon();
+
+    // Initialize stores with test path
+    initStores({ basePath: TEST_DAEMON_PATH });
+
+    // Set up CLI delivery handler to track deliveries
+    deliveredMessages = [];
+    setCliDeliveryHandler((message: string, priority: any) => {
+      deliveredMessages.push({ message, priority });
+    });
+
     daemon = new Daemon(TEST_DAEMON_PATH);
   });
 
@@ -30,6 +46,7 @@ describe('Daemon', () => {
       rmSync(TEST_DAEMON_PATH, { recursive: true });
     }
     resetDaemon();
+    resetStores();
   });
 
   describe('constructor', () => {
@@ -95,6 +112,34 @@ describe('Daemon', () => {
 
       // Job callback is set up correctly
       expect(daemon.getState().running).toBe(true);
+    });
+
+    test('pushes pending notifications during periodic check', async () => {
+      // Create a notification directly in the manager (not pushed yet)
+      const { getNotificationManager } = await import('../notifications');
+      const manager = getNotificationManager();
+      manager.create({
+        userId: 'cli-user',
+        message: 'Test pending notification',
+        priority: 'normal',
+        category: 'test',
+      });
+
+      // Reset delivery tracking
+      deliveredMessages = [];
+
+      // Start daemon with short interval
+      await daemon.start({
+        checkIntervalMs: 100, // Check every 100ms
+        heartbeatIntervalMs: 10000,
+      });
+
+      // Wait for at least one periodic check
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // The notification should have been pushed
+      expect(deliveredMessages.length).toBeGreaterThanOrEqual(1);
+      expect(deliveredMessages[0].message).toBe('Test pending notification');
     });
   });
 

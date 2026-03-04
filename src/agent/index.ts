@@ -39,6 +39,18 @@ import {
 import { hybridCompress, type CompressionResult } from './compressor';
 import { groupToolCalls, getGroupingStats, isParallelTool } from './tool-dependencies';
 
+/**
+ * Safely parse JSON with fallback
+ */
+function safeJsonParse<T>(jsonString: string, fallback: T): T {
+  try {
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.error('[Agent] Failed to parse JSON:', error, 'Input:', jsonString.substring(0, 100));
+    return fallback;
+  }
+}
+
 // Re-export from tools
 export { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext };
 export { getMemoryTools, getSkillTools, getToolsByCategory, TOOL_CATEGORIES } from './tools';
@@ -583,6 +595,17 @@ export class Agent {
       if (hasToolCalls(response)) {
         const toolCalls = extractToolCalls(response);
 
+        // Log LLM's tool call decisions
+        console.log(`\n${'='.repeat(80)}`);
+        console.log(`[Agent] LLM decided to call ${toolCalls.length} tool(s):`);
+        toolCalls.forEach((tc, idx) => {
+          const params = safeJsonParse(tc.function.arguments, {});
+          const paramsStr = JSON.stringify(params);
+          const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
+          console.log(`  ${idx + 1}. ${tc.function.name}(${paramsPreview})`);
+        });
+        console.log('='.repeat(80));
+
         // Special handling: if skill_get is among the calls, execute it first
         // and let LLM decide next steps after seeing the skill content
         const skillGetCall = toolCalls.find(tc => tc.function.name === 'skill_get');
@@ -590,7 +613,8 @@ export class Agent {
 
         if (skillGetCall && otherCalls.length > 0) {
           // Execute skill_get first, then let LLM decide
-          const params = JSON.parse(skillGetCall.function.arguments);
+          const params = safeJsonParse(skillGetCall.function.arguments, {});
+          console.log(`\n[Skill] 🎯 Getting skill: ${params.name}`);
           options?.onToolCall?.(skillGetCall.function.name, params);
 
           const result = await this.toolExecutor(skillGetCall.function.name, params);
@@ -600,6 +624,7 @@ export class Agent {
           const skillName = params.name as string;
           if (skillName) {
             this.usedSkillsInTurn.add(skillName);
+            console.log(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
           }
 
           // Replace the assistant message with one that only has skill_get
@@ -649,25 +674,47 @@ export class Agent {
         })));
 
         const stats = getGroupingStats(toolCalls.map(tc => ({ name: tc.function.name })));
-        if (toolCalls.length > 1) {
-          console.log(`[Agent] Tool execution: ${stats.totalCalls} calls, ${stats.parallelBatches} parallel batches, ${stats.sequentialBatches} sequential, max parallelism: ${stats.maxParallelism}`);
+        console.log(`\n[Tool Execution Plan]`);
+        console.log(`  Total calls: ${stats.totalCalls}`);
+        console.log(`  Parallel batches: ${stats.parallelBatches}`);
+        console.log(`  Sequential batches: ${stats.sequentialBatches}`);
+        console.log(`  Max parallelism: ${stats.maxParallelism}`);
+        if (batches.length > 0) {
+          batches.forEach((batch, idx) => {
+            const toolNames = batch.map(b => b.call.function.name).join(', ');
+            console.log(`  Batch ${idx + 1}: ${toolNames}`);
+          });
         }
 
         // Execute each batch
         for (const batch of batches) {
           const batchStartTime = Date.now();
 
+          console.log(`\n[Batch Execution] Starting batch with ${batch.length} tool(s)...`);
+
           // Execute batch in parallel
           const batchResults = await Promise.all(
             batch.map(async ({ call }) => {
-              const params = JSON.parse(call.function.arguments);
+              const params = safeJsonParse(call.function.arguments, {});
+
+              // Log individual tool execution
+              const paramsStr = JSON.stringify(params);
+              const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
+              console.log(`  [Executing] ${call.function.name}(${paramsPreview})`);
 
               // Notify callback
               options?.onToolCall?.(call.function.name, params);
 
               try {
                 // Execute tool
+                const toolStartTime = Date.now();
                 const result = await this.toolExecutor(call.function.name, params);
+                const toolElapsed = Date.now() - toolStartTime;
+
+                // Log result summary
+                const resultStr = JSON.stringify(result);
+                const resultPreview = resultStr.length > 150 ? resultStr.substring(0, 150) + '...' : resultStr;
+                console.log(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
 
                 // Notify callback of result
                 options?.onToolResult?.(call.function.name, result);
@@ -675,7 +722,7 @@ export class Agent {
                 return { call, result, error: null };
               } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                console.error(`[Agent] Tool ${call.function.name} failed:`, errorMsg);
+                console.error(`  [Failed] ${call.function.name}: ${errorMsg}`);
                 const errorResult = { success: false, error: errorMsg };
                 options?.onToolResult?.(call.function.name, errorResult);
                 return { call, result: errorResult, error: errorMsg };
@@ -685,7 +732,7 @@ export class Agent {
 
           // Process results
           for (const { call, result } of batchResults) {
-            const params = JSON.parse(call.function.arguments);
+            const params = safeJsonParse(call.function.arguments, {});
 
             // Track skill failures for reflection
             if (call.function.name === 'skill_record') {
@@ -705,7 +752,15 @@ export class Agent {
               const skillName = params.name as string;
               if (skillName) {
                 this.usedSkillsInTurn.add(skillName);
+                console.log(`[Skill] ✅ Using skill: ${skillName}`);
               }
+            }
+
+            // Track skill record calls
+            if (call.function.name === 'skill_record') {
+              const skillName = params.name as string;
+              const success = params.success as boolean;
+              console.log(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
             }
 
             // Add tool result to messages
@@ -722,10 +777,13 @@ export class Agent {
           }
 
           // Log batch completion
+          const elapsed = Date.now() - batchStartTime;
           if (batch.length > 1) {
-            const elapsed = Date.now() - batchStartTime;
             const toolNames = batch.map(b => b.call.function.name).join(', ');
-            console.log(`[Agent] Parallel batch completed in ${elapsed}ms: ${toolNames}`);
+            console.log(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
+            console.log(`  Tools: ${toolNames}`);
+          } else {
+            console.log(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
           }
         }
 
@@ -749,6 +807,16 @@ export class Agent {
         console.warn(`[Agent] Reached max iterations with no assistant message to fall back to`);
       }
     }
+
+    // Log conversation summary
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[Conversation Summary]`);
+    console.log(`  Iterations: ${iterations}`);
+    if (this.usedSkillsInTurn.size > 0) {
+      console.log(`  Skills used: ${Array.from(this.usedSkillsInTurn).join(', ')}`);
+    }
+    console.log(`  Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
+    console.log('='.repeat(80) + '\n');
 
     // Estimate completion tokens if API didn't provide them
     if (totalCompletionTokens === 0) {
@@ -858,7 +926,7 @@ export class Agent {
         const toolCalls = extractToolCalls(response);
 
         for (const call of toolCalls) {
-          const params = JSON.parse(call.function.arguments);
+          const params = safeJsonParse(call.function.arguments, {});
 
           yield { type: 'tool_call', name: call.function.name, params };
 

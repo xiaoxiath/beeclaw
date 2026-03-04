@@ -143,21 +143,51 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
   }
 
   try {
-    const notificationManager = getNotificationManager();
-    const notification = notificationManager.create({
-      userId,
+    // Import pusher for immediate delivery
+    const { pushNotification } = await import('../../proactive/pusher');
+
+    // Determine channels and metadata: use Feishu if available, otherwise CLI
+    let channels: ('cli' | 'feishu')[] = ['cli'];
+    let metadata: Record<string, unknown> = {};
+
+    try {
+      const { getFeishuWSClient } = await import('../../feishu');
+      const client = getFeishuWSClient();
+      if (client?.lastActiveChatId) {
+        channels = ['feishu'];
+        metadata.feishuChatId = client.lastActiveChatId;
+        console.log(`[Worker:proactive] Using Feishu channel, chatId: ${client.lastActiveChatId}`);
+      }
+    } catch {
+      // Feishu not available
+    }
+
+    // Create and push notification immediately
+    const result = await pushNotification({
       message,
       priority,
       category: 'reminder',
+      channels,
+      metadata,
     });
 
-    return {
-      notificationId: (notification.data as any)?.id,
-      message,
-      userId,
-    };
+    if (result.success) {
+      return {
+        notificationId: result.notificationId,
+        delivered: result.delivered,
+        message,
+        userId,
+        channels,
+        chatId: metadata.feishuChatId,
+      };
+    } else {
+      throw new Error(result.error || 'Failed to push notification');
+    }
   } catch (error) {
-    return { error: 'Notification manager not initialized' };
+    console.error('[Worker:proactive] send_reminder failed:', error);
+    return {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
@@ -189,10 +219,26 @@ async function handleCustomTask(params?: Record<string, unknown>): Promise<unkno
 
 async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise<unknown> {
   const prompt = (params?.prompt as string) || '发起一个简短的问候';
-  const chatId = params?.chatId as string;
   const userId = (params?.userId as string) || 'proactive-user';
 
+  // Try to get chatId from params, or fallback to last active chat
+  let chatId = params?.chatId as string | undefined;
+
+  if (!chatId) {
+    try {
+      const { getFeishuWSClient } = await import('../../feishu');
+      const client = getFeishuWSClient();
+      if (client?.lastActiveChatId) {
+        chatId = client.lastActiveChatId;
+        console.log(`[Worker:proactive] Using last active chatId: ${chatId}`);
+      }
+    } catch {
+      // Feishu client not available
+    }
+  }
+
   console.log(`[Worker:proactive] LLM proactive chat: ${prompt.substring(0, 50)}...`);
+  console.log(`[Worker:proactive] chatId: ${chatId || '(not available)'}, userId: ${userId}`);
 
   try {
     // Dynamic import to avoid circular dependency
@@ -214,15 +260,26 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
       // Memory store not initialized
     }
 
-    const fullPrompt = context ? `${context}\n\n${prompt}` : prompt;
+    const fullPrompt = context
+      ? `${context}\n\n${prompt}`
+      : prompt;
+
+    console.log(`[Worker:proactive] Calling LLM with prompt length: ${fullPrompt.length}`);
+
+    // Add system instruction to prevent recursive task creation
+    const systemHint = `\n\n---\n[系统指令] 这是一个定时任务的执行。请直接生成要推送的内容，不要调用任何工具（如 schedule_once、notification_send 等）。直接返回给用户的内容即可。`;
+
+    const finalPrompt = fullPrompt + systemHint;
 
     // Call LLM
     const result = await sendProactiveMessage({
-      message: fullPrompt,
+      message: finalPrompt,
       userId,
       channel: 'feishu',
       sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
     });
+
+    console.log(`[Worker:proactive] LLM result: success=${result.success}, response length=${result.response?.length || 0}`);
 
     if (result.success && result.response) {
       // Push to Feishu if chatId available
@@ -233,18 +290,25 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
           if (client) {
             await client.sendTextMessage(chatId, 'chat_id', result.response);
             console.log(`[Worker:proactive] Message pushed to Feishu chat: ${chatId}`);
+          } else {
+            console.error('[Worker:proactive] Feishu client not available');
           }
         } catch (pushError) {
           console.error('[Worker:proactive] Failed to push to Feishu:', pushError);
         }
+      } else {
+        console.warn('[Worker:proactive] No chatId provided, message not pushed to Feishu');
+        console.log(`[Worker:proactive] Generated response: ${result.response.substring(0, 100)}...`);
       }
 
       return {
         generated: true,
         pushed: !!chatId,
+        chatId: chatId,
         responseLength: result.response.length,
       };
     } else {
+      console.error('[Worker:proactive] LLM failed:', result.error);
       return {
         generated: false,
         error: result.error || 'LLM returned empty response',

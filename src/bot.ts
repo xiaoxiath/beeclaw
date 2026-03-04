@@ -12,11 +12,12 @@ import { join } from 'path';
 import { initApp, getAgent, getProvider, getModel, getTokenStatsConfig } from './app';
 import { initFeishuWSIntegration } from './routes/proactive';
 import { loadAllSessions } from './session';
-import { getDaemon, getScheduler, registerFeishuHandler } from './proactive';
+import { getDaemon, getScheduler, registerFeishuHandler, pushPendingNotifications, setCliDeliveryHandler } from './proactive';
 import { getFeishuWSClient } from './feishu';
 import { initSelfEvolution } from './evolution/self-evolution';
 import { fetchHolidayInfo } from './utils/holiday';
 import { fetchWeatherInfo } from './utils/weather';
+import { initTaskManager, initWorkers } from './queue';
 
 function showHelp(): void {
   console.log(`
@@ -111,9 +112,31 @@ async function main() {
     }
   });
 
+  // Register CLI handler as fallback (for notifications without specific channel)
+  setCliDeliveryHandler((message: string, priority: string) => {
+    const emoji = { low: '⚪', normal: '🟢', high: '🟠', urgent: '🔴' }[priority] || '🟢';
+    console.log(`\n${emoji} ${message}\n`);
+  });
+
   // Start daemon for proactive scheduling if enabled
   if (enableDaemon) {
     console.log('\n⏰ Starting proactive daemon...');
+
+    // Initialize queue system first
+    console.log('   Initializing task queue...');
+    await initTaskManager({
+      enabled: true,
+      mode: 'embedded',
+      storage: { path: join(config.memory.path, 'queue', 'beeclaw.db') },
+    });
+
+    // Initialize workers to process queue jobs
+    await initWorkers({
+      enabled: true,
+      mode: 'embedded',
+      storage: { path: join(config.memory.path, 'queue', 'beeclaw.db') },
+    });
+    console.log('   ✓ Task queue and workers initialized');
 
     const daemonPath = join(config.memory.path, 'daemon');
     const daemon = getDaemon(daemonPath);
@@ -148,151 +171,45 @@ async function main() {
         console.log(`[Daemon] Executing job: ${job.taskType}`);
 
         try {
+          // Import unified handlers
+          const {
+            handleRunSkillJob,
+            handleLlmProactiveChatJob,
+            handleSelfEvolutionJob,
+            handleMemoryCompressJob,
+            handleGoalProgressCheckJob,
+            handleCustomJob,
+            handleSendReminderJob,
+          } = await import('./proactive/job-handlers');
+
           switch (job.taskType) {
             case 'send_reminder':
-              if (job.params.chatId && job.params.message) {
-                const client = getFeishuWSClient();
-                if (client) {
-                  await client.sendTextMessage(job.params.chatId as string, 'chat_id', job.params.message as string);
-                }
-              }
+              await handleSendReminderJob(job, { getFeishuClient: getFeishuWSClient });
               break;
 
             case 'check_goal_progress':
-              console.log('[Daemon] Checking goal progress...');
+              await handleGoalProgressCheckJob();
               break;
 
             case 'memory_compress':
-              console.log('[Daemon] Running memory compression...');
-              try {
-                const { getCompressionEngine } = require('./memory/compression');
-                const { getMemoryStore } = require('./memory');
-                const store = getMemoryStore();
-                const engine = getCompressionEngine(store.getBasePath());
-                const result = await engine.compress();
-                console.log(`[Daemon] Compression complete: processed=${result.processed}, summarized=${result.summarized}, archived=${result.archived}`);
-              } catch (error) {
-                console.error('[Daemon] Memory compression failed:', error);
-              }
+              await handleMemoryCompressJob();
               break;
 
             case 'custom':
-              console.log('[Daemon] Running custom task...');
-              console.log('[Daemon] Custom task params:', job.params);
+              await handleCustomJob(job);
               break;
 
-            case 'self_evolution': {
-              console.log('[Daemon] Self-evolution triggered...');
-              try {
-                const { sendProactiveMessage } = await import('./session');
-                const { getMemoryStore } = await import('./memory');
-
-                // 获取当前记忆上下文
-                let context = '';
-                try {
-                  const memoryStore = getMemoryStore();
-                  const coreContext = memoryStore.getCoreContext();
-                  if (coreContext.facts) {
-                    context += `## 用户事实和经验教训\n${coreContext.facts}\n`;
-                  }
-                  if (coreContext.soul) {
-                    context += `## 当前 SOUL.md\n${coreContext.soul}\n`;
-                  }
-                } catch {
-                  // Memory store not initialized
-                }
-
-                // 构建自我进化提示
-                const evolutionPrompt = `你是一个自我进化系统。请执行以下任务：
-
-${context}
-
-## 任务
-1. 分析 facts/lessons.md 中的经验教训
-2. 检查是否有新的原则或模式值得加入 SOUL.md
-3. 如果有，更新 SOUL.md；如果没有，说明原因
-
-请使用 memory_read 读取 facts/lessons.md 和 SOUL.md，分析后使用 memory_write 更新 SOUL.md（如果需要）。`;
-
-                // 调用 LLM 执行自我进化
-                const result = await sendProactiveMessage({
-                  message: evolutionPrompt,
-                  userId: 'self-evolution',
-                  channel: 'cli',
-                  sessionId: 'self-evolution-session',
-                });
-
-                if (result.success && result.response) {
-                  console.log(`[Daemon] Self-evolution completed: ${result.response.substring(0, 200)}...`);
-                } else {
-                  console.error('[Daemon] Self-evolution failed:', result.error);
-                }
-              } catch (error) {
-                console.error('[Daemon] Self-evolution failed:', error);
-              }
+            case 'self_evolution':
+              await handleSelfEvolutionJob();
               break;
-            }
 
-            case 'llm_proactive_chat': {
-              console.log('[Daemon] LLM proactive chat triggered...');
-              try {
-                const { sendProactiveMessage } = await import('./session');
-                const { getMemoryStore } = await import('./memory');
-
-                // 获取用户上下文
-                let context = '';
-                try {
-                  const memoryStore = getMemoryStore();
-                  const coreContext = memoryStore.getCoreContext();
-                  if (coreContext.user) {
-                    context += `用户信息: ${coreContext.user}\n`;
-                  }
-                  if (coreContext.facts) {
-                    context += `用户事实: ${coreContext.facts}\n`;
-                  }
-                } catch {
-                  // Memory store not initialized
-                }
-
-                // 构建提示
-                const prompt = job.params?.prompt as string ||
-                  '现在是定时主动沟通时间。根据用户上下文，发起一个简短、有意义的问候或提醒。保持友好和个性化。';
-
-                const fullPrompt = context
-                  ? `${context}\n\n${prompt}`
-                  : prompt;
-
-                // 获取 chatId：优先参数，其次最近活跃的
-                const client = getFeishuWSClient();
-                const chatId = (job.params?.chatId as string) || client?.lastActiveChatId;
-                const userId = (job.params?.userId as string) || client?.lastActiveUserId || 'feishu-user';
-
-                // 调用 LLM 生成内容（无论是否有 chatId）
-                const result = await sendProactiveMessage({
-                  message: fullPrompt,
-                  userId,
-                  channel: 'feishu',
-                  sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
-                });
-
-                if (result.success && result.response) {
-                  console.log(`[Daemon] LLM generated: ${result.response.substring(0, 100)}...`);
-
-                  // 推送到飞书（需要 chatId）
-                  if (chatId && client) {
-                    await client.sendTextMessage(chatId, 'chat_id', result.response);
-                    console.log(`[Daemon] Message pushed to Feishu chat: ${chatId}`);
-                  } else if (!chatId) {
-                    console.warn('[Daemon] No chatId available, message not pushed (but LLM response generated)');
-                  }
-                } else {
-                  console.error('[Daemon] LLM proactive chat failed:', result.error);
-                }
-              } catch (error) {
-                console.error('[Daemon] LLM proactive chat error:', error);
-              }
+            case 'llm_proactive_chat':
+              await handleLlmProactiveChatJob(job, { getFeishuClient: getFeishuWSClient });
               break;
-            }
+
+            case 'run_skill':
+              await handleRunSkillJob(job, { getFeishuClient: getFeishuWSClient });
+              break;
 
             default:
               console.log(`[Daemon] Unknown task type: ${job.taskType}`);

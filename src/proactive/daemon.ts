@@ -230,95 +230,45 @@ export class Daemon {
   }
 
   private async executeDefaultJobHandler(job: ProactiveJobData): Promise<void> {
+    // Import unified handlers
+    const {
+      handleRunSkillJob,
+      handleLlmProactiveChatJob,
+      handleSelfEvolutionJob,
+      handleMemoryCompressJob,
+      handleGoalProgressCheckJob,
+      handleCustomJob,
+      handleSendReminderJob,
+    } = await import('./job-handlers');
+
     switch (job.taskType) {
-      case 'llm_proactive_chat': {
-        // LLM 主动沟通：调用 LLM 生成内容并推送
-        const { sendProactiveMessage } = await import('../session');
-        const { getMemoryStore } = await import('../memory');
-
-        // 获取用户上下文
-        let context = '';
-        try {
-          const memoryStore = getMemoryStore();
-          const coreContext = memoryStore.getCoreContext();
-          if (coreContext.user) {
-            context += `用户信息: ${coreContext.user}\n`;
-          }
-          if (coreContext.facts) {
-            context += `用户事实: ${coreContext.facts}\n`;
-          }
-        } catch {
-          // Memory store not initialized
-        }
-
-        // 构建 LLM 提示
-        const prompt = job.params?.prompt as string ||
-          '现在是定时主动沟通时间。根据用户上下文，发起一个简短、有意义的问候或提醒。保持友好和个性化。';
-
-        const fullPrompt = context
-          ? `${context}\n\n${prompt}`
-          : prompt;
-
-        // 调用 LLM 生成内容
-        const result = await sendProactiveMessage({
-          message: fullPrompt,
-          userId: job.params?.userId as string || 'cli-user',
-          channel: (job.params?.channel as 'cli' | 'feishu' | 'webhook') || 'cli',
-          sessionId: job.params?.sessionId as string,
-        });
-
-        if (result.success && result.response) {
-          console.log(`[Daemon] LLM proactive message sent: ${result.response.substring(0, 100)}...`);
-
-          // 如果配置了推送，也推送到对应渠道
-          if (job.params?.push !== false) {
-            const { pushNotification } = await import('./pusher');
-            await pushNotification({
-              message: result.response,
-              priority: 'normal',
-              category: 'proactive-chat',
-            });
-          }
-        } else {
-          console.error('[Daemon] LLM proactive message failed:', result.error);
-        }
+      case 'llm_proactive_chat':
+        await handleLlmProactiveChatJob(job);
         break;
-      }
 
-      case 'check_goal_progress': {
-        const goalStore = getGoalStore();
-        const goals = goalStore.list({ state: 'active' });
-
-        for (const goal of goals) {
-          if (goal.progress < 100) {
-            const notificationManager = getNotificationManager(this.basePath + '/../proactive');
-            notificationManager.create({
-              userId: 'cli-user',
-              message: `Goal "${goal.title}" progress: ${goal.progress}%`,
-              priority: 'normal',
-              category: 'goal-progress',
-            });
-          }
-        }
+      case 'check_goal_progress':
+        await handleGoalProgressCheckJob();
         break;
-      }
 
-      case 'send_reminder': {
-        const notificationManager = getNotificationManager(this.basePath + '/../proactive');
-        notificationManager.create({
-          userId: job.params?.userId as string || 'cli-user',
-          message: job.params?.message as string || 'Reminder',
-          priority: job.params?.priority as any || 'normal',
-          category: 'reminder',
-        });
+      case 'run_skill':
+        await handleRunSkillJob(job);
         break;
-      }
 
-      case 'memory_compress': {
-        // This will be implemented in Phase 3
-        console.log('[Daemon] Memory compression not yet implemented');
+      case 'send_reminder':
+        await handleSendReminderJob(job);
         break;
-      }
+
+      case 'memory_compress':
+        await handleMemoryCompressJob();
+        break;
+
+      case 'self_evolution':
+        await handleSelfEvolutionJob();
+        break;
+
+      case 'custom':
+        await handleCustomJob(job);
+        break;
 
       default:
         console.log(`[Daemon] Unknown task type: ${job.taskType}`);
@@ -333,6 +283,17 @@ export class Daemon {
 
       for (const schedule of dueSchedules) {
         await this.executeSchedule(schedule, onJob);
+      }
+
+      // Push pending notifications
+      try {
+        const { pushPendingNotifications } = await import('./pusher');
+        const { pushed, failed } = await pushPendingNotifications();
+        if (pushed > 0 || failed > 0) {
+          console.log(`[Daemon] Pushed ${pushed} notifications, failed ${failed}`);
+        }
+      } catch (error) {
+        console.error('[Daemon] Failed to push pending notifications:', error);
       }
 
       // Clean up expired notifications

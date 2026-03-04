@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import {
   proactiveTools,
   executeProactiveTool,
@@ -6,11 +6,14 @@ import {
   PROACTIVE_TOOL_NAMES,
 } from '../tools';
 import { initStores, resetStores } from '../../store';
+import { setCliDeliveryHandler } from '../pusher';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 
 const TEST_DATA_PATH = './test-proactive-data';
 
 describe('Proactive Tools', () => {
+  let deliveredMessages: Array<{ message: string; priority: string }> = [];
+
   beforeAll(() => {
     // Reset stores first in case other tests initialized them
     resetStores();
@@ -23,6 +26,16 @@ describe('Proactive Tools', () => {
 
     // Initialize stores with test path
     initStores({ basePath: TEST_DATA_PATH });
+  });
+
+  beforeEach(() => {
+    // Reset delivery tracking before each test
+    deliveredMessages = [];
+
+    // Set up CLI delivery handler to track deliveries
+    setCliDeliveryHandler((message: string, priority: any) => {
+      deliveredMessages.push({ message, priority });
+    });
   });
 
   afterAll(() => {
@@ -95,7 +108,7 @@ describe('Proactive Tools', () => {
     });
 
     test('has correct number of tools', () => {
-      expect(PROACTIVE_TOOL_NAMES.length).toBe(8);
+      expect(PROACTIVE_TOOL_NAMES.length).toBe(13);
     });
   });
 
@@ -103,7 +116,7 @@ describe('Proactive Tools', () => {
     test('returns array of tools', () => {
       const tools = getProactiveToolsForAI();
       expect(Array.isArray(tools)).toBe(true);
-      expect(tools.length).toBe(8);
+      expect(tools.length).toBe(13);
     });
 
     test('returns tools with name, description and parameters', () => {
@@ -119,117 +132,129 @@ describe('Proactive Tools', () => {
 
   describe('executeProactiveTool', () => {
     describe('proactive_list', () => {
-      test('lists all items by default', () => {
-        const result = executeProactiveTool('proactive_list', {});
+      test('lists all items by default', async () => {
+        const result = await executeProactiveTool('proactive_list', {});
         expect(result.success).toBe(true);
         expect(result.data).toBeDefined();
       });
 
-      test('filters by type schedules', () => {
-        const result = executeProactiveTool('proactive_list', { type: 'schedules' });
+      test('filters by type schedules', async () => {
+        const result = await executeProactiveTool('proactive_list', { type: 'schedules' });
         expect(result.success).toBe(true);
       });
 
-      test('filters by type patterns', () => {
-        const result = executeProactiveTool('proactive_list', { type: 'patterns' });
+      test('filters by type patterns', async () => {
+        const result = await executeProactiveTool('proactive_list', { type: 'patterns' });
         expect(result.success).toBe(true);
       });
     });
 
     describe('proactive_cancel', () => {
-      test('returns error for non-existent schedule', () => {
-        const result = executeProactiveTool('proactive_cancel', {
+      test('returns error for non-existent schedule', async () => {
+        const result = await executeProactiveTool('proactive_cancel', {
           id: 'non-existent-id',
           type: 'schedule',
         });
         expect(result.success).toBe(false);
       });
 
-      test('returns error for non-existent pattern', () => {
-        const result = executeProactiveTool('proactive_cancel', {
+      test('returns error for non-existent pattern', async () => {
+        const result = await executeProactiveTool('proactive_cancel', {
           id: 'non-existent-id',
           type: 'pattern',
         });
         expect(result.success).toBe(false);
       });
 
-      test('requires id parameter', () => {
-        const result = executeProactiveTool('proactive_cancel', { type: 'schedule' });
+      test('requires id parameter', async () => {
+        const result = await executeProactiveTool('proactive_cancel', { type: 'schedule' });
         expect(result.success).toBe(false);
       });
 
-      test('requires type parameter', () => {
-        const result = executeProactiveTool('proactive_cancel', { id: 'test-id' });
+      test('requires type parameter', async () => {
+        const result = await executeProactiveTool('proactive_cancel', { id: 'test-id' });
         expect(result.success).toBe(false);
       });
     });
 
     describe('proactive_enable', () => {
-      test('returns error for non-existent schedule', () => {
-        const result = executeProactiveTool('proactive_enable', {
+      test('returns error for non-existent schedule', async () => {
+        const result = await executeProactiveTool('proactive_enable', {
           id: 'non-existent-id',
         });
         expect(result.success).toBe(false);
       });
 
-      test('requires id parameter', () => {
-        const result = executeProactiveTool('proactive_enable', {});
+      test('requires id parameter', async () => {
+        const result = await executeProactiveTool('proactive_enable', {});
         expect(result.success).toBe(false);
       });
     });
 
     describe('proactive_disable', () => {
-      test('returns error for non-existent schedule', () => {
-        const result = executeProactiveTool('proactive_disable', {
+      test('returns error for non-existent schedule', async () => {
+        const result = await executeProactiveTool('proactive_disable', {
           id: 'non-existent-id',
         });
         expect(result.success).toBe(false);
       });
 
-      test('requires id parameter', () => {
-        const result = executeProactiveTool('proactive_disable', {});
+      test('requires id parameter', async () => {
+        const result = await executeProactiveTool('proactive_disable', {});
         expect(result.success).toBe(false);
       });
     });
 
     describe('notification_send', () => {
-      test('sends notification with message', () => {
-        const result = executeProactiveTool('notification_send', {
+      test('sends notification with message', async () => {
+        const result = await executeProactiveTool('notification_send', {
           message: 'Test notification',
         });
         expect(result.success).toBe(true);
+        expect(result.delivered).toBe(true);
+        expect(result.notificationId).toBeDefined();
+
+        // Verify the message was delivered via CLI handler
+        expect(deliveredMessages.length).toBe(1);
+        expect(deliveredMessages[0].message).toBe('Test notification');
       });
 
-      test('accepts priority parameter', () => {
-        const result = executeProactiveTool('notification_send', {
+      test('accepts priority parameter', async () => {
+        const result = await executeProactiveTool('notification_send', {
           message: 'Test',
           priority: 'high',
         });
         expect(result.success).toBe(true);
+        expect(result.delivered).toBe(true);
+
+        // Verify priority was passed to delivery handler
+        expect(deliveredMessages.length).toBe(1);
+        expect(deliveredMessages[0].priority).toBe('high');
       });
 
-      test('accepts category parameter', () => {
-        const result = executeProactiveTool('notification_send', {
+      test('accepts category parameter', async () => {
+        const result = await executeProactiveTool('notification_send', {
           message: 'Test',
           category: 'test-category',
         });
         expect(result.success).toBe(true);
+        expect(result.delivered).toBe(true);
       });
 
-      test('requires message parameter', () => {
-        const result = executeProactiveTool('notification_send', {});
+      test('requires message parameter', async () => {
+        const result = await executeProactiveTool('notification_send', {});
         expect(result.success).toBe(false);
       });
     });
 
     describe('notification_list', () => {
-      test('lists notifications', () => {
-        const result = executeProactiveTool('notification_list', {});
+      test('lists notifications', async () => {
+        const result = await executeProactiveTool('notification_list', {});
         expect(result.success).toBe(true);
       });
 
-      test('accepts userId parameter', () => {
-        const result = executeProactiveTool('notification_list', {
+      test('accepts userId parameter', async () => {
+        const result = await executeProactiveTool('notification_list', {
           userId: 'test-user',
         });
         expect(result.success).toBe(true);
@@ -237,8 +262,8 @@ describe('Proactive Tools', () => {
     });
 
     describe('unknown tool', () => {
-      test('returns error for unknown tool name', () => {
-        const result = executeProactiveTool('unknown_tool', {});
+      test('returns error for unknown tool name', async () => {
+        const result = await executeProactiveTool('unknown_tool', {});
         expect(result.success).toBe(false);
         expect(result.error).toBeDefined();
       });

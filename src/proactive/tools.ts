@@ -36,7 +36,7 @@ export const proactiveTools = {
         },
         taskParams: {
           type: 'object',
-          description: 'Parameters for the task. For llm_proactive_chat: { prompt?: string, channel?: "cli"|"feishu", userId?: string }',
+          description: 'Parameters for the task. For run_skill: { skillName: string, skillParams?: object }. For llm_proactive_chat: { prompt?: string, channel?: "cli"|"feishu", userId?: string }. For send_reminder: { message: string, priority?: "low"|"normal"|"high"|"urgent" }',
         },
         enabled: {
           type: 'boolean',
@@ -171,7 +171,7 @@ export const proactiveTools = {
         },
         taskParams: {
           type: 'object',
-          description: 'Parameters for the task. For llm_proactive_chat: { prompt, chatId?, userId? }. For send_reminder: { message, priority? }',
+          description: 'Parameters for the task. For run_skill: { skillName: string, skillParams?: object }. For llm_proactive_chat: { prompt, chatId?, userId? }. For send_reminder: { message, priority? }',
         },
         name: {
           type: 'string',
@@ -494,8 +494,9 @@ export async function executeProactiveTool(name: string, params: Record<string, 
           return { success: false, error: parsed.error.message };
         }
 
-        return notificationManager.create({
-          userId: 'cli-user',
+        // Use pushNotification for immediate delivery
+        const { pushNotification } = await import('./pusher');
+        return await pushNotification({
           message: parsed.data.message,
           priority: parsed.data.priority,
           category: parsed.data.category,

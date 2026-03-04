@@ -923,6 +923,26 @@ export class FeishuWSClient {
   }
 
   /**
+   * Send a post (rich text) message
+   */
+  async sendPostMessage(
+    receiveId: string,
+    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
+    content: string,
+    options?: {
+      title?: string;
+    }
+  ): Promise<void> {
+    if (!this.client) {
+      throw new Error('[FeishuWS] Client not initialized');
+    }
+
+    // Import the sendPostMessage function
+    const { sendPostMessage } = await import('./send');
+    await sendPostMessage(this.client, receiveId, receiveIdType, content, options);
+  }
+
+  /**
    * Reply to a message
    */
   async replyText(messageId: string, text: string): Promise<void> {
