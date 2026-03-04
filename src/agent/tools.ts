@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { getMemoryToolsForAI } from '../memory';
 import { getSkillToolsForAI } from '../skills';
 import { getGoalToolsForAI } from '../goal';
@@ -782,6 +784,18 @@ You: skill_record({success: false})
 7. Keep messages concise unless verbose requested`
 };
 
+// Get Beeclaw version from package.json
+export function getBeeclawVersion(): string {
+  try {
+    // Read package.json from project root
+    const packageJsonPath = join(process.cwd(), 'package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+    return packageJson.version || 'unknown';
+  } catch (error) {
+    return 'unknown';
+  }
+}
+
 // Get current time context string
 export function getCurrentTimeContext(): string {
   const now = new Date();
@@ -797,12 +811,14 @@ export function getCurrentTimeContext(): string {
     hour12: false,
   });
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const version = getBeeclawVersion();
 
   return `# Current Context
 
 **Date**: ${dateStr}
 **Time**: ${timeStr}
 **Timezone**: ${timezone}
+**Beeclaw Version**: ${version}
 
 ---`;
 }

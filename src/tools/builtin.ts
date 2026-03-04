@@ -301,6 +301,93 @@ Unix 时间戳: ${unix}
 }
 
 // ============================================================================
+// Beeclaw System Info Tool
+// ============================================================================
+
+export const beeclawInfoTool = {
+  name: 'beeclaw_info',
+  description: 'Get Beeclaw system information including version, runtime environment, and capabilities. Use this to understand what version of Beeclaw is running and its current configuration.',
+  parameters: {
+    type: 'object' as const,
+    properties: {},
+    required: [],
+  },
+};
+
+export async function executeBeeclawInfo(): Promise<BuiltinToolResult> {
+  try {
+    // Read version from package.json
+    const { readFileSync } = require('fs');
+    const { join } = require('path');
+    const packageJsonPath = join(process.cwd(), 'package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+
+    // Get runtime info
+    const runtime = {
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid,
+      uptime: Math.floor(process.uptime()),
+    };
+
+    // Get config info (if available)
+    let configInfo = 'Not loaded';
+    try {
+      const { getConfig } = require('../config');
+      const config = getConfig();
+      if (config) {
+        configInfo = {
+          provider: config.provider?.type || 'unknown',
+          model: config.model || 'unknown',
+          timezone: config.user?.timezone || 'Asia/Shanghai',
+          daemonEnabled: config.proactive?.daemon?.enabled || false,
+        };
+      }
+    } catch {
+      // Config not loaded
+    }
+
+    const result = `# Beeclaw System Information
+
+## Version
+**Beeclaw**: v${packageJson.version}
+**Description**: ${packageJson.description}
+
+## Runtime Environment
+**Node Version**: ${runtime.nodeVersion}
+**Platform**: ${runtime.platform}
+**Architecture**: ${runtime.arch}
+**Process ID**: ${runtime.pid}
+**Uptime**: ${runtime.uptime} seconds
+
+## Configuration
+\`\`\`json
+${JSON.stringify(configInfo, null, 2)}
+\`\`\`
+
+## Capabilities
+- ✅ Multi-provider AI support (OpenAI, Anthropic, Zhipu, MiniMax)
+- ✅ Persistent memory system with compression
+- ✅ Skill management with testing and evaluation
+- ✅ Proactive task scheduling
+- ✅ Feishu/Lark bot integration
+- ✅ MCP (Model Context Protocol) support
+- ✅ Multi-channel support (CLI, Feishu, Webhook)
+
+---
+*Running Beeclaw v${packageJson.version}*`;
+
+    return { success: true, data: result };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to get Beeclaw info: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+// ============================================================================
 // Calculator Tool
 // ============================================================================
 
@@ -2191,6 +2278,7 @@ export const builtinTools = {
   web_search: webSearchTool,
   web_fetch: webFetchTool,
   time_now: timeTool,
+  beeclaw_info: beeclawInfoTool,
   calc: calcTool,
   code_execute: codeExecuteTool,
   weather: weatherTool,
@@ -2241,6 +2329,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeWebFetch(params);
     case 'time_now':
       return executeTime(params);
+    case 'beeclaw_info':
+      return executeBeeclawInfo();
     case 'calc':
       return executeCalc(params);
     case 'code_execute':
