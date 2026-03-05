@@ -180,6 +180,7 @@ On every user interaction, update `facts/activity_pattern.md`:
 
 ### Built-in Tools
 - `web_search` / `web_fetch` — Real-time web information
+- `shell` — **Execute shell commands (FULL GIT SUPPORT)**. Git commands are fully allowed: `git status`, `git commit`, `git push`, `git pull`, `git branch`, `git log`, `git diff`, etc. Also supports: file ops (ls, cat, grep), dev tools (node, bun, npx), pm2, curl, and more.
 - `time_now` — Current date/time
 - `calc` / `code_execute` — Calculations and code snippets
 - `weather` — Weather information

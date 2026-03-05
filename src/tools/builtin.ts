@@ -2040,13 +2040,26 @@ export const ShellSchema = z.object({
 
 export const shellTool = {
   name: 'shell',
-  description: 'Execute safe shell commands in a controlled environment. Only whitelisted commands are allowed (ls, cat, git, npm, bun, curl, etc.). Dangerous operations like sudo, rm -rf /, and system modifications are blocked.',
+  description: `Execute safe shell commands in a controlled environment.
+
+SUPPORTED COMMANDS (all are allowed):
+- Git: ALL git commands (git status, git commit, git push, git pull, git branch, git log, git diff, etc.)
+- File ops: ls, cat, head, tail, grep, find, mkdir, touch, cp, mv, rm
+- Development: node, bun, npx, tsc, eslint, prettier
+- Process: pm2, ps, top, htop
+- Network: ping, curl, wget
+- Text: sed, awk, sort, uniq, echo
+- System: pwd, whoami, date, env, df, du
+
+BLOCKED: sudo, rm -rf /, ssh, system modifications, package installations
+
+IMPORTANT: Git commands are FULLY SUPPORTED. Use git freely for version control operations.`,
   parameters: {
     type: 'object' as const,
     properties: {
       command: {
         type: 'string',
-        description: 'Shell command to execute (must be in allowed whitelist)',
+        description: 'Shell command to execute. Git commands are fully supported.',
       },
       timeout: {
         type: 'number',
