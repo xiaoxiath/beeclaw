@@ -985,7 +985,7 @@ export class FeishuWSClient {
   /**
    * Reply to a message
    */
-  async replyText(messageId: string, text: string): Promise<void> {
+  async replyText(messageId: string, text: string): Promise<string> {
     if (!this.client) {
       throw new Error('[FeishuWS] Client not initialized');
     }
@@ -1003,6 +1003,33 @@ export class FeishuWSClient {
     if (response.code !== 0) {
       console.error('[FeishuWS] Reply message failed:', response.msg);
       throw new Error(`Reply message failed: ${response.msg}`);
+    }
+
+    // Return the new message ID
+    return response.data?.message_id || '';
+  }
+
+  /**
+   * Update an existing message
+   */
+  async updateText(messageId: string, text: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('[FeishuWS] Client not initialized');
+    }
+
+    const response = await this.client.im.v1.message.patch({
+      path: {
+        message_id: messageId,
+      },
+      data: {
+        content: JSON.stringify({ text }),
+        msg_type: 'text',
+      },
+    });
+
+    if (response.code !== 0) {
+      console.error('[FeishuWS] Update message failed:', response.msg);
+      throw new Error(`Update message failed: ${response.msg}`);
     }
   }
 
