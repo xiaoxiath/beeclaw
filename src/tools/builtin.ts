@@ -1141,7 +1141,7 @@ import { $ } from 'bun';
 export const ClaudeCodeSchema = z.object({
   prompt: z.string().describe('The task or prompt to send to Claude Code'),
   working_dir: z.string().optional().describe('Working directory for the task (default: current directory)'),
-  timeout: z.number().min(10000).max(300000).optional().default(120000).describe('Timeout in ms (default: 120000, max: 300000)'),
+  timeout: z.number().min(10000).max(600000).optional().default(120000).describe('Timeout in ms (default: 120000, max: 600000)'),
   model: z.string().optional().describe('Model to use (e.g., "claude-sonnet-4-20250514", "claude-opus-4-6")'),
 });
 
@@ -1153,7 +1153,10 @@ export const claudeCodeTool = {
 - Simple tasks (file read/write): default 120s is sufficient
 - Medium tasks (code generation, analysis): 120-180s
 - Complex tasks (multi-file projects, extensive reasoning): 180-300s
-- For tasks expected to take longer, explicitly set timeout parameter`,
+- Very complex tasks (large projects, deep analysis): 300-600s
+- For tasks expected to take longer, explicitly set timeout parameter
+
+**Note:** This tool runs in the background and will not block the conversation. You can continue chatting while the task executes.`,
   parameters: {
     type: 'object' as const,
     properties: {
@@ -1167,7 +1170,7 @@ export const claudeCodeTool = {
       },
       timeout: {
         type: 'number',
-        description: 'Timeout in ms (default: 120000, max: 300000)',
+        description: 'Timeout in ms (default: 120000, max: 600000)',
       },
       model: {
         type: 'string',
