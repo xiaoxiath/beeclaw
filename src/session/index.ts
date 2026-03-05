@@ -46,6 +46,7 @@ export interface Session {
   updatedAt: string;
   metadata?: Record<string, unknown>;
   pendingRecovery?: boolean; // Mark session for recovery if bot restarts
+  responseDelivered?: boolean; // Mark if response was successfully sent to user
 }
 
 export interface ProactiveMessageOptions {
@@ -137,6 +138,20 @@ export function initSessionManager(config: {
     } catch (error) {
       console.error('[Session] Failed to initialize extraction manager:', error);
     }
+  }
+}
+
+/**
+ * Clear recovery flag after response is delivered
+ */
+export function clearRecoveryFlag(sessionId: string): void {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.pendingRecovery = false;
+    session.responseDelivered = true;
+    session.updatedAt = new Date().toISOString();
+    saveSession(session);
+    console.log(`[Session] 📤 Response delivered, recovery flag cleared for ${sessionId}`);
   }
 }
 
@@ -635,8 +650,9 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       timestamp: new Date().toISOString(),
     });
 
-    // Clear recovery flag and update timestamp
-    session.pendingRecovery = false;
+    // NOTE: Don't clear pendingRecovery here!
+    // It should only be cleared after response is successfully delivered
+    // (handled by the caller - e.g., routes/proactive.ts or recovery.ts)
     session.updatedAt = new Date().toISOString();
 
     // Save session to disk

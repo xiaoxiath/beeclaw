@@ -277,6 +277,12 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       // Always send new message (can't update text messages in Feishu)
       await client.replyTextSmart(messageId, result.response);
       console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully`);
+
+      // Clear recovery flag after successful delivery
+      if (result.sessionId) {
+        const { clearRecoveryFlag } = await import('../session');
+        clearRecoveryFlag(result.sessionId);
+      }
     } catch (error) {
       console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
       // Try fallback with simple text

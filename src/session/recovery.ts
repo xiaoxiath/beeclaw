@@ -233,6 +233,10 @@ export async function recoverUnansweredSessions(
                 { title: '🔄 恢复处理结果' }
               );
               console.log('[Recovery] 📤 Response sent to Feishu');
+
+              // Clear recovery flag after successful delivery
+              const { clearRecoveryFlag } = await import('./index');
+              clearRecoveryFlag(session.id);
             } catch (error) {
               console.error('[Recovery] Failed to send response:', error);
             }
