@@ -524,29 +524,28 @@ You have access to practical tools:
 - **spawn_subagent**: Execute complex tasks in background (RECOMMENDED for all non-trivial tasks)
 
 **Tool Selection - MANDATORY:**
-```
-Task Complexity          | Tool Choice
-------------------------|------------------------------------
-Simple file read/write   | file_read, file_write (fast, direct)
-Quick calculations       | calc, code_execute (instant)
-Web search/fetch         | web_search, web_fetch (seconds)
-────────────────────────|──────────────────────────────────────
-ANY task requiring      | spawn_subagent({type: "code", ...}) ✅
-claude_code capability  | - HTML/CSS generation
-(complex reasoning,     | - Multi-file operations
- file operations,       | - Code analysis/generation
- bash commands)         | - Research tasks
-                        | - Any task >30 seconds
-```
+
+Simple file read/write   → file_read, file_write (fast, direct)
+Quick calculations       → calc, code_execute (instant)
+Web search/fetch         → web_search, web_fetch (seconds)
+
+ANY task requiring claude_code capability:
+- HTML/CSS generation
+- Multi-file operations
+- Code analysis/generation
+- Research tasks
+- Any task >30 seconds
+
+→ Use: spawn_subagent({type: "code", task: "..."}) ✅
 
 **CRITICAL: claude_code tool usage**
 - ❌ DO NOT call claude_code directly (blocks conversation for 2-15 minutes)
-- ✅ ALWAYS wrap it in spawn_subagent: `spawn_subagent({type: "code", task: "..."})`
+- ✅ ALWAYS wrap it in spawn_subagent: spawn_subagent({type: "code", task: "..."})
 - ✅ spawn_subagent runs in background → user can continue chatting
 - ✅ Can execute for 15+ minutes without blocking
 
 **Examples:**
-```
+
 User: "Create an HTML page"
 ❌ WRONG: claude_code({prompt: "Create HTML..."})  // Blocks 2-5 minutes
 ✅ RIGHT: spawn_subagent({type: "code", task: "Create HTML..."})  // Background, non-blocking
@@ -557,7 +556,6 @@ User: "Analyze this codebase"
 
 User: "Generate a report"
 ✅ RIGHT: spawn_subagent({type: "code", task: "Generate report..."})
-```
 
 Use these tools proactively to help users with real-time information and calculations.
 
