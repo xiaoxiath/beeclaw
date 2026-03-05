@@ -1,0 +1,16 @@
+{
+  "id": "test-plugin",
+  "name": "Test Plugin",
+  "description": "A simple test plugin for Beeclaw",
+  "version": "1.0.0",
+  "kind": "tool",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "default": "Hello"
+      }
+    }
+  }
+}

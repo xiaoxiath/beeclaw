@@ -1,60 +1,44 @@
 /**
- * Plugin System
+ * Plugin System - 主入口
  *
- * 统一插件系统，支持：
- * - 传统 Channel/Tool 插件
- * - 新的统一插件 API（工具、钩子、命令、服务、路由）
+ * 这个模块导出插件系统的核心功能
  */
 
-// Legacy plugin types
-import { PluginType, type ChannelPlugin, type ToolPlugin } from './types';
+// Discovery Engine
+export { discoverPlugins, validatePluginSecurity } from "./discovery";
+export type { DiscoveredPlugin, DiscoveryOptions, PluginOrigin } from "./discovery";
 
-// Plugin types
-export { PluginType };
-export type { ChannelPlugin, ToolPlugin, PluginConfig, ChannelConfig, ToolConfig } from './types';
+// Manifest Parser
+export {
+  loadPluginManifest,
+  validatePluginConfig,
+} from "./manifest";
+export type { PluginManifest, PluginKind, ManifestLoadOutcome } from "./manifest";
 
-// New unified plugin system
-export * from './registry';
-export { default as examplePlugin } from './example-plugin';
+// Plugin Registry
+export {
+  getOrCreatePluginRegistry,
+  getPluginRegistry,
+  resetPluginRegistry,
+} from "./registry";
+export type { PluginRegistry, RegistryFactory } from "./registry";
 
-// Plugin loader
-import { loadChannelPlugin, loadToolPlugin } from './loader';
+// Hook Runner
+export { createHookRunner } from "./hook-runner";
+export type { HookRunner, HookRunnerOptions } from "./hook-runner";
 
-export async function loadPlugins(config: {
-  channels: Record<string, import('./types').ChannelConfig>;
-  tools: Record<string, import('./types').ToolConfig>;
-}): Promise<{
-  channels: Map<string, ChannelPlugin>;
-  tools: Map<string, ToolPlugin>;
-}> {
-  const channels = new Map<string, ChannelPlugin>();
-  const tools = new Map<string, ToolPlugin>();
+// Plugin Loader
+export { loadPlugins } from "./loader";
+export type { LoadPluginsOptions, LoadPluginsResult } from "./loader";
 
-  // Load channel plugins
-  for (const [id, channelConfig] of Object.entries(config.channels)) {
-    if (!channelConfig.enabled) continue;
+// Runtime Shim
+export { createPluginRuntimeShim } from "./runtime-shim";
+export type { RuntimeShimOptions } from "./runtime-shim";
 
-    try {
-      const plugin = await loadChannelPlugin(id, channelConfig);
-      channels.set(id, plugin);
-      console.log(`Loaded channel plugin: ${id}`);
-    } catch (error) {
-      console.error(`Failed to load channel plugin ${id}:`, error);
-    }
-  }
-
-  // Load tool plugins
-  for (const [id, toolConfig] of Object.entries(config.tools)) {
-    if (!toolConfig.enabled) continue;
-
-    try {
-      const plugin = await loadToolPlugin(id, toolConfig);
-      tools.set(id, plugin);
-      console.log(`Loaded tool plugin: ${id}`);
-    } catch (error) {
-      console.error(`Failed to load tool plugin ${id}:`, error);
-    }
-  }
-
-  return { channels, tools };
-}
+// Types
+export type {
+  PluginHookName,
+  PluginHookHandlerMap,
+  OpenClawPluginApi,
+  PluginLogger,
+} from "./types";

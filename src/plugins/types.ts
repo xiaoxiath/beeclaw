@@ -1,107 +1,167 @@
-// Plugin type definitions
+/**
+ * Plugin System Types
+ *
+ * 这个文件包含插件系统所需的核心类型定义
+ */
 
-export enum PluginType {
-  Channel = 'channel',
-  Tool = 'tool',
+// ═══════════════════════════════════════════════════════════════
+//  插件钩子名称（25 个）
+// ═══════════════════════════════════════════════════════════════
+
+export type PluginHookName =
+  // ─── 模型与 Prompt（Modifying/Sequential） ───
+  | "before_model_resolve"
+  | "before_prompt_build"
+  | "llm_input"
+  | "llm_output"
+  // ─── Agent 生命周期（Void） ───
+  | "before_agent_start"
+  | "agent_end"
+  // ─── 消息处理 ───
+  | "message_received"
+  | "message_sending"
+  | "message_sent"
+  // ─── 工具调用 ───
+  | "before_tool_call"
+  | "after_tool_call"
+  | "tool_result_persist" // ⚠️ 同步
+  // ─── 会话管理（Void） ───
+  | "session_start"
+  | "session_end"
+  // ─── 上下文压缩 ───
+  | "before_compaction"
+  | "after_compaction"
+  | "before_reset"
+  // ─── 消息持久化 ───
+  | "before_message_write" // ⚠️ 同步
+  // ─── Sub-Agent ───
+  | "subagent_spawning"
+  | "subagent_delivery_target"
+  | "subagent_spawned"
+  | "subagent_ended"
+  // ─── 网关（Void） ───
+  | "gateway_start"
+  | "gateway_stop";
+
+// ═══════════════════════════════════════════════════════════════
+//  钩子事件类型
+// ═══════════════════════════════════════════════════════════════
+
+export interface BeforeModelResolveEvent {
+  prompt: string;
 }
 
-// Base plugin configuration
-export interface PluginConfig {
-  enabled: boolean;
-  path?: string;
-  config?: Record<string, unknown>;
+export interface BeforePromptBuildEvent {
+  prompt: string;
+  messages: unknown[];
 }
 
-// Channel types
-export type ChannelType = 'whatsapp' | 'telegram' | 'slack' | 'discord' | 'webhook' | 'custom';
-
-// Channel configuration
-export interface ChannelConfig extends PluginConfig {
-  type: ChannelType;
+export interface LlmInputEvent {
+  runId: string;
+  provider: string;
+  model: string;
+  prompt: string;
 }
 
-// Tool types
-export type ToolType = 'http' | 'function' | 'mcp';
-
-// Tool configuration
-export interface ToolConfig extends PluginConfig {
-  type: ToolType;
-}
-
-// Message from channel
-export interface ChannelMessage {
-  id: string;
-  channelId: string;
-  userId: string;
+export interface MessageReceivedEvent {
+  from: string;
   content: string;
-  timestamp: string;
-  metadata?: Record<string, unknown>;
+  timestamp?: number;
 }
 
-// Message to send to channel
-export interface OutgoingMessage {
+export interface MessageSendingEvent {
+  to: string;
   content: string;
-  replyTo?: string;
-  metadata?: Record<string, unknown>;
 }
 
-// Channel plugin interface
-export interface ChannelPlugin {
+export interface BeforeToolCallEvent {
+  toolName: string;
+  params: Record<string, unknown>;
+}
+
+export interface AfterToolCallEvent {
+  toolName: string;
+  result: unknown;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  钩子 Handler Map（类型安全的钩子注册）
+// ═══════════════════════════════════════════════════════════════
+
+export interface PluginHookHandlerMap {
+  before_model_resolve: (event: BeforeModelResolveEvent) => Promise<void> | void;
+  before_prompt_build: (event: BeforePromptBuildEvent) => Promise<void> | void;
+  llm_input: (event: LlmInputEvent) => Promise<void> | void;
+  llm_output: (event: any) => Promise<void> | void;
+
+  before_agent_start: (event: any) => Promise<void> | void;
+  agent_end: (event: any) => Promise<void> | void;
+
+  message_received: (event: MessageReceivedEvent) => Promise<void> | void;
+  message_sending: (event: MessageSendingEvent) => Promise<any> | void;
+  message_sent: (event: any) => Promise<void> | void;
+
+  before_tool_call: (event: BeforeToolCallEvent) => Promise<any> | void;
+  after_tool_call: (event: AfterToolCallEvent) => Promise<void> | void;
+  tool_result_persist: (event: any) => any | void; // ⚠️ 同步
+
+  session_start: (event: any) => Promise<void> | void;
+  session_end: (event: any) => Promise<void> | void;
+
+  before_compaction: (event: any) => Promise<any> | void;
+  after_compaction: (event: any) => Promise<void> | void;
+  before_reset: (event: any) => Promise<void> | void;
+
+  before_message_write: (event: any) => any | void; // ⚠️ 同步
+
+  subagent_spawning: (event: any) => Promise<any> | void;
+  subagent_delivery_target: (event: any) => Promise<any> | void;
+  subagent_spawned: (event: any) => Promise<void> | void;
+  subagent_ended: (event: any) => Promise<void> | void;
+
+  gateway_start: (event: any) => Promise<void> | void;
+  gateway_stop: (event: any) => Promise<void> | void;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Plugin API（插件注册 API）
+// ═══════════════════════════════════════════════════════════════
+
+export interface OpenClawPluginApi {
   id: string;
-  type: ChannelType;
-  config: ChannelConfig;
+  name: string;
+  version?: string;
+  description?: string;
+  source: string;
+  config: any;
+  pluginConfig?: Record<string, unknown>;
+  runtime: any;
+  logger: PluginLogger;
 
-  // Initialize the channel
-  init(): Promise<void>;
+  // 10 种扩展注册方法
+  registerTool(tool: any, opts?: any): void;
+  registerHook(hook: any): void;
+  registerChannel(channel: any): void;
+  registerCommand(command: any): void;
+  registerHttpRoute(route: any): void;
+  registerProvider(provider: any): void;
+  registerCli(registrar: any): void;
+  registerService(service: any): void;
+  registerGatewayMethod(method: any): void;
 
-  // Start listening for messages
-  start(handler: (message: ChannelMessage) => Promise<void>): Promise<void>;
+  // 生命周期钩子注册
+  on<K extends PluginHookName>(
+    hookName: K,
+    handler: PluginHookHandlerMap[K],
+    options?: { priority?: number }
+  ): void;
 
-  // Stop the channel
-  stop(): Promise<void>;
-
-  // Send a message
-  send(message: OutgoingMessage): Promise<void>;
-
-  // Health check
-  health(): Promise<{ healthy: boolean; message?: string }>;
+  resolvePath(input: string): string;
 }
 
-// Tool execution context
-export interface ToolContext {
-  sessionId?: string;
-  agentId?: string;
-  userId?: string;
-  metadata?: Record<string, unknown>;
+export interface PluginLogger {
+  info(...args: any[]): void;
+  warn(...args: any[]): void;
+  error(...args: any[]): void;
+  debug(...args: any[]): void;
 }
-
-// Tool result
-export interface ToolResult {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-}
-
-// Tool plugin interface
-export interface ToolPlugin {
-  id: string;
-  type: ToolType;
-  config: ToolConfig;
-
-  // Get tool schema (for AI function calling)
-  getSchema(): {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-
-  // Execute the tool
-  execute(params: Record<string, unknown>, context?: ToolContext): Promise<ToolResult>;
-
-  // Validate parameters
-  validate(params: Record<string, unknown>): boolean;
-}
-
-// Plugin factory types
-export type ChannelPluginFactory = (id: string, config: ChannelConfig) => ChannelPlugin;
-export type ToolPluginFactory = (id: string, config: ToolConfig) => ToolPlugin;
