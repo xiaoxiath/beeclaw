@@ -52,7 +52,10 @@ async function main() {
   console.log('='.repeat(50));
 
   // Initialize app (unified initialization)
-  const { config, provider, model } = await initApp();
+  const { config, provider, model } = await initApp({
+    daemon: args.includes('--daemon'),
+    enableRecovery: true,
+  });
 
   // Pre-load dynamic context (holiday and weather info)
   console.log('\n📅 Loading dynamic context...');

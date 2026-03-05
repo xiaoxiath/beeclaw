@@ -45,6 +45,8 @@ export interface InitOptions {
   daemon?: boolean;
   /** Custom memory path */
   memoryPath?: string;
+  /** Enable session recovery on startup */
+  enableRecovery?: boolean;
 }
 
 /**
@@ -167,6 +169,40 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
   appState.initialized = true;
   console.log('   ✅ Beeclaw initialized\n');
+
+  // 11. Session recovery (delayed execution)
+  if (options.enableRecovery !== false && process.env.ENABLE_RECOVERY !== 'false') {
+    const recoveryConfig = config.recovery || {
+      enabled: true,
+      maxAge: 300000,  // 5 minutes
+      minAge: 10000,   // 10 seconds
+      channels: ['feishu'],
+      batchSize: 5,
+      delayMs: 2000,
+      startupDelay: 10000,
+    };
+
+    if (recoveryConfig.enabled) {
+      console.log(`   ⏰ Session recovery enabled (delay: ${recoveryConfig.startupDelay / 1000}s)`);
+
+      setTimeout(async () => {
+        try {
+          const { recoverUnansweredSessions } = await import('../session/recovery');
+          const { listSessions } = await import('../session');
+          const { getFeishuWSClient } = await import('../feishu');
+          const { sendProactiveMessage } = await import('../session');
+
+          await recoverUnansweredSessions(recoveryConfig, {
+            getFeishuClient: getFeishuWSClient,
+            sendProactiveMessage,
+            getAllSessions: () => listSessions(),
+          });
+        } catch (error) {
+          console.error('[App] Session recovery failed:', error);
+        }
+      }, recoveryConfig.startupDelay);
+    }
+  }
 
   return {
     config,

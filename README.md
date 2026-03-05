@@ -12,6 +12,7 @@
 - **子代理系统** - 并行任务执行，DAG 任务编排
 - **飞书集成** - WebSocket 长连接，无需公网 IP
 - **自我进化** - 从对话中学习偏好和技能
+- **会话恢复** - 重启后自动恢复未回复的对话
 
 ## 快速开始
 
@@ -123,6 +124,7 @@ bun run pm2:start
 | [定时执行技能](./docs/scheduled-skill-execution.md) | 如何定时执行技能 |
 | [任务处理架构](./docs/job-handler-refactoring.md) | 任务处理系统架构设计 |
 | [日志指南](./docs/logging-guide.md) | 增强的日志系统（工具调用、技能使用） |
+| [会话恢复功能](./docs/session-recovery-guide.md) | 重启后自动恢复未回复对话 |
 | [PM2 Daemon 快速参考](./docs/pm2-quick-reference.md) | PM2 管理定时任务（快速参考） |
 | [PM2 Daemon 详细指南](./docs/pm2-daemon-guide.md) | PM2 管理定时任务（详细版） |
 

@@ -241,6 +241,17 @@ export const HooksConfigSchema = z.object({
   })).optional(),
 });
 
+// Session recovery configuration schema
+export const RecoveryConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxAge: z.number().default(300000),  // 5 minutes in milliseconds
+  minAge: z.number().default(10000),   // 10 seconds in milliseconds
+  channels: z.array(z.string()).default(['feishu']),
+  batchSize: z.number().default(5),
+  delayMs: z.number().default(2000),
+  startupDelay: z.number().default(10000),
+});
+
 // Main configuration schema
 export const AppConfigSchema = z.object({
   server: ServerConfigSchema.default({}),
@@ -264,6 +275,7 @@ export const AppConfigSchema = z.object({
   extraction: ExtractionConfigSchema.default({}),
   mcp: MCPConfigSchema.default({}),
   hooks: HooksConfigSchema.default({}),
+  recovery: RecoveryConfigSchema.optional(),
 });
 
 // Type exports
@@ -288,4 +300,5 @@ export type ExtractionConfigSchemaType = z.infer<typeof ExtractionConfigSchema>;
 export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 export type HooksConfig = z.infer<typeof HooksConfigSchema>;
+export type RecoveryConfig = z.infer<typeof RecoveryConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
