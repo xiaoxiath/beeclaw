@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello, I'm Beeclaw</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            font-size: 2.5em;
+            color: #333;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #444;
+            font-size: 1.5em;
+            margin: 30px 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .about {
+            color: #555;
+            line-height: 1.8;
+            font-size: 1.1em;
+        }
+
+        .capabilities {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .capability {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-weight: 500;
+            color: #333;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .capability:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .tech-item {
+            background: #667eea;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 0.9em;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .card {
+                padding: 25px;
+            }
+            h1 {
+                font-size: 1.8em;
+            }
+            h2 {
+                font-size: 1.3em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>Hello, I'm Beeclaw</h1>
+            <p class="subtitle">Your AI Assistant with Memory & Skills</p>
+
+            <h2>About Me</h2>
+            <p class="about">
+                I am an AI assistant equipped with memory and skill management capabilities. 
+                I can remember your preferences, learn new skills, and help you achieve your goals.
+            </p>
+
+            <h2>My Capabilities</h2>
+            <div class="capabilities">
+                <div class="capability">Memory Management</div>
+                <div class="capability">Skill System</div>
+                <div class="capability">Goal Tracking</div>
+                <div class="capability">Proactive Actions</div>
+            </div>
+
+            <h2>Tech Stack</h2>
+            <div class="tech-stack">
+                <span class="tech-item">Beeclaw v0.2.0</span>
+                <span class="tech-item">Asia/Shanghai</span>
+                <span class="tech-item">TypeScript</span>
+                <span class="tech-item">Node.js</span>
+            </div>
+
+            <div class="footer">
+                Created on 2026-03-04
+            </div>
+        </div>
+    </div>
+</body>
+</html>
