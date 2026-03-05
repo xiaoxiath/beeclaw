@@ -485,7 +485,17 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     // ========================================
     let userContentString: string;
 
-    if (originalMultimodalMessage) {
+    // Check if this is a recovery - don't duplicate the user message
+    const isRecovery = options.context?.isRecovery === true;
+
+    if (isRecovery) {
+      // Recovery mode: user message already exists in session
+      // Extract content from last user message for processing
+      const lastUserMessage = session.messages[session.messages.length - 1];
+      userContentString = lastUserMessage?.content || '';
+
+      console.log('[Session] 🔄 Recovery mode - skipping user message save');
+    } else if (originalMultimodalMessage) {
       // Image was processed in two stages - will be updated after response
       const textPart = originalMultimodalMessage.find(p => p.type === 'text');
       const userText = textPart && 'text' in textPart ? textPart.text : '';
@@ -501,16 +511,27 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     }
 
     // Save user message immediately (before AI processing)
-    session.messages.push({
-      role: 'user',
-      content: userContentString,
-      timestamp: new Date().toISOString(),
-    });
-    session.pendingRecovery = true;  // Mark for recovery
-    session.updatedAt = new Date().toISOString();
-    saveSession(session);
+    // BUT skip in recovery mode to avoid duplicates
+    if (!isRecovery) {
+      session.messages.push({
+        role: 'user',
+        content: userContentString,
+        timestamp: new Date().toISOString(),
+      });
+      session.pendingRecovery = true;  // Mark for recovery
+      session.updatedAt = new Date().toISOString();
+      saveSession(session);
 
-    console.log('[Session] 📨 User message saved (recovery-ready)');
+      console.log('[Session] 📨 User message saved (recovery-ready)');
+    } else {
+      // Recovery mode: message already exists in session
+      // Ensure pendingRecovery is still true (might have been cleared if response was partially sent)
+      session.pendingRecovery = true;
+      session.updatedAt = new Date().toISOString();
+      saveSession(session);
+
+      console.log('[Session] 🔄 Recovery mode - using existing user message');
+    }
 
     // Get response with smart timeout (inactivity-based)
     // Only timeout when agent is truly stuck (no activity for 10 minutes)
