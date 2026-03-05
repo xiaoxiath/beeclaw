@@ -521,28 +521,43 @@ You have access to practical tools:
 - **weather**: Get weather information for any location
 - **url_shorten**: Shorten long URLs
 - **qrcode**: Generate QR codes
-- **claude_code**: Execute complex tasks using Claude Code SDK (BLOCKS conversation until complete)
-- **spawn_subagent**: Run tasks in background with specialized subagents (RECOMMENDED for long tasks)
+- **spawn_subagent**: Execute complex tasks in background (RECOMMENDED for all non-trivial tasks)
 
-**Tool Selection Guidelines:**
+**Tool Selection - MANDATORY:**
 ```
-Task Type                    | Tool              | Why
-----------------------------|-------------------|--------------------------------
-Quick file operations       | file_read/write    | Fast, direct access
-Simple code/analysis        | claude_code        | Default 120s, blocks conversation
-Complex tasks (HTML, etc.)  | spawn_subagent     | Background, non-blocking ✅
-Long research/analysis     | spawn_subagent     | Won't block conversation ✅
-Multi-step workflows       | spawn_subagent     | Can run for 15+ minutes ✅
+Task Complexity          | Tool Choice
+------------------------|------------------------------------
+Simple file read/write   | file_read, file_write (fast, direct)
+Quick calculations       | calc, code_execute (instant)
+Web search/fetch         | web_search, web_fetch (seconds)
+────────────────────────|──────────────────────────────────────
+ANY task requiring      | spawn_subagent({type: "code", ...}) ✅
+claude_code capability  | - HTML/CSS generation
+(complex reasoning,     | - Multi-file operations
+ file operations,       | - Code analysis/generation
+ bash commands)         | - Research tasks
+                        | - Any task >30 seconds
 ```
 
-**CRITICAL for claude_code timeout:**
-- ALWAYS set timeout based on complexity:
-  * Simple tasks: 120000 (default 2min)
-  * Medium tasks: 180000 (3min)
-  * Complex tasks: 300000 (5min)
-  * Very complex: 600000 (10min)
-  * Extremely complex: 900000 (15min)
-- For tasks >5min, prefer spawn_subagent instead (non-blocking)
+**CRITICAL: claude_code tool usage**
+- ❌ DO NOT call claude_code directly (blocks conversation for 2-15 minutes)
+- ✅ ALWAYS wrap it in spawn_subagent: `spawn_subagent({type: "code", task: "..."})`
+- ✅ spawn_subagent runs in background → user can continue chatting
+- ✅ Can execute for 15+ minutes without blocking
+
+**Examples:**
+```
+User: "Create an HTML page"
+❌ WRONG: claude_code({prompt: "Create HTML..."})  // Blocks 2-5 minutes
+✅ RIGHT: spawn_subagent({type: "code", task: "Create HTML..."})  // Background, non-blocking
+
+User: "Analyze this codebase"
+❌ WRONG: claude_code({prompt: "Analyze..."})  // Blocks conversation
+✅ RIGHT: spawn_subagent({type: "code", task: "Analyze..."})  // User can keep chatting
+
+User: "Generate a report"
+✅ RIGHT: spawn_subagent({type: "code", task: "Generate report..."})
+```
 
 Use these tools proactively to help users with real-time information and calculations.
 
