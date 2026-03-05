@@ -204,22 +204,13 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     console.log(`[FeishuWS:${process.pid}] Message from ${userId} in chat ${chatId}: ${messageText.substring(0, 50)}...`);
 
     // Send immediate feedback to acknowledge receipt
-    // 1. Add reaction emoji
+    // Add reaction emoji for instant feedback
     const reactions = ['Typing', 'Get', 'LGTM', 'Coffee', 'Status_PrivateMessage', 'OK'];
     const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
     try {
       await client.addReaction(messageId, randomReaction);
     } catch (error) {
       console.log(`[FeishuWS:${process.pid}] Failed to add reaction (non-critical):`, error);
-    }
-
-    // 2. Send "thinking" message for better UX (especially for slow responses)
-    let thinkingMessageId: string | null = null;
-    try {
-      thinkingMessageId = await client.replyText(messageId, '💭 收到消息，正在思考中...');
-      console.log(`[FeishuWS:${process.pid}] Sent thinking indicator: ${thinkingMessageId}`);
-    } catch (error) {
-      console.log(`[FeishuWS:${process.pid}] Failed to send thinking message (non-critical):`, error);
     }
 
     // Create consistent session ID for conversation continuity
@@ -283,19 +274,11 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     try {
       console.log(`[FeishuWS:${process.pid}] Replying to message ${messageId} (${result.response.length} chars)...`);
 
-      // If we have a thinking message, update it; otherwise send new message
-      if (thinkingMessageId) {
-        // Update thinking message with actual response
-        await client.updateText(thinkingMessageId, result.response);
-        console.log(`[FeishuWS:${process.pid}] ✅ Updated thinking message with response`);
-      } else {
-        // Fallback: send new message using smart reply
-        await client.replyTextSmart(messageId, result.response);
-        console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully`);
-      }
+      // Always send new message (can't update text messages in Feishu)
+      await client.replyTextSmart(messageId, result.response);
+      console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully`);
     } catch (error) {
       console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
-
       // Try fallback with simple text
       try {
         // Strip markdown for fallback
@@ -303,12 +286,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
           .replace(/\*\*/g, '')
           .replace(/`/g, '')
           .replace(/\n/g, '\n');
-
-        if (thinkingMessageId) {
-          await client.updateText(thinkingMessageId, plainText);
-        } else {
-          await client.replyText(messageId, plainText);
-        }
+        await client.replyText(messageId, plainText);
         console.log(`[FeishuWS:${process.pid}] ✅ Fallback reply sent`);
       } catch (fallbackError) {
         console.error(`[FeishuWS:${process.pid}] ❌ Fallback reply also failed:`, fallbackError);
