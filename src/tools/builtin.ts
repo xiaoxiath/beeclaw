@@ -1960,6 +1960,8 @@ const ALLOWED_PATTERNS = [
   /^tsc\s+/,
   /^eslint\s+/,
   /^prettier\s+/,
+  // Process management
+  /^pm2\s+/,
   // Process info
   /^ps\s*/,
   /^top\s*$/,

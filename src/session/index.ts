@@ -396,19 +396,45 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       // Memory store not initialized
     }
 
-    // Smart model selection: Use vision model for multimodal, text model for text-only
+    // Smart model selection: Two-stage processing for images
     let selectedModel = agentConfig.model;
     let selectedProvider = agentConfig.provider;
+    let imageDescription: string | undefined;
+    let originalMultimodalMessage: MultimodalContent[] | undefined;
 
     const hasMultimodalContent = Array.isArray(options.message) &&
       options.message.some(part => part.type === 'image_url');
 
     if (hasMultimodalContent) {
-      // Use vision model for image recognition
-      selectedModel = 'GLM-4.6V';
-      console.log('[Session] 🖼️ Using vision model (GLM-4.6V) for multimodal message');
+      // ========================================
+      // STAGE 1: Pure vision recognition (no tools, no skill context)
+      // This prevents vision model from auto-triggering skills
+      // ========================================
+      console.log('[Session] 🖼️ Stage 1: Pure vision recognition (no tools)');
+      
+      const visionAgent = createAgent({
+        provider: selectedProvider,
+        model: 'GLM-4.6V',
+        systemPrompt: '请识别并详细描述这张图片的内容。如果是食物，列出所有可见的食材和菜品名称。如果是其他内容（代码截图、文档、风景等），也请详细描述。',
+        tools: undefined,  // No tools for vision-only task!
+        loadCoreMemory: false,
+      });
+
+      imageDescription = await visionAgent.chat(options.message);
+      console.log('[Session] 📝 Vision result:', imageDescription?.substring(0, 100));
+
+      // Save original multimodal message for later storage
+      originalMultimodalMessage = options.message;
+      
+      // ========================================
+      // STAGE 2: Intent detection with text model
+      // Text model decides whether to call skills based on image description
+      // ========================================
+      selectedModel = 'glm-5';
+      options.message = imageDescription || '[图片识别失败]';
+      console.log('[Session] 🧠 Stage 2: Intent detection with text model');
     } else {
-      // Use text model for text-only messages
+      // Text-only message
       selectedModel = 'glm-5';
       console.log('[Session] 📝 Using text model (glm-5) for text message');
     }
@@ -550,7 +576,16 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     let userContentString: string;
     let assistantContentString: string;
 
-    if (typeof options.message === 'string') {
+    if (originalMultimodalMessage) {
+      // Image was processed in two stages
+      const textPart = originalMultimodalMessage.find(p => p.type === 'text');
+      const userText = textPart && 'text' in textPart ? textPart.text : '';
+      
+      // Store: [图片] user text [识别结果]: vision description
+      userContentString = `[图片] ${userText || '(图片)'}\n[识别结果]: ${imageDescription || '(识别失败)'}`;
+      assistantContentString = response;
+      console.log('[Session] 📷 Image message saved with recognition result filled back');
+    } else if (typeof options.message === 'string') {
       userContentString = options.message;
       assistantContentString = response;
     } else if (Array.isArray(options.message)) {
@@ -559,10 +594,8 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       const userText = textPart && 'text' in textPart ? textPart.text : '';
 
       if (hasImage) {
-        // For image messages, fill back recognition result to preserve image context
-        // Format: [图片] 用户文字描述 [识别结果]: LLM的图片识别内容
+        // This shouldn't happen anymore (handled above), but keep for safety
         userContentString = `[图片] ${userText || '(图片)'}\n[识别结果]: ${response}`;
-        // Assistant response becomes a brief confirmation
         assistantContentString = '我已经分析了这张图片，如有需要可以继续讨论。';
         console.log('[Session] 📷 Image message saved with recognition result filled back');
       } else {
