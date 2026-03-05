@@ -455,6 +455,9 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       console.log('[Session] 📝 Using text model (glm-5) for text message');
     }
 
+    // Check if this is a recovery - don't duplicate the user message
+    const isRecovery = options.context?.isRecovery === true;
+
     // Create agent (loadCoreMemory: false because we already built the system prompt above)
     const agent = createAgent({
       provider: selectedProvider,
@@ -484,9 +487,6 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     // This ensures recovery system can detect unanswered messages if bot restarts
     // ========================================
     let userContentString: string;
-
-    // Check if this is a recovery - don't duplicate the user message
-    const isRecovery = options.context?.isRecovery === true;
 
     if (isRecovery) {
       // Recovery mode: user message already exists in session
@@ -591,7 +591,10 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
 
     try {
       // Wrap agent.chat() with activity monitoring
-      const chatPromise = agent.chat(options.message);
+      // CRITICAL: In recovery mode, use the full message from session (userContentString)
+      // because options.message might be truncated (recovery.ts passes only first 100 chars)
+      const messageForAgent = isRecovery ? userContentString : options.message;
+      const chatPromise = agent.chat(messageForAgent);
 
       // Create a promise that rejects on timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
