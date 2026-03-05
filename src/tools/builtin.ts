@@ -1141,7 +1141,7 @@ import { $ } from 'bun';
 export const ClaudeCodeSchema = z.object({
   prompt: z.string().describe('The task or prompt to send to Claude Code'),
   working_dir: z.string().optional().describe('Working directory for the task (default: current directory)'),
-  timeout: z.number().min(10000).max(600000).optional().default(120000).describe('Timeout in ms (default: 120000, max: 600000)'),
+  timeout: z.number().min(10000).max(900000).optional().default(120000).describe('Timeout in ms (default: 120000, max: 900000)'),
   model: z.string().optional().describe('Model to use (e.g., "claude-sonnet-4-20250514", "claude-opus-4-6")'),
 });
 
@@ -1149,14 +1149,18 @@ export const claudeCodeTool = {
   name: 'claude_code',
   description: `Execute a task using Claude Code SDK. Use this for complex tasks that require file operations, code analysis, or multi-step reasoning. Claude Code has access to file system, bash commands, and can work autonomously on tasks.
 
+**Recommended Usage:**
+For most tasks, use spawn_subagent with type="code" instead. It runs in background and won't block our conversation.
+
 **Timeout guidance:**
 - Simple tasks (file read/write): default 120s is sufficient
 - Medium tasks (code generation, analysis): 120-180s
 - Complex tasks (multi-file projects, extensive reasoning): 180-300s
 - Very complex tasks (large projects, deep analysis): 300-600s
+- Extremely complex tasks (comprehensive research): 600-900s
 - For tasks expected to take longer, explicitly set timeout parameter
 
-**Note:** This tool runs in the background and will not block the conversation. You can continue chatting while the task executes.`,
+**Note:** This tool is synchronous and will block until completion. For background execution, use spawn_subagent instead.`,
   parameters: {
     type: 'object' as const,
     properties: {
@@ -1170,7 +1174,7 @@ export const claudeCodeTool = {
       },
       timeout: {
         type: 'number',
-        description: 'Timeout in ms (default: 120000, max: 600000)',
+        description: 'Timeout in ms (default: 120000, max: 900000)',
       },
       model: {
         type: 'string',
