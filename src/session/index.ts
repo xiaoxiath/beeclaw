@@ -45,6 +45,7 @@ export interface Session {
   createdAt: string;
   updatedAt: string;
   metadata?: Record<string, unknown>;
+  pendingRecovery?: boolean; // Mark session for recovery if bot restarts
 }
 
 export interface ProactiveMessageOptions {
@@ -451,7 +452,9 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
     });
 
     // Replay conversation history
-    for (const msg of session.messages) {
+    // NOTE: Skip the last user message since it was just saved and will be added by agent.chat()
+    for (let i = 0; i < session.messages.length - 1; i++) {
+      const msg = session.messages[i];
       // For multimodal messages, replay the text description (not the base64)
       // This preserves context about what was discussed
       if (msg.role === 'user') {
@@ -460,6 +463,39 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
         agent.addMessage({ role: 'assistant', content: msg.content });
       }
     }
+
+    // ========================================
+    // CRITICAL: Save user message BEFORE processing
+    // This ensures recovery system can detect unanswered messages if bot restarts
+    // ========================================
+    let userContentString: string;
+
+    if (originalMultimodalMessage) {
+      // Image was processed in two stages - will be updated after response
+      const textPart = originalMultimodalMessage.find(p => p.type === 'text');
+      const userText = textPart && 'text' in textPart ? textPart.text : '';
+      userContentString = `[图片] ${userText || '(图片)'} [处理中...]`;
+    } else if (typeof options.message === 'string') {
+      userContentString = options.message;
+    } else if (Array.isArray(options.message)) {
+      const textPart = options.message.find(p => p.type === 'text');
+      const userText = textPart && 'text' in textPart ? textPart.text : '';
+      userContentString = userText || '[Multimodal message]';
+    } else {
+      userContentString = 'unknown';
+    }
+
+    // Save user message immediately (before AI processing)
+    session.messages.push({
+      role: 'user',
+      content: userContentString,
+      timestamp: new Date().toISOString(),
+    });
+    session.pendingRecovery = true;  // Mark for recovery
+    session.updatedAt = new Date().toISOString();
+    saveSession(session);
+
+    console.log('[Session] 📨 User message saved (recovery-ready)');
 
     // Get response with smart timeout (inactivity-based)
     // Only timeout when agent is truly stuck (no activity for 10 minutes)
@@ -570,53 +606,37 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       return { success: false, error: 'AI 返回了空响应' };
     }
 
-    // Record messages
-    // For multimodal (image) messages, fill back the recognition result into user message
+    // Update messages with final content
+    // For multimodal (image) messages, update the user message with recognition result
     // This preserves image context for future conversations
-    let userContentString: string;
     let assistantContentString: string;
 
-    if (originalMultimodalMessage) {
-      // Image was processed in two stages
+    if (originalMultimodalMessage && imageDescription) {
+      // Image was processed in two stages - update user message with recognition result
       const textPart = originalMultimodalMessage.find(p => p.type === 'text');
       const userText = textPart && 'text' in textPart ? textPart.text : '';
-      
-      // Store: [图片] user text [识别结果]: vision description
-      userContentString = `[图片] ${userText || '(图片)'}\n[识别结果]: ${imageDescription || '(识别失败)'}`;
-      assistantContentString = response;
-      console.log('[Session] 📷 Image message saved with recognition result filled back');
-    } else if (typeof options.message === 'string') {
-      userContentString = options.message;
-      assistantContentString = response;
-    } else if (Array.isArray(options.message)) {
-      const textPart = options.message.find(p => p.type === 'text');
-      const hasImage = options.message.some(p => p.type === 'image_url');
-      const userText = textPart && 'text' in textPart ? textPart.text : '';
 
-      if (hasImage) {
-        // This shouldn't happen anymore (handled above), but keep for safety
-        userContentString = `[图片] ${userText || '(图片)'}\n[识别结果]: ${response}`;
-        assistantContentString = '我已经分析了这张图片，如有需要可以继续讨论。';
-        console.log('[Session] 📷 Image message saved with recognition result filled back');
-      } else {
-        userContentString = userText || '[Multimodal message]';
-        assistantContentString = response;
+      // Update the last user message (already saved before processing)
+      const lastUserMessage = session.messages[session.messages.length - 1];
+      if (lastUserMessage && lastUserMessage.role === 'user') {
+        lastUserMessage.content = `[图片] ${userText || '(图片)'}\n[识别结果]: ${imageDescription}`;
+        console.log('[Session] 📷 User message updated with image recognition result');
       }
+
+      assistantContentString = response;
     } else {
-      userContentString = 'unknown';
       assistantContentString = response;
     }
 
-    session.messages.push({
-      role: 'user',
-      content: userContentString,
-      timestamp: new Date().toISOString(),
-    });
+    // Save assistant response
     session.messages.push({
       role: 'assistant',
       content: assistantContentString,
       timestamp: new Date().toISOString(),
     });
+
+    // Clear recovery flag and update timestamp
+    session.pendingRecovery = false;
     session.updatedAt = new Date().toISOString();
 
     // Save session to disk
@@ -786,3 +806,6 @@ export function getExtraction(): ExtractionManager | null {
 export function resetExtraction(): void {
   resetExtractionManager();
 }
+
+// Export recovery module
+export * from './recovery';
