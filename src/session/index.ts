@@ -158,6 +158,20 @@ export function clearRecoveryFlag(sessionId: string): void {
 }
 
 /**
+ * Mark response as delivered to user (for tracking purposes)
+ * This is separate from pendingRecovery - it's just for status tracking
+ */
+export function markResponseDelivered(sessionId: string): void {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.responseDelivered = true;
+    session.updatedAt = new Date().toISOString();
+    saveSession(session);
+    console.log(`[Session] 📤 Response delivered to user for ${sessionId}`);
+  }
+}
+
+/**
  * Register a channel handler for proactive messaging
  */
 export function registerChannelHandler(
@@ -741,9 +755,16 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       timestamp: new Date().toISOString(),
     });
 
-    // NOTE: Don't clear pendingRecovery here!
-    // It should only be cleared after response is successfully delivered
-    // (handled by the caller - e.g., routes/proactive.ts or recovery.ts)
+    // CRITICAL FIX: Clear pendingRecovery flag immediately after AI responds
+    // This prevents recovery from reprocessing already-answered messages
+    // (Previously this was only cleared after Feishu delivery, which caused race conditions)
+    if (session.pendingRecovery) {
+      session.pendingRecovery = false;
+      console.log('[Session] ✓ AI responded, cleared pendingRecovery flag');
+    }
+
+    // NOTE: responseDelivered flag is for tracking Feishu delivery status
+    // It's set separately after successful Feishu send (see routes/proactive.ts)
     session.updatedAt = new Date().toISOString();
 
     // Save session to disk

@@ -103,13 +103,41 @@ export async function detectUnansweredSessions(
     // Get last message
     const lastMessage = session.messages[session.messages.length - 1];
 
-    // Skip if last message is not from user
-    if (lastMessage.role !== 'user') {
+    // Check if session is marked for recovery (bot restarted during processing)
+    const isPendingRecovery = session.pendingRecovery === true;
+
+    // CRITICAL FIX: Check if this session was already answered
+    // If last message is from assistant, or if there's an assistant response after the last user message
+    // then this session doesn't need recovery (even if pendingRecovery is stale)
+    if (lastMessage.role === 'assistant') {
+      // Last message is from assistant - already answered
+      // Clear stale pendingRecovery flag if exists
+      if (isPendingRecovery) {
+        console.log(`[Recovery] 🧹 Clearing stale pendingRecovery flag for answered session ${session.id}`);
+        session.pendingRecovery = false;
+        // Note: Caller (bot.ts or daemon.ts) will save the session after recovery completes
+      }
       continue;
     }
 
-    // Check if session is marked for recovery (bot restarted during processing)
-    const isPendingRecovery = session.pendingRecovery === true;
+    // Additional check: Look for any assistant response after the last user message
+    if (lastMessage.role === 'user') {
+      // Find the last user message and check if there's an assistant response after it
+      const lastUserIndex = session.messages.length - 1;
+      // Check if there are any messages after the last user message
+      // (This shouldn't happen, but we need to be defensive)
+      for (let i = lastUserIndex + 1; i < session.messages.length; i++) {
+        if (session.messages[i].role === 'assistant') {
+          // Found assistant response after last user message - already answered
+          console.log(`[Recovery] 🧹 Session ${session.id} has assistant response, clearing pendingRecovery`);
+          if (isPendingRecovery) {
+            session.pendingRecovery = false;
+            // Note: Caller will save the session
+          }
+          continue; // Skip this session
+        }
+      }
+    }
 
     // Calculate age
     const lastMessageTime = new Date(lastMessage.timestamp).getTime();
