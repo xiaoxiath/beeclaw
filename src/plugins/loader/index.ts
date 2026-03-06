@@ -40,11 +40,16 @@ export interface LoadPluginsResult {
  * 创建配置好的 Jiti 实例
  */
 function createConfiguredJiti() {
-  const modulePath = fileURLToPath(import.meta.url);
+  // Ensure import.meta.url is a string
+  const importMetaURL = typeof import.meta.url === 'string'
+    ? import.meta.url
+    : `file://${process.cwd()}/src/plugins/loader/index.ts`;
+
+  const modulePath = fileURLToPath(importMetaURL);
   const baseDir = join(modulePath, "..", "..", "..");
 
-  return createJiti({
-    importMetaURL: import.meta.url,
+  // Create jiti with minimal options first to test
+  return createJiti(importMetaURL, {
     interopDefault: true,  // ✅ 关键：正确处理 default export
 
     // SDK 别名映射

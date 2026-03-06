@@ -102,7 +102,23 @@ export const SkillsConfigSchema = z.object({
   autoLoad: z.boolean().default(true),
 });
 
-// Plugin schema
+// Plugin discovery configuration schema
+export const PluginDiscoveryConfigSchema = z.object({
+  bundledDir: z.string().optional(),
+  globalDir: z.string().optional(),
+  workspaceDir: z.string().optional(),
+  configPaths: z.array(z.string()).optional(),
+});
+
+// Plugins configuration schema (OpenClaw-compatible)
+export const PluginsConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  discovery: PluginDiscoveryConfigSchema.optional(),
+  disabledPlugins: z.array(z.string()).default([]),
+  pluginConfigs: z.record(z.unknown()).optional(),
+});
+
+// Plugin schema (legacy, for backward compatibility)
 export const PluginConfigSchema = z.object({
   enabled: z.boolean().default(true),
   path: z.string().optional(),
@@ -262,6 +278,7 @@ export const AppConfigSchema = z.object({
   sessionStorage: SessionStorageConfigSchema.default({}),
   memory: MemoryConfigSchema.default({}),
   skills: SkillsConfigSchema.default({}),
+  plugins: PluginsConfigSchema.default({}),
   channels: z.record(ChannelPluginConfigSchema).default({}),
   tools: z.record(ToolPluginConfigSchema).default({}),
   logging: LoggingConfigSchema.default({}),
@@ -287,6 +304,8 @@ export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type SessionStorageConfig = z.infer<typeof SessionStorageConfigSchema>;
 export type MemoryConfigSchemaType = z.infer<typeof MemoryConfigSchema>;
 export type SkillsConfig = z.infer<typeof SkillsConfigSchema>;
+export type PluginDiscoveryConfig = z.infer<typeof PluginDiscoveryConfigSchema>;
+export type PluginsConfig = z.infer<typeof PluginsConfigSchema>;
 export type ChannelPluginConfig = z.infer<typeof ChannelPluginConfigSchema>;
 export type ToolPluginConfig = z.infer<typeof ToolPluginConfigSchema>;
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;

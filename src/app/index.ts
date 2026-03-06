@@ -14,6 +14,7 @@ import { initSessionManager, loadAllSessions, getOrCreateSession, type Session }
 import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../subagent';
 import { initializeMCP, getMCPManager, shutdownMCP } from '../mcp';
 import { getHookRunner, resetHookRunner } from '../hooks';
+import { loadPlugins, getPluginRegistry } from '../plugins';
 import { logger } from '../utils/logger';
 import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
 import type { AIProvider, AppConfig } from '../config/schema';
@@ -177,6 +178,33 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 9.8. Initialize hook system (built-in hooks)
   const hookRunner = getHookRunner();
   // Note: Custom hooks can be registered via config.hooks later
+
+  // 9.9. Load plugins (OpenClaw-compatible)
+  if (config.plugins?.enabled !== false) {
+    try {
+      const pluginResult = await loadPlugins({
+        discovery: config.plugins?.discovery ? {
+          bundledDir: config.plugins.discovery.bundledDir,
+          globalDir: config.plugins.discovery.globalDir,
+          workspaceDir: config.plugins.discovery.workspaceDir,
+          configPaths: config.plugins.discovery.configPaths,
+        } : undefined,
+        pluginConfigs: config.plugins?.pluginConfigs,
+        disabledPlugins: config.plugins?.disabledPlugins,
+      });
+
+      if (pluginResult.loaded.length > 0) {
+        console.log(`   🔌 Plugins: ${pluginResult.loaded.length} loaded (${pluginResult.loaded.join(', ')})`);
+      }
+      if (pluginResult.failed.length > 0) {
+        pluginResult.failed.forEach(f => {
+          console.warn(`   ⚠️  Plugin ${f.id}: ${f.error}`);
+        });
+      }
+    } catch (error) {
+      console.warn('   ⚠️  Plugin system initialization failed:', error);
+    }
+  }
 
   // 10. Create agent (singleton)
   const agent = createAgent({

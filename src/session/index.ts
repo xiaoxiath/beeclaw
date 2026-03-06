@@ -22,6 +22,8 @@ import {
   resetExtractionManager,
   type ExtractionManager,
 } from '../extraction';
+import { getPluginRegistry } from '../plugins';
+import { createHookRunner } from '../plugins/hook-runner';
 
 export interface SessionOptions {
   sessionId: string;
@@ -179,6 +181,27 @@ function getSessionFilePath(sessionId: string): string {
  */
 function saveSession(session: Session): void {
   try {
+    // Trigger before_message_write hook (synchronous)
+    try {
+      const registry = getPluginRegistry();
+      const hookRunner = createHookRunner(registry);
+
+      const modifiedSession = hookRunner.runBeforeMessageWrite({
+        sessionId: session.id,
+        messages: session.messages,
+        metadata: session.metadata,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Use modified data if returned
+      if (modifiedSession) {
+        session.messages = modifiedSession.messages || session.messages;
+        session.metadata = modifiedSession.metadata || session.metadata;
+      }
+    } catch {
+      // Plugin system not initialized
+    }
+
     const filePath = getSessionFilePath(session.id);
     writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf-8');
   } catch (error) {
@@ -289,6 +312,26 @@ export function getOrCreateSession(options: SessionOptions): Session {
 
   sessions.set(options.sessionId, session);
   saveSession(session);
+
+  // Trigger session_start hook (async, fire-and-forget)
+  try {
+    const registry = getPluginRegistry();
+    const hookRunner = createHookRunner(registry);
+
+    // Fire-and-forget to avoid blocking
+    Promise.resolve().then(() => {
+      hookRunner.runSessionStart({
+        sessionId: session.id,
+        userId: session.userId,
+        channel: session.channel,
+        metadata: session.metadata,
+        timestamp: session.createdAt,
+      });
+    });
+  } catch {
+    // Plugin system not initialized, ignore
+  }
+
   return session;
 }
 
@@ -318,6 +361,30 @@ export function listSessions(filter?: { channel?: string; userId?: string }): Se
  * Delete a session
  */
 export function deleteSession(sessionId: string): boolean {
+  const session = sessions.get(sessionId);
+
+  if (session) {
+    // Trigger session_end hook before deletion (async, fire-and-forget)
+    try {
+      const registry = getPluginRegistry();
+      const hookRunner = createHookRunner(registry);
+
+      // Fire-and-forget to avoid blocking
+      Promise.resolve().then(() => {
+        hookRunner.runSessionEnd({
+          sessionId: session.id,
+          userId: session.userId,
+          channel: session.channel,
+          messageCount: session.messages.length,
+          createdAt: session.createdAt,
+          endedAt: new Date().toISOString(),
+        });
+      });
+    } catch {
+      // Plugin system not initialized
+    }
+  }
+
   deleteSessionFile(sessionId);
   return sessions.delete(sessionId);
 }

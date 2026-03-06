@@ -9,6 +9,8 @@ import { buildSubagentSystemPrompt } from './prompts';
 import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
 import type { AIProvider } from '../config/schema';
 import type { OpenAITool } from '../agent/types';
+import { getPluginRegistry } from '../plugins';
+import { createHookRunner } from '../plugins/hook-runner';
 
 /**
  * Subagent Runtime - manages subagent execution
@@ -61,38 +63,87 @@ export class SubagentRuntime {
     console.log(`[Subagent] Spawning ${config.type} subagent: ${subagentId}`);
     console.log(`[Subagent] Task: ${config.task.substring(0, 100)}...`);
 
+    // Trigger subagent_spawning hook (modifying)
+    let modifiedConfig = config;
+    try {
+      const registry = getPluginRegistry();
+      const hookRunner = createHookRunner(registry);
+
+      const spawningEvent = {
+        subagentId,
+        type: config.type,
+        task: config.task,
+        context: config.context,
+        provider: config.provider || this.provider,
+        model: config.model || this.model,
+        timestamp: new Date().toISOString(),
+      };
+
+      const result = await hookRunner.runSubagentSpawning(spawningEvent);
+
+      // Apply modifications if returned
+      if (result) {
+        modifiedConfig = {
+          ...config,
+          task: result.task || config.task,
+          context: result.context || config.context,
+          model: result.model || config.model,
+          provider: result.provider || config.provider,
+        };
+      }
+    } catch {
+      // Plugin system not initialized
+    }
+
     this.stats.totalSpawned++;
 
     try {
       // Build system prompt
       const systemPrompt = buildSubagentSystemPrompt(
-        config.type,
-        config.task,
-        config.context
+        modifiedConfig.type,
+        modifiedConfig.task,
+        modifiedConfig.context
       );
 
       // Get tools
-      const tools = config.tools
-        ? getAllToolsForAI().filter(t => config.tools!.includes(t.function.name))
-        : this.getToolsForType(config.type);
+      const tools = modifiedConfig.tools
+        ? getAllToolsForAI().filter(t => modifiedConfig.tools!.includes(t.function.name))
+        : this.getToolsForType(modifiedConfig.type);
 
       // Create agent
       const agent = createAgent({
-        provider: config.provider || this.provider,
-        model: config.model || this.model,
+        provider: modifiedConfig.provider || this.provider,
+        model: modifiedConfig.model || this.model,
         systemPrompt,
         tools,
-        maxTokens: config.maxTokens,
+        maxTokens: modifiedConfig.maxTokens,
         loadCoreMemory: false, // Don't load core memory for subagents
         autoRefreshMemory: false,
         tokenStatsConfig: { showTokenStats: false }, // Don't show token stats
       });
 
+      // Trigger subagent_spawned hook (void)
+      try {
+        const registry = getPluginRegistry();
+        const hookRunner = createHookRunner(registry);
+
+        await hookRunner.runSubagentSpawned({
+          subagentId,
+          type: modifiedConfig.type,
+          task: modifiedConfig.task,
+          provider: (modifiedConfig.provider || this.provider).type,
+          model: modifiedConfig.model || this.model,
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        // Plugin system not initialized
+      }
+
       // Execute with timeout and retry
       // Default 3 minutes for large models
       // Can be configured via SUBAGENT_TIMEOUT_MS environment variable or config.timeout
       const defaultTimeout = parseInt(process.env.SUBAGENT_TIMEOUT_MS || '180000', 10);
-      const timeout = config.timeout || defaultTimeout;
+      const timeout = modifiedConfig.timeout || defaultTimeout;
       const MAX_RETRIES = 2; // Subagent has fewer retries than main agent
 
       let output: string | undefined;
@@ -165,13 +216,60 @@ export class SubagentRuntime {
 
       console.log(`[Subagent] ${subagentId} completed in ${duration}ms`);
 
-      return {
+      // Build result
+      let result: SubagentResult = {
         success: true,
         output,
         tokensUsed: 0, // TODO: extract from agent
         duration,
         id: subagentId,
       };
+
+      // Trigger subagent_delivery_target hook (modifying)
+      try {
+        const registry = getPluginRegistry();
+        const hookRunner = createHookRunner(registry);
+
+        const deliveryEvent = {
+          subagentId,
+          type: modifiedConfig.type,
+          output,
+          result,
+          timestamp: new Date().toISOString(),
+        };
+
+        const modifiedDelivery = await hookRunner.runSubagentDeliveryTarget(deliveryEvent);
+
+        // Apply modifications if returned
+        if (modifiedDelivery?.output) {
+          output = modifiedDelivery.output;
+          result.output = output;
+        }
+        if (modifiedDelivery?.result) {
+          result = { ...result, ...modifiedDelivery.result };
+        }
+      } catch {
+        // Plugin system not initialized
+      }
+
+      // Trigger subagent_ended hook (void)
+      try {
+        const registry = getPluginRegistry();
+        const hookRunner = createHookRunner(registry);
+
+        await hookRunner.runSubagentEnded({
+          subagentId,
+          type: modifiedConfig.type,
+          success: true,
+          duration,
+          output,
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        // Plugin system not initialized
+      }
+
+      return result;
 
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -181,6 +279,23 @@ export class SubagentRuntime {
       this.stats.totalDuration += duration;
 
       console.error(`[Subagent] ${subagentId} failed:`, errorMessage);
+
+      // Trigger subagent_ended hook (void) for failure case
+      try {
+        const registry = getPluginRegistry();
+        const hookRunner = createHookRunner(registry);
+
+        await hookRunner.runSubagentEnded({
+          subagentId,
+          type: modifiedConfig.type,
+          success: false,
+          duration,
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        // Plugin system not initialized
+      }
 
       return {
         success: false,

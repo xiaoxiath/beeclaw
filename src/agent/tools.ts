@@ -17,6 +17,7 @@ import {
   wikiToolDefinitions,
 } from '../feishu';
 import { getMCPManager } from '../mcp';
+import { getPluginRegistry } from '../plugins';
 import { logger } from '../utils/logger';
 import type { OpenAITool } from './types';
 import type { Session } from '../session';
@@ -78,6 +79,22 @@ export function getAllTools(): OpenAITool[] {
     // MCP not initialized
   }
 
+  // Plugin tools
+  let pluginTools: OpenAITool[] = [];
+  try {
+    const registry = getPluginRegistry();
+    pluginTools = Array.from(registry.tools.values()).map(tool => ({
+      type: 'function' as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      },
+    }));
+  } catch {
+    // Plugin system not initialized
+  }
+
   return [
     ...memoryTools.map(toOpenAITool),
     ...skillTools.map(toOpenAITool),
@@ -87,6 +104,7 @@ export function getAllTools(): OpenAITool[] {
     ...personaTools,
     ...feishuTools.map(toOpenAITool),
     ...mcpTools,
+    ...pluginTools,
   ];
 }
 
