@@ -2231,12 +2231,12 @@ Best practices:
 
 export async function executeSpawnSubagentTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeSpawnSubagent } = await import('../subagent/executor');
-  return executeSpawnSubagent(params as any);
+  return executeSpawnSubagent(params as import('../subagent/tools').SpawnSubagentParams);
 }
 
 export async function executeSpawnParallelTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeSpawnParallel } = await import('../subagent/executor');
-  return executeSpawnParallel(params as any);
+  return executeSpawnParallel(params as import('../subagent/tools').SpawnParallelParams);
 }
 
 // ============================================================================
@@ -2245,48 +2245,48 @@ export async function executeSpawnParallelTool(params: Record<string, unknown>):
 
 export async function executeStateSetTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateSet } = await import('../subagent/state-executor');
-  return executeStateSet(params as any);
+  return executeStateSet(params as import('../subagent/state-tools').StateSetParams);
 }
 
-export async function executeStateGetTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateGetTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateGet } = await import('../subagent/state-executor');
-  return executeStateGet(params as any);
+  return executeStateGet(params as import('../subagent/state-tools').StateGetParams);
 }
 
-export async function executeStateDeleteTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateDeleteTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateDelete } = await import('../subagent/state-executor');
-  return executeStateDelete(params as any);
-}
+  return executeStateDelete(params as import('../subagent/state-tools').StateDeleteParams);
+ }
 
-export async function executeStateUpdateTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateUpdateTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateUpdate } = await import('../subagent/state-executor');
-  return executeStateUpdate(params as any);
-}
+  return executeStateUpdate(params as import('../subagent/state-tools').StateUpdateParams);
+ }
 
-export async function executeStateExistsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateExistsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateExists } = await import('../subagent/state-executor');
-  return executeStateExists(params as any);
-}
+  return executeStateExists(params as import('../subagent/state-tools').StateExistsParams);
+ }
 
-export async function executeStateListTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateListTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateList } = await import('../subagent/state-executor');
-  return executeStateList(params as any);
-}
+  return executeStateList(params as import('../subagent/state-tools').StateListParams);
+ }
 
-export async function executeStateStatsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateStatsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateStats } = await import('../subagent/state-executor');
   return executeStateStats();
-}
+ }
 
-export async function executeStateLockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateLockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateLock } = await import('../subagent/state-executor');
-  return executeStateLock(params as any);
-}
+  return executeStateLock(params as import('../subagent/state-tools').StateLockParams);
+ }
 
-export async function executeStateUnlockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateUnlockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const { executeStateUnlock } = await import('../subagent/state-executor');
-  return executeStateUnlock(params as any);
-}
+  return executeStateUnlock(params as import('../subagent/state-tools').StateUnlockParams);
+ }
 
 // ============================================================================
 // Tool Registry
