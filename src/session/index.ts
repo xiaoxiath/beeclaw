@@ -25,6 +25,8 @@ import {
 import { getPluginRegistry } from '../plugins';
 import { createHookRunner } from '../plugins/hook-runner';
 import { logger } from '../utils/logger';
+import { SessionMessageQueue } from '../utils/session-lock';
+import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../utils/atomic-fs';
 
 export interface SessionOptions {
   sessionId: string;
@@ -50,6 +52,10 @@ export interface Session {
   metadata?: Record<string, unknown>;
   pendingRecovery?: boolean; // Mark session for recovery if bot restarts
   responseDelivered?: boolean; // Mark if response was successfully sent to user
+  pendingDelivery?: boolean; // True after AI response is generated but BEFORE it's delivered to the channel
+  recoveryAttempts?: number; // Number of recovery attempts for the current pending message
+  lastRecoveryAt?: string; // Timestamp of the last recovery attempt
+  lastAiResponse?: string; // Cached AI response for re-delivery
 }
 
 export interface ProactiveMessageOptions {
@@ -79,6 +85,9 @@ let sessionConfig: SessionConfig = {
   maxMessages: 20,
   keepRecent: 6,
 };
+
+/** Maximum recovery attempts before marking a message as "poison" */
+export const MAX_RECOVERY_ATTEMPTS = 3;
 
 // Active sessions cache
 const sessions: Map<string, Session> = new Map();
@@ -159,6 +168,27 @@ export function clearRecoveryFlag(sessionId: string): void {
 }
 
 /**
+ * Confirm that a message has been successfully delivered to the channel.
+ *
+ * This replaces both clearRecoveryFlag() and markResponseDelivered() from
+ * the original code. It's called ONLY after the Feishu reply (or CLI output)
+ * has succeeded.
+ */
+export function confirmDelivery(sessionId: string): void {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.pendingRecovery = false;
+    session.pendingDelivery = false;
+    session.recoveryAttempts = 0;
+    session.lastRecoveryAt = undefined;
+    session.responseDelivered = true;
+    session.updatedAt = new Date().toISOString();
+    saveSession(session);
+    console.log(`[Session] Delivery confirmed for session ${sessionId}`);
+  }
+}
+
+/**
  * Mark response as delivered to user (for tracking purposes)
  * This is separate from pendingRecovery - it's just for status tracking
  */
@@ -218,7 +248,8 @@ function saveSession(session: Session): void {
     }
 
     const filePath = getSessionFilePath(session.id);
-    writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf-8');
+    // BUG #3 FIX: Use atomic write instead of writeFileSync
+    writeFileAtomic(filePath, JSON.stringify(session, null, 2));
   } catch (error) {
     console.error('[Session] Failed to save session:', error);
   }
@@ -230,14 +261,32 @@ function saveSession(session: Session): void {
 function loadSession(sessionId: string): Session | null {
   try {
     const filePath = getSessionFilePath(sessionId);
-    if (existsSync(filePath)) {
-      const content = readFileSync(filePath, 'utf-8');
-      return JSON.parse(content) as Session;
+
+    // BUG #3 FIX: Use readFileWithRecovery with structure validation
+    const data = readFileWithRecovery<Session>(filePath, isValidSession);
+
+    if (!data) {
+      console.warn(`[Session] Failed to load session ${sessionId} (corrupted or missing)`);
+      return null;
     }
+
+    return data;
   } catch (error) {
     console.error('[Session] Failed to load session:', error);
+    return null;
   }
-  return null;
+}
+
+/**
+ * Validate session structure after loading.
+ */
+function isValidSession(data: unknown): data is Session {
+  if (typeof data !== 'object' || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  // Must have id and either messages or conversationHistory
+  if (typeof obj.id !== 'string') return false;
+  if (!Array.isArray(obj.messages)) return false;
+  return true;
 }
 
 /**
@@ -412,9 +461,20 @@ export function generateSessionId(channel: string, ...identifiers: string[]): st
 }
 
 /**
- * Send a proactive message
+ * Send a proactive message (with concurrency control)
  */
 export async function sendProactiveMessage(options: ProactiveMessageOptions): Promise<ProactiveMessageResult> {
+  // BUG #1 FIX: Use per-session queue to prevent concurrent processing of same session
+  const queue = SessionMessageQueue.getInstance();
+  const sessionId = options.sessionId || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  return queue.enqueue(sessionId, () => _sendProactiveMessageInternal(options));
+}
+
+/**
+ * Internal implementation of proactive message sending
+ */
+async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): Promise<ProactiveMessageResult> {
   if (!agentConfig) {
     return { success: false, error: 'Session manager not initialized' };
   }
@@ -850,8 +910,13 @@ export function loadAllSessions(): number {
     return 0;
   }
 
+  // BUG #3 FIX: Clean up leftover temp files from crashes
+  cleanupTempFiles(sessionConfig.storagePath);
+
   let loaded = 0;
-  const files = readdirSync(sessionConfig.storagePath).filter(f => f.endsWith('.json'));
+  const files = readdirSync(sessionConfig.storagePath).filter(
+    f => f.endsWith('.json') && !f.endsWith('.bak') && !f.endsWith('.tmp')
+  );
 
   for (const file of files) {
     try {
@@ -934,6 +999,22 @@ export function getExtraction(): ExtractionManager | null {
  */
 export function resetExtraction(): void {
   resetExtractionManager();
+}
+
+/**
+ * Save all active sessions to disk (for graceful shutdown)
+ */
+export function saveAllSessions(): void {
+  let saved = 0;
+  for (const session of sessions.values()) {
+    try {
+      saveSession(session);
+      saved++;
+    } catch (error) {
+      console.error(`[Session] Failed to save session ${session.id}:`, error);
+    }
+  }
+  console.log(`[Session] Saved ${saved} sessions to disk`);
 }
 
 // Export recovery module

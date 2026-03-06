@@ -11,13 +11,14 @@
 import { join } from 'path';
 import { initApp, getAgent, getProvider, getModel, getTokenStatsConfig } from './app';
 import { initFeishuWSIntegration } from './routes/proactive';
-import { loadAllSessions } from './session';
+import { loadAllSessions, saveAllSessions } from './session';
 import { getDaemon, getScheduler, registerFeishuHandler, pushPendingNotifications, setCliDeliveryHandler } from './proactive';
 import { getFeishuWSClient } from './feishu';
 import { initSelfEvolution } from './evolution/self-evolution';
 import { fetchHolidayInfo } from './utils/holiday';
 import { fetchWeatherInfo } from './utils/weather';
 import { initTaskManager, initWorkers } from './queue';
+import { GracefulShutdown } from './utils/graceful-shutdown';
 
 function showHelp(): void {
   console.log(`
@@ -50,6 +51,12 @@ async function main() {
 
   console.log('🐝 Beeclaw Bot - Feishu Integration');
   console.log('='.repeat(50));
+
+  // BUG #5 FIX: Initialize graceful shutdown FIRST
+  const shutdownManager = GracefulShutdown.getInstance({
+    gracePeriodMs: 30_000,         // 30 seconds total grace period
+    installSignalHandlers: true,   // Handle SIGINT + SIGTERM
+  });
 
   // Initialize app (unified initialization)
   const { config, provider, model } = await initApp({
@@ -100,6 +107,52 @@ async function main() {
     console.error('❌ Failed to initialize Feishu:', error);
     process.exit(1);
   }
+
+  // BUG #5 FIX: Register cleanup — Save all sessions on shutdown
+  shutdownManager.register({
+    name: 'Save all sessions',
+    priority: 10,  // High priority — run first
+    fn: () => {
+      saveAllSessions();
+      console.log('[Shutdown] Sessions saved.');
+    },
+  });
+
+  // BUG #5 FIX: Register cleanup — Disconnect WebSocket
+  shutdownManager.register({
+    name: 'Disconnect Feishu WebSocket',
+    priority: 50,  // After sessions are saved
+    fn: () => {
+      const client = getFeishuWSClient();
+      if (client) {
+        client.stop();
+        console.log('[Shutdown] Feishu WebSocket disconnected.');
+      }
+    },
+  });
+
+  // BUG #5 FIX: Register cleanup — Save all sessions on shutdown
+  shutdownManager.register({
+    name: 'Save all sessions',
+    priority: 10,  // High priority — run first
+    fn: () => {
+      saveAllSessions();
+      console.log('[Shutdown] Sessions saved.');
+    },
+  });
+
+  // BUG #5 FIX: Register cleanup — Disconnect WebSocket
+  shutdownManager.register({
+    name: 'Disconnect Feishu WebSocket',
+    priority: 50,  // After sessions are saved
+    fn: () => {
+      const client = getFeishuWSClient();
+      if (client) {
+        client.stop();
+        console.log('[Shutdown] Feishu WebSocket disconnected.');
+      }
+    },
+  });
 
   // Register Feishu push handler for proactive messaging
   registerFeishuHandler(async (chatId: string, message: string) => {
@@ -225,6 +278,20 @@ async function main() {
 
     const scheduleCount = scheduler.listSchedules({ enabled: true }).length;
     console.log(`   Loaded ${scheduleCount} active schedules`);
+
+    // BUG #5 FIX: Register daemon cleanup
+    shutdownManager.register({
+      name: 'Stop proactive daemon',
+      priority: 30,
+      fn: async () => {
+        try {
+          await daemon.stop();
+          console.log('[Shutdown] Proactive daemon stopped.');
+        } catch (error) {
+          console.warn('[Shutdown] Daemon stop error:', error);
+        }
+      },
+    });
   }
 
   console.log('\n✅ Bot is running!');
@@ -234,12 +301,15 @@ async function main() {
   }
   console.log('   Press Ctrl+C to stop.\n');
 
-  // Keep the process alive
-  process.on('SIGINT', () => {
-    console.log('\n\n👋 Shutting down...');
-    process.exit(0);
-  });
+  // BUG #5 FIX: Removed old SIGINT handler
+  // GracefulShutdown now handles SIGINT and SIGTERM with:
+  //   1. Drain in-flight message queues
+  //   2. Save all sessions
+  //   3. Stop daemon (if enabled)
+  //   4. Disconnect WebSocket
+  //   5. Exit cleanly
 
+  // Keep the process alive
   process.stdin.resume();
 }
 

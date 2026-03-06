@@ -383,12 +383,66 @@ export interface CardConfig {
  * Feishu WebSocket Client
  *
  * Manages WebSocket connection and event handling
+ *
+ * BUG #8 FIX: Added reconnection with exponential backoff
  */
 export class FeishuWSClient {
   private config: FeishuWSConfig;
   private client: Lark.Client | null = null;
   private wsClient: Lark.WSClient | null = null;
   private isConnected: boolean = false;
+
+  // BUG #8 FIX: Reconnection properties
+  private reconnectOptions: {
+    enabled: boolean;
+    initialDelayMs: number;
+    maxDelayMs: number;
+    backoffMultiplier: number;
+    maxAttempts: number;
+    jitterFactor: number;
+  } = {
+    enabled: true,
+    initialDelayMs: 1000,
+    maxDelayMs: 60_000,
+    backoffMultiplier: 2,
+    maxAttempts: Infinity,
+    jitterFactor: 0.1,
+  };
+
+  private reconnectState: {
+    attempt: number;
+    currentDelayMs: number;
+    timer: ReturnType<typeof setTimeout> | null;
+    connecting: boolean;
+    intentionalStop: boolean;
+  } = {
+    attempt: 0,
+    currentDelayMs: 1000,
+    timer: null,
+    connecting: false,
+    intentionalStop: false,
+  };
+
+  // Cache for reconnection
+  private _cachedBaseConfig: { appId: string; appSecret: string } | null = null;
+  private _cachedEventDispatcher: any = null;
+  private _cachedLoggerLevel: any = null;
+  private _monitorInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Event handlers
+  private messageHandlers: MessageHandler[] = [];
+  private messageReadHandlers: MessageReadHandler[] = [];
+  private messageRecalledHandlers: MessageRecalledHandler[] = [];
+  private reactionCreatedHandlers: ReactionCreatedHandler[] = [];
+  private reactionDeletedHandlers: ReactionDeletedHandler[] = [];
+  private chatDisbandedHandlers: ChatDisbandedHandler[] = [];
+  private chatUpdatedHandlers: ChatUpdatedHandler[] = [];
+  private chatMemberAddedHandlers: ChatMemberAddedHandler[] = [];
+  private chatMemberDeletedHandlers: ChatMemberDeletedHandler[] = [];
+  private botAddedHandlers: BotAddedHandler[] = [];
+  private botDeletedHandlers: BotDeletedHandler[] = [];
+  private p2pChatCreatedHandlers: P2PChatCreatedHandler[] = [];
+  private p2pChatEnteredHandlers: P2PChatEnteredHandler[] = [];
 
   // Track last active chat for proactive messaging
   private _lastActiveChatId: string | null = null;
@@ -686,6 +740,16 @@ export class FeishuWSClient {
           ? Lark.LoggerLevel.warn
           : Lark.LoggerLevel.error;
 
+    // BUG #8 FIX: Cache config for reconnection
+    this._cachedBaseConfig = baseConfig;
+    this._cachedEventDispatcher = eventDispatcher;
+    this._cachedLoggerLevel = loggerLevel;
+
+    // BUG #8 FIX: Reset reconnect state
+    this.reconnectState.intentionalStop = false;
+    this.reconnectState.attempt = 0;
+    this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
+
     // Create WebSocket client
     this.wsClient = new Lark.WSClient({
       ...baseConfig,
@@ -698,9 +762,17 @@ export class FeishuWSClient {
         eventDispatcher,
       });
       this.isConnected = true;
+      // BUG #8 FIX: Reset backoff on successful connection
+      this.reconnectState.attempt = 0;
+      this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
       console.log('[FeishuWS] Connected successfully');
+
+      // BUG #8 FIX: Start connection monitor
+      this._startConnectionMonitor();
     } catch (error) {
       console.error('[FeishuWS] Connection failed:', error);
+      // BUG #8 FIX: Schedule reconnection on failure
+      this._scheduleReconnect();
       throw error;
     }
   }
@@ -709,12 +781,180 @@ export class FeishuWSClient {
    * Stop the WebSocket connection
    */
   stop(): void {
+    // BUG #8 FIX: Mark as intentional stop
+    this.reconnectState.intentionalStop = true;
+
+    // BUG #8 FIX: Cancel pending reconnection
+    if (this.reconnectState.timer) {
+      clearTimeout(this.reconnectState.timer);
+      this.reconnectState.timer = null;
+    }
+
+    // BUG #8 FIX: Stop connection monitor
+    if (this._monitorInterval) {
+      clearInterval(this._monitorInterval);
+      this._monitorInterval = null;
+    }
+
+    // Disconnect WebSocket
     if (this.wsClient) {
       this.wsClient = null;
-      this.client = null;
-      this.isConnected = false;
-      console.log('[FeishuWS] Disconnected');
     }
+
+    this.client = null;
+    this.isConnected = false;
+    console.log('[FeishuWS] Disconnected (intentional)');
+  }
+
+  /**
+   * BUG #8 FIX: Configure reconnection behavior
+   */
+  configureReconnect(options: {
+    enabled?: boolean;
+    initialDelayMs?: number;
+    maxDelayMs?: number;
+    backoffMultiplier?: number;
+    maxAttempts?: number;
+    jitterFactor?: number;
+  }): void {
+    this.reconnectOptions = { ...this.reconnectOptions, ...options };
+    this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
+  }
+
+  /**
+   * BUG #8 FIX: Internal: Establish WebSocket connection
+   */
+  private async _connectWebSocket(): Promise<void> {
+    this.reconnectState.connecting = true;
+
+    try {
+      if (!this._cachedBaseConfig || !this._cachedEventDispatcher) {
+        throw new Error('[FeishuWS] No cached configuration for reconnection');
+      }
+
+      this.wsClient = new Lark.WSClient({
+        ...this._cachedBaseConfig,
+        loggerLevel: this._cachedLoggerLevel,
+      });
+
+      await this.wsClient.start({
+        eventDispatcher: this._cachedEventDispatcher,
+      });
+      this.isConnected = true;
+      this.reconnectState.connecting = false;
+
+      // Reset backoff on successful connection
+      this.reconnectState.attempt = 0;
+      this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
+
+      console.log(`[FeishuWS] Reconnected after ${this.reconnectState.attempt} attempt(s)`);
+    } catch (error) {
+      this.isConnected = false;
+      this.reconnectState.connecting = false;
+      throw error;
+    }
+  }
+
+  /**
+   * BUG #8 FIX: Schedule a reconnection attempt with exponential backoff
+   */
+  private _scheduleReconnect(): void {
+    if (!this.reconnectOptions.enabled) return;
+    if (this.reconnectState.intentionalStop) return;
+    if (this.reconnectState.connecting) return;
+    if (this.reconnectState.timer) return;
+
+    if (this.reconnectState.attempt >= this.reconnectOptions.maxAttempts) {
+      console.error(
+        `[FeishuWS] Max reconnection attempts reached (${this.reconnectOptions.maxAttempts}). Giving up.`
+      );
+      return;
+    }
+
+    // Calculate delay with jitter
+    const baseDelay = this.reconnectState.currentDelayMs;
+    const jitter = baseDelay * this.reconnectOptions.jitterFactor * (Math.random() * 2 - 1);
+    const delay = Math.max(0, Math.round(baseDelay + jitter));
+
+    this.reconnectState.attempt++;
+    console.log(
+      `[FeishuWS] Scheduling reconnection attempt ${this.reconnectState.attempt} ` +
+      `in ${Math.round(delay / 1000)}s...`
+    );
+
+    this.reconnectState.timer = setTimeout(async () => {
+      this.reconnectState.timer = null;
+
+      if (this.reconnectState.intentionalStop) return;
+      if (!this._cachedBaseConfig || !this._cachedEventDispatcher) {
+        console.error('[FeishuWS] Cannot reconnect — no cached configuration.');
+        return;
+      }
+
+      try {
+        await this._connectWebSocket();
+      } catch (error) {
+        console.error(
+          `[FeishuWS] Reconnection attempt ${this.reconnectState.attempt} failed:`,
+          error
+        );
+
+        // Increase backoff delay
+        this.reconnectState.currentDelayMs = Math.min(
+          this.reconnectState.currentDelayMs * this.reconnectOptions.backoffMultiplier,
+          this.reconnectOptions.maxDelayMs
+        );
+
+        // Schedule next attempt
+        this._scheduleReconnect();
+      }
+    }, delay);
+  }
+
+  /**
+   * BUG #8 FIX: Monitor connection health and trigger reconnection
+   */
+  private _startConnectionMonitor(): void {
+    // Clear any existing monitor
+    if (this._monitorInterval) {
+      clearInterval(this._monitorInterval);
+    }
+
+    this._monitorInterval = setInterval(() => {
+      if (this.reconnectState.intentionalStop) {
+        clearInterval(this._monitorInterval!);
+        this._monitorInterval = null;
+        return;
+      }
+
+      if (!this.isConnected && !this.reconnectState.connecting && !this.reconnectState.timer) {
+        console.warn('[FeishuWS] Connection lost, triggering reconnection...');
+        this._scheduleReconnect();
+      }
+    }, 30_000);
+
+    if (this._monitorInterval.unref) {
+      this._monitorInterval.unref();
+    }
+  }
+
+  /**
+   * BUG #8 FIX: Get reconnection status (useful for health checks / monitoring)
+   */
+  getReconnectStatus(): {
+    connected: boolean;
+    reconnecting: boolean;
+    attempt: number;
+    nextRetryMs: number | null;
+    intentionalStop: boolean;
+  } {
+    return {
+      connected: this.isConnected,
+      reconnecting: this.reconnectState.connecting || this.reconnectState.timer !== null,
+      attempt: this.reconnectState.attempt,
+      nextRetryMs: this.reconnectState.timer ? this.reconnectState.currentDelayMs : null,
+      intentionalStop: this.reconnectState.intentionalStop,
+    };
   }
 
   /**

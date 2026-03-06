@@ -1,5 +1,5 @@
 /**
- * Session Recovery Module
+ * Session Recovery Module — Bugfix Version
  *
  * Automatically detects and recovers unanswered sessions after restart.
  * Handles scenarios like:
@@ -7,11 +7,17 @@
  * - Process crash and auto-restart
  * - Manual service restart
  * - Messages sent just before restart
+ *
+ * Fixes applied:
+ *   Bug #2: Two-phase recovery (re-deliver vs. reprocess)
+ *   Bug #4: Full message content used (no .substring(0,100) truncation)
+ *   Bug #7: Recovery attempt limit (MAX_RECOVERY_ATTEMPTS)
  */
 
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import type { Session } from './index';
+import { confirmDelivery, MAX_RECOVERY_ATTEMPTS } from './index';
 
 export interface RecoveryConfig {
   /** Enable recovery feature (default: true) */
@@ -33,7 +39,13 @@ export interface RecoveryConfig {
 export interface UnansweredSession {
   session: Session;
   lastMessageAge: number;  // milliseconds
-  lastMessageContent: string;
+  lastMessageContent: string;  // BUG #4 FIX: Full content, no truncation
+  /** True if AI already responded but delivery failed */
+  pendingDeliveryOnly: boolean;
+  /** Cached AI response for re-delivery */
+  existingResponse?: string;
+  /** Current recovery attempt count */
+  recoveryAttempts: number;
 }
 
 export interface RecoveryResult {
@@ -106,6 +118,18 @@ export async function detectUnansweredSessions(
     // Check if session is marked for recovery (bot restarted during processing)
     const isPendingRecovery = session.pendingRecovery === true;
 
+    // BUG #7 FIX: Check recovery attempt limit
+    const attempts = session.recoveryAttempts ?? 0;
+    if (isPendingRecovery && attempts >= MAX_RECOVERY_ATTEMPTS) {
+      console.warn(
+        `[Recovery] Session ${session.id} exceeded max recovery attempts ` +
+        `(${attempts}/${MAX_RECOVERY_ATTEMPTS}). Marking as failed.`
+      );
+      session.pendingRecovery = false;
+      session.pendingDelivery = false;
+      continue;
+    }
+
     // CRITICAL FIX: Check if this session was already answered
     // If last message is from assistant, or if there's an assistant response after the last user message
     // then this session doesn't need recovery (even if pendingRecovery is stale)
@@ -160,10 +184,16 @@ export async function detectUnansweredSessions(
       console.log(`[Recovery] 🔄 Session ${session.id} marked as pending recovery (bot restarted during processing)`);
     }
 
+    // BUG #2 FIX: Detect if this is a delivery-only recovery
+    const isPendingDeliveryOnly = session.pendingDelivery === true;
+
     unanswered.push({
       session,
       lastMessageAge: age,
-      lastMessageContent: lastMessage.content.substring(0, 100),
+      lastMessageContent: lastMessage.content, // BUG #4 FIX: Full content
+      pendingDeliveryOnly: isPendingDeliveryOnly,
+      existingResponse: isPendingDeliveryOnly ? session.lastAiResponse : undefined,
+      recoveryAttempts: attempts,
     });
   }
 
@@ -218,38 +248,56 @@ export async function recoverUnansweredSessions(
 
   for (const batch of batches) {
     for (const item of batch) {
-      const { session, lastMessageAge, lastMessageContent } = item;
+      const { session, lastMessageAge, lastMessageContent, pendingDeliveryOnly, existingResponse, recoveryAttempts } = item;
 
       console.log(`[Recovery] 🔄 Recovering session ${session.id}`);
-      console.log(`[Recovery]    Last message: "${lastMessageContent}..."`);
+      console.log(`[Recovery]    Last message: "${lastMessageContent.substring(0, 100)}..."`);
       console.log(`[Recovery]    Age: ${Math.round(lastMessageAge / 1000)}s`);
+      console.log(`[Recovery]    Delivery-only: ${pendingDeliveryOnly}, Attempts: ${recoveryAttempts}`);
+
+      // Increment recovery attempts
+      session.recoveryAttempts = recoveryAttempts + 1;
+      session.lastRecoveryAt = new Date().toISOString();
+
+      let responseToSend: string | undefined;
 
       try {
         // Determine channel
         const channel = session.channel as 'cli' | 'feishu' | 'webhook' | 'api';
 
-        // Send proactive message to reprocess
-        let proactiveResult: { success: boolean; response?: string; error?: string } | undefined;
+        if (pendingDeliveryOnly && existingResponse) {
+          // BUG #2 FIX: Phase 1 - Re-deliver cached response
+          console.log(`[Recovery] Phase 1: Re-delivering cached response...`);
+          responseToSend = existingResponse;
+        } else {
+          // BUG #2 FIX: Phase 2 - Full reprocessing
+          console.log(`[Recovery] Phase 2: Reprocessing message...`);
 
-        if (options.sendProactiveMessage) {
-          proactiveResult = await options.sendProactiveMessage({
-            sessionId: session.id,
-            userId: session.userId,
-            channel,
-            message: lastMessageContent,
-            context: {
-              chatId: session.metadata?.chatId,
-              isRecovery: true,  // Mark as recovery
-            },
-          });
+          // Send proactive message to reprocess
+          let proactiveResult: { success: boolean; response?: string; error?: string } | undefined;
 
-          if (!proactiveResult.success) {
-            throw new Error(proactiveResult.error || 'Unknown error');
+          if (options.sendProactiveMessage) {
+            proactiveResult = await options.sendProactiveMessage({
+              sessionId: session.id,
+              userId: session.userId,
+              channel,
+              message: lastMessageContent, // BUG #4 FIX: Full content
+              context: {
+                chatId: session.metadata?.chatId,
+                isRecovery: true,  // Mark as recovery
+              },
+            });
+
+            if (!proactiveResult.success) {
+              throw new Error(proactiveResult.error || 'Unknown error');
+            }
+
+            responseToSend = proactiveResult.response;
           }
         }
 
         // Send response to Feishu if applicable
-        if (channel === 'feishu' && options.getFeishuClient && proactiveResult?.response) {
+        if (channel === 'feishu' && options.getFeishuClient && responseToSend) {
           const client = options.getFeishuClient();
           if (client && session.metadata?.chatId) {
             try {
@@ -257,16 +305,24 @@ export async function recoverUnansweredSessions(
               await client.sendPostMessage(
                 session.metadata.chatId as string,
                 'chat_id',
-                proactiveResult.response,
-                { title: '🔄 恢复处理结果' }
+                responseToSend,
+                { title: pendingDeliveryOnly ? '🔄 重新投递' : '🔄 恢复处理结果' }
               );
               console.log('[Recovery] 📤 Response sent to Feishu');
 
-              // Clear recovery flag after successful delivery
-              const { clearRecoveryFlag } = await import('./index');
-              clearRecoveryFlag(session.id);
+              // BUG #2 FIX: Use confirmDelivery() instead of clearRecoveryFlag()
+              confirmDelivery(session.id);
             } catch (error) {
               console.error('[Recovery] Failed to send response:', error);
+              // BUG #2 FIX: Save AI response for Phase 1 retry next time
+              if (!pendingDeliveryOnly && responseToSend) {
+                session.pendingDelivery = true;
+                session.lastAiResponse = responseToSend;
+                console.warn(
+                  `[Recovery] ✗ AI responded but delivery failed for session ${session.id}. ` +
+                  `Will attempt re-delivery on next recovery.`
+                );
+              }
             }
           }
         }

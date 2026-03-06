@@ -4,7 +4,7 @@
  * Provides Feishu bot integration with memory system
  */
 
-import { initSessionManager, sendProactiveMessage } from '../session';
+import { initSessionManager, sendProactiveMessage, confirmDelivery } from '../session';
 import { pushNotification } from '../proactive/pusher';
 import { evaluatePatterns } from '../proactive/triggers';
 import { getGoalStore } from '../goal/store';
@@ -12,10 +12,17 @@ import { initFeishuWSClient, getFeishuWSClient } from '../feishu';
 import type { AIProvider, FeishuConfig } from '../config/schema';
 import { analyzeForTriggers, checkPreferenceTriggers, recordQuery } from '../evolution';
 import type { TokenStatsConfig } from '../agent';
+import { MessageDeduplicator } from '../utils/deduplicator';
+import { GracefulShutdown } from '../utils/graceful-shutdown';
 
-// Message deduplication - track processed message IDs
-const processedMessages = new Set<string>();
-const MAX_PROCESSED_CACHE = 1000;
+// BUG #6 FIX: Replace Set<string> with LRU+TTL deduplicator
+const deduplicator = new MessageDeduplicator({
+  maxSize: 2000,
+  ttlMs: 10 * 60 * 1000,  // 10 minutes
+});
+
+// Reference to shutdown manager
+const shutdownManager = GracefulShutdown.getInstance({ installSignalHandlers: false });
 
 // Track last processed message time per chat to filter old messages
 const lastProcessedTimePerChat = new Map<string, number>();
@@ -279,13 +286,14 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully`);
 
       // Mark response as delivered (for tracking purposes)
-      // Note: pendingRecovery was already cleared when AI responded (in session/index.ts)
+      // BUG #2 FIX: Use confirmDelivery() instead of separate markResponseDelivered()
       if (result.sessionId) {
-        const { markResponseDelivered } = await import('../session');
-        markResponseDelivered(result.sessionId);
+        confirmDelivery(result.sessionId);
       }
     } catch (error) {
       console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
+      // BUG #2 FIX: Do NOT confirm delivery - leave pendingRecovery=true so recovery can retry
+      console.warn(`[FeishuWS:${process.pid}] Message ${messageId} will be retried on recovery (delivery failed)`);
       // Try fallback with simple text
       try {
         // Strip markdown for fallback
