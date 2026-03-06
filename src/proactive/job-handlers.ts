@@ -7,6 +7,8 @@
 
 import type { ProactiveJobData } from './types';
 import { logger } from '../utils/logger';
+import { getCompressionEngine } from '../memory/compression';
+import { getMemoryStore } from '../memory';
 
 /**
  * Execute a skill with parameters
@@ -230,8 +232,6 @@ export async function handleMemoryCompressJob(): Promise<void> {
   console.log('[Daemon] Running memory compression...');
 
   try {
-    const { getCompressionEngine } = require('../memory/compression');
-    const { getMemoryStore } = require('../memory');
     const store = getMemoryStore();
     const engine = getCompressionEngine(store.getBasePath());
     const result = await engine.compress();

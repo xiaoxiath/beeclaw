@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdir
 import { join, resolve, dirname, basename, extname } from 'path';
 import { create, all } from 'mathjs';
 import { logger } from '../utils/logger';
+import { getConfig } from '../config';
 import type { MemoryToolResult } from '../memory/types';
 import {
   getSearchOrchestrator,
@@ -261,13 +262,12 @@ export async function executeTime(params: Record<string, unknown>): Promise<Buil
   // Get user timezone from config, fallback to Asia/Shanghai
   let defaultTimezone = 'Asia/Shanghai';
   try {
-    const { getConfig } = require('../config');
     const config = getConfig();
     if (config?.user?.timezone) {
       defaultTimezone = config.user.timezone;
     }
   } catch (error) {
-    logger.debug('Config not loaded, use default:', error);
+    logger.debug('Failed to get timezone from config:', error);
   }
 
   const timezone = paramTimezone || defaultTimezone;
@@ -340,7 +340,6 @@ export async function executeBeeclawInfo(): Promise<BuiltinToolResult> {
     // Get config info (if available)
     let configInfo = 'Not loaded';
     try {
-      const { getConfig } = require('../config');
       const config = getConfig();
       if (config) {
         configInfo = {
@@ -351,7 +350,7 @@ export async function executeBeeclawInfo(): Promise<BuiltinToolResult> {
         };
       }
     } catch (error) {
-      logger.debug('Config not loaded:', error);
+      logger.debug('Failed to get config info:', error);
     }
 
     const result = `# Beeclaw System Information

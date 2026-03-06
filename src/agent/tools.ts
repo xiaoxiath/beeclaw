@@ -193,7 +193,8 @@ export function getBeeclawVersion(): string {
 }
 
 export function getCurrentTimeContext(): string {
-  const { resolveUserLocation, resolveUserTimezone } = require('../utils/timezone');
+ export function getCurrentTimeContext(): string {
+  const { resolveUserLocation, resolveUserTimezone } = '../utils/timezone';
 
   const userLocation = resolveUserLocation();
   const userTimezone = resolveUserTimezone();

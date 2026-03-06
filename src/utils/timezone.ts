@@ -7,6 +7,7 @@
 
 import { searchCity } from './weather';
 import { logger } from './logger';
+import { getConfig } from '../config';
 
 const locationTimezoneCache = new Map<string, string>();
 
@@ -40,7 +41,6 @@ export async function getTimezoneFromLocation(location: string): Promise<string 
  * Should be called in initApp()
  */
 export async function initializeTimezoneCache(): Promise<void> {
-  const { getConfig } = require('../config');
   const config = getConfig();
 
   // If user.location is configured but timezone is not, derive it
