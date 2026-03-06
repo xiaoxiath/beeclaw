@@ -1,0 +1,10 @@
+{
+  "id": "feishu-official",
+  "name": "Feishu Official Plugin Wrapper",
+  "version": "1.0.0",
+  "description": "Wrapper for Feishu official OpenClaw plugin",
+  "main": "src/index.ts",
+  "author": "Beeclaw Team",
+  "license": "MIT",
+  "keywords": ["feishu", "lark", "openclaw", "official"]
+}

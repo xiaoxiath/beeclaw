@@ -41,6 +41,10 @@ import {
   executeRequestDeepAnalysis,
   isDeepAnalysisTool,
 } from './deep-analysis';
+import {
+  updateUserSettingsTool,
+  executeUpdateUserSettings,
+} from './user-settings';
 
 // Tool result type
 export type BuiltinToolResult = MemoryToolResult;
@@ -2335,6 +2339,7 @@ export const builtinTools = {
   state_lock: stateLockTool,
   state_unlock: stateUnlockTool,
   request_deep_analysis: requestDeepAnalysisTool,
+  update_user_settings: updateUserSettingsTool,
 };
 
 export const builtinToolNames = Object.keys(builtinTools);
@@ -2415,6 +2420,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeStateUnlockTool(params);
     case 'request_deep_analysis':
       return executeRequestDeepAnalysis(params);
+    case 'update_user_settings':
+      return executeUpdateUserSettings(params);
     default:
       return { success: false, error: `Unknown builtin tool: ${name}` };
   }

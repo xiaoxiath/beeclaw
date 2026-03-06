@@ -63,6 +63,15 @@
     "level": "info",
     "format": "pretty"
   },
+  "user": {
+    "location": "北京",
+    "locale": "zh-CN"
+  },
+  "weather": {
+    "apiHost": "devapi.qweather.com",
+    "apiKey": "${QWEATHER_API_KEY}",
+    "defaultLocation": "北京"
+  },
   "compression": {
     "enabled": true,
     "model": "glm-4.7-flash",

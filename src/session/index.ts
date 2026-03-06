@@ -22,6 +22,8 @@ import {
   resetExtractionManager,
   type ExtractionManager,
 } from '../extraction';
+import { getPluginRegistry } from '../plugins';
+import { createHookRunner } from '../plugins/hook-runner';
 
 export interface SessionOptions {
   sessionId: string;
@@ -156,6 +158,20 @@ export function clearRecoveryFlag(sessionId: string): void {
 }
 
 /**
+ * Mark response as delivered to user (for tracking purposes)
+ * This is separate from pendingRecovery - it's just for status tracking
+ */
+export function markResponseDelivered(sessionId: string): void {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.responseDelivered = true;
+    session.updatedAt = new Date().toISOString();
+    saveSession(session);
+    console.log(`[Session] 📤 Response delivered to user for ${sessionId}`);
+  }
+}
+
+/**
  * Register a channel handler for proactive messaging
  */
 export function registerChannelHandler(
@@ -179,6 +195,27 @@ function getSessionFilePath(sessionId: string): string {
  */
 function saveSession(session: Session): void {
   try {
+    // Trigger before_message_write hook (synchronous)
+    try {
+      const registry = getPluginRegistry();
+      const hookRunner = createHookRunner(registry);
+
+      const modifiedSession = hookRunner.runBeforeMessageWrite({
+        sessionId: session.id,
+        messages: session.messages,
+        metadata: session.metadata,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Use modified data if returned
+      if (modifiedSession) {
+        session.messages = modifiedSession.messages || session.messages;
+        session.metadata = modifiedSession.metadata || session.metadata;
+      }
+    } catch {
+      // Plugin system not initialized
+    }
+
     const filePath = getSessionFilePath(session.id);
     writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf-8');
   } catch (error) {
@@ -289,6 +326,26 @@ export function getOrCreateSession(options: SessionOptions): Session {
 
   sessions.set(options.sessionId, session);
   saveSession(session);
+
+  // Trigger session_start hook (async, fire-and-forget)
+  try {
+    const registry = getPluginRegistry();
+    const hookRunner = createHookRunner(registry);
+
+    // Fire-and-forget to avoid blocking
+    Promise.resolve().then(() => {
+      hookRunner.runSessionStart({
+        sessionId: session.id,
+        userId: session.userId,
+        channel: session.channel,
+        metadata: session.metadata,
+        timestamp: session.createdAt,
+      });
+    });
+  } catch {
+    // Plugin system not initialized, ignore
+  }
+
   return session;
 }
 
@@ -318,6 +375,30 @@ export function listSessions(filter?: { channel?: string; userId?: string }): Se
  * Delete a session
  */
 export function deleteSession(sessionId: string): boolean {
+  const session = sessions.get(sessionId);
+
+  if (session) {
+    // Trigger session_end hook before deletion (async, fire-and-forget)
+    try {
+      const registry = getPluginRegistry();
+      const hookRunner = createHookRunner(registry);
+
+      // Fire-and-forget to avoid blocking
+      Promise.resolve().then(() => {
+        hookRunner.runSessionEnd({
+          sessionId: session.id,
+          userId: session.userId,
+          channel: session.channel,
+          messageCount: session.messages.length,
+          createdAt: session.createdAt,
+          endedAt: new Date().toISOString(),
+        });
+      });
+    } catch {
+      // Plugin system not initialized
+    }
+  }
+
   deleteSessionFile(sessionId);
   return sessions.delete(sessionId);
 }
@@ -674,9 +755,16 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
       timestamp: new Date().toISOString(),
     });
 
-    // NOTE: Don't clear pendingRecovery here!
-    // It should only be cleared after response is successfully delivered
-    // (handled by the caller - e.g., routes/proactive.ts or recovery.ts)
+    // CRITICAL FIX: Clear pendingRecovery flag immediately after AI responds
+    // This prevents recovery from reprocessing already-answered messages
+    // (Previously this was only cleared after Feishu delivery, which caused race conditions)
+    if (session.pendingRecovery) {
+      session.pendingRecovery = false;
+      console.log('[Session] ✓ AI responded, cleared pendingRecovery flag');
+    }
+
+    // NOTE: responseDelivered flag is for tracking Feishu delivery status
+    // It's set separately after successful Feishu send (see routes/proactive.ts)
     session.updatedAt = new Date().toISOString();
 
     // Save session to disk

@@ -11,6 +11,8 @@ import { executeProactiveTool } from '../proactive/tools';
 import { executePersonaTool } from '../persona/tools';
 import { executeBuiltinTool, isBuiltinTool } from '../tools';
 import { getMCPManager, MCPClientManager } from '../mcp';
+import { getPluginRegistry } from '../plugins';
+import { createHookRunner } from '../plugins/hook-runner';
 import { recordSkillFailure, type ReflectionTrigger } from '../evolution';
 import {
   executeCalendarTool,
@@ -60,9 +62,20 @@ export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
 export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
 export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects } from './tool-dependencies';
 
-// Default tool executor that handles memory, skill, goal, proactive, persona, builtin, and feishu tools
+// Default tool executor that handles plugin, memory, skill, goal, proactive, persona, builtin, and feishu tools
 export function createDefaultToolExecutor(): ToolExecutor {
   return async (name: string, params: Record<string, unknown>) => {
+    // Plugin tools (highest priority)
+    try {
+      const registry = getPluginRegistry();
+      if (registry.tools.has(name)) {
+        const tool = registry.tools.get(name)!;
+        return tool.execute(params);
+      }
+    } catch {
+      // Plugin system not initialized, continue to other tools
+    }
+
     // Memory tools
     if (name.startsWith('memory_')) {
       return executeMemoryTool(name, params);
@@ -241,6 +254,7 @@ export class Agent {
   private tokenStatsConfig: TokenStatsConfig;
   private estimatedTokens: number = 0;
   private usedSkillsInTurn: Set<string> = new Set(); // Track skills used in current turn
+  private hookRunner: ReturnType<typeof createHookRunner> | null = null; // Plugin hook runner
 
   constructor(options: AgentOptions & {
     contextConfig?: Partial<ContextConfig>;
@@ -254,9 +268,44 @@ export class Agent {
     this.baseSystemPrompt = options.systemPrompt || '';
     this.autoRefreshMemory = (options as any).autoRefreshMemory ?? false;
 
+    // Initialize plugin hook runner
+    try {
+      const registry = getPluginRegistry();
+      this.hookRunner = createHookRunner(registry);
+    } catch {
+      // Plugin system not initialized
+    }
+
+    // Trigger before_model_resolve hook
+    let resolvedModel = options.model;
+    let resolvedProvider = options.provider;
+    if (this.hookRunner) {
+      const modelResolution = this.hookRunner.runBeforeModelResolve({
+        requestedModel: options.model,
+        requestedProvider: options.provider,
+        taskContext: {
+          systemPrompt: options.systemPrompt,
+          tools: options.tools,
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+      // Use resolved model/provider if provided
+      if (modelResolution?.model) {
+        resolvedModel = modelResolution.model;
+      }
+      if (modelResolution?.provider) {
+        resolvedProvider = modelResolution.provider;
+      }
+    }
+
+    // Update options with resolved model/provider
+    this.options.model = resolvedModel;
+    this.options.provider = resolvedProvider!;
+
     // Calculate optimal context config based on model and response tokens
     this.contextConfig = calculateContextConfig(
-      options.model,
+      resolvedModel,
       options.maxTokens,
       options.contextConfig
     );
@@ -270,6 +319,19 @@ export class Agent {
         content: options.systemPrompt,
       });
       this.estimatedTokens = estimateMessageTokens({ role: 'system', content: options.systemPrompt });
+    }
+
+    // Trigger before_agent_start hook (async, fire-and-forget)
+    if (this.hookRunner) {
+      // Use void promise to avoid blocking constructor
+      Promise.resolve().then(() => {
+        this.hookRunner?.runBeforeAgentStart({
+          provider: this.options.provider?.type || 'unknown',
+          model: this.options.model,
+          systemPrompt: this.baseSystemPrompt,
+          timestamp: new Date().toISOString(),
+        });
+      });
     }
   }
 
@@ -286,6 +348,33 @@ export class Agent {
   // Get context config
   getContextConfig(): ContextConfig {
     return { ...this.contextConfig };
+  }
+
+  // Build system prompt with plugin hooks
+  private async buildSystemPromptWithHooks(
+    basePrompt: string,
+    coreContext?: { user: string; soul: string; facts?: string; skills?: string },
+    sessionContext?: Session
+  ): Promise<string> {
+    // Trigger before_prompt_build hook
+    if (this.hookRunner) {
+      const modifiedContext = await this.hookRunner.runBeforePromptBuild({
+        basePrompt,
+        coreContext,
+        sessionContext,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Use modified context if returned
+      if (modifiedContext) {
+        basePrompt = modifiedContext.basePrompt || basePrompt;
+        coreContext = modifiedContext.coreContext || coreContext;
+        sessionContext = modifiedContext.sessionContext || sessionContext;
+      }
+    }
+
+    // Build the prompt
+    return buildSystemPrompt(basePrompt, coreContext, sessionContext);
   }
 
   // Refresh memory context (reload facts/*.md and skills)
@@ -312,10 +401,23 @@ export class Agent {
         // SkillStore not initialized
       }
 
-      const freshPrompt = buildSystemPrompt(this.baseSystemPrompt, {
+      const contextWithSkills = {
         ...coreContext,
         skills: skillsPrompt,
-      });
+      };
+
+      // Trigger before_prompt_build hook (async, but we don't wait for it in sync context)
+      if (this.hookRunner) {
+        this.hookRunner.runBeforePromptBuild({
+          basePrompt: this.baseSystemPrompt,
+          context: contextWithSkills,
+          timestamp: new Date().toISOString(),
+        }).catch(err => {
+          console.warn('[Agent] before_prompt_build hook error:', err);
+        });
+      }
+
+      const freshPrompt = buildSystemPrompt(this.baseSystemPrompt, contextWithSkills);
 
       // Find and update the system message
       const systemIndex = this.messages.findIndex(m => m.role === 'system');
@@ -368,6 +470,16 @@ export class Agent {
 
   // Clear conversation history (keep system prompt)
   clearHistory(): void {
+    // Trigger before_reset hook
+    if (this.hookRunner) {
+      // Use synchronous trigger for reset operation
+      this.hookRunner.runBeforeReset({
+        messageCount: this.messages.length,
+        tokenCount: this.estimatedTokens,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     const systemPrompt = this.messages.find(m => m.role === 'system');
     if (systemPrompt) {
       this.messages = [systemPrompt];
@@ -493,6 +605,18 @@ export class Agent {
 
     console.log(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
 
+    // Trigger before_compaction hook
+    if (this.hookRunner) {
+      await this.hookRunner.runBeforeCompaction({
+        oldMessages,
+        recentMessages,
+        systemMessage,
+        currentTokens: this.estimatedTokens,
+        maxTokens: this.contextConfig.maxTokens,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     try {
       const result = await hybridCompress(
         oldMessages,
@@ -530,6 +654,17 @@ export class Agent {
           `[Agent] LLM compression complete: ${oldTokens} → ${this.estimatedTokens} tokens ` +
           `(${Math.round((1 - this.estimatedTokens / oldTokens) * 100)}% reduction)`
         );
+
+        // Trigger after_compaction hook
+        if (this.hookRunner) {
+          await this.hookRunner.runAfterCompaction({
+            summary: result.summary,
+            originalTokens: oldTokens,
+            compressedTokens: this.estimatedTokens,
+            compressionRatio: this.estimatedTokens / oldTokens,
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
 
       return {
@@ -574,6 +709,14 @@ export class Agent {
     this.lastSkillFailed = undefined;
     this.usedSkillsInTurn.clear(); // Reset skill tracking for this turn
 
+    // Trigger message_received hook
+    if (this.hookRunner) {
+      await this.hookRunner.runMessageReceived({
+        content: userMessage,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     // Add user message
     this.messages.push({
       role: 'user',
@@ -605,8 +748,8 @@ export class Agent {
     while (iterations < (this.options.maxToolIterations || 5)) {
       iterations++;
 
-      // Call AI
-      const response = await callAI({
+      // Prepare AI call parameters
+      const aiCallParams = {
         provider: this.options.provider,
         model: this.options.model,
         messages: this.messages,
@@ -614,7 +757,29 @@ export class Agent {
         temperature: this.options.temperature,
         topP: this.options.topP,
         maxTokens: this.options.maxTokens,
-      });
+      };
+
+      // Trigger llm_input hook
+      if (this.hookRunner) {
+        await this.hookRunner.runLlmInput({
+          provider: aiCallParams.provider,
+          model: aiCallParams.model,
+          messages: aiCallParams.messages,
+          tools: aiCallParams.tools,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Call AI
+      const response = await callAI(aiCallParams);
+
+      // Trigger llm_output hook
+      if (this.hookRunner) {
+        await this.hookRunner.runLlmOutput({
+          response,
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       const assistantMessage = response.choices[0].message;
 
@@ -698,15 +863,26 @@ export class Agent {
             tool_calls: [skillGetCall],
           });
 
+          // Trigger tool_result_persist hook for skill_get
+          let skillResultToSave = result;
+          if (this.hookRunner) {
+            skillResultToSave = this.hookRunner.runToolResultPersist({
+              toolName: skillGetCall.function.name,
+              result,
+              toolCallId: skillGetCall.id,
+              timestamp: new Date().toISOString(),
+            });
+          }
+
           // Add skill_get result
           this.messages.push({
             role: 'tool',
-            content: JSON.stringify(result),
+            content: JSON.stringify(skillResultToSave),
             tool_call_id: skillGetCall.id,
           });
           this.estimatedTokens += estimateMessageTokens({
             role: 'tool',
-            content: JSON.stringify(result),
+            content: JSON.stringify(skillResultToSave),
             tool_call_id: skillGetCall.id,
           });
 
@@ -753,10 +929,28 @@ export class Agent {
               options?.onToolCall?.(call.function.name, params);
 
               try {
+                // Trigger before_tool_call hook
+                if (this.hookRunner) {
+                  await this.hookRunner.runBeforeToolCall({
+                    toolName: call.function.name,
+                    params,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+
                 // Execute tool
                 const toolStartTime = Date.now();
                 const result = await this.toolExecutor(call.function.name, params);
                 const toolElapsed = Date.now() - toolStartTime;
+
+                // Trigger after_tool_call hook
+                if (this.hookRunner) {
+                  await this.hookRunner.runAfterToolCall({
+                    toolName: call.function.name,
+                    result,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
 
                 // Log result summary
                 const resultStr = JSON.stringify(result);
@@ -810,15 +1004,26 @@ export class Agent {
               console.log(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
             }
 
+            // Trigger tool_result_persist hook (synchronous)
+            let resultToSave = result;
+            if (this.hookRunner) {
+              resultToSave = this.hookRunner.runToolResultPersist({
+                toolName: call.function.name,
+                result,
+                toolCallId: call.id,
+                timestamp: new Date().toISOString(),
+              });
+            }
+
             // Add tool result to messages
             this.messages.push({
               role: 'tool',
-              content: JSON.stringify(result),
+              content: JSON.stringify(resultToSave),
               tool_call_id: call.id,
             });
             this.estimatedTokens += estimateMessageTokens({
               role: 'tool',
-              content: JSON.stringify(result),
+              content: JSON.stringify(resultToSave),
               tool_call_id: call.id,
             });
           }
@@ -915,6 +1120,42 @@ export class Agent {
       finalContent += '\n\n---\n' + metadata.join('\n\n');
     }
 
+    // Trigger message_sending hook (modifying)
+    if (this.hookRunner) {
+      const sendingEvent = {
+        content: finalContent,
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+      };
+
+      const modifiedEvent = await this.hookRunner.runMessageSending(sendingEvent);
+
+      // Use modified content if returned
+      if (modifiedEvent?.content) {
+        finalContent = modifiedEvent.content;
+      }
+    }
+
+    // Trigger message_sent hook
+    if (this.hookRunner) {
+      await this.hookRunner.runMessageSent({
+        content: finalContent,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Trigger agent_end hook
+    if (this.hookRunner) {
+      await this.hookRunner.runAgentEnd({
+        provider: this.options.provider?.type || 'unknown',
+        model: this.options.model,
+        finalResponse: finalContent,
+        totalMessages: this.messages.length,
+        totalTokens: this.estimatedTokens,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return finalContent;
   }
 
@@ -989,9 +1230,20 @@ export class Agent {
 
           yield { type: 'tool_result', name: call.function.name, result };
 
+          // Trigger tool_result_persist hook
+          let resultToSave = result;
+          if (this.hookRunner) {
+            resultToSave = this.hookRunner.runToolResultPersist({
+              toolName: call.function.name,
+              result,
+              toolCallId: call.id,
+              timestamp: new Date().toISOString(),
+            });
+          }
+
           this.messages.push({
             role: 'tool',
-            content: JSON.stringify(result),
+            content: JSON.stringify(resultToSave),
             tool_call_id: call.id,
           });
         }

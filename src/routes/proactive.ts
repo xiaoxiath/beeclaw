@@ -278,10 +278,11 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       await client.replyTextSmart(messageId, result.response);
       console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully`);
 
-      // Clear recovery flag after successful delivery
+      // Mark response as delivered (for tracking purposes)
+      // Note: pendingRecovery was already cleared when AI responded (in session/index.ts)
       if (result.sessionId) {
-        const { clearRecoveryFlag } = await import('../session');
-        clearRecoveryFlag(result.sessionId);
+        const { markResponseDelivered } = await import('../session');
+        markResponseDelivered(result.sessionId);
       }
     } catch (error) {
       console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
