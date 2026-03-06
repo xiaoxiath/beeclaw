@@ -189,24 +189,13 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     }
 
     // Deduplicate messages (Feishu may send duplicate events)
-    if (processedMessages.has(messageId)) {
+    if (deduplicator.isDuplicate(messageId)) {
       console.log(`[FeishuWS:${process.pid}] Duplicate message ${messageId}, skipping`);
       return;
     }
 
-    // Add to processed cache
-    processedMessages.add(messageId);
-
     // Update last processed time for this chat
     lastProcessedTimePerChat.set(chatId, messageTime);
-
-    // Prevent memory leak - clear old entries if cache is too large
-    if (processedMessages.size > MAX_PROCESSED_CACHE) {
-      const entries = Array.from(processedMessages);
-      entries.slice(0, entries.length - MAX_PROCESSED_CACHE).forEach(id => {
-        processedMessages.delete(id);
-      });
-    }
 
     console.log(`[FeishuWS:${process.pid}] Message from ${userId} in chat ${chatId}: ${messageText.substring(0, 50)}...`);
 
