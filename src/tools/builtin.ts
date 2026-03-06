@@ -7,6 +7,8 @@
 import { z } from 'zod';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'fs';
 import { join, resolve, dirname, basename, extname } from 'path';
+import { create, all } from 'mathjs';
+import { logger } from '../utils/logger';
 import type { MemoryToolResult } from '../memory/types';
 import {
   getSearchOrchestrator,
@@ -264,8 +266,8 @@ export async function executeTime(params: Record<string, unknown>): Promise<Buil
     if (config?.user?.timezone) {
       defaultTimezone = config.user.timezone;
     }
-  } catch {
-    // Config not loaded, use default
+  } catch (error) {
+    logger.debug('Config not loaded, use default:', error);
   }
 
   const timezone = paramTimezone || defaultTimezone;
@@ -348,8 +350,8 @@ export async function executeBeeclawInfo(): Promise<BuiltinToolResult> {
           daemonEnabled: config.proactive?.daemon?.enabled || false,
         };
       }
-    } catch {
-      // Config not loaded
+    } catch (error) {
+      logger.debug('Config not loaded:', error);
     }
 
     const result = `# Beeclaw System Information
@@ -423,55 +425,19 @@ export async function executeCalc(params: Record<string, unknown>): Promise<Buil
   const { expression } = parsed.data;
 
   try {
-    // Create a safe math context
-    const mathContext = {
+    // Create a safe math.js instance with limited scope
+    const math = create(all, {
+      number: 'number',
+    });
+
+    // Create a safe scope with only mathematical constants and functions
+    const safeScope = {
       pi: Math.PI,
       e: Math.E,
-      sqrt: Math.sqrt,
-      abs: Math.abs,
-      sin: Math.sin,
-      cos: Math.cos,
-      tan: Math.tan,
-      asin: Math.asin,
-      acos: Math.acos,
-      atan: Math.atan,
-      log: Math.log,
-      log10: Math.log10,
-      log2: Math.log2,
-      exp: Math.exp,
-      pow: Math.pow,
-      floor: Math.floor,
-      ceil: Math.ceil,
-      round: Math.round,
-      min: Math.min,
-      max: Math.max,
-      random: Math.random,
     };
 
-    // Sanitize expression - only allow safe characters
-    const sanitized = expression
-      .replace(/[^0-9+\-*/().a-zA-Z_\s]/g, '')
-      .toLowerCase();
-
-    // Check for dangerous patterns
-    if (sanitized.includes('eval') || sanitized.includes('function') || sanitized.includes('=>')) {
-      return { success: false, error: 'Invalid expression: potentially dangerous code detected' };
-    }
-
-    // Build function with math context
-    const contextKeys = Object.keys(mathContext);
-    const contextValues = Object.values(mathContext);
-
-    // Replace function names with context-prefixed versions
-    let processedExpr = sanitized;
-    for (const key of contextKeys) {
-      const regex = new RegExp(`\\b${key}\\b`, 'g');
-      processedExpr = processedExpr.replace(regex, key);
-    }
-
-    // Evaluate
-    const fn = new Function(...contextKeys, `return ${processedExpr}`);
-    const result = fn(...contextValues);
+    // Evaluate expression using math.js (safe, no code execution)
+    const result = math.evaluate(expression, safeScope);
 
     if (typeof result !== 'number' || !isFinite(result)) {
       return { success: false, error: `Invalid result: ${result}` };
@@ -530,6 +496,25 @@ export async function executeCode(params: Record<string, unknown>): Promise<Buil
   }
 
   const { code, timeout } = parsed.data;
+
+  /**
+   * ⚠️ SECURITY WARNING:
+   *
+   * This tool uses `new Function()` to execute user-provided code in a sandboxed environment.
+   * While we have multiple security layers:
+   * 1. Dangerous pattern detection (eval, require, import, etc.)
+   * 2. Sandboxed global scope (limited to safe objects like Math, Date, JSON)
+   * 3. Execution timeout to prevent infinite loops
+   * 4. No access to Node.js APIs (fs, process, child_process)
+   *
+   * However, sophisticated attackers may still find ways to escape the sandbox.
+   *
+   * FUTURE IMPROVEMENT: Consider using Bun subprocess for complete isolation:
+   *   const proc = Bun.spawn(['bun', 'run', '-'], { stdin: code, ... })
+   *
+   * For now, this is acceptable for a personal AI assistant, but should be
+   * reconsidered if exposing to untrusted users or production environments.
+   */
 
   try {
     // Check for dangerous patterns
@@ -1381,7 +1366,8 @@ export async function executeDeepResearch(params: Record<string, unknown>): Prom
           timeRange: time_range,
         });
         return { query, results };
-      } catch {
+      } catch (error) {
+        logger.debug('Search failed, returning empty results:', error);
         return { query, results: [] };
       }
     });
@@ -1417,7 +1403,8 @@ export async function executeDeepResearch(params: Record<string, unknown>): Prom
         });
         source.content = cleanText(content);
         return source;
-      } catch {
+      } catch (error) {
+        logger.debug('Content extraction failed, returning original source:', error);
         return source;
       }
     });

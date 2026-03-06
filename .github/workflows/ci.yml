@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    name: Run ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install -g eslint
+      - run: npm run lint
+
+  typecheck:
+    name: Run TypeScript type check
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: '1.3.9'
+      - run: bun install
+      - run: bunx tsc --noEmit
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    needs: typecheck
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: '1.3.9'
+      - run: bun install
+      - run: bun test
+
+  security:
+    name: Run security audit
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: '1.3.9'
+      - run: bun install
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+      - name: Run Snyk security scan
+        uses: snyk/actions/docker@master
+        with:
+          args: test .

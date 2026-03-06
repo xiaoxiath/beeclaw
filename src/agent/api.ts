@@ -1,6 +1,7 @@
 import type { AIProvider } from '../config/schema';
 import type { AIResponse, ChatMessage, OpenAITool, ToolCall, ToolResult, ToolExecutor } from './types';
 import { retryAICall } from '../utils/retry';
+import { logger } from '../utils/logger';
 
 // Provider-specific configurations
 const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBody?: Record<string, unknown> }> = {
@@ -207,8 +208,8 @@ export async function* streamAI(options: {
             if (content) {
               yield content;
             }
-          } catch {
-            // Skip invalid JSON
+          } catch (error) {
+            logger.debug('Skip invalid JSON:', error);
           }
         } else if (trimmed.startsWith('{')) {
           // Some providers return raw JSON without "data: " prefix
@@ -218,8 +219,8 @@ export async function* streamAI(options: {
             if (content) {
               yield content;
             }
-          } catch {
-            // Skip invalid JSON
+          } catch (error) {
+            logger.debug('Skip invalid JSON:', error);
           }
         }
       }

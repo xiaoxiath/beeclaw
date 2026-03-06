@@ -6,6 +6,7 @@
  */
 
 import type { ProactiveJobData } from './types';
+import { logger } from '../utils/logger';
 
 /**
  * Execute a skill with parameters
@@ -123,8 +124,8 @@ export async function handleLlmProactiveChatJob(
       if (coreContext.facts) {
         context += `用户事实: ${coreContext.facts}\n`;
       }
-    } catch {
-      // Memory store not initialized
+    } catch (error) {
+      logger.debug('Memory store not initialized:', error);
     }
 
     // 构建提示
@@ -188,8 +189,8 @@ export async function handleSelfEvolutionJob(job: ProactiveJobData): Promise<voi
       if (coreContext.soul) {
         context += `## 当前 SOUL.md\n${coreContext.soul}\n`;
       }
-    } catch {
-      // Memory store not initialized
+    } catch (error) {
+      logger.debug('Memory store not initialized:', error);
     }
 
     // 构建自我进化提示

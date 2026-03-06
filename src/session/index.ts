@@ -24,6 +24,7 @@ import {
 } from '../extraction';
 import { getPluginRegistry } from '../plugins';
 import { createHookRunner } from '../plugins/hook-runner';
+import { logger } from '../utils/logger';
 
 export interface SessionOptions {
   sessionId: string;
@@ -212,8 +213,8 @@ function saveSession(session: Session): void {
         session.messages = modifiedSession.messages || session.messages;
         session.metadata = modifiedSession.metadata || session.metadata;
       }
-    } catch {
-      // Plugin system not initialized
+    } catch (error) {
+      logger.debug('Plugin system not initialized:', error);
     }
 
     const filePath = getSessionFilePath(session.id);
@@ -394,8 +395,8 @@ export function deleteSession(sessionId: string): boolean {
           endedAt: new Date().toISOString(),
         });
       });
-    } catch {
-      // Plugin system not initialized
+    } catch (error) {
+      logger.debug('Plugin system not initialized:', error);
     }
   }
 
@@ -481,16 +482,16 @@ export async function sendProactiveMessage(options: ProactiveMessageOptions): Pr
             }))
           );
         }
-      } catch {
-        // SkillStore not initialized
+      } catch (error) {
+        logger.debug('SkillStore not initialized:', error);
       }
 
       systemPrompt = buildSystemPrompt(systemPrompt, {
         ...coreContext,
         skills: skillsPrompt,
       });
-    } catch {
-      // Memory store not initialized
+    } catch (error) {
+      logger.debug('Memory store not initialized:', error);
     }
 
     // Smart model selection: Two-stage processing for images

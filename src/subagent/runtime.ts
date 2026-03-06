@@ -11,6 +11,7 @@ import type { AIProvider } from '../config/schema';
 import type { OpenAITool } from '../agent/types';
 import { getPluginRegistry } from '../plugins';
 import { createHookRunner } from '../plugins/hook-runner';
+import { logger } from '../utils/logger';
 
 /**
  * Subagent Runtime - manages subagent execution
@@ -91,8 +92,8 @@ export class SubagentRuntime {
           provider: result.provider || config.provider,
         };
       }
-    } catch {
-      // Plugin system not initialized
+    } catch (error) {
+      logger.debug('Plugin system not initialized:', error);
     }
 
     this.stats.totalSpawned++;

@@ -7,6 +7,7 @@
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { FeishuAuthConfig } from './types';
+import { logger } from '../utils/logger';
 
 export interface FeishuWSConfig extends FeishuAuthConfig {
   loggerLevel?: 'debug' | 'info' | 'warn' | 'error';
@@ -1277,7 +1278,8 @@ export class FeishuWSClient {
         return texts.join('\n');
       }
       return content;
-    } catch {
+    } catch (error) {
+      logger.debug('Failed to extract text from content, returning original:', error);
       return content;
     }
   }

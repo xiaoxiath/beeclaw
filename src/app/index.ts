@@ -370,8 +370,8 @@ export async function resetApp(): Promise<void> {
   // Shutdown MCP connections
   try {
     await shutdownMCP();
-  } catch {
-    // Ignore errors during shutdown
+  } catch (error) {
+    logger.debug('Error during MCP shutdown (ignored):', error);
   }
 
   // Reset hook runner

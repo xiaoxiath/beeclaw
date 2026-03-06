@@ -2,6 +2,7 @@ import type { AIProvider } from '../config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent } from './types';
 import { callAI, executeToolCalls, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
+import { logger } from '../utils/logger';
 import { getMemoryStore } from '../memory';
 import { getSkillStore } from '../skills/store';
 import { executeMemoryTool } from '../memory/tools';
@@ -72,8 +73,8 @@ export function createDefaultToolExecutor(): ToolExecutor {
         const tool = registry.tools.get(name)!;
         return tool.execute(params);
       }
-    } catch {
-      // Plugin system not initialized, continue to other tools
+    } catch (error) {
+      logger.debug('Plugin system not initialized, continue to other tools:', error);
     }
 
     // Memory tools
@@ -397,8 +398,8 @@ export class Agent {
             }))
           );
         }
-      } catch {
-        // SkillStore not initialized
+      } catch (error) {
+        logger.debug('SkillStore not initialized:', error);
       }
 
       const contextWithSkills = {
@@ -1087,8 +1088,8 @@ export class Agent {
         user: userMessageStr,
         assistant: finalContent,
       });
-    } catch {
-      // Memory might not be initialized
+    } catch (error) {
+      logger.debug('Memory might not be initialized:', error);
     }
 
     // Append metadata (skill attribution and token stats)
@@ -1263,8 +1264,8 @@ export class Agent {
         user: userMessage,
         assistant: finalContent,
       });
-    } catch {
-      // Memory might not be initialized
+    } catch (error) {
+      logger.debug('Memory might not be initialized:', error);
     }
 
     // Yield skill attribution if any skills were used
@@ -1312,16 +1313,16 @@ export function createAgent(options: {
             }))
           );
         }
-      } catch {
-        // SkillStore not initialized
+      } catch (error) {
+        logger.debug('SkillStore not initialized:', error);
       }
 
       systemPrompt = buildSystemPrompt(systemPrompt, {
         ...coreContext,
         skills: skillsPrompt,
       });
-    } catch {
-      // Memory store not initialized, use base prompt
+    } catch (error) {
+      logger.debug('Memory store not initialized, use base prompt:', error);
     }
   }
 

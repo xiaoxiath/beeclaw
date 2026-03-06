@@ -16,7 +16,7 @@ export const AuthConfigSchema = z.object({
 // CORS configuration schema
 export const CorsConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  origins: z.array(z.string()).default(['*']),
+  origins: z.array(z.string()).default(['localhost']), // Changed from ["*"] to ["localhost"]
   methods: z.array(z.string()).default(['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']),
   allowHeaders: z.array(z.string()).default(['Content-Type', 'Authorization']),
   exposeHeaders: z.array(z.string()).default([]),
