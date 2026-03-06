@@ -32,7 +32,7 @@ export {
   EXTRACTION_PROMPT,
   INCREMENTAL_EXTRACTION_PROMPT,
   CONFLICT_DETECTION_PROMPT,
-  SENSITIVE_DETECTION_PROMPT,
+  detectSensitiveInfo,
   formatConversationForExtraction,
   parseExtractionResult,
   validateExtraction,

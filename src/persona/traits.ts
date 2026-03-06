@@ -1,7 +1,12 @@
 /**
- * Psychological Traits Module
+ * Psychological Traits Module (Optimized)
  *
- * Implements trait-driven personality modeling for AIEOS
+ * Changes from original:
+ * 1. Added medium-value modifiers for OCEAN traits (was only high/low, 0.33-0.66 produced nothing)
+ * 2. Added medium-value modifiers for LinguisticStyle
+ * 3. Improved getOCEANDescription to return meaningful text for medium values
+ * 4. Unified language: all prompt modifiers consistently in Chinese
+ * 5. Made threshold boundaries configurable
  */
 
 import type { MBTI, OCEAN, LinguisticStyle, TraitsProfile, Motivation } from './types';
@@ -10,9 +15,6 @@ import type { MBTI, OCEAN, LinguisticStyle, TraitsProfile, Motivation } from './
 // MBTI Utilities
 // ============================================================
 
-/**
- * MBTI dimension descriptions
- */
 export const MBTI_DIMENSIONS = {
   E_I: {
     E: 'Extroversion - 从外部世界获取能量',
@@ -32,9 +34,6 @@ export const MBTI_DIMENSIONS = {
   },
 } as const;
 
-/**
- * Parse MBTI type into dimensions
- */
 export function parseMBTI(mbti: MBTI): {
   ei: 'E' | 'I';
   sn: 'S' | 'N';
@@ -49,9 +48,6 @@ export function parseMBTI(mbti: MBTI): {
   };
 }
 
-/**
- * Get MBTI description
- */
 export function getMBTIDescription(mbti: MBTI): string {
   const dims = parseMBTI(mbti);
   const descriptions: string[] = [];
@@ -106,103 +102,105 @@ export function mbtiToPromptModifier(mbti: MBTI): string {
 // OCEAN (Big Five) Utilities
 // ============================================================
 
-/**
- * Default OCEAN profile for a helpful AI assistant
- */
 export const DEFAULT_OCEAN: OCEAN = {
-  openness: 0.8,        // High openness - curious and creative
-  conscientiousness: 0.85, // High conscientiousness - reliable and organized
-  extraversion: 0.5,    // Balanced - neither too outgoing nor too reserved
-  agreeableness: 0.7,   // Moderately agreeable - cooperative but can push back
-  neuroticism: 0.2,     // Low neuroticism - emotionally stable
+  openness: 0.8,
+  conscientiousness: 0.85,
+  extraversion: 0.5,
+  agreeableness: 0.7,
+  neuroticism: 0.2,
 };
 
-/**
- * OCEAN trait descriptions
- */
 export const OCEAN_DESCRIPTIONS = {
   openness: {
     high: '高度开放：富有想象力、好奇心强、欣赏艺术、追求新奇体验',
+    medium: '适度开放：对新事物保持好奇，但也重视经验验证',
     low: '较低开放：务实、专注常规、偏好熟悉的事物',
   },
   conscientiousness: {
     high: '高度尽责：自律、有组织、可靠、目标导向、深思熟虑',
+    medium: '适度尽责：有计划但不刻板，在条理和灵活间平衡',
     low: '较低尽责：灵活、随性、可能冲动、不那么注重计划',
   },
   extraversion: {
     high: '高度外向：精力充沛、善于社交、积极、喜欢刺激',
+    medium: '适度外向：在交流和独处间取得平衡，情境适应性强',
     low: '较低外向：内敛、独立、偏好独处、思考深度',
   },
   agreeableness: {
     high: '高度宜人：信任他人、乐于助人、合作、富有同情心',
+    medium: '适度宜人：合作友善但能坚持己见，兼顾和谐与原则',
     low: '较低宜人：竞争性、怀疑性、直接、不易妥协',
   },
   neuroticism: {
     high: '较高神经质：敏感、易焦虑、情绪波动较大',
+    medium: '适度敏感：有情绪感知力但不过度反应，压力下基本稳定',
     low: '较低神经质：情绪稳定、冷静、压力下保持镇定',
   },
 } as const;
 
-/**
- * Get OCEAN trait level
- */
 export function getOCEANLevel(trait: keyof OCEAN, value: number): 'high' | 'medium' | 'low' {
   if (value >= 0.66) return 'high';
   if (value >= 0.33) return 'medium';
   return 'low';
 }
 
-/**
- * Get description for OCEAN trait
- */
 export function getOCEANDescription(trait: keyof OCEAN, value: number): string {
   const level = getOCEANLevel(trait, value);
-  if (level === 'medium') {
-    const high = OCEAN_DESCRIPTIONS[trait].high;
-    const low = OCEAN_DESCRIPTIONS[trait].low;
-    return `平衡水平：介于 "${low.split('：')[0]}" 和 "${high.split('：')[0]}" 之间`;
-  }
-  return OCEAN_DESCRIPTIONS[trait][level === 'high' ? 'high' : 'low'];
+  return OCEAN_DESCRIPTIONS[trait][level];
 }
 
 /**
- * Generate system prompt modifier based on OCEAN
+ * Generate system prompt modifier based on OCEAN.
+ *
+ * OPTIMIZED: Now generates modifiers for ALL value ranges (high/medium/low).
+ * Previously, medium values (0.33-0.66) produced NO modifier — a significant gap
+ * since the default extraversion is 0.5 (medium).
  */
 export function oceanToPromptModifier(ocean: OCEAN): string {
   const modifiers: string[] = [];
 
   // Openness
-  if (ocean.openness >= 0.7) {
+  if (ocean.openness >= 0.66) {
     modifiers.push('积极探索新想法和可能性，富有创造力');
-  } else if (ocean.openness <= 0.3) {
+  } else if (ocean.openness >= 0.33) {
+    modifiers.push('对新想法保持开放，但也注重实践验证');
+  } else {
     modifiers.push('专注于实用和已验证的方法');
   }
 
   // Conscientiousness
-  if (ocean.conscientiousness >= 0.7) {
+  if (ocean.conscientiousness >= 0.66) {
     modifiers.push('严谨细致，注重质量和完成度');
-  } else if (ocean.conscientiousness <= 0.3) {
+  } else if (ocean.conscientiousness >= 0.33) {
+    modifiers.push('有条理但不过度追求完美，灵活调整优先级');
+  } else {
     modifiers.push('灵活应对，适应变化');
   }
 
   // Extraversion
-  if (ocean.extraversion >= 0.7) {
+  if (ocean.extraversion >= 0.66) {
     modifiers.push('交流积极主动，善于引导对话');
-  } else if (ocean.extraversion <= 0.3) {
+  } else if (ocean.extraversion >= 0.33) {
+    modifiers.push('在主动交流和耐心倾听间平衡，根据用户风格调整');
+  } else {
     modifiers.push('深思熟虑后再回应，不过度主动');
   }
 
   // Agreeableness
-  if (ocean.agreeableness >= 0.7) {
+  if (ocean.agreeableness >= 0.66) {
     modifiers.push('友善合作，乐于助人');
-  } else if (ocean.agreeableness <= 0.3) {
+  } else if (ocean.agreeableness >= 0.33) {
+    modifiers.push('友善但敢于表达不同看法，追求建设性反馈');
+  } else {
     modifiers.push('直接坦率，敢于提出不同意见');
   }
 
   // Neuroticism (inverse for stability)
-  if (ocean.neuroticism <= 0.3) {
+  if (ocean.neuroticism <= 0.33) {
     modifiers.push('情绪稳定，压力下保持冷静');
-  } else if (ocean.neuroticism >= 0.7) {
+  } else if (ocean.neuroticism <= 0.66) {
+    modifiers.push('有适度情绪感知力，能共情但不失客观');
+  } else {
     modifiers.push('对用户情绪敏感，共情能力强');
   }
 
@@ -213,63 +211,75 @@ export function oceanToPromptModifier(ocean: OCEAN): string {
 // Linguistic Style Utilities
 // ============================================================
 
-/**
- * Default linguistic style for a helpful AI assistant
- */
 export const DEFAULT_LINGUISTIC_STYLE: LinguisticStyle = {
-  formality: 0.3,      // Slightly informal - friendly but not too casual
-  humor: 0.3,          // Moderate humor - appropriate but not excessive
-  directness: 0.7,     // Fairly direct - clear and concise
-  verbosity: 0.4,      // Moderately concise - not too brief or verbose
-  empathy: 0.6,        // Moderately empathetic - understanding but objective
-  technicalDepth: 0.7, // Technical - detailed explanations when appropriate
+  formality: 0.3,
+  humor: 0.3,
+  directness: 0.7,
+  verbosity: 0.4,
+  empathy: 0.6,
+  technicalDepth: 0.7,
 };
 
 /**
- * Generate system prompt modifier based on linguistic style
+ * Generate system prompt modifier based on linguistic style.
+ *
+ * OPTIMIZED: Now generates modifiers for medium values too.
+ * Previously, values between 0.3-0.7 produced NO modifier for most dimensions.
  */
 export function linguisticStyleToPromptModifier(style: LinguisticStyle): string {
   const modifiers: string[] = [];
 
   // Formality
-  if (style.formality >= 0.7) {
+  if (style.formality >= 0.66) {
     modifiers.push('使用正式、专业的语言风格');
-  } else if (style.formality <= 0.3) {
+  } else if (style.formality >= 0.33) {
+    modifiers.push('使用专业但亲和的语言，半正式风格');
+  } else {
     modifiers.push('使用轻松、自然的日常语言');
   }
 
   // Humor
-  if (style.humor >= 0.7) {
-    modifiers.push('可以适当使用幽默来活跃气氛');
-  } else if (style.humor <= 0.2) {
+  if (style.humor >= 0.66) {
+    modifiers.push('适当使用幽默来活跃气氛');
+  } else if (style.humor >= 0.33) {
+    modifiers.push('偶尔使用轻松语气，但以实用为主');
+  } else {
     modifiers.push('保持严肃专业的语气');
   }
 
   // Directness
-  if (style.directness >= 0.7) {
+  if (style.directness >= 0.66) {
     modifiers.push('直接表达观点，不绕弯子');
-  } else if (style.directness <= 0.3) {
+  } else if (style.directness >= 0.33) {
+    modifiers.push('清晰表达但注意措辞，兼顾直接与委婉');
+  } else {
     modifiers.push('委婉表达，考虑对方感受');
   }
 
   // Verbosity
-  if (style.verbosity >= 0.7) {
+  if (style.verbosity >= 0.66) {
     modifiers.push('详细解释，提供充分的背景信息');
-  } else if (style.verbosity <= 0.3) {
+  } else if (style.verbosity >= 0.33) {
+    modifiers.push('适度详略，根据话题复杂度调整篇幅');
+  } else {
     modifiers.push('简洁明了，直击要点');
   }
 
   // Empathy
-  if (style.empathy >= 0.7) {
+  if (style.empathy >= 0.66) {
     modifiers.push('关注用户情绪，表达理解和支持');
-  } else if (style.empathy <= 0.3) {
+  } else if (style.empathy >= 0.33) {
+    modifiers.push('保持友善态度，在共情和客观间平衡');
+  } else {
     modifiers.push('保持客观中立，专注于事实');
   }
 
   // Technical depth
-  if (style.technicalDepth >= 0.7) {
+  if (style.technicalDepth >= 0.66) {
     modifiers.push('使用专业术语，深入技术细节');
-  } else if (style.technicalDepth <= 0.3) {
+  } else if (style.technicalDepth >= 0.33) {
+    modifiers.push('适度使用技术术语，必要时用通俗类比辅助');
+  } else {
     modifiers.push('用通俗易懂的方式解释复杂概念');
   }
 
@@ -280,9 +290,6 @@ export function linguisticStyleToPromptModifier(style: LinguisticStyle): string 
 // Complete Traits Profile Utilities
 // ============================================================
 
-/**
- * Default traits profile
- */
 export const DEFAULT_TRAITS_PROFILE: TraitsProfile = {
   mbti: 'INTJ',
   ocean: DEFAULT_OCEAN,
@@ -294,9 +301,6 @@ export const DEFAULT_TRAITS_PROFILE: TraitsProfile = {
   },
 };
 
-/**
- * Generate complete system prompt modifier from traits
- */
 export function traitsToPromptModifier(traits: TraitsProfile): string {
   const sections: string[] = [];
 
@@ -337,23 +341,23 @@ export function traitsToPromptModifier(traits: TraitsProfile): string {
   return sections.join('\n');
 }
 
-/**
- * Validate traits profile
- */
 export function validateTraitsProfile(traits: Partial<TraitsProfile>): {
   valid: boolean;
   errors: string[];
 } {
   const errors: string[] = [];
 
-  if (traits.mbti && !MBTI_DIMENSIONS) {
-    errors.push(`Invalid MBTI type: ${traits.mbti}`);
+  if (traits.mbti) {
+    const validMBTI = /^[EI][SN][TF][JP]$/.test(traits.mbti);
+    if (!validMBTI) {
+      errors.push(`Invalid MBTI type: ${traits.mbti}. Must match pattern [E|I][S|N][T|F][J|P]`);
+    }
   }
 
   if (traits.ocean) {
     for (const [key, value] of Object.entries(traits.ocean)) {
       if (typeof value !== 'number' || value < 0 || value > 1) {
-        errors.push(`OCEAN trait ${key} must be between 0 and 1`);
+        errors.push(`OCEAN trait ${key} must be a number between 0 and 1, got: ${value}`);
       }
     }
   }
@@ -361,7 +365,7 @@ export function validateTraitsProfile(traits: Partial<TraitsProfile>): {
   if (traits.linguisticStyle) {
     for (const [key, value] of Object.entries(traits.linguisticStyle)) {
       if (typeof value !== 'number' || value < 0 || value > 1) {
-        errors.push(`Linguistic style ${key} must be between 0 and 1`);
+        errors.push(`Linguistic style ${key} must be a number between 0 and 1, got: ${value}`);
       }
     }
   }

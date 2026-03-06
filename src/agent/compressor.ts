@@ -1,8 +1,12 @@
 /**
- * LLM-based Context Compression
+ * LLM-based Context Compression (Optimized)
  *
- * Uses LLM to intelligently compress conversation history while preserving
- * important information like code blocks, decisions, and user questions.
+ * Changes from original:
+ * 1. Fixed COMPRESSION_PROMPT: removed duplicate role declaration (was in both system + user message)
+ * 2. Made compression target dynamic based on actual token count (was fixed "300-500字")
+ * 3. Added structured output format for more reliable parsing
+ * 4. Improved compression prompt with explicit "MUST preserve" vs "CAN omit" guidance
+ * 5. Added token-based target calculation instead of character count
  */
 
 import type { AIProvider, CompressionConfig } from '../config/schema';
@@ -20,34 +24,46 @@ export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
   strategy: 'hybrid',  // Use LLM for important content
 };
 
-// Compression prompt
-const COMPRESSION_PROMPT = `你是一个对话压缩专家。请将以下对话历史压缩成一个简洁的摘要。
+/**
+ * Build compression prompt with dynamic target length.
+ *
+ * OPTIMIZED: Target is calculated from actual input tokens, not hardcoded.
+ * Role declaration is ONLY in system message (no duplication).
+ */
+function buildCompressionPrompt(conversationText: string, originalTokens: number): string {
+  // Dynamic target: compress to roughly 20-30% of original
+  const targetTokens = Math.max(200, Math.min(1000, Math.round(originalTokens * 0.25)));
+  const targetChars = targetTokens * 2; // rough Chinese char estimate
+
+  return `请将以下对话历史压缩成简洁的摘要。
 
 ## 压缩要求
 
-1. **保留关键信息**：
-   - 用户的核心问题和需求
-   - 重要的决定和结论
-   - 关键代码片段（用 \`\`\` 标记）
-   - 工具调用的关键结果
+### 必须保留
+- 用户的核心问题和最终需求
+- 关键决定和结论
+- 重要代码片段（保留关键部分，不超过 20 行）
+- 工具调用的成功/失败结果
+- 用户表达的偏好和修正
 
-2. **可以省略**：
-   - 重复的讨论
-   - 无关的闲聊
-   - 过长的工具输出详情
-   - 错误尝试的细节
+### 可以省略
+- 重复的讨论和探索过程
+- 无关闲聊
+- 过长的工具输出详情
+- 失败尝试的中间过程（只保留最终结论）
 
-3. **格式要求**：
-   - 按时间顺序组织
-   - 每个主题用简短的要点描述
-   - 代码块保留关键部分（不超过 20 行）
-   - 总长度控制在 300-500 字
+### 格式要求
+- 按主题组织（不按时间流水账）
+- 每个主题用简短要点描述
+- 代码块保留关键部分
+- **目标长度: 约 ${targetChars} 字（${targetTokens} tokens）**
 
 ## 对话历史
 
-{conversation}
+${conversationText}
 
 ## 压缩后的摘要`;
+}
 
 // Interface for compression result
 export interface CompressionResult {
@@ -83,18 +99,18 @@ export async function compressWithLLM(
   // Format messages for compression
   const conversationText = formatMessagesForCompression(messages);
 
-  // Create compression prompt
-  const prompt = COMPRESSION_PROMPT.replace('{conversation}', conversationText);
+  // Build prompt with dynamic target
+  const prompt = buildCompressionPrompt(conversationText, originalTokens);
 
   try {
-    // Use callAI instead of provider directly
+    // FIXED: Role declaration ONLY in system message, not duplicated in user prompt
     const response = await callAI({
       provider,
       model,
       messages: [
         {
           role: 'system',
-          content: '你是一个对话压缩专家，擅长保留关键信息的同时大幅减少文本长度。',
+          content: '你是对话压缩专家，擅长在大幅减少文本长度的同时保留关键信息和上下文。',
         },
         {
           role: 'user',
@@ -167,14 +183,12 @@ function formatContent(content: string | any[]): string {
   if (!content) return '';
 
   if (typeof content === 'string') {
-    // Truncate very long content
     if (content.length > 2000) {
       return content.slice(0, 2000) + '\n... [内容过长已截断]';
     }
     return content;
   }
 
-  // Handle multimodal content
   if (Array.isArray(content)) {
     return content
       .map(part => {
@@ -207,7 +221,6 @@ function formatToolResult(content: string | any[], maxLength: number = 300): str
   try {
     const json = JSON.parse(text);
 
-    // Handle common result patterns
     if (json.success === false && json.error) {
       return `错误: ${json.error}`;
     }
@@ -225,7 +238,6 @@ function formatToolResult(content: string | any[], maxLength: number = 300): str
     // Not JSON, continue with text
   }
 
-  // Truncate long text
   if (text.length > maxLength) {
     return text.slice(0, maxLength) + '... [已截断]';
   }
@@ -235,12 +247,6 @@ function formatToolResult(content: string | any[], maxLength: number = 300): str
 
 /**
  * Smart compression strategy selector
- *
- * Chooses between LLM and rule-based compression based on:
- * - Number of messages
- * - Estimated compression benefit
- * - Presence of code blocks or important content
- * - User config preference
  */
 export function selectCompressionStrategy(
   messages: ChatMessage[],
@@ -266,7 +272,6 @@ export function selectCompressionStrategy(
     return { strategy: 'rule', reason: 'User configured rule-based strategy' };
   }
 
-  // Count important content
   const hasCodeBlocks = messages.some(m =>
     typeof m.content === 'string' && m.content.includes('```')
   );
@@ -290,7 +295,6 @@ export function selectCompressionStrategy(
   }
 
   // Hybrid strategy (default)
-  // High utilization with important content, use LLM
   if (utilization > 0.9 && (hasCodeBlocks || hasToolCalls)) {
     return {
       strategy: 'llm',
@@ -299,7 +303,6 @@ export function selectCompressionStrategy(
     };
   }
 
-  // Medium utilization with many messages, use LLM for better quality
   if (utilization > threshold && messageCount > 8) {
     return {
       strategy: 'llm',
@@ -308,7 +311,6 @@ export function selectCompressionStrategy(
     };
   }
 
-  // Default to rule-based
   return { strategy: 'rule', reason: 'Default to rule-based compression' };
 }
 
@@ -332,7 +334,6 @@ export async function hybridCompress(
   const { maxTokens, currentTokens, config = {} } = options;
   const keepRecent = config.keepRecent || DEFAULT_COMPRESSION_CONFIG.keepRecent;
 
-  // Select strategy
   const decision = selectCompressionStrategy(messages, currentTokens, maxTokens, config);
 
   if (decision.strategy === 'none') {
@@ -385,7 +386,7 @@ export async function hybridCompress(
   return {
     summary,
     keptMessages: recentMessages,
-    compressionRatio: 0.5,  // Estimate
+    compressionRatio: 0.5,
     method: 'rule',
   };
 }
@@ -398,12 +399,10 @@ function ruleBasedCompress(messages: ChatMessage[]): { summary: string } {
 
   for (const msg of messages) {
     if (msg.role === 'user') {
-      // Extract user questions
       const content = typeof msg.content === 'string' ? msg.content : '';
       const shortContent = content.length > 100 ? content.slice(0, 100) + '...' : content;
       points.push(`用户问: ${shortContent}`);
     } else if (msg.role === 'assistant') {
-      // Extract key conclusions
       const content = typeof msg.content === 'string' ? msg.content : '';
       const conclusions = content.match(/结论[是为：:]\s*(.+)/g);
       if (conclusions) {

@@ -168,9 +168,9 @@ const EXAMPLES_VERBOSE = loadPromptLayer('examples-verbose.md');
 /**
  * Three prompt tiers — all share the same BASE_PROMPT core.
  *
- * - concise:  base only (~1500 tokens)
- * - default:  base + trait personality (~1800 tokens)
- * - verbose:  base + trait personality + worked examples (~2800 tokens)
+ * - concise:  base only (~1200 tokens) — for simple follow-up turns
+ * - default:  base + trait personality (~1500 tokens) — standard mode
+ * - verbose:  base + trait personality + worked examples (~2500 tokens) — onboarding or complex tasks
  */
 export const SYSTEM_PROMPTS = {
   concise: BASE_PROMPT,
@@ -211,7 +211,6 @@ export function getCurrentTimeContext(): string {
   const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const version = getBeeclawVersion();
 
-  // Build location and timezone info
   let locationInfo = `**Location**: ${userLocation}`;
   let timezoneInfo = `**Timezone**: ${userTimezone}`;
 
@@ -227,10 +226,10 @@ export function getCurrentTimeContext(): string {
  *
  * Assembly order (optimized for LLM attention & prompt caching):
  *
- *   1. [IMMUTABLE]  Core identity + rules + tools     ← highest attention (beginning)
- *   2. [IMMUTABLE]  Trait personality (if available)
- *   3. [SLOW-CHANGE] SOUL.md / USER.md / facts / skills
- *   4. [VOLATILE]   Time / holiday / weather / goals / session stats  ← high attention (end)
+ *   1. [IMMUTABLE]    Core identity + rules          ← highest attention (beginning) + cache prefix
+ *   2. [IMMUTABLE]    Trait personality (if available)
+ *   3. [SLOW-CHANGE]  SOUL.md / USER.md / facts / skills
+ *   4. [VOLATILE]     Time / holiday / weather / goals / session stats  ← high attention (end)
  *
  * Rationale:
  * - LLMs attend most to the beginning and end of prompts (U-shaped attention)
@@ -305,6 +304,13 @@ export function buildSystemPrompt(
 // Skill Formatting
 // ---------------------------------------------------------------------------
 
+/**
+ * Format skills for prompt injection.
+ *
+ * CHANGED: skill_get is now MANDATORY before execution — this is the
+ * single source of truth for skill workflow steps. The summaries here
+ * are for trigger matching only, NOT for execution.
+ */
 export function formatSkillsForPrompt(
   skills: Array<{ name: string; description: string; triggers?: string[] }>
 ): string {
@@ -322,9 +328,10 @@ export function formatSkillsForPrompt(
 ${skillEntries}
 </available_skills>
 
-**CRITICAL: You MUST call skill_get before using any skill.**
-The descriptions above are summaries only. The full skill content (loaded via skill_get) contains
-detailed workflow steps you must follow exactly.`;
+**IMPORTANT**: These are summaries for matching only. Before executing any skill, you MUST:
+1. Call \`skill_get(name)\` to load the full workflow.
+2. Follow the loaded steps exactly.
+3. Call \`skill_record()\` after execution with success/failure.`;
 }
 
 // ---------------------------------------------------------------------------

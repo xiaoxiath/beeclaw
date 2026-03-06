@@ -26,7 +26,7 @@ describe('Subagent Prompts', () => {
 
     test('memory prompt contains memory-specific content', () => {
       expect(SUBAGENT_PROMPTS.memory).toContain('Memory');
-      expect(SUBAGENT_PROMPTS.memory).toContain('knowledge');
+      expect(SUBAGENT_PROMPTS.memory).toContain('Knowledge');
     });
 
     test('skill prompt contains skill-specific content', () => {
@@ -42,7 +42,7 @@ describe('Subagent Prompts', () => {
 
     test('general prompt contains general content', () => {
       expect(SUBAGENT_PROMPTS.general).toContain('General');
-      expect(SUBAGENT_PROMPTS.general).toContain('general-purpose');
+      expect(SUBAGENT_PROMPTS.general).toContain('General-Purpose');
     });
 
     test('all prompts contain base content', () => {

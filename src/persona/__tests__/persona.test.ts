@@ -474,7 +474,7 @@ describe('Traits Utilities', () => {
 
     test('returns medium description', () => {
       const desc = getOCEANDescription('openness', 0.5);
-      expect(desc).toContain('平衡');
+      expect(desc).toContain('适度开放');
     });
   });
 
