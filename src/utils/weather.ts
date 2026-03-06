@@ -154,10 +154,17 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
+export interface CityInfo {
+  id: string;
+  name: string;
+  tz?: string;  // IANA timezone (e.g., "Asia/Shanghai")
+}
+
 /**
- * Search for city location ID
+ * Search for city location ID and timezone info
+ * Exported for use by timezone utilities
  */
-async function searchCity(location: string): Promise<{ id: string; name: string } | null> {
+export async function searchCity(location: string): Promise<CityInfo | null> {
   const config = getConfig();
   if (!config.apiKey && !config.token) {
     logger.warn('QWEATHER_KEY or QWEATHER_TOKEN not configured, weather info unavailable');
@@ -188,6 +195,7 @@ async function searchCity(location: string): Promise<{ id: string; name: string 
     return {
       id: city.id,
       name: city.name,
+      tz: city.tz,  // Include timezone info
     };
   } catch (error) {
     logger.error('Failed to search city:', error);

@@ -193,17 +193,33 @@ export function getBeeclawVersion(): string {
 }
 
 export function getCurrentTimeContext(): string {
+  const { resolveUserLocation, resolveUserTimezone } = require('../utils/timezone');
+
+  const userLocation = resolveUserLocation();
+  const userTimezone = resolveUserTimezone();
+
   const now = new Date();
   const dateStr = now.toLocaleDateString('zh-CN', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+    timeZone: userTimezone,
   });
   const timeStr = now.toLocaleTimeString('zh-CN', {
     hour: '2-digit', minute: '2-digit', hour12: false,
+    timeZone: userTimezone,
   });
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const version = getBeeclawVersion();
 
-  return `**Date**: ${dateStr} | **Time**: ${timeStr} | **Timezone**: ${timezone} | **Beeclaw**: v${version}`;
+  // Build location and timezone info
+  let locationInfo = `**Location**: ${userLocation}`;
+  let timezoneInfo = `**Timezone**: ${userTimezone}`;
+
+  if (userTimezone !== systemTimezone) {
+    timezoneInfo += ` (系统: ${systemTimezone})`;
+  }
+
+  return `${locationInfo} | **Date**: ${dateStr} | **Time**: ${timeStr} | ${timezoneInfo} | **Beeclaw**: v${version}`;
 }
 
 /**

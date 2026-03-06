@@ -206,6 +206,21 @@ export async function initApp(options: InitOptions = {}): Promise<{
     }
   }
 
+  // 9.10. Initialize timezone cache (derive timezone from location if needed)
+  try {
+    const { initializeTimezoneCache, resolveUserLocation, resolveUserTimezone } = await import('../utils/timezone');
+    await initializeTimezoneCache();
+
+    // Display resolved location and timezone
+    const resolvedLocation = resolveUserLocation();
+    const resolvedTimezone = resolveUserTimezone();
+    console.log(`   📍 Location: ${resolvedLocation} | Timezone: ${resolvedTimezone}`);
+  } catch (error) {
+    logger.warn('Failed to initialize timezone cache:', error);
+    // Non-fatal error, continue with default timezone
+    console.log('   📍 Location: 北京 | Timezone: Asia/Shanghai (default)');
+  }
+
   // 10. Create agent (singleton)
   const agent = createAgent({
     provider: defaultProvider,

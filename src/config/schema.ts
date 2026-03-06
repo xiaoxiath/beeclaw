@@ -154,7 +154,8 @@ export const FeishuConfigSchema = z.object({
 
 // User configuration schema
 export const UserConfigSchema = z.object({
-  timezone: z.string().default('Asia/Shanghai'),
+  location: z.string().optional().describe('User\'s location (city name, e.g., "北京", "上海", "New York")'),
+  timezone: z.string().optional(),  // Optional - auto-derived from location
   locale: z.string().default('zh-CN'),
 });
 

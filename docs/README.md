@@ -19,6 +19,7 @@
 |------|------|
 | [CLI 参考](./cli-reference.md) | 命令行界面详解 |
 | [配置指南](./configuration.md) | 配置文件详解 |
+| [用户配置](./user-configuration.md) | 位置、时区等用户设置 |
 | [工具参考](./tools-reference.md) | 所有可用工具列表 |
 | [主动系统](./PROACTIVE-SYSTEM.md) | 定时任务、主动聊天、通知推送 |
 | [通知使用指南](./notification-usage-guide.md) | 通知功能详解 |
