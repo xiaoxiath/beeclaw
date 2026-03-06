@@ -9,6 +9,7 @@ import { getPersonaToolsForAI, getTraitSystemPrompt } from '../persona';
 import { getGoalStore } from '../goal/store';
 import { getDateContext } from '../utils/holiday';
 import { getWeatherContext } from '../utils/weather';
+import { resolveUserLocation, resolveUserTimezone } from '../utils/timezone';
 import {
   calendarToolDefinitions,
   docxToolDefinitions,
@@ -193,8 +194,6 @@ export function getBeeclawVersion(): string {
 }
 
 export function getCurrentTimeContext(): string {
-  const { resolveUserLocation, resolveUserTimezone } = '../utils/timezone';
-
   const userLocation = resolveUserLocation();
   const userTimezone = resolveUserTimezone();
 
