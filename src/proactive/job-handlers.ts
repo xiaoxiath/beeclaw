@@ -11,6 +11,42 @@ import { getCompressionEngine } from '../memory/compression';
 import { getMemoryStore } from '../memory';
 
 /**
+ * Get default push target from config
+ */
+function getDefaultPushTarget(): { channel: string; chatId: string; userId: string } | null {
+  try {
+    const { getConfig } = require('../config');
+    const config = getConfig();
+    if (config?.defaultPushTarget) {
+      return {
+        channel: config.defaultPushTarget.channel || 'feishu',
+        chatId: config.defaultPushTarget.chatId || '',
+        userId: config.defaultPushTarget.userId || 'feishu-user',
+      };
+    }
+  } catch (error) {
+    logger.debug('Failed to get default push target from config:', error);
+  }
+  return null;
+}
+
+/**
+ * Merge job params with default push target
+ */
+function getPushTarget(
+  jobParams: Record<string, unknown> | undefined,
+  client?: { lastActiveChatId?: string; lastActiveUserId?: string }
+): { channel: string; chatId: string | undefined; userId: string } {
+  const defaults = getDefaultPushTarget();
+  
+  const channel = (jobParams?.channel as string) || defaults?.channel || 'feishu';
+  const chatId = (jobParams?.chatId as string) || client?.lastActiveChatId || defaults?.chatId;
+  const userId = (jobParams?.userId as string) || client?.lastActiveUserId || defaults?.userId || 'feishu-user';
+  
+  return { channel, chatId, userId };
+}
+
+/**
  * Execute a skill with parameters
  */
 export async function handleRunSkillJob(
@@ -62,9 +98,9 @@ ${JSON.stringify(skillParams, null, 2)}
 
     // Get Feishu client for channel info
     const client = options?.getFeishuClient?.();
-    const channel = (job.params?.channel as 'cli' | 'feishu' | 'webhook') || 'feishu';
-    const chatId = (job.params?.chatId as string) || client?.lastActiveChatId;
-    const userId = (job.params?.userId as string) || client?.lastActiveUserId || 'feishu-user';
+    const { channel, chatId, userId } = getPushTarget(job.params, client);
+
+    console.log(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
 
     // Execute through the agent
     const result = await sendProactiveMessage({
@@ -78,19 +114,19 @@ ${JSON.stringify(skillParams, null, 2)}
       console.log(`[Daemon] ✅ Skill ${skillName} executed successfully`);
       console.log(`[Daemon] Response: ${result.response.substring(0, 200)}...`);
 
-      // Push to Feishu if channel is feishu and we have chatId
+      // Push to Feishu if we have chatId
       if (channel === 'feishu' && chatId && client) {
-        // Use markdown message for proper formatting (sendMarkdownMessage)
         await client.sendMarkdownMessage(chatId, 'chat_id', result.response);
         console.log(`[Daemon] 📤 Skill result pushed to Feishu chat: ${chatId}`);
-        // Fallback: push as notification if push is not explicitly disabled
+      } else if (!chatId) {
+        // Fallback: push as notification if no chatId
         const { pushNotification } = await import('./pusher');
         await pushNotification({
           message: result.response,
           priority: 'normal',
           category: 'skill-execution',
         });
-        console.log(`[Daemon] 📤 Skill result pushed as notification`);
+        console.log(`[Daemon] 📤 Skill result pushed as notification (no chatId)`);
       }
     } else {
       console.error(`[Daemon] ❌ Skill ${skillName} execution failed:`, result.error);
@@ -138,16 +174,17 @@ export async function handleLlmProactiveChatJob(
       ? `${context}\n\n${prompt}`
       : prompt;
 
-    // 获取 chatId：优先参数，其次最近活跃的
+    // 获取推送目标
     const client = options?.getFeishuClient?.();
-    const chatId = (job.params?.chatId as string) || client?.lastActiveChatId;
-    const userId = (job.params?.userId as string) || client?.lastActiveUserId || 'feishu-user';
+    const { channel, chatId, userId } = getPushTarget(job.params, client);
 
-    // 调用 LLM 生成内容（无论是否有 chatId）
+    console.log(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
+
+    // 调用 LLM 生成内容
     const result = await sendProactiveMessage({
       message: fullPrompt,
       userId,
-      channel: 'feishu',
+      channel,
       sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
     });
 
@@ -156,11 +193,18 @@ export async function handleLlmProactiveChatJob(
 
       // 推送到飞书（需要 chatId)
       if (chatId && client) {
-        // Use markdown message for proper formatting
         await client.sendMarkdownMessage(chatId, 'chat_id', result.response);
         console.log(`[Daemon] 📤 Message pushed to Feishu chat: ${chatId}`);
       } else if (!chatId) {
         console.warn('[Daemon] No chatId available, message not pushed to Feishu');
+        // Fallback to notification
+        const { pushNotification } = await import('./pusher');
+        await pushNotification({
+          message: result.response,
+          priority: 'normal',
+          category: 'llm-proactive',
+        });
+        console.log(`[Daemon] 📤 Message pushed as notification (no chatId)`);
       }
     } else {
       console.error('[Daemon] LLM generation failed:', result.error);
@@ -266,17 +310,27 @@ export async function handleSendReminderJob(
     getFeishuClient?: () => any;
   }
 ): Promise<void> {
-  if (job.params?.chatId && job.params?.message) {
-    const client = options?.getFeishuClient?.();
+  const client = options?.getFeishuClient?.();
+  const { channel, chatId, userId } = getPushTarget(job.params, client);
+  
+  if (chatId && job.params?.message) {
     if (client) {
-      // Use markdown message for proper formatting
       await client.sendMarkdownMessage(
-        job.params.chatId as string,
+        chatId,
         'chat_id',
         job.params.message as string,
         { title: '⏰ 提醒' }
       );
-      console.log(`[Daemon] 📤 Reminder sent to chat: ${job.params.chatId}`);
+      console.log(`[Daemon] 📤 Reminder sent to chat: ${chatId}`);
     }
+  } else {
+    // Fallback to notification
+    const { pushNotification } = await import('./pusher');
+    await pushNotification({
+      message: job.params?.message as string,
+      priority: (job.params?.priority as 'low' | 'normal' | 'high' | 'urgent') || 'normal',
+      category: 'reminder',
+    });
+    console.log(`[Daemon] 📤 Reminder pushed as notification`);
   }
 }

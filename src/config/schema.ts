@@ -159,6 +159,13 @@ export const UserConfigSchema = z.object({
   locale: z.string().default('zh-CN'),
 });
 
+// Default push target schema
+export const DefaultPushTargetSchema = z.object({
+  channel: z.enum(['cli', 'feishu', 'webhook']).default('feishu'),
+  chatId: z.string().optional(),
+  userId: z.string().optional(),
+});
+
 // Weather configuration schema (和风天气)
 export const WeatherConfigSchema = z.object({
   apiHost: z.string().default('devapi.qweather.com'),
@@ -285,6 +292,7 @@ export const AppConfigSchema = z.object({
   logging: LoggingConfigSchema.default({}),
   feishu: FeishuConfigSchema.default({}),
   user: UserConfigSchema.default({}),
+  defaultPushTarget: DefaultPushTargetSchema.optional(),
   weather: WeatherConfigSchema.default({}),
   search: SearchConfigSchema.default({}),
   finance: FinanceConfigSchema.default({}),
@@ -311,6 +319,8 @@ export type ChannelPluginConfig = z.infer<typeof ChannelPluginConfigSchema>;
 export type ToolPluginConfig = z.infer<typeof ToolPluginConfigSchema>;
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 export type FeishuConfig = z.infer<typeof FeishuConfigSchema>;
+export type UserConfig = z.infer<typeof UserConfigSchema>;
+export type DefaultPushTarget = z.infer<typeof DefaultPushTargetSchema>;
 export type WeatherConfig = z.infer<typeof WeatherConfigSchema>;
 export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type FinanceConfig = z.infer<typeof FinanceConfigSchema>;
