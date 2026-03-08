@@ -15,12 +15,19 @@ import type {
   ProactiveToolResult,
 } from './types';
 
+// Execution callback type
+export type ScheduleCallback = (schedule: Schedule) => Promise<void>;
+
 export class Scheduler {
   private basePath: string;
   private storagePath: string;
   private storage: ScheduleStorage;
   private initialized: boolean = false;
   private cronTimers: Map<string, NodeJS.Timeout> = new Map();
+  // Memory-level execution lock (shared with daemon for atomicity)
+  private executingSchedules: Set<string> = new Set();
+  // Execution callback (set by daemon)
+  private executionCallback: ScheduleCallback | null = null;
 
   constructor(basePath: string) {
     this.basePath = basePath;
@@ -30,6 +37,30 @@ export class Scheduler {
       patterns: {},
       lastUpdated: new Date().toISOString(),
     };
+  }
+
+  // Set execution callback (called by daemon to share memory lock)
+  setExecutionCallback(callback: ScheduleCallback): void {
+    this.executionCallback = callback;
+  }
+
+  // Check if schedule is executing (memory lock)
+  isScheduleExecuting(scheduleId: string): boolean {
+    return this.executingSchedules.has(scheduleId);
+  }
+
+  // Acquire memory lock
+  acquireExecutionLock(scheduleId: string): boolean {
+    if (this.executingSchedules.has(scheduleId)) {
+      return false; // Already locked
+    }
+    this.executingSchedules.add(scheduleId);
+    return true;
+  }
+
+  // Release memory lock
+  releaseExecutionLock(scheduleId: string): void {
+    this.executingSchedules.delete(scheduleId);
   }
 
   // Initialize scheduler storage
@@ -173,7 +204,7 @@ export class Scheduler {
     return this.updateSchedule(id, { enabled: false, state: 'disabled' });
   }
 
-  // Set execution lock on a schedule
+  // Set execution lock on a schedule (storage level)
   setExecuting(id: string, isExecuting: boolean): void {
     const schedule = this.storage.schedules[id];
     if (schedule) {
@@ -193,7 +224,7 @@ export class Scheduler {
     schedule.lastResult = result;
     schedule.nextRun = this.calculateNextRun(schedule.cron)?.toISOString();
     schedule.updatedAt = now;
-    schedule.isExecuting = false; // Release execution lock
+    schedule.isExecuting = false; // Release storage lock
 
     this.saveStorage();
   }
@@ -207,7 +238,8 @@ export class Scheduler {
       // Skip disabled or paused schedules
       if (!schedule.enabled || schedule.state !== 'enabled') return false;
       
-      // Skip currently executing schedules (prevents duplicate execution)
+      // Skip currently executing schedules (both memory and storage level)
+      if (this.executingSchedules.has(schedule.id)) return false;
       if (schedule.isExecuting) return false;
       
       if (!schedule.nextRun) return true; // No next run, should calculate
@@ -293,8 +325,11 @@ export class Scheduler {
   }
 
   // Start all enabled schedules (for daemon mode)
-  startAll(callback: (schedule: Schedule) => Promise<void>): void {
+  startAll(callback: ScheduleCallback): void {
     this.init();
+
+    // Store callback for shared execution
+    this.executionCallback = callback;
 
     for (const schedule of Object.values(this.storage.schedules)) {
       if (schedule.enabled) {
@@ -308,11 +343,13 @@ export class Scheduler {
     for (const id of this.cronTimers.keys()) {
       this.stopScheduleTimer(id);
     }
+    // Clear all memory locks
+    this.executingSchedules.clear();
   }
 
   // Private helper methods
 
-  private startSchedule(schedule: Schedule, callback: (schedule: Schedule) => Promise<void>): void {
+  private startSchedule(schedule: Schedule, callback: ScheduleCallback): void {
     // Stop existing timer if any
     this.stopScheduleTimer(schedule.id);
 
@@ -327,12 +364,7 @@ export class Scheduler {
 
     if (delay <= 0) {
       // Already past due, run immediately (with execution lock)
-      if (!schedule.isExecuting) {
-        this.setExecuting(schedule.id, true);
-        callback(schedule).finally(() => {
-          this.setExecuting(schedule.id, false);
-        });
-      }
+      this.executeWithLock(schedule, callback);
       return;
     }
 
@@ -346,16 +378,16 @@ export class Scheduler {
           this.cronTimers.delete(schedule.id);
           // Check execution lock before running
           const current = this.storage.schedules[schedule.id];
-          if (current && !current.isExecuting) {
-            this.setExecuting(schedule.id, true);
-            callback(schedule).finally(() => {
-              this.setExecuting(schedule.id, false);
-            });
+          if (current) {
+            this.executeWithLock(current, callback);
           }
         } else if (remainingTime <= MAX_SET_TIMEOUT) {
           // Now we can use setTimeout safely
           clearInterval(checkInterval);
-          this.startSchedule(current || schedule, callback);
+          const current = this.storage.schedules[schedule.id];
+          if (current) {
+            this.startSchedule(current, callback);
+          }
         }
       }, 60 * 60 * 1000); // Check every hour
 
@@ -367,35 +399,44 @@ export class Scheduler {
 
     // Set timer for next run (delay is within safe range)
     const timer = setTimeout(async () => {
-      // Check execution lock before running
       const current = this.storage.schedules[schedule.id];
-      if (current && current.isExecuting) {
-        console.log(`[Scheduler] Schedule "${schedule.name}" is already executing, skipping`);
-        // Reschedule anyway
-        if (current?.enabled) {
-          this.startSchedule(current, callback);
+      if (current?.enabled) {
+        await this.executeWithLock(current, callback);
+        // Reschedule
+        const updated = this.storage.schedules[schedule.id];
+        if (updated?.enabled) {
+          this.startSchedule(updated, callback);
         }
-        return;
-      }
-
-      // Set execution lock
-      this.setExecuting(schedule.id, true);
-      
-      try {
-        await callback(schedule);
-      } finally {
-        // Release execution lock
-        this.setExecuting(schedule.id, false);
-      }
-
-      // Reschedule
-      const updated = this.storage.schedules[schedule.id];
-      if (updated?.enabled) {
-        this.startSchedule(updated, callback);
       }
     }, delay);
 
     this.cronTimers.set(schedule.id, timer);
+  }
+
+  // Execute with atomic lock acquisition (prevents race condition)
+  private async executeWithLock(schedule: Schedule, callback: ScheduleCallback): Promise<void> {
+    // Atomic check-and-set for memory lock
+    if (!this.acquireExecutionLock(schedule.id)) {
+      console.log(`[Scheduler] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
+      return;
+    }
+
+    // Check storage lock
+    if (schedule.isExecuting) {
+      console.log(`[Scheduler] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
+      this.releaseExecutionLock(schedule.id); // Release memory lock
+      return;
+    }
+
+    // Set storage lock
+    this.setExecuting(schedule.id, true);
+
+    try {
+      await callback(schedule);
+    } finally {
+      // Release memory lock (storage lock is released in recordExecution)
+      this.releaseExecutionLock(schedule.id);
+    }
   }
 
   private stopScheduleTimer(id: string): void {

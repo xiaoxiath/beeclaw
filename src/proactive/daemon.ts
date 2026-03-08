@@ -20,8 +20,6 @@ export class Daemon {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
   private running: boolean = false;
-  // Memory-level execution lock to prevent duplicate execution
-  private executingSchedules: Set<string> = new Set();
 
   constructor(basePath: string) {
     this.basePath = basePath;
@@ -83,7 +81,8 @@ export class Daemon {
       this.state.schedulesLoaded = scheduler.listSchedules().length;
       this.saveState();
 
-      // Start all enabled schedules
+      // Start all enabled schedules with unified execution entry point
+      // This ensures both setTimeout and periodicCheck share the same memory lock
       scheduler.startAll(async (schedule) => {
         await this.executeSchedule(schedule, options?.onJob);
       });
@@ -194,24 +193,14 @@ export class Daemon {
     schedule: Schedule,
     onJob?: (job: ProactiveJobData) => Promise<void>
   ): Promise<void> {
-    // Memory-level lock check (first line of defense)
-    if (this.executingSchedules.has(schedule.id)) {
+    // Get scheduler for shared memory lock check
+    const scheduler = getScheduler(this.basePath + '/../proactive');
+    
+    // Check if already executing via scheduler's memory lock
+    if (scheduler.isScheduleExecuting(schedule.id)) {
       console.log(`[Daemon] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
       return;
     }
-
-    // Check storage-level execution lock (second line of defense)
-    const scheduler = getScheduler(this.basePath + '/../proactive');
-    const currentSchedule = scheduler.getSchedule(schedule.id);
-    
-    if (currentSchedule?.isExecuting) {
-      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
-      return;
-    }
-
-    // Acquire both locks
-    this.executingSchedules.add(schedule.id);
-    scheduler.setExecuting(schedule.id, true);
 
     console.log(`[Daemon] Executing schedule: ${schedule.name}`);
 
@@ -230,7 +219,7 @@ export class Daemon {
         await this.executeDefaultJobHandler(job);
       }
 
-      // Record success (also releases storage lock)
+      // Record success
       scheduler.recordExecution(schedule.id, { success: true });
 
       this.state.jobsExecuted++;
@@ -239,11 +228,8 @@ export class Daemon {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.recordError(`Schedule ${schedule.name} failed: ${errorMessage}`);
 
-      // Record failure (also releases storage lock)
+      // Record failure
       scheduler.recordExecution(schedule.id, { success: false, error: errorMessage });
-    } finally {
-      // Always release memory lock
-      this.executingSchedules.delete(schedule.id);
     }
   }
 
@@ -295,19 +281,14 @@ export class Daemon {
 
   private async periodicCheck(onJob?: (job: ProactiveJobData) => Promise<void>): Promise<void> {
     try {
-      // Check for due schedules (excludes already executing schedules)
+      // Check for due schedules (scheduler.getDueSchedules already excludes executing schedules)
       const scheduler = getScheduler(this.basePath + '/../proactive');
       const dueSchedules = scheduler.getDueSchedules();
 
       for (const schedule of dueSchedules) {
-        // Triple check: memory lock, storage lock, and due status
-        if (this.executingSchedules.has(schedule.id)) {
+        // Extra check: verify not executing via scheduler's memory lock
+        if (scheduler.isScheduleExecuting(schedule.id)) {
           console.log(`[Daemon] [PeriodicCheck] Schedule "${schedule.name}" is executing (memory lock), skipping`);
-          continue;
-        }
-        
-        if (schedule.isExecuting) {
-          console.log(`[Daemon] [PeriodicCheck] Schedule "${schedule.name}" is executing (storage lock), skipping`);
           continue;
         }
         
