@@ -94,7 +94,7 @@ export class Daemon {
       this.updateHeartbeat();
     }, heartbeatIntervalMs);
 
-    // Start periodic check
+    // Start periodic check (backup for missed schedules)
     this.checkInterval = setInterval(async () => {
       await this.periodicCheck(options?.onJob);
     }, checkIntervalMs);
@@ -192,6 +192,18 @@ export class Daemon {
     schedule: Schedule,
     onJob?: (job: ProactiveJobData) => Promise<void>
   ): Promise<void> {
+    // Check execution lock before starting
+    const scheduler = getScheduler(this.basePath + '/../proactive');
+    const currentSchedule = scheduler.getSchedule(schedule.id);
+    
+    if (currentSchedule?.isExecuting) {
+      console.log(`[Daemon] Schedule "${schedule.name}" is already executing, skipping`);
+      return;
+    }
+
+    // Set execution lock
+    scheduler.setExecuting(schedule.id, true);
+
     console.log(`[Daemon] Executing schedule: ${schedule.name}`);
 
     const job: ProactiveJobData = {
@@ -209,8 +221,7 @@ export class Daemon {
         await this.executeDefaultJobHandler(job);
       }
 
-      // Record success
-      const scheduler = getScheduler(this.basePath + '/../proactive');
+      // Record success (also releases lock)
       scheduler.recordExecution(schedule.id, { success: true });
 
       this.state.jobsExecuted++;
@@ -219,13 +230,8 @@ export class Daemon {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.recordError(`Schedule ${schedule.name} failed: ${errorMessage}`);
 
-      // Record failure
-      try {
-        const scheduler = getScheduler(this.basePath + '/../proactive');
-        scheduler.recordExecution(schedule.id, { success: false, error: errorMessage });
-      } catch {
-        // Ignore
-      }
+      // Record failure (also releases lock)
+      scheduler.recordExecution(schedule.id, { success: false, error: errorMessage });
     }
   }
 
@@ -277,11 +283,17 @@ export class Daemon {
 
   private async periodicCheck(onJob?: (job: ProactiveJobData) => Promise<void>): Promise<void> {
     try {
-      // Check for due schedules
+      // Check for due schedules (excludes already executing schedules)
       const scheduler = getScheduler(this.basePath + '/../proactive');
       const dueSchedules = scheduler.getDueSchedules();
 
       for (const schedule of dueSchedules) {
+        // Double check execution lock
+        if (schedule.isExecuting) {
+          console.log(`[Daemon] [PeriodicCheck] Schedule "${schedule.name}" is executing, skipping`);
+          continue;
+        }
+        
         await this.executeSchedule(schedule, onJob);
       }
 

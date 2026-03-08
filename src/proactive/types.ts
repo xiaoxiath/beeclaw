@@ -40,6 +40,8 @@ export const ScheduleSchema = z.object({
   lastResult: z.unknown().optional().describe('Result of last execution'),
   createdAt: z.string().describe('Creation timestamp'),
   updatedAt: z.string().describe('Last update timestamp'),
+  // Execution lock to prevent duplicate execution
+  isExecuting: z.boolean().default(false).describe('Whether task is currently executing'),
 });
 
 export type Schedule = z.infer<typeof ScheduleSchema>;

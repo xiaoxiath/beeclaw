@@ -108,6 +108,7 @@ export class Scheduler {
       runCount: 0,
       createdAt: now,
       updatedAt: now,
+      isExecuting: false, // Initialize execution lock
     };
 
     this.storage.schedules[id] = schedule;
@@ -172,6 +173,15 @@ export class Scheduler {
     return this.updateSchedule(id, { enabled: false, state: 'disabled' });
   }
 
+  // Set execution lock on a schedule
+  setExecuting(id: string, isExecuting: boolean): void {
+    const schedule = this.storage.schedules[id];
+    if (schedule) {
+      schedule.isExecuting = isExecuting;
+      this.saveStorage();
+    }
+  }
+
   // Record schedule execution
   recordExecution(id: string, result: unknown): void {
     const schedule = this.storage.schedules[id];
@@ -183,17 +193,23 @@ export class Scheduler {
     schedule.lastResult = result;
     schedule.nextRun = this.calculateNextRun(schedule.cron)?.toISOString();
     schedule.updatedAt = now;
+    schedule.isExecuting = false; // Release execution lock
 
     this.saveStorage();
   }
 
-  // Get schedules that should run now
+  // Get schedules that should run now (excludes executing schedules)
   getDueSchedules(): Schedule[] {
     this.init();
     const now = new Date();
 
     return Object.values(this.storage.schedules).filter(schedule => {
+      // Skip disabled or paused schedules
       if (!schedule.enabled || schedule.state !== 'enabled') return false;
+      
+      // Skip currently executing schedules (prevents duplicate execution)
+      if (schedule.isExecuting) return false;
+      
       if (!schedule.nextRun) return true; // No next run, should calculate
 
       const nextRun = new Date(schedule.nextRun);
@@ -310,8 +326,13 @@ export class Scheduler {
     const MAX_SET_TIMEOUT = 2147483647;
 
     if (delay <= 0) {
-      // Already past due, run immediately
-      callback(schedule);
+      // Already past due, run immediately (with execution lock)
+      if (!schedule.isExecuting) {
+        this.setExecuting(schedule.id, true);
+        callback(schedule).finally(() => {
+          this.setExecuting(schedule.id, false);
+        });
+      }
       return;
     }
 
@@ -323,11 +344,18 @@ export class Scheduler {
         if (remainingTime <= 0) {
           clearInterval(checkInterval);
           this.cronTimers.delete(schedule.id);
-          callback(schedule);
+          // Check execution lock before running
+          const current = this.storage.schedules[schedule.id];
+          if (current && !current.isExecuting) {
+            this.setExecuting(schedule.id, true);
+            callback(schedule).finally(() => {
+              this.setExecuting(schedule.id, false);
+            });
+          }
         } else if (remainingTime <= MAX_SET_TIMEOUT) {
           // Now we can use setTimeout safely
           clearInterval(checkInterval);
-          this.startSchedule(schedule, callback);
+          this.startSchedule(current || schedule, callback);
         }
       }, 60 * 60 * 1000); // Check every hour
 
@@ -339,7 +367,27 @@ export class Scheduler {
 
     // Set timer for next run (delay is within safe range)
     const timer = setTimeout(async () => {
-      await callback(schedule);
+      // Check execution lock before running
+      const current = this.storage.schedules[schedule.id];
+      if (current && current.isExecuting) {
+        console.log(`[Scheduler] Schedule "${schedule.name}" is already executing, skipping`);
+        // Reschedule anyway
+        if (current?.enabled) {
+          this.startSchedule(current, callback);
+        }
+        return;
+      }
+
+      // Set execution lock
+      this.setExecuting(schedule.id, true);
+      
+      try {
+        await callback(schedule);
+      } finally {
+        // Release execution lock
+        this.setExecuting(schedule.id, false);
+      }
+
       // Reschedule
       const updated = this.storage.schedules[schedule.id];
       if (updated?.enabled) {
@@ -566,6 +614,13 @@ export class Scheduler {
       try {
         const content = readFileSync(this.storagePath, 'utf-8');
         this.storage = JSON.parse(content);
+        
+        // Migration: Add isExecuting field to existing schedules
+        for (const schedule of Object.values(this.storage.schedules)) {
+          if (schedule.isExecuting === undefined) {
+            schedule.isExecuting = false;
+          }
+        }
       } catch {
         // Use default storage
       }
