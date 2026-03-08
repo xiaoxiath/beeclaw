@@ -20,6 +20,8 @@ export class Daemon {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
   private running: boolean = false;
+  // Memory-level execution lock to prevent duplicate execution
+  private executingSchedules: Set<string> = new Set();
 
   constructor(basePath: string) {
     this.basePath = basePath;
@@ -192,16 +194,23 @@ export class Daemon {
     schedule: Schedule,
     onJob?: (job: ProactiveJobData) => Promise<void>
   ): Promise<void> {
-    // Check execution lock before starting
+    // Memory-level lock check (first line of defense)
+    if (this.executingSchedules.has(schedule.id)) {
+      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
+      return;
+    }
+
+    // Check storage-level execution lock (second line of defense)
     const scheduler = getScheduler(this.basePath + '/../proactive');
     const currentSchedule = scheduler.getSchedule(schedule.id);
     
     if (currentSchedule?.isExecuting) {
-      console.log(`[Daemon] Schedule "${schedule.name}" is already executing, skipping`);
+      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
       return;
     }
 
-    // Set execution lock
+    // Acquire both locks
+    this.executingSchedules.add(schedule.id);
     scheduler.setExecuting(schedule.id, true);
 
     console.log(`[Daemon] Executing schedule: ${schedule.name}`);
@@ -221,7 +230,7 @@ export class Daemon {
         await this.executeDefaultJobHandler(job);
       }
 
-      // Record success (also releases lock)
+      // Record success (also releases storage lock)
       scheduler.recordExecution(schedule.id, { success: true });
 
       this.state.jobsExecuted++;
@@ -230,8 +239,11 @@ export class Daemon {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.recordError(`Schedule ${schedule.name} failed: ${errorMessage}`);
 
-      // Record failure (also releases lock)
+      // Record failure (also releases storage lock)
       scheduler.recordExecution(schedule.id, { success: false, error: errorMessage });
+    } finally {
+      // Always release memory lock
+      this.executingSchedules.delete(schedule.id);
     }
   }
 
@@ -288,9 +300,14 @@ export class Daemon {
       const dueSchedules = scheduler.getDueSchedules();
 
       for (const schedule of dueSchedules) {
-        // Double check execution lock
+        // Triple check: memory lock, storage lock, and due status
+        if (this.executingSchedules.has(schedule.id)) {
+          console.log(`[Daemon] [PeriodicCheck] Schedule "${schedule.name}" is executing (memory lock), skipping`);
+          continue;
+        }
+        
         if (schedule.isExecuting) {
-          console.log(`[Daemon] [PeriodicCheck] Schedule "${schedule.name}" is executing, skipping`);
+          console.log(`[Daemon] [PeriodicCheck] Schedule "${schedule.name}" is executing (storage lock), skipping`);
           continue;
         }
         
