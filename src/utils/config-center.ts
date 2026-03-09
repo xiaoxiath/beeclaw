@@ -437,6 +437,37 @@ class ConfigCenter {
   }
 
   /**
+   * 从预设文件加载环境配置
+   *
+   * @param presetName - 预设名称 (development | staging | production)
+   * @param presetFile - 预设文件路径 (默认: ./beeclaw.presets.json)
+   */
+  loadPreset(presetName: 'development' | 'staging' | 'production', presetFile?: string): ValidationError[] {
+    const fs = require('fs');
+    const path = require('path');
+
+    const presetPath = presetFile || path.join(process.cwd(), 'beeclaw.presets.json');
+
+    if (!fs.existsSync(presetPath)) {
+      return [{ path: presetPath, message: 'Preset file not found' }];
+    }
+
+    try {
+      const raw = fs.readFileSync(presetPath, 'utf-8');
+      const presets = JSON.parse(raw);
+
+      if (!presets[presetName]) {
+        return [{ path: presetPath, message: `Preset "${presetName}" not found` }];
+      }
+
+      const presetConfig = presets[presetName];
+      return this.update(presetConfig, 'file');
+    } catch (error) {
+      return [{ path: presetPath, message: `Failed to load preset: ${error}` }];
+    }
+  }
+
+  /**
    * 从环境变量加载配置
    * 
    * 环境变量命名规则：BEECLAW_<SECTION>_<KEY>
@@ -622,30 +653,61 @@ export const config = new ConfigCenter();
 
 /**
  * 初始化配置（项目启动时调用）
- * 
- * 加载优先级：默认值 → 配置文件 → 环境变量 → 运行时覆盖
+ *
+ * 加载优先级：默认值 → 预设配置 → 配置文件 → 环境变量 → 运行时覆盖
  */
 export function initializeConfig(options?: {
   configFile?: string;
   envPrefix?: string;
+  preset?: 'development' | 'staging' | 'production' | 'auto';
+  presetFile?: string;
   overrides?: DeepPartial<BeeclawConfig>;
-}): { errors: ValidationError[]; envLoaded: number } {
+}): { errors: ValidationError[]; envLoaded: number; presetLoaded?: string } {
   const errors: ValidationError[] = [];
 
-  // 1. 从文件加载
+  // 1. 加载预设配置
+  if (options?.preset) {
+    const presetName = options.preset === 'auto' ? detectEnvironment() : options.preset;
+    const presetErrors = config.loadPreset(presetName, options.presetFile);
+    errors.push(...presetErrors);
+  }
+
+  // 2. 从文件加载
   if (options?.configFile) {
     errors.push(...config.loadFromFile(options.configFile));
   }
 
-  // 2. 从环境变量加载
+  // 3. 从环境变量加载
   const envLoaded = config.loadFromEnv(options?.envPrefix);
 
-  // 3. 运行时覆盖
+  // 4. 运行时覆盖
   if (options?.overrides) {
     errors.push(...config.update(options.overrides, 'runtime'));
   }
 
-  return { errors, envLoaded };
+  return {
+    errors,
+    envLoaded,
+    presetLoaded: options?.preset === 'auto' ? detectEnvironment() : options.preset,
+  };
+}
+
+/**
+ * 自动检测当前环境
+ */
+function detectEnvironment(): 'development' | 'staging' | 'production' {
+  // 1. 检查 NODE_ENV
+  const nodeEnv = process.env.NODE_ENV?.toLowerCase();
+  if (nodeEnv === 'production' || nodeEnv === 'prod') return 'production';
+  if (nodeEnv === 'staging' || nodeEnv === 'stage') return 'staging';
+
+  // 2. 检查 BEECLAW_ENV
+  const beeclawEnv = process.env.BEECLAW_ENV?.toLowerCase();
+  if (beeclawEnv === 'production' || beeclawEnv === 'prod') return 'production';
+  if (beeclawEnv === 'staging' || beeclawEnv === 'stage') return 'staging';
+
+  // 3. 默认为 development
+  return 'development';
 }
 
 // ─── 便捷 getter ──────────────────────────────────────────
