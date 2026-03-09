@@ -7,6 +7,7 @@
  * Drop this file into src/agent/prompt-budget.ts
  */
 
+import { logger } from '../utils/logger';
 import { estimateTokens } from './context';
 import type { ChatMessage } from './types';
 
@@ -248,7 +249,7 @@ export function assembleBudgetedPrompt(
     toDrop.add(layer.name);
     totalTokens -= layer.tokens;
     droppedLayers.push(layer.name);
-    console.log(`[PromptBudget] Dropped layer "${layer.name}" (${layer.tokens} tokens) — over budget`);
+    logger.debug(`[PromptBudget] Dropped layer "${layer.name}" (${layer.tokens} tokens) — over budget`);
   }
 
   let remainingLayers = layersWithTokens.filter(l => !toDrop.has(l.name));
@@ -268,7 +269,7 @@ export function assembleBudgetedPrompt(
       totalTokens = totalTokens - largestTrimmable.tokens + newTokens;
       largestTrimmable.tokens = newTokens;
       truncatedLayers.push(largestTrimmable.name);
-      console.log(`[PromptBudget] Truncated layer "${largestTrimmable.name}" to fit budget`);
+      logger.debug(`[PromptBudget] Truncated layer "${largestTrimmable.name}" to fit budget`);
     }
   }
 

@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSy
 import { join } from 'path';
 import type { MemoryConfig, MemoryToolResult } from './types';
 import { scoreImportance, scoreImportanceAsync, findDuplicates, type ImportanceScore } from './scoring';
+import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // [P1 FIX #15] LLM Provider Interface
@@ -56,7 +57,7 @@ let _llmProvider: CompressionLLMProvider | null = null;
  */
 export function setCompressionLLMProvider(provider: CompressionLLMProvider): void {
   _llmProvider = provider;
-  console.log('[MemoryCompression] LLM provider configured for intelligent summarization');
+  logger.info('[MemoryCompression] LLM provider configured for intelligent summarization');
 }
 
 export function getCompressionLLMProvider(): CompressionLLMProvider | null {
@@ -247,9 +248,9 @@ export class MemoryCompression {
         const llmResult = await this.generateSummaryWithLLM(content);
         summary = llmResult.summary;
         keyFacts = llmResult.keyFacts;
-        console.log(`[MemoryCompression] LLM summary for ${monthDir}/${dayFile}: ${summary.length} chars, ${keyFacts.length} facts`);
+        logger.info(`[MemoryCompression] LLM summary for ${monthDir}/${dayFile}: ${summary.length} chars, ${keyFacts.length} facts`);
       } catch (error) {
-        console.warn(`[MemoryCompression] LLM summary failed for ${monthDir}/${dayFile}, using rule-based fallback:`, error);
+        logger.warn(`[MemoryCompression] LLM summary failed for ${monthDir}/${dayFile}, using rule-based fallback:`, error);
         summary = this.generateSummaryRuleBased(content);
         keyFacts = this.extractKeyFactsRuleBased(content);
       }

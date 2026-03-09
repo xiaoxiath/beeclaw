@@ -235,6 +235,39 @@ export async function initApp(options: InitOptions = {}): Promise<{
   });
   appState.agent = agent;
 
+  // 10.5. [P1 Enhancement] Initialize optional providers for enhanced features
+  try {
+    const { setSimilarityProvider } = await import('../memory/scoring');
+    const { setCompressionLLMProvider } = await import('../memory/compression');
+    const { callAI } = await import('../agent/api');
+
+    // Configure embedding similarity provider (optional - falls back to bigram Jaccard)
+    // Uncomment and implement if embedding service is available:
+    // setSimilarityProvider({
+    //   async computeSimilarity(text1, text2) {
+    //     // Use your embedding service here
+    //     return cosineSimilarity(embedding1, embedding2);
+    //   },
+    // });
+
+    // Configure LLM provider for intelligent memory compression (optional - falls back to rules)
+    setCompressionLLMProvider({
+      async chat(messages, maxTokens = 500) {
+        const response = await callAI({
+          provider: defaultProvider,
+          model: 'glm-4-flash', // Use cheap/fast model for compression
+          messages: messages as any,
+          maxTokens,
+        });
+        return response.choices[0]?.message?.content || '';
+      },
+    });
+
+    logger.info('[App] P1 enhancement providers initialized');
+  } catch (error) {
+    logger.warn('[App] Failed to initialize P1 enhancement providers (non-fatal):', error);
+  }
+
   appState.initialized = true;
   console.log('   ✅ Beeclaw initialized\n');
 

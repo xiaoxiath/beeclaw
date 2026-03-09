@@ -13,6 +13,7 @@
  */
 
 import { z } from 'zod';
+import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // [P1 FIX #12] Embedding Provider Interface
@@ -69,7 +70,7 @@ let _similarityProvider: EmbeddingSimilarityProvider | null = null;
  */
 export function setSimilarityProvider(provider: EmbeddingSimilarityProvider): void {
   _similarityProvider = provider;
-  console.log('[MemoryScoring] Embedding similarity provider configured');
+  logger.info('[MemoryScoring] Embedding similarity provider configured');
 }
 
 /**
@@ -133,7 +134,7 @@ export function setScoringWeights(weights: Partial<ScoringWeights>): void {
       _customWeights[key] /= sum;
     }
   }
-  console.log('[MemoryScoring] Custom weights set:', _customWeights);
+  logger.debug('[MemoryScoring] Custom weights set:', _customWeights);
 }
 
 export function getScoringWeights(): ScoringWeights {
@@ -327,7 +328,7 @@ async function calculateSemanticUniqueness(content: string, existingFacts: strin
 
     return Math.round((1 - maxSimilarity) * 100);
   } catch (error) {
-    console.warn('[MemoryScoring] Semantic uniqueness failed, falling back to Jaccard:', error);
+    logger.warn('[MemoryScoring] Semantic uniqueness failed, falling back to Jaccard:', error);
     return calculateUniquenessScore(content, existingFacts);
   }
 }
@@ -471,8 +472,11 @@ export async function scoreMultipleAsync(entries: Array<{
 
 /**
  * [P1 FIX #12] Enhanced duplicate detection using improved similarity.
+ *
+ * @param threshold - Similarity threshold for considering entries as duplicates.
+ *   Recommended: 0.5 for bigram Jaccard (default), 0.7 for word-level Jaccard
  */
-export function findDuplicates(entries: string[], threshold: number = 0.7): Array<{ index1: number; index2: number; similarity: number }> {
+export function findDuplicates(entries: string[], threshold: number = 0.5): Array<{ index1: number; index2: number; similarity: number }> {
   const duplicates: Array<{ index1: number; index2: number; similarity: number }> = [];
 
   for (let i = 0; i < entries.length; i++) {

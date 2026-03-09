@@ -18,6 +18,7 @@ import type { AIProvider } from '../config/schema';
 import type { ChatMessage } from './types';
 import { estimateTokens, estimateMessageTokens, estimateTotalTokens } from './context';
 import { callAI } from './api';
+import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -266,7 +267,7 @@ ${newContent}
 
     return { summary, extractedFacts };
   } catch (error) {
-    console.error('[GraduatedCompressor] Incremental summarization failed:', error);
+    logger.error('[GraduatedCompressor] Incremental summarization failed:', error);
     // Fallback: simple rule-based append
     const fallbackSummary = existingSummary
       ? `${existingSummary}\n\n[新增] ${ruleBasedExtract(newMessages)}`
@@ -331,7 +332,7 @@ export async function graduatedCompress(
 
     const discardedCount = oldMessages.length - messagesToSummarize.length;
     if (discardedCount > 0) {
-      console.log(`[GraduatedCompressor] Discarded ${discardedCount} low-importance messages`);
+      logger.debug(`[GraduatedCompressor] Discarded ${discardedCount} low-importance messages`);
     }
   } else {
     messagesToSummarize = oldMessages;
@@ -361,9 +362,9 @@ export async function graduatedCompress(
         newFacts = newFacts.slice(-20);
       }
 
-      console.log(`[GraduatedCompressor] Summary updated, ${result.extractedFacts.length} new facts extracted`);
+      logger.info(`[GraduatedCompressor] Summary updated, ${result.extractedFacts.length} new facts extracted`);
     } catch (error) {
-      console.warn('[GraduatedCompressor] Summarization failed, using fallback');
+      logger.warn('[GraduatedCompressor] Summarization failed, using fallback');
       newSummary = existingSummary
         ? `${existingSummary}\n\n${ruleBasedExtract(messagesToSummarize)}`
         : ruleBasedExtract(messagesToSummarize);
@@ -397,7 +398,7 @@ export async function graduatedCompress(
 
   const tokensAfter = estimateTotalTokens(newMessages);
 
-  console.log(
+  logger.info(
     `[GraduatedCompressor] ${tokensBefore} → ${tokensAfter} tokens ` +
     `(${Math.round((1 - tokensAfter / tokensBefore) * 100)}% reduction, ` +
     `${oldMessages.length} messages compressed, ${recentMessages.length} kept verbatim)`
