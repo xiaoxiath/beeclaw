@@ -18,9 +18,14 @@ export class SearchOrchestrator {
   private providers: SearchProvider[] = [];
   private fallbackChain: Map<string, string[]> = new Map();
   private config: SearchConfig;
+  private cache: SearchCache;
 
   constructor(config?: SearchConfig) {
     this.config = config || { providers: {} };
+    this.cache = new SearchCache(
+      config?.cacheMaxSize ?? 50,
+      config?.cacheTtlMs ?? 5 * 60 * 1000
+    );
     this.initializeProviders();
   }
 
@@ -85,6 +90,14 @@ export class SearchOrchestrator {
    * Execute search with automatic routing, fallback, and result processing
    */
   async search(request: SearchRequest): Promise<SearchResult[]> {
+    // Step 0: Check cache
+    const cacheKey = SearchCache.key(request);
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      console.log(`[Search] Cache hit for: "${request.query.substring(0, 50)}..." (${cached.length} results)`);
+      return cached;
+    }
+
     // Step 1: Auto-detect region if needed
     if (request.region === SearchRegion.AUTO || !request.region) {
       request.region = this.detectRegion(request.query);
@@ -113,7 +126,19 @@ export class SearchOrchestrator {
       processed = this.rank(processed, request.query);
     }
 
-    return processed.slice(0, request.numResults || 10);
+    const finalResults = processed.slice(0, request.numResults || 10);
+
+    // Cache results
+    this.cache.set(cacheKey, finalResults);
+
+    return finalResults;
+  }
+
+  /**
+   * Clear search cache (useful after config changes)
+   */
+  clearCache(): void {
+    this.cache.clear();
   }
 
   /**
@@ -221,55 +246,114 @@ export class SearchOrchestrator {
   }
 
   /**
-   * Deduplicate results by normalized URL
+   * Deduplicate results by normalized URL + title similarity
+   *
+   * Handles: trailing slashes, query params, www prefix, protocol, fragments,
+   * and near-identical titles pointing to different URL variants.
    */
   private deduplicate(results: SearchResult[]): SearchResult[] {
-    const seen = new Set<string>();
-    const deduped: SearchResult[] = [];
+    const seen = new Map<string, SearchResult>(); // normalized URL → best result
+    const titleIndex = new Map<string, string>(); // normalized title → URL key
 
     for (const result of results) {
-      // Normalize URL: remove trailing slash, query params, lowercase
+      // Normalize URL: protocol, www, trailing slash, query params, fragment
       const normalized = result.url
         .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '')
         .split('?')[0]
-        .replace(/\/$/, '');
+        .split('#')[0]
+        .replace(/\/+$/, '');
 
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
-        deduped.push(result);
+      // Normalize title for fuzzy matching
+      const normalizedTitle = result.title
+        .toLowerCase()
+        .replace(/[\s\-_]+/g, ' ')
+        .trim();
+
+      // Check URL dedup
+      if (seen.has(normalized)) {
+        // Keep the one with higher score or longer snippet
+        const existing = seen.get(normalized)!;
+        if ((result.score || 0) > (existing.score || 0) ||
+            (result.snippet?.length || 0) > (existing.snippet?.length || 0)) {
+          seen.set(normalized, result);
+        }
+        continue;
+      }
+
+      // Check title dedup (same title from different providers = likely same page)
+      if (normalizedTitle.length > 10 && titleIndex.has(normalizedTitle)) {
+        const existingUrl = titleIndex.get(normalizedTitle)!;
+        const existing = seen.get(existingUrl);
+        if (existing && (result.score || 0) <= (existing.score || 0)) {
+          continue; // Skip lower-scored duplicate
+        }
+      }
+
+      seen.set(normalized, result);
+      if (normalizedTitle.length > 10) {
+        titleIndex.set(normalizedTitle, normalized);
       }
     }
 
-    return deduped;
+    return Array.from(seen.values());
   }
 
   /**
-   * Rank results by relevance
+   * Rank results by multi-factor relevance scoring
+   *
+   * Factors:
+   *   1. Query term coverage (0-0.4) — how many query terms appear in title+snippet
+   *   2. Title relevance bonus (0-0.15) — extra weight for terms in title
+   *   3. Snippet quality (0-0.15) — longer snippets get small bonus (more context)
+   *   4. Source quality (0-0.18) — provider trust scores
+   *   5. Freshness signal (0-0.12) — recency indicators in snippet/title
    */
   private rank(results: SearchResult[], query: string): SearchResult[] {
-    const queryTerms = query.toLowerCase().split(/\s+/);
+    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
 
     for (const result of results) {
-      const text = `${result.title} ${result.snippet}`.toLowerCase();
+      const title = (result.title || '').toLowerCase();
+      const snippet = (result.snippet || '').toLowerCase();
+      const fullText = `${title} ${snippet}`;
 
-      // Calculate term hit ratio
-      const hitCount = queryTerms.filter(term => text.includes(term)).length;
-      const hitRatio = hitCount / Math.max(queryTerms.length, 1);
+      // Factor 1: Query term coverage (max 0.4)
+      const hitCount = queryTerms.filter(term => fullText.includes(term)).length;
+      const termCoverage = (hitCount / Math.max(queryTerms.length, 1)) * 0.4;
 
-      // Source quality bonus
+      // Factor 2: Title relevance bonus (max 0.15)
+      const titleHits = queryTerms.filter(term => title.includes(term)).length;
+      const titleBonus = (titleHits / Math.max(queryTerms.length, 1)) * 0.15;
+
+      // Factor 3: Snippet quality (max 0.15)
+      const snippetLen = snippet.length;
+      const snippetQuality = Math.min(snippetLen / 500, 1) * 0.15;
+
+      // Factor 4: Source quality
       const sourceBonus: Record<string, number> = {
-        bocha: 0.18,      // 博查AI - high quality for CN
-        tavily: 0.16,     // Tavily - AI optimized
+        bocha: 0.18,
+        tavily: 0.16,
         google: 0.15,
         bing: 0.12,
         brave: 0.08,
         duckduckgo: 0.05,
       };
+      const srcScore = sourceBonus[result.source] || 0.03;
 
-      result.score = hitRatio + (sourceBonus[result.source] || 0);
+      // Factor 5: Freshness signal (max 0.12)
+      const currentYear = new Date().getFullYear();
+      const freshnessPatterns = [
+        String(currentYear),
+        String(currentYear - 1),
+        '最新', 'latest', 'updated', '更新',
+      ];
+      const hasFreshness = freshnessPatterns.some(p => fullText.includes(p.toLowerCase()));
+      const freshnessScore = hasFreshness ? 0.12 : 0;
+
+      result.score = termCoverage + titleBonus + snippetQuality + srcScore + freshnessScore;
     }
 
-    // Sort by score descending
     return results.sort((a, b) => (b.score || 0) - (a.score || 0));
   }
 
@@ -310,6 +394,62 @@ export function initSearchFromEnv(): SearchOrchestrator {
     bingApiKey: process.env.BING_SEARCH_API_KEY,
     braveApiKey: process.env.BRAVE_SEARCH_API_KEY,
   };
+
+// ============================================================================
+// TTL-based LRU Cache for search results
+// ============================================================================
+
+interface CacheEntry<T> {
+  value: T;
+  createdAt: number;
+}
+
+class SearchCache {
+  private cache = new Map<string, CacheEntry<SearchResult[]>>();
+  private readonly maxSize: number;
+  private readonly ttlMs: number;
+
+  constructor(maxSize = 50, ttlMs = 5 * 60 * 1000) { // default: 50 entries, 5 min TTL
+    this.maxSize = maxSize;
+    this.ttlMs = ttlMs;
+  }
+
+  /** Generate a cache key from search request */
+  static key(request: SearchRequest): string {
+    return `${request.query}|${request.region || 'auto'}|${request.numResults || 10}|${request.timeRange || ''}`;
+  }
+
+  get(key: string): SearchResult[] | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.createdAt > this.ttlMs) {
+      this.cache.delete(key);
+      return null;
+    }
+    // Move to end (LRU)
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: string, value: SearchResult[]): void {
+    // Evict oldest if full
+    if (this.cache.size >= this.maxSize) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
+    this.cache.set(key, { value, createdAt: Date.now() });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
 
   const config: SearchConfig = {
     providers: {

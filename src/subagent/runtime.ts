@@ -14,6 +14,40 @@ import { createHookRunner } from '../plugins/hook-runner';
 import { logger } from '../utils/logger';
 
 /**
+ * Simple concurrency limiter (avoids p-limit dependency)
+ * Limits the number of concurrent async operations
+ */
+function pLimit(concurrency: number) {
+  const queue: Array<() => void> = [];
+  let activeCount = 0;
+
+  function next() {
+    activeCount--;
+    if (queue.length > 0) {
+      queue.shift()!();
+    }
+  }
+
+  return <T>(fn: () => Promise<T>): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const run = () => {
+        activeCount++;
+        fn().then(resolve, reject).finally(next);
+      };
+
+      if (activeCount < concurrency) {
+        run();
+      } else {
+        queue.push(run);
+      }
+    });
+  };
+}
+
+/** Default max concurrent subagent spawns */
+const DEFAULT_MAX_CONCURRENT_SUBAGENTS = 3;
+
+/**
  * Subagent Runtime - manages subagent execution
  */
 export class SubagentRuntime {
@@ -310,21 +344,39 @@ export class SubagentRuntime {
   }
 
   /**
-   * Spawn multiple subagents in parallel
+   * Spawn multiple subagents in parallel with concurrency limiting.
+   *
+   * @param configs - Array of subagent configurations
+   * @param maxConcurrency - Maximum number of subagents running simultaneously
+   *                         (default: 3, configurable via SUBAGENT_MAX_CONCURRENCY env var)
    */
-  async spawnParallel(configs: SubagentConfig[]): Promise<SubagentResult[]> {
-    console.log(`[Subagent] Spawning ${configs.length} subagents in parallel`);
+  async spawnParallel(
+    configs: SubagentConfig[],
+    maxConcurrency?: number
+  ): Promise<SubagentResult[]> {
+    const concurrency = maxConcurrency
+      ?? parseInt(process.env.SUBAGENT_MAX_CONCURRENCY || '', 10)
+      || DEFAULT_MAX_CONCURRENT_SUBAGENTS;
+
+    console.log(
+      `[Subagent] Spawning ${configs.length} subagents in parallel ` +
+      `(max concurrency: ${concurrency})`
+    );
 
     const startTime = Date.now();
+    const limit = pLimit(concurrency);
 
     const results = await Promise.all(
-      configs.map(config => this.spawn(config))
+      configs.map(config => limit(() => this.spawn(config)))
     );
 
     const totalDuration = Date.now() - startTime;
     const successful = results.filter(r => r.success).length;
 
-    console.log(`[Subagent] Parallel spawn completed: ${successful}/${configs.length} successful in ${totalDuration}ms`);
+    console.log(
+      `[Subagent] Parallel spawn completed: ${successful}/${configs.length} ` +
+      `successful in ${totalDuration}ms`
+    );
 
     return results;
   }

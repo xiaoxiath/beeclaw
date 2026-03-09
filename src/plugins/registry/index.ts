@@ -9,8 +9,16 @@
 
 import type { PluginHookName, PluginHookHandlerMap } from "../types";
 
-// 使用 Symbol.for 创建全局单例 key
-const REGISTRY_SYMBOL = Symbol.for("beeclaw.pluginRegistryState");
+// ============================================================================
+// Typed global singleton — safer than Symbol.for + (globalThis as any)
+// ============================================================================
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __beeclaw_pluginRegistry: RegistryFactory | undefined;
+}
+
+const REGISTRY_KEY = '__beeclaw_pluginRegistry';
 
 export interface PluginHookRegistration<K extends PluginHookName = PluginHookName> {
   pluginId: string;
@@ -53,8 +61,8 @@ export interface RegistryFactory {
  */
 export function getOrCreatePluginRegistry(): RegistryFactory {
   // 检查全局单例是否已存在
-  if ((globalThis as any)[REGISTRY_SYMBOL]) {
-    return (globalThis as any)[REGISTRY_SYMBOL];
+  if (globalThis[REGISTRY_KEY]) {
+    return globalThis[REGISTRY_KEY];
   }
 
   // 创建新的 Registry
@@ -79,7 +87,7 @@ export function getOrCreatePluginRegistry(): RegistryFactory {
   const factory: RegistryFactory = { registry, createApi };
 
   // 存储到全局
-  (globalThis as any)[REGISTRY_SYMBOL] = factory;
+  globalThis[REGISTRY_KEY] = factory;
 
   return factory;
 }
@@ -88,7 +96,7 @@ export function getOrCreatePluginRegistry(): RegistryFactory {
  * 获取当前 Registry（必须已初始化）
  */
 export function getPluginRegistry(): PluginRegistry {
-  const factory = (globalThis as any)[REGISTRY_SYMBOL];
+  const factory = globalThis[REGISTRY_KEY];
   if (!factory) {
     throw new Error("Plugin registry not initialized. Call getOrCreatePluginRegistry() first.");
   }
@@ -99,7 +107,7 @@ export function getPluginRegistry(): PluginRegistry {
  * 重置 Registry（仅用于测试）
  */
 export function resetPluginRegistry(): void {
-  (globalThis as any)[REGISTRY_SYMBOL] = undefined;
+  globalThis[REGISTRY_KEY] = undefined;
 }
 
 /**

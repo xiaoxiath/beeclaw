@@ -6,6 +6,88 @@
 
 import type { ExtractedKnowledge, KnowledgeCategory } from './types';
 
+// ============================================================================
+// Synonym Normalization — maps semantically equivalent terms to canonical forms
+// ============================================================================
+
+const SYNONYM_MAP: Record<string, string> = {
+  // Color/Theme
+  '深色': '暗色', '暗黑': '暗色', 'dark': '暗色', '夜间': '暗色',
+  '浅色': '亮色', '明亮': '亮色', 'light': '亮色',
+  // Preference
+  '喜欢': '偏好', '偏爱': '偏好', '倾向': '偏好', 'prefer': '偏好', 'like': '偏好',
+  '不喜欢': '不偏好', '不爱': '不偏好', '讨厌': '不偏好', 'dislike': '不偏好',
+  // Lang
+  '中文': '汉语', 'chinese': '汉语', 'mandarin': '汉语',
+  '英文': '英语', 'english': '英语',
+  // Common tech
+  'js': 'javascript', 'ts': 'typescript', 'py': 'python',
+  'react': 'react', 'vue': 'vue',
+  // Time
+  '当前': '现在', '目前': '现在', 'current': '现在', 'now': '现在',
+  // Personality
+  '主题': '话题', 'topic': '话题',
+  '模式': '模式', 'mode': '模式',
+};
+
+/** Normalize a text by replacing synonyms with canonical forms + lowercasing */
+function normalizeText(text: string): string {
+  let normalized = text.toLowerCase().trim();
+  for (const [synonym, canonical] of Object.entries(SYNONYM_MAP)) {
+    // Use word boundary-safe replacement
+    normalized = normalized.replace(new RegExp(synonym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), canonical);
+  }
+  return normalized;
+}
+
+/** Stop words to exclude from similarity computation */
+const STOP_WORDS = new Set([
+  '的', '了', '是', '在', '我', '有', '和', '就', '不', '人', '都', '一',
+  '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着',
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+  'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from',
+  'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your',
+]);
+
+/**
+ * Character-level bigram similarity (works well for short CJK + English text)
+ *
+ * Advantages over pure Jaccard:
+ *   - Captures partial word overlaps ("深色主题" vs "暗色模式" after normalization)
+ *   - Works for Chinese where word segmentation is unreliable
+ *   - Order-sensitive to some degree via bigrams
+ */
+function bigramSimilarity(a: string, b: string): number {
+  if (a === b) return 1.0;
+  if (a.length < 2 || b.length < 2) return a === b ? 1.0 : 0.0;
+
+  function getBigrams(str: string): Map<string, number> {
+    const bigrams = new Map<string, number>();
+    for (let i = 0; i < str.length - 1; i++) {
+      const bigram = str.substring(i, i + 2);
+      bigrams.set(bigram, (bigrams.get(bigram) || 0) + 1);
+    }
+    return bigrams;
+  }
+
+  const bigramsA = getBigrams(a);
+  const bigramsB = getBigrams(b);
+
+  let intersection = 0;
+  let union = 0;
+
+  const allKeys = new Set([...bigramsA.keys(), ...bigramsB.keys()]);
+  for (const key of allKeys) {
+    const countA = bigramsA.get(key) || 0;
+    const countB = bigramsB.get(key) || 0;
+    intersection += Math.min(countA, countB);
+    union += Math.max(countA, countB);
+  }
+
+  return union === 0 ? 0 : intersection / union;
+}
+
+
 export interface DeduplicationResult {
   toAdd: ExtractedKnowledge[];       // 新增
   toUpdate: UpdateAction[];           // 更新
@@ -128,23 +210,28 @@ export class KnowledgeDeduper {
   }
 
   /**
-   * 计算相似度
+   * 计算相似度（含同义词归一化）
    */
   private calculateSimilarity(a: ExtractedKnowledge, b: ExtractedKnowledge): number {
-    // 1. Key 完全匹配
+    // 1. Key 完全匹配（原始 or 归一化后）
     if (a.key === b.key) {
       return SIMILARITY_THRESHOLDS.exact;
     }
+    const normKeyA = normalizeText(a.key);
+    const normKeyB = normalizeText(b.key);
+    if (normKeyA === normKeyB) {
+      return SIMILARITY_THRESHOLDS.exact;
+    }
 
-    // 2. Key 包含关系
-    if (a.key.includes(b.key) || b.key.includes(a.key)) {
+    // 2. Key 包含关系（归一化后）
+    if (normKeyA.includes(normKeyB) || normKeyB.includes(normKeyA)) {
       return SIMILARITY_THRESHOLDS.high;
     }
 
-    // 3. Value 相似度
+    // 3. Value 相似度 (synonym-aware + bigram)
     const valueSimilarity = this.textSimilarity(a.value, b.value);
 
-    // 4. Key 相似度
+    // 4. Key 相似度 (synonym-aware + bigram)
     const keySimilarity = this.textSimilarity(a.key, b.key);
 
     // 综合评分
@@ -154,17 +241,38 @@ export class KnowledgeDeduper {
   }
 
   /**
-   * 文本相似度 (Jaccard)
+   * 文本相似度 — 混合策略
+   *
+   * 1. Synonym normalization (maps equivalent terms to canonical forms)
+   * 2. Stop word removal
+   * 3. Weighted combination: bigram similarity (0.6) + Jaccard on tokens (0.4)
+   *
+   * This handles both Chinese (where bigrams capture character-level overlap)
+   * and English (where Jaccard on tokens handles word-level matching).
    */
   private textSimilarity(a: string, b: string): number {
-    const wordsA = new Set(a.toLowerCase().split(/\s+/));
-    const wordsB = new Set(b.toLowerCase().split(/\s+/));
+    // Normalize with synonyms
+    const normA = normalizeText(a);
+    const normB = normalizeText(b);
 
-    const intersection = new Set([...wordsA].filter(x => wordsB.has(x)));
-    const union = new Set([...wordsA, ...wordsB]);
+    // Exact match after normalization
+    if (normA === normB) return 1.0;
 
-    if (union.size === 0) return 0;
-    return intersection.size / union.size;
+    // Bigram similarity on full normalized text
+    const bigramSim = bigramSimilarity(normA, normB);
+
+    // Token-level Jaccard (with stop word removal)
+    const tokensA = normA.split(/\s+/).filter(w => w.length > 0 && !STOP_WORDS.has(w));
+    const tokensB = normB.split(/\s+/).filter(w => w.length > 0 && !STOP_WORDS.has(w));
+
+    const setA = new Set(tokensA);
+    const setB = new Set(tokensB);
+    const intersection = new Set([...setA].filter(x => setB.has(x)));
+    const union = new Set([...setA, ...setB]);
+    const jaccardSim = union.size === 0 ? 0 : intersection.size / union.size;
+
+    // Weighted combination
+    return bigramSim * 0.6 + jaccardSim * 0.4;
   }
 
   /**

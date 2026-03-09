@@ -6,3 +6,12 @@
 
 export * from './builtin';
 export * from './deep-analysis';
+
+// ============================================================================
+// Category-based re-exports (modular access to builtin tools)
+// ============================================================================
+export * as SearchTools from './categories/search';
+export * as ShellTools from './categories/shell';
+export * as FinanceTools from './categories/finance';
+export * as UtilityTools from './categories/utility';
+export * as SubagentTools from './categories/subagent';
