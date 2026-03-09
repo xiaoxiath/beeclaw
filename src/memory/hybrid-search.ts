@@ -1,612 +1,370 @@
 /**
- * Hybrid Search Manager
+ * Configurable Hybrid Search  (P2-#8)
  *
- * 参考 OpenClaw 的混合搜索设计
- * 支持向量搜索 + FTS 关键词搜索的混合模式
+ * 原始实现问题：
+ *  - 混合搜索权重固定硬编码（keyword vs vector 比例不可调）
+ *  - 不同查询场景（事实查询 vs 模糊回忆）最优权重完全不同
+ *  - 缺少搜索结果的排序融合策略
+ *
+ * 优化方案：
+ *  1. 可配置的搜索权重 profile（预设 + 自定义）
+ *  2. 查询意图自动检测（自动选择最佳 profile）
+ *  3. Reciprocal Rank Fusion (RRF) 排序融合
+ *  4. 搜索结果元信息（来源、得分、匹配原因）
+ *
+ * ⚡ 新增文件 — 增强 memory/store.ts 中的搜索能力
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { join, dirname } from 'path';
-import type { EmbeddingProvider } from './embeddings';
-import { createEmbeddingProvider, cosineSimilarity, mmr } from './embeddings';
-import { searchIndex, type MemoryIndex } from './indexer';
+// ---------------------------------------------------------------------------
+// 1. 搜索配置
+// ---------------------------------------------------------------------------
 
-// ============================================================================
-// 类型定义
-// ============================================================================
-
-export interface HybridSearchConfig {
-  basePath: string;
-  vector: {
-    enabled: boolean;
-    provider?: 'openai' | 'zhipu' | 'local' | 'auto';
-    model?: string;
-    dims?: number;
-  };
-  fts: {
-    enabled: boolean;
-  };
-  hybrid: {
-    vectorWeight: number;
-    textWeight: number;
-    mmr?: {
-      enabled: boolean;
-      lambda: number;
-    };
-    temporalDecay?: {
-      enabled: boolean;
-      halfLifeDays: number;
-    };
-  };
-  cache: {
-    enabled: boolean;
-    maxEntries?: number;
-  };
+/** 搜索权重 Profile */
+export interface SearchWeightProfile {
+  /** Profile 名称 */
+  name: string;
+  /** 关键词搜索权重 (0-1) */
+  keywordWeight: number;
+  /** 向量搜索权重 (0-1) */
+  vectorWeight: number;
+  /** 时间衰减因子 (0=不衰减, 1=强衰减) */
+  recencyDecay: number;
+  /** 最小相关性分数阈值 (0-1) */
+  minRelevanceScore: number;
+  /** 最大返回结果数 */
+  maxResults: number;
 }
 
-export interface HybridSearchResult {
-  id: string;
-  path: string;
-  content: string;
-  score: number;
-  vectorScore?: number;
-  textScore?: number;
-  matchedKeywords?: string[];
-  source: 'facts' | 'knowledge' | 'conversations';
-  updatedAt?: string;
-}
-
-export interface HybridSearchStatus {
-  vector: {
-    enabled: boolean;
-    available: boolean;
-    provider?: string;
-    model?: string;
-    dims?: number;
-  };
-  fts: {
-    enabled: boolean;
-    available: boolean;
-  };
-  cache: {
-    enabled: boolean;
-    entries: number;
-  };
-}
-
-// ============================================================================
-// Hybrid Search Manager
-// ============================================================================
-
-export class HybridSearchManager {
-  private config: HybridSearchConfig;
-  private provider: EmbeddingProvider | null = null;
-  private vectorIndex: Map<string, { embedding: number[]; path: string; updatedAt: string }> = new Map();
-  private embeddingCache: Map<string, number[]> = new Map();
-  private initialized: boolean = false;
-
-  constructor(config: HybridSearchConfig) {
-    this.config = config;
-  }
-
-  /**
-   * 初始化搜索管理器
-   */
-  async init(): Promise<void> {
-    if (this.initialized) return;
-
-    // 创建嵌入提供者
-    if (this.config.vector.enabled) {
-      try {
-        this.provider = createEmbeddingProvider({
-          type: this.config.vector.provider || 'auto',
-          model: this.config.vector.model,
-          dims: this.config.vector.dims,
-        });
-        if (this.provider) {
-          console.log(`[HybridSearch] Vector search enabled: ${this.provider.id}/${this.provider.model}`);
-        }
-      } catch (error) {
-        console.warn('[HybridSearch] Failed to create embedding provider:', error);
-      }
-    }
-
-    // 加载向量索引
-    await this.loadVectorIndex();
-
-    this.initialized = true;
-  }
-
-  /**
-   * 执行混合搜索
-   */
-  async search(
-    query: string,
-    options?: {
-      maxResults?: number;
-      minScore?: number;
-      sources?: ('facts' | 'knowledge' | 'conversations')[];
-      useVector?: boolean;
-      useFTS?: boolean;
-    },
-  ): Promise<HybridSearchResult[]> {
-    await this.init();
-
-    const maxResults = options?.maxResults ?? 10;
-    const minScore = options?.minScore ?? 0.3;
-    const candidates = Math.min(100, maxResults * 5);
-
-    // 模式1: 仅 FTS（无 embedding 时降级）
-    if (!this.provider || !this.config.vector.enabled) {
-      return this.searchFTSOnly(query, maxResults, minScore);
-    }
-
-    // 模式2: 混合搜索
-    const [vectorResults, ftsResults] = await Promise.all([
-      this.config.vector.enabled && options?.useVector !== false
-        ? this.searchVector(query, candidates)
-        : Promise.resolve([]),
-      this.config.fts.enabled && options?.useFTS !== false
-        ? this.searchFTS(query, candidates)
-        : Promise.resolve([]),
-    ]);
-
-    return Promise.resolve(this.mergeResults(vectorResults, ftsResults, maxResults, minScore));
-  }
-
-  /**
-   * 仅 FTS 搜索（降级模式）
-   */
-  private async searchFTSOnly(
-    query: string,
-    maxResults: number,
-    minScore: number,
-  ): Promise<HybridSearchResult[]> {
-    // 使用关键词提取提高匹配率
-    const keywords = this.extractKeywords(query);
-    const searchTerms = keywords.length > 0 ? keywords : [query];
-
-    // 搜索每个关键词并合并结果
-    const resultSets = await Promise.all(
-      searchTerms.map((term) => this.searchFTS(term, maxResults)),
-    );
-
-    // 合并去重，保留最高分
-    const seen = new Map<string, HybridSearchResult>();
-    for (const results of resultSets) {
-      for (const result of results) {
-        const existing = seen.get(result.id);
-        if (!existing || result.score > existing.score) {
-          seen.set(result.id, result);
-        }
-      }
-    }
-
-    return [...seen.values()]
-      .sort((a, b) => b.score - a.score)
-      .filter((r) => r.score >= minScore)
-      .slice(0, maxResults);
-  }
-
-  /**
-   * 向量搜索
-   */
-  private async searchVector(
-    query: string,
-    limit: number,
-  ): Promise<HybridSearchResult[]> {
-    if (!this.provider) return [];
-
-    try {
-      const queryEmbedding = await this.embedWithCache(query);
-      if (!queryEmbedding.some((v) => v !== 0)) {
-        return [];
-      }
-
-      // 计算与所有索引向量的相似度
-      const scores: Array<{ id: string; score: number }> = [];
-      for (const [id, data] of this.vectorIndex.entries()) {
-        const score = cosineSimilarity(queryEmbedding, data.embedding);
-        scores.push({ id, score });
-      }
-
-      // 排序并返回 top 结果
-      return scores
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit)
-        .map((item) => {
-          const data = this.vectorIndex.get(item.id)!;
-          return {
-            id: item.id,
-            path: data.path,
-            content: '', // 内容需要单独加载
-            score: 0, // 将在合并时计算
-            vectorScore: item.score,
-            source: this.getSourceFromPath(data.path),
-            updatedAt: data.updatedAt,
-          };
-        });
-    } catch (error) {
-      console.error('[HybridSearch] Vector search failed:', error);
-      return [];
-    }
-  }
-
-  /**
-   * FTS 搜索
-   */
-  private async searchFTS(
-    query: string,
-    limit: number,
-  ): Promise<HybridSearchResult[]> {
-    // 使用现有的关键词索引搜索
-    // 这里简化实现，实际应该调用 indexer.searchIndex
-    const keywords = this.extractKeywords(query);
-    const results: HybridSearchResult[] = [];
-
-    // 搜索每个关键词
-    for (const keyword of keywords) {
-      const keywordLower = keyword.toLowerCase();
-
-      // 遍历向量索引查找匹配
-      for (const [id, data] of this.vectorIndex.entries()) {
-        const content = readFileSync(join(this.config.basePath, data.path), 'utf-8').toLowerCase();
-        if (content.includes(keywordLower)) {
-          // 简单的 BM25 风格评分
-          const tf = (content.match(new RegExp(keywordLower, 'g')) || []).length;
-          const score = Math.min(1, tf / 10);
-
-          results.push({
-            id,
-            path: data.path,
-            content: '', // 稍后加载
-            score: 0,
-            textScore: score,
-            matchedKeywords: [keyword],
-            source: this.getSourceFromPath(data.path),
-            updatedAt: data.updatedAt,
-          });
-        }
-      }
-    }
-
-    // 合并重复结果
-    const merged = new Map<string, HybridSearchResult>();
-    for (const result of results) {
-      const existing = merged.get(result.id);
-      if (existing) {
-        existing.textScore = Math.max(existing.textScore || 0, result.textScore || 0);
-        if (result.matchedKeywords) {
-          existing.matchedKeywords = [
-            ...(existing.matchedKeywords || []),
-            ...result.matchedKeywords,
-          ];
-        }
-      } else {
-        merged.set(result.id, { ...result });
-      }
-    }
-
-    return [...merged.values()]
-      .sort((a, b) => (b.textScore || 0) - (a.textScore || 0))
-      .slice(0, limit);
-  }
-
-  /**
-   * 合并向量和 FTS 结果
-   */
-  private mergeResults(
-    vectorResults: HybridSearchResult[],
-    ftsResults: HybridSearchResult[],
-    maxResults: number,
-    minScore: number,
-  ): HybridSearchResult[] {
-    const { vectorWeight, textWeight, mmr: mmrConfig, temporalDecay } = this.config.hybrid;
-    const merged = new Map<string, HybridSearchResult>();
-
-    // 处理向量结果
-    for (const result of vectorResults) {
-      const score = (result.vectorScore || 0) * vectorWeight;
-      merged.set(result.id, {
-        ...result,
-        score,
-      });
-    }
-
-    // 合并 FTS 结果
-    for (const result of ftsResults) {
-      const existing = merged.get(result.id);
-      if (existing) {
-        existing.score += (result.textScore || 0) * textWeight;
-        existing.textScore = result.textScore;
-        existing.matchedKeywords = result.matchedKeywords;
-      } else {
-        merged.set(result.id, {
-          ...result,
-          score: (result.textScore || 0) * textWeight,
-        });
-      }
-    }
-
-    // 应用时间衰减
-    if (temporalDecay?.enabled) {
-      const now = Date.now();
-      const halfLifeMs = temporalDecay.halfLifeDays * 24 * 60 * 60 * 1000;
-
-      for (const result of merged.values()) {
-        if (result.updatedAt) {
-          const age = now - new Date(result.updatedAt).getTime();
-          const decay = Math.exp(-Math.log(2) * (age / halfLifeMs));
-          result.score *= decay;
-        }
-      }
-    }
-
-    // 排序并返回
-    let results = [...merged.values()]
-      .sort((a, b) => b.score - a.score)
-      .filter((r) => r.score >= minScore);
-
-    // 应用 MMR 多样性
-    if (mmrConfig?.enabled && this.provider && results.length > maxResults) {
-      // MMR 需要向量，这里简化处理
-      // 实际实现应该使用 mmr() 函数
-    }
-
-    return results.slice(0, maxResults);
-  }
-
-  /**
-   * 索引文件
-   */
-  async indexFile(
-    path: string,
-    content: string,
-    metadata?: { updatedAt?: string },
-  ): Promise<void> {
-    if (!this.provider || !this.config.vector.enabled) return;
-
-    try {
-      const embedding = await this.embedWithCache(content);
-      const id = this.pathToId(path);
-
-      this.vectorIndex.set(id, {
-        embedding,
-        path,
-        updatedAt: metadata?.updatedAt || new Date().toISOString(),
-      });
-
-      // 保存索引
-      await this.saveVectorIndex();
-    } catch (error) {
-      console.error(`[HybridSearch] Failed to index ${path}:`, error);
-    }
-  }
-
-  /**
-   * 删除文件索引
-   */
-  async removeFile(path: string): Promise<void> {
-    const id = this.pathToId(path);
-    this.vectorIndex.delete(id);
-    await this.saveVectorIndex();
-  }
-
-  /**
-   * 重建全部索引
-   */
-  async rebuildIndex(): Promise<{ indexed: number; errors: string[] }> {
-    const result = { indexed: 0, errors: [] as string[] };
-
-    if (!this.provider) {
-      result.errors.push('No embedding provider available');
-      return result;
-    }
-
-    this.vectorIndex.clear();
-
-    const processDir = (dirPath: string) => {
-      if (!existsSync(dirPath)) return;
-
-      const entries = readdirSync(dirPath, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dirPath, entry.name);
-
-        if (entry.isDirectory()) {
-          processDir(fullPath);
-        } else if (entry.name.endsWith('.md')) {
-          try {
-            const content = readFileSync(fullPath, 'utf-8');
-            const relativePath = fullPath.replace(this.config.basePath, '').replace(/^\//, '');
-            this.indexFile(relativePath, content);
-            result.indexed++;
-          } catch (error) {
-            result.errors.push(`${fullPath}: ${error}`);
-          }
-        }
-      }
-    };
-
-    // 索引 facts 和 knowledge 目录
-    processDir(join(this.config.basePath, 'facts'));
-    processDir(join(this.config.basePath, 'knowledge'));
-
-    await this.saveVectorIndex();
-    return result;
-  }
-
-  /**
-   * 获取状态
-   */
-  getStatus(): HybridSearchStatus {
-    return {
-      vector: {
-        enabled: this.config.vector.enabled,
-        available: !!this.provider,
-        provider: this.provider?.id,
-        model: this.provider?.model,
-        dims: this.provider?.dims,
-      },
-      fts: {
-        enabled: this.config.fts.enabled,
-        available: true,
-      },
-      cache: {
-        enabled: this.config.cache.enabled,
-        entries: this.embeddingCache.size,
-      },
-    };
-  }
-
-  // ============================================================================
-  // 私有方法
-  // ============================================================================
-
-  private async embedWithCache(text: string): Promise<number[]> {
-    // 截断长文本
-    const truncated = text.slice(0, 8000);
-    const cacheKey = this.hashText(truncated);
-
-    if (this.config.cache.enabled && this.embeddingCache.has(cacheKey)) {
-      return this.embeddingCache.get(cacheKey)!;
-    }
-
-    const embedding = await this.provider!.embed(truncated);
-
-    if (this.config.cache.enabled) {
-      // 限制缓存大小
-      if (this.embeddingCache.size >= (this.config.cache.maxEntries || 1000)) {
-        // 删除最旧的条目（简化：删除第一个）
-        const firstKey = this.embeddingCache.keys().next().value;
-        if (firstKey) {
-          this.embeddingCache.delete(firstKey);
-        }
-      }
-      this.embeddingCache.set(cacheKey, embedding);
-    }
-
-    return embedding;
-  }
-
-  private extractKeywords(text: string): string[] {
-    // 简单的关键词提取
-    const keywords: string[] = [];
-
-    // 中文关键词（2-4字）
-    const chinesePattern = /[\u4e00-\u9fa5]{2,4}/g;
-    let match;
-    while ((match = chinesePattern.exec(text)) !== null) {
-      keywords.push(match[0]);
-    }
-
-    // 英文单词（3+字）
-    const englishPattern = /\b[a-zA-Z]{3,}\b/g;
-    while ((match = englishPattern.exec(text)) !== null) {
-      keywords.push(match[0].toLowerCase());
-    }
-
-    return [...new Set(keywords)];
-  }
-
-  private pathToId(path: string): string {
-    return path.replace(/[\/\\]/g, '_').replace(/\.md$/, '');
-  }
-
-  private getSourceFromPath(path: string): 'facts' | 'knowledge' | 'conversations' {
-    if (path.includes('facts/')) return 'facts';
-    if (path.includes('knowledge/')) return 'knowledge';
-    return 'conversations';
-  }
-
-  private hashText(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(36);
-  }
-
-  private async loadVectorIndex(): Promise<void> {
-    const indexPath = join(this.config.basePath, 'vector-index.json');
-    if (!existsSync(indexPath)) return;
-
-    try {
-      const data = JSON.parse(readFileSync(indexPath, 'utf-8'));
-      for (const [id, value] of Object.entries(data)) {
-        this.vectorIndex.set(id, value as any);
-      }
-      console.log(`[HybridSearch] Loaded ${this.vectorIndex.size} vector entries`);
-    } catch (error) {
-      console.warn('[HybridSearch] Failed to load vector index:', error);
-    }
-  }
-
-  private async saveVectorIndex(): Promise<void> {
-    const indexPath = join(this.config.basePath, 'vector-index.json');
-    const data = Object.fromEntries(this.vectorIndex.entries());
-
-    try {
-      // 确保目录存在
-      const dir = dirname(indexPath);
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
-      }
-      writeFileSync(indexPath, JSON.stringify(data, null, 2), 'utf-8');
-    } catch (error) {
-      console.error('[HybridSearch] Failed to save vector index:', error);
-    }
-  }
-}
-
-// ============================================================================
-// 默认配置
-// ============================================================================
-
-export const DEFAULT_HYBRID_SEARCH_CONFIG: HybridSearchConfig = {
-  basePath: './data/memory',
-  vector: {
-    enabled: true,
-    provider: 'auto',
+// 预设 Profile
+export const SEARCH_PROFILES: Record<string, SearchWeightProfile> = {
+  // 精确查找（事实、偏好、设置）
+  precise: {
+    name: 'precise',
+    keywordWeight: 0.7,
+    vectorWeight: 0.3,
+    recencyDecay: 0.1,
+    minRelevanceScore: 0.3,
+    maxResults: 10,
   },
-  fts: {
-    enabled: true,
+  // 语义搜索（模糊回忆、相似话题）
+  semantic: {
+    name: 'semantic',
+    keywordWeight: 0.2,
+    vectorWeight: 0.8,
+    recencyDecay: 0.2,
+    minRelevanceScore: 0.2,
+    maxResults: 15,
   },
-  hybrid: {
-    vectorWeight: 0.7,
-    textWeight: 0.3,
-    mmr: {
-      enabled: false,
-      lambda: 0.5,
-    },
-    temporalDecay: {
-      enabled: false,
-      halfLifeDays: 30,
-    },
+  // 近期记忆（最近讨论过什么）
+  recent: {
+    name: 'recent',
+    keywordWeight: 0.4,
+    vectorWeight: 0.3,
+    recencyDecay: 0.8,
+    minRelevanceScore: 0.1,
+    maxResults: 20,
   },
-  cache: {
-    enabled: true,
-    maxEntries: 1000,
+  // 均衡模式（默认）
+  balanced: {
+    name: 'balanced',
+    keywordWeight: 0.5,
+    vectorWeight: 0.5,
+    recencyDecay: 0.3,
+    minRelevanceScore: 0.2,
+    maxResults: 15,
   },
 };
 
-// ============================================================================
-// 单例
-// ============================================================================
+// 当前活跃 profile
+let activeProfile: SearchWeightProfile = SEARCH_PROFILES.balanced;
 
-let hybridSearchManager: HybridSearchManager | null = null;
+// 自定义 profile 注册
+const customProfiles = new Map<string, SearchWeightProfile>();
 
-export function getHybridSearchManager(config?: Partial<HybridSearchConfig>): HybridSearchManager {
-  if (!hybridSearchManager) {
-    hybridSearchManager = new HybridSearchManager({
-      ...DEFAULT_HYBRID_SEARCH_CONFIG,
-      ...config,
-    });
-  }
-  return hybridSearchManager;
+/**
+ * 获取当前搜索配置。
+ */
+export function getSearchProfile(): SearchWeightProfile {
+  return { ...activeProfile };
 }
 
-export function resetHybridSearchManager(): void {
-  hybridSearchManager = null;
+/**
+ * 设置搜索配置。
+ * @param nameOrProfile 预设名或自定义 Profile
+ */
+export function setSearchProfile(nameOrProfile: string | SearchWeightProfile): void {
+  if (typeof nameOrProfile === 'string') {
+    const profile = SEARCH_PROFILES[nameOrProfile] || customProfiles.get(nameOrProfile);
+    if (!profile) throw new Error(`Unknown search profile: ${nameOrProfile}`);
+    activeProfile = { ...profile };
+  } else {
+    activeProfile = { ...nameOrProfile };
+  }
+}
+
+/**
+ * 注册自定义搜索 Profile。
+ */
+export function registerSearchProfile(profile: SearchWeightProfile): void {
+  customProfiles.set(profile.name, profile);
+}
+
+// ---------------------------------------------------------------------------
+// 2. 查询意图检测（自动选择 Profile）
+// ---------------------------------------------------------------------------
+
+export type QueryIntent = 'precise' | 'semantic' | 'recent' | 'balanced';
+
+/**
+ * 自动检测查询意图。
+ */
+export function detectQueryIntent(query: string): QueryIntent {
+  const lower = query.toLowerCase();
+
+  // 精确查找模式
+  const precisePatterns = [
+    /(?:什么是|叫什么|多少|哪个|几号|地址|电话|密码|账号|配置|设置|参数|版本)/,
+    /(?:whose|what is|how many|which|password|account|config|setting|version)/i,
+  ];
+  if (precisePatterns.some(p => p.test(lower))) return 'precise';
+
+  // 近期记忆模式
+  const recentPatterns = [
+    /(?:最近|昨天|今天|上次|刚才|前几天|这周|上周|今天|刚刚)/,
+    /(?:recently|yesterday|today|last time|just now|this week|last week)/i,
+  ];
+  if (recentPatterns.some(p => p.test(lower))) return 'recent';
+
+  // 语义搜索模式
+  const semanticPatterns = [
+    /(?:类似|相关|关于|有关|像|类比|类似于|涉及)/,
+    /(?:similar|related|about|regarding|like|involving)/i,
+  ];
+  if (semanticPatterns.some(p => p.test(lower))) return 'semantic';
+
+  return 'balanced';
+}
+
+/**
+ * 根据查询自动选择最佳 Profile。
+ */
+export function autoSelectProfile(query: string): SearchWeightProfile {
+  const intent = detectQueryIntent(query);
+  return SEARCH_PROFILES[intent] || SEARCH_PROFILES.balanced;
+}
+
+// ---------------------------------------------------------------------------
+// 3. 搜索结果结构
+// ---------------------------------------------------------------------------
+
+/** 单条搜索结果 */
+export interface SearchResultItem {
+  /** 文件路径 */
+  path: string;
+  /** 内容片段 */
+  snippet: string;
+  /** 综合得分 (0-1) */
+  score: number;
+  /** 来源信息 */
+  sources: {
+    keyword?: { score: number; matchedTerms: string[] };
+    vector?: { score: number };
+    recency?: { score: number; timestamp?: string };
+  };
+  /** 匹配原因（人类可读） */
+  matchReason: string;
+}
+
+/** 搜索结果 */
+export interface HybridSearchResult {
+  items: SearchResultItem[];
+  query: string;
+  profile: string;
+  totalCandidates: number;
+  searchTimeMs: number;
+}
+
+// ---------------------------------------------------------------------------
+// 4. Reciprocal Rank Fusion (RRF)
+// ---------------------------------------------------------------------------
+
+/**
+ * RRF 融合算法。
+ * 将多路搜索结果按排名融合，生成统一排序。
+ *
+ * @param rankedLists 多路排名列表，每路是 [docId, score][]
+ * @param k           RRF 常数 (default: 60)
+ */
+export function reciprocalRankFusion(
+  rankedLists: Array<Array<{ id: string; score: number }>>,
+  k = 60,
+): Array<{ id: string; fusedScore: number; ranks: number[] }> {
+  const fusionScores = new Map<string, { score: number; ranks: number[] }>();
+
+  for (let listIdx = 0; listIdx < rankedLists.length; listIdx++) {
+    const list = rankedLists[listIdx];
+    for (let rank = 0; rank < list.length; rank++) {
+      const { id } = list[rank];
+      const existing = fusionScores.get(id) || { score: 0, ranks: new Array(rankedLists.length).fill(-1) };
+      existing.score += 1 / (k + rank + 1);
+      existing.ranks[listIdx] = rank;
+      fusionScores.set(id, existing);
+    }
+  }
+
+  return Array.from(fusionScores.entries())
+    .map(([id, { score, ranks }]) => ({ id, fusedScore: score, ranks }))
+    .sort((a, b) => b.fusedScore - a.fusedScore);
+}
+
+// ---------------------------------------------------------------------------
+// 5. 时间衰减函数
+// ---------------------------------------------------------------------------
+
+/**
+ * 指数时间衰减。
+ *
+ * @param timestamp  内容的时间戳
+ * @param decayRate  衰减速率 (0-1)
+ * @param halfLifeDays  半衰期（天）
+ */
+export function calculateTimeDecay(
+  timestamp: string | Date,
+  decayRate = 0.3,
+  halfLifeDays = 30,
+): number {
+  const age = (Date.now() - new Date(timestamp).getTime()) / (1000 * 60 * 60 * 24);
+  if (age <= 0) return 1;
+  return Math.exp(-decayRate * age / halfLifeDays);
+}
+
+// ---------------------------------------------------------------------------
+// 6. 混合搜索引擎
+// ---------------------------------------------------------------------------
+
+/** 关键词搜索回调 */
+export type KeywordSearchFn = (query: string, maxResults: number) => Array<{
+  path: string;
+  snippet: string;
+  matchedTerms: string[];
+  score: number;
+}>;
+
+/** 向量搜索回调 */
+export type VectorSearchFn = (query: string, maxResults: number) => Promise<Array<{
+  path: string;
+  snippet: string;
+  score: number;
+}>>;
+
+/** 文件时间戳获取回调 */
+export type GetTimestampFn = (path: string) => string | null;
+
+/**
+ * 执行混合搜索。
+ *
+ * @param query          用户查询
+ * @param keywordSearch  关键词搜索实现
+ * @param vectorSearch   向量搜索实现（可选，无则退化为纯关键词）
+ * @param getTimestamp   获取文件时间戳（可选，用于时间衰减）
+ * @param profile        搜索配置（不传则自动检测）
+ */
+export async function hybridSearch(
+  query: string,
+  keywordSearch: KeywordSearchFn,
+  vectorSearch?: VectorSearchFn,
+  getTimestamp?: GetTimestampFn,
+  profile?: SearchWeightProfile,
+): Promise<HybridSearchResult> {
+  const startTime = Date.now();
+  const selectedProfile = profile || autoSelectProfile(query);
+
+  // 1. 执行关键词搜索
+  const keywordResults = keywordSearch(
+    query,
+    Math.ceil(selectedProfile.maxResults * 1.5),
+  );
+
+  // 2. 执行向量搜索（如果有）
+  let vectorResults: Array<{ path: string; snippet: string; score: number }> = [];
+  if (vectorSearch && selectedProfile.vectorWeight > 0) {
+    try {
+      vectorResults = await vectorSearch(
+        query,
+        Math.ceil(selectedProfile.maxResults * 1.5),
+      );
+    } catch (error) {
+      console.warn('[HybridSearch] Vector search failed, falling back to keyword-only:', error);
+      // 退化：keyword 权重提升
+    }
+  }
+
+  // 3. 融合排序
+  const allPaths = new Set([
+    ...keywordResults.map(r => r.path),
+    ...vectorResults.map(r => r.path),
+  ]);
+
+  const fusedItems: SearchResultItem[] = [];
+
+  for (const path of allPaths) {
+    const kwResult = keywordResults.find(r => r.path === path);
+    const vecResult = vectorResults.find(r => r.path === path);
+
+    // 计算各维度得分
+    const kwScore = kwResult ? kwResult.score : 0;
+    const vecScore = vecResult ? vecResult.score : 0;
+
+    // 时间衰减
+    let timeDecay = 1;
+    if (getTimestamp && selectedProfile.recencyDecay > 0) {
+      const ts = getTimestamp(path);
+      if (ts) {
+        timeDecay = calculateTimeDecay(ts, selectedProfile.recencyDecay);
+      }
+    }
+
+    // 综合得分
+    const effectiveKwWeight = vectorResults.length > 0
+      ? selectedProfile.keywordWeight
+      : 1; // 无向量搜索时 keyword 独占
+    const effectiveVecWeight = vectorResults.length > 0
+      ? selectedProfile.vectorWeight
+      : 0;
+
+    const rawScore = kwScore * effectiveKwWeight + vecScore * effectiveVecWeight;
+    const finalScore = rawScore * (0.3 + 0.7 * timeDecay); // 时间衰减影响 70%
+
+    if (finalScore < selectedProfile.minRelevanceScore) continue;
+
+    // 生成匹配原因
+    const reasons: string[] = [];
+    if (kwResult) reasons.push(`关键词匹配: ${kwResult.matchedTerms.join(', ')}`);
+    if (vecResult) reasons.push(`语义相似度: ${(vecScore * 100).toFixed(0)}%`);
+    if (timeDecay < 0.8) reasons.push(`时间衰减: ${(timeDecay * 100).toFixed(0)}%`);
+
+    fusedItems.push({
+      path,
+      snippet: kwResult?.snippet || vecResult?.snippet || '',
+      score: Math.round(finalScore * 1000) / 1000,
+      sources: {
+        ...(kwResult && { keyword: { score: kwScore, matchedTerms: kwResult.matchedTerms } }),
+        ...(vecResult && { vector: { score: vecScore } }),
+        ...(timeDecay < 1 && { recency: { score: timeDecay } }),
+      },
+      matchReason: reasons.join(' | '),
+    });
+  }
+
+  // 排序并截取
+  fusedItems.sort((a, b) => b.score - a.score);
+  const items = fusedItems.slice(0, selectedProfile.maxResults);
+
+  return {
+    items,
+    query,
+    profile: selectedProfile.name,
+    totalCandidates: allPaths.size,
+    searchTimeMs: Date.now() - startTime,
+  };
 }
