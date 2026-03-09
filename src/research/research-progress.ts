@@ -137,7 +137,7 @@ export class ResearchProgressEmitter {
     this.events.push(event);
 
     // 通知所有监听器
-    for (const listener of this.listeners) {
+    for (const listener of Array.from(this.listeners)) {
       try {
         listener(event);
       } catch (e) {

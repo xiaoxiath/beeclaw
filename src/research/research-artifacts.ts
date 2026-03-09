@@ -234,7 +234,7 @@ export class InMemoryArtifactStorage implements ArtifactStorage {
 
   async deleteBySession(sessionId: string): Promise<number> {
     let count = 0;
-    for (const [id, artifact] of this.artifacts) {
+    for (const [id, artifact] of Array.from(this.artifacts)) {
       if (artifact.sessionId === sessionId) {
         this.artifacts.delete(id);
         this.currentSizeBytes -= artifact.sizeBytes;
@@ -257,7 +257,7 @@ export class InMemoryArtifactStorage implements ArtifactStorage {
     const essentialTypes: ArtifactType[] = ['final_report', 'research_session'];
     let oldest: Artifact | null = null;
 
-    for (const artifact of this.artifacts.values()) {
+    for (const artifact of Array.from(this.artifacts.values())) {
       if (essentialTypes.includes(artifact.type)) continue;
       if (!oldest || artifact.updatedAt < oldest.updatedAt) {
         oldest = artifact;
