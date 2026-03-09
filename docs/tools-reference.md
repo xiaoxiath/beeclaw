@@ -123,8 +123,8 @@ Beeclaw 提供一系列内置工具，支持网络搜索、文件操作、Shell 
 - 发现1
 
 ## 来源
-1. [标题](URL)
-2. [标题](URL)
+1. [来源标题](来源URL)
+2. [来源标题](来源URL)
 
 ## 研究方法
 - 搜索查询: ...
@@ -479,5 +479,5 @@ const status = await shell({
 | 文档 | 描述 |
 |------|------|
 | [CLI 参考](./cli-reference.md) | CLI 命令详解 |
-| [API 参考](./api-reference.md) | HTTP API 文档 |
+| [API 参考](./tools-reference.md) | HTTP API 文档 |
 | [配置指南](./configuration.md) | 配置选项 |

@@ -341,6 +341,6 @@ bun run verify-recovery.ts
 
 ## 相关文档
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - 系统架构
-- [CLAUDE.md](./CLAUDE.md) - 开发指南
-- [docs/proactive-capabilities-guide.md](./docs/proactive-capabilities-guide.md) - 主动能力指南
+- [ARCHITECTURE.md](../architecture.md) - 系统架构
+- [CLAUDE.md](../../CLAUDE.md) - 开发指南
+- [docs/proactive-capabilities-guide.md](./proactive-system.md) - 主动能力指南

@@ -284,7 +284,7 @@ LLM 生成个性化内容
 
 **定时执行技能** - 按计划运行特定技能。
 
-📖 **详细指南**：查看 [定时执行技能指南](./scheduled-skill-execution.md) 获取完整文档。
+📖 **详细指南**：查看 [定时执行技能指南](../operations/timeout-config.md) 获取完整文档。
 
 **参数说明：**
 ```typescript
@@ -1017,11 +1017,11 @@ date
 
 ### 相关文档
 
-- [Queue 系统文档](./queue-system.md)
-- [Scheduler 文档](./scheduler.md)
-- [Daemon 文档](./daemon.md)
-- [自我进化系统](./future/self-evolution-system.md)
-- [定时执行技能指南](./scheduled-skill-execution.md)
+- [Queue 系统文档](../architecture.md)
+- [Scheduler 文档](../architecture.md)
+- [Daemon 文档](../operations/deployment.md)
+- [自我进化系统](../future/self-evolution.md)
+- [定时执行技能指南](../operations/timeout-config.md)
 
 ---
 

@@ -456,5 +456,5 @@ bun run src/cli.ts --daemon-stop
 | 文档 | 描述 |
 |------|------|
 | [配置指南](./configuration.md) | 详细配置选项 |
-| [记忆设计](./memory-design.md) | 记忆系统设计 |
-| [AIEOS 协议](./aieos.md) | 人格协议实现 |
+| [记忆设计](./guide/memory-system.md) | 记忆系统设计 |
+| [AIEOS 协议](./architecture.md) | 人格协议实现 |

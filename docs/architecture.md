@@ -252,6 +252,6 @@ state_update({
 
 ## 相关文档
 
-- [记忆系统](./memory-design.md) - 记忆存储设计
+- [记忆系统](./guide/memory-system.md) - 记忆存储设计
 - [工具参考](./tools-reference.md) - 所有工具详情
-- [错误处理](./error-handling.md) - 错误处理机制
+- [错误处理](./guide/error-handling.md) - 错误处理机制

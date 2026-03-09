@@ -1,86 +1,77 @@
 # 文档归档
 
-本目录包含 Beeclaw 开发过程中的历史文档，用于记录和参考。
+本目录包含 Beeclaw 开发过程中的历史文档和被新文档替代的旧版文档。
 
 ---
 
 ## 目录结构
 
-### development/ - 开发记录
+### development/ — 开发记录
 
-#### phase1/
-Phase 1 实现记录 - OpenClaw 插件兼容层基础实现
-- `phase1-complete.md` - Phase 1 完成总结
-- `phase1-implementation-complete.md` - 完整实现记录
+| 子目录 | 说明 |
+|--------|------|
+| `phase1/` | Phase 1 — OpenClaw 插件兼容层基础实现 |
+| `phase2/` | Phase 2 — 插件加载器集成 |
+| `phase3/` | Phase 3 — Hook 系统实现 (22/25 hooks) |
+| `plugin-system/` | 插件系统开发总结 |
+| `refactoring/` | 系统重构和工具简化 |
+| `subagent-phases/` | 子代理 Phase 2-5 实现记录 |
 
-#### phase2/
-Phase 2 实现记录 - 插件加载器集成
-- `phase2-integration-complete.md` - Phase 2 集成完成
+### analysis/ — 技术分析
 
-#### phase3/
-Phase 3 实现记录 - Hook 系统完整实现 (22/25 hooks)
-- `PHASE3-COMPLETE.md` - Phase 3 总览
-- `phase3-summary.md` - 阶段总结
-- `phase3-final-summary.md` - 最终总结
-- `phase3-llm-hooks-implementation.md` - LLM 钩子实现
-- `phase3.1-llm-hooks-complete.md` - LLM 钩子完成
-- `phase3.2-agent-lifecycle-hooks-complete.md` - Agent 生命周期钩子
-- `phase3.3-agent-session-lifecycle-hooks-complete.md` - Session 生命周期钩子
-- `phase3.3-implementation-summary.md` - 实现摘要
-- `phase3.4-3.5-complete.md` - Sub-Agent 钩子完成
-- `phase3-hooks-integration-complete.md` - 钩子集成完成
+| 文档 | 说明 |
+|------|------|
+| `openclaw-extends.md` | OpenClaw 扩展分析 |
+| `openclaw-plugin-integration-design.md` | 插件集成设计方案 |
+| `feishu-official-plugin-integration.md` | 飞书官方插件集成 |
+| `feishu-plugin-integration-guide.md` | 飞书插件集成指南 |
+| `jiti-analysis.md` | Jiti 运行时分析 |
+| `logging-enhancement-update.md` | 日志增强更新 |
+| `scheduled-skill-execution.md` | 定时技能执行（已整合到主动系统） |
+| `remaining-todos.md` | 历史 TODO 列表 |
+| `ONBOARDING.md` | 入职文档（已过时） |
 
-#### plugin-system/
-插件系统开发记录
-- `plugin-system-complete-summary.md` - 插件系统总结
-- `plugin-system-final-summary.md` - 最终总结
+### superseded/ — 被替代的文档
 
-#### refactoring/
-重构和优化记录
-- `refactoring-summary.md` - 重构总结
-- `job-handler-refactoring.md` - Job Handler 重构
-- `tools-simplification-complete.md` - 工具简化完成
-- `tools-simplification-plan.md` - 工具简化计划
+这些文档已被新文档合并或替代：
 
----
+| 旧文档 | 替代为 |
+|--------|--------|
+| `error-handling-design.md` | [错误处理](../guide/error-handling.md) |
+| `error-handling-guide.md` | [错误处理](../guide/error-handling.md) |
+| `timeout-configuration.md` | [超时配置](../operations/timeout-config.md) |
+| `smart-timeout-config.md` | [超时配置](../operations/timeout-config.md) |
+| `smart-timeout-design.md` | [超时配置](../operations/timeout-config.md) |
+| `dynamic-context-implementation.md` | [上下文管理](../design/context-management.md) |
+| `dynamic-context-recommendations.md` | [上下文管理](../design/context-management.md) |
+| `smart-context-management.md` | [上下文管理](../design/context-management.md) |
+| `smart-features.md` | [上下文管理](../design/context-management.md) |
+| `quick-start-configuration.md` | [配置指南](../configuration.md) |
+| `user-configuration.md` | [配置指南](../configuration.md) |
+| `unified-session-design.md` | [统一会话架构](../design/unified-session.md) |
+| `unify-cli-bot-architecture.md` | [统一会话架构](../design/unified-session.md) |
+| `self-evolution-system.md` | [自进化系统](../future/self-evolution.md)（去重） |
+| `skill-evolution-analysis.md` | [技能进化分析](../future/skill-evolution.md)（去重） |
+| `TODO.md` | 过时的 TODO 列表 |
+| `recovery-fix-test-plan.md` | 测试方案，功能已稳定 |
 
-### analysis/ - 技术分析
+### temp/ — 临时文档
 
-#### 插件系统分析
-- `openclaw-extends.md` - OpenClaw 扩展分析 (59K)
-- `openclaw-plugin-integration-design.md` - 插件集成设计 (63K)
-
-#### 技术调研
-- `jiti-analysis.md` - Jiti 运行时分析
-- `logging-enhancement-update.md` - 日志增强更新
-
-#### 开发过程
-- `ONBOARDING.md` - 入职文档 (已过时)
-- `remaining-todos.md` - 剩余 TODO 列表
-- `remaining-todos-final.md` - 最终 TODO 列表
-- `scheduled-skill-execution.md` - 定时技能执行 (已整合到 proactive)
-
----
-
-## 归档原则
-
-1. **开发记录**: Phase 1-3 的所有实现记录
-2. **技术分析**: 深度技术调研和分析文档
-3. **重构记录**: 系统重构和优化的历史
-4. **过时文档**: 被新文档替代的旧文档
+| 文档 | 说明 |
+|------|------|
+| `beeclaw-update.md` | 项目深度分析报告（一次性） |
+| `P0_PATCH_SUMMARY.md` | P0 安全补丁总结（已合入） |
 
 ---
 
 ## 使用建议
 
-- **新贡献者**: 查看 phase 文档了解系统演进历史
-- **维护者**: 参考 analysis/ 中的技术决策
-- **调试**: 查看重构记录了解系统变化
+- **新贡献者**：查看 `development/` 了解系统演进历史
+- **维护者**：查看 `analysis/` 了解历史技术决策
+- **调试**：查看 `refactoring/` 和 `subagent-phases/` 了解模块变化
 
 ---
 
-## 相关文档
+## 返回
 
-- 当前文档体系: `../README.md`
-- 架构文档: `../architecture.md`
-- 插件系统: `../plugin-system.md` (待创建)
+→ [当前文档体系](../README.md)

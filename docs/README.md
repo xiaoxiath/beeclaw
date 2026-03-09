@@ -1,117 +1,93 @@
 # Beeclaw 文档
 
-> AI 助手 - CLI 和飞书 Bot
+> 一个可进化的 AI 助手，支持 CLI 和飞书 Bot
 
 ---
 
-## 📚 核心文档
-
-### 快速开始
+## 🚀 快速开始
 
 | 文档 | 说明 |
 |------|------|
-| [快速开始](./getting-started.md) | 安装和基本使用 |
-| [飞书集成指南](./FEISHU-GUIDE.md) | 飞书 Bot 配置 + 插件使用 |
+| [快速开始](./getting-started.md) | 安装、配置、5 分钟上手 |
+| [配置指南](./configuration.md) | 环境变量、配置文件、用户设置 |
+| [飞书指南](./feishu-guide.md) | 飞书 Bot 完整配置流程 |
 
-### 用户指南
+---
+
+## 📖 用户指南
 
 | 文档 | 说明 |
 |------|------|
-| [CLI 参考](./cli-reference.md) | 命令行界面详解 |
-| [配置指南](./configuration.md) | 配置文件详解 |
-| [用户配置](./user-configuration.md) | 位置、时区等用户设置 |
-| [工具参考](./tools-reference.md) | 所有可用工具列表 |
-| [主动系统](./PROACTIVE-SYSTEM.md) | 定时任务、主动聊天、通知推送 |
-| [通知使用指南](./notification-usage-guide.md) | 通知功能详解 |
-| [记忆系统](./memory-design.md) | 记忆存储和管理 |
+| [CLI 参考](./cli-reference.md) | 命令行界面和斜杠命令 |
+| [工具参考](./tools-reference.md) | 所有内置工具的参数和示例 |
+| [记忆系统](./guide/memory-system.md) | 文件系统记忆存储和智能检索 |
+| [技能系统](./guide/skill-system.md) | 可复用技能的创建、进化和管理 |
+| [子代理系统](./guide/subagent-system.md) | 并行任务执行和 DAG 编排 |
+| [主动系统](./guide/proactive-system.md) | 定时任务、主动聊天、通知推送 |
+| [通知系统](./guide/notification.md) | CLI 和飞书的通知功能 |
+| [插件系统](./guide/plugin-system.md) | OpenClaw 兼容插件和 Hook 机制 |
+| [会话恢复](./guide/session-recovery.md) | 重启后自动恢复未回复的对话 |
+| [错误处理](./guide/error-handling.md) | 错误分类、自动重试和降级 |
 
-### 架构文档
+---
+
+## 🏗 架构设计
 
 | 文档 | 说明 |
 |------|------|
-| [系统架构](./architecture.md) | 子代理系统、会话管理、共享状态 |
-| [错误处理](./error-handling.md) | 错误分类和自动重试 |
-| [超时配置](./timeout-config.md) | 智能超时机制配置 |
-| [日志指南](./logging-guide.md) | 日志系统使用 |
-| [性能优化](./performance-optimization.md) | 性能调优指南 |
-| [会话恢复](./session-recovery-guide.md) | 会话持久化和恢复 |
+| [系统架构](./architecture.md) | 核心架构、子代理、会话管理、共享状态 |
+| [上下文管理](./design/context-management.md) | Token 预算、Prompt 分层、智能压缩 |
+| [统一会话架构](./design/unified-session.md) | CLI/Bot 统一会话管理 |
+| [弹性设计](./design/resilience.md) | 熔断、重试、降级策略 |
+| [自动知识提取](./design/auto-knowledge.md) | 从对话中自动提取知识 |
+| [语义记忆搜索](./design/semantic-memory-search.md) | 记忆检索设计 |
 
-### 部署运维
+---
+
+## 🔧 运维部署
 
 | 文档 | 说明 |
 |------|------|
-| [PM2 部署指南](./PM2-DEPLOYMENT.md) | 使用 PM2 部署 Bot (Daemon 模式) |
+| [PM2 部署](./operations/deployment.md) | 生产环境 PM2 部署完整指南 |
+| [性能优化](./operations/performance.md) | 响应延迟分析和优化方案 |
+| [日志指南](./operations/logging.md) | 日志级别、格式、排查技巧 |
+| [超时配置](./operations/timeout-config.md) | 智能超时机制配置 |
 
 ---
 
-## 🚀 项目简介
+## 🔮 未来规划
 
-**Beeclaw** 是一个 AI 助手，支持 CLI 和飞书 Bot 两种使用方式。
-
-### 使用方式
-
-| 模式 | 命令 | 说明 |
-|------|------|------|
-| CLI | `bun run cli` | 交互式命令行 |
-| Bot | `bun run bot` | 飞书机器人 |
-| Bot (Daemon) | `bun run bot --daemon` | 飞书机器人 + 后台调度 |
-
-### 核心特性
-
-- **多 Provider 支持** - OpenAI/智谱/MiniMax/Anthropic
-- **记忆系统** - 文件系统存储 + 自动加载
-- **技能系统** - 可复用的技能模块
-- **目标追踪** - 长期目标管理
-- **主动系统** - 定时提醒、主动聊天、通知推送
-- **飞书集成** - WebSocket 长连接，无需公网 IP
-- **飞书插件** - 3个工具 (发送消息、卡片、批量发送)
-- **子代理系统** - 并行任务执行和 DAG 编排
-- **智能重试** - 自动错误恢复
+| 文档 | 说明 |
+|------|------|
+| [自进化系统](./future/self-evolution.md) | Agent 自主代码修改和部署 |
+| [技能进化分析](./future/skill-evolution.md) | 技能系统完善性分析和路线图 |
 
 ---
 
-## 📂 文档归档
+## 🎮 独立项目
 
-历史开发文档已移至 `archive/` 目录：
-
-- **开发记录** - Phase 1/2/3 实现过程
-- **技术分析** - Jiti、OpenClaw 扩展分析
-- **重构记录** - 系统重构和优化历史
-
-详见 [archive/README.md](./archive/README.md)
+| 文档 | 说明 |
+|------|------|
+| [Agora Town PRD](./projects/agora-town/prd.md) | AI Agent 虚拟世界需求文档 |
+| [Agora Town MVP](./projects/agora-town/mvp-plan.md) | MVP 阶段实施计划 |
 
 ---
 
-## 🔗 快速链接
+## 📂 归档文档
 
-### 新手入门
-1. [快速开始](./getting-started.md) - 5分钟上手
-2. [飞书集成指南](./FEISHU-GUIDE.md) - 配置飞书 Bot
-3. [CLI 参考](./cli-reference.md) - 学习基本命令
+历史开发文档已整理至 [`archive/`](./archive/README.md) 目录，包括：
 
-### 深入了解
-1. [系统架构](./architecture.md) - 理解核心设计
-2. [主动系统](./PROACTIVE-SYSTEM.md) - 定时任务和主动聊天
-3. [工具参考](./tools-reference.md) - 查看所有工具
-
-### 生产部署
-1. [PM2 部署指南](./PM2-DEPLOYMENT.md) - 使用 PM2 部署
-2. [会话恢复](./session-recovery-guide.md) - 持久化配置
-3. [性能优化](./performance-optimization.md) - 调优建议
+- **开发记录**：Phase 1-3 插件系统实现、子代理各阶段实现
+- **技术分析**：OpenClaw 集成、Jiti 运行时、日志增强
+- **重构记录**：Job Handler 重构、工具系统简化
+- **已替代文档**：被新文档合并替代的旧版文档
 
 ---
 
-## 📝 文档版本
+## 快速导航
 
-- **最后更新**: 2026-03-06
-- **核心文档**: 16 个
-- **归档文档**: 32 个
+**新手入门** → [快速开始](./getting-started.md) → [配置指南](./configuration.md) → [CLI 参考](./cli-reference.md)
 
----
+**深入了解** → [系统架构](./architecture.md) → [上下文管理](./design/context-management.md) → [工具参考](./tools-reference.md)
 
-## 💡 贡献
-
-发现文档问题？请：
-1. 查看 [archive/](./archive/) 中的历史文档
-2. 提交 Issue 或 PR
-3. 更新相关文档
+**生产部署** → [PM2 部署](./operations/deployment.md) → [会话恢复](./guide/session-recovery.md) → [性能优化](./operations/performance.md)

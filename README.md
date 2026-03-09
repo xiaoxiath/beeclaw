@@ -6,13 +6,16 @@
 
 ## 特性
 
-- **多 Provider 支持** - OpenAI、智谱 GLM、MiniMax、Anthropic
-- **记忆系统** - 持久化存储，自动压缩，智能检索
-- **技能系统** - 可复用的技能模块，支持自动创建和优化
-- **子代理系统** - 并行任务执行，DAG 任务编排
-- **飞书集成** - WebSocket 长连接，无需公网 IP
-- **自我进化** - 从对话中学习偏好和技能
-- **会话恢复** - 重启后自动恢复未回复的对话
+- **多 Provider 支持** — OpenAI、智谱 GLM、MiniMax、Anthropic
+- **记忆系统** — 文件系统持久化，关键词索引，自动压缩
+- **技能系统** — 可复用的技能模块，支持自动创建和进化
+- **子代理系统** — 并行任务执行，DAG 任务编排，共享状态
+- **插件系统** — OpenClaw 兼容层，22 个 Hook 点位
+- **飞书集成** — WebSocket 长连接，无需公网 IP
+- **主动系统** — 定时任务、主动聊天、通知推送
+- **上下文管理** — Token 预算、Prompt 分层优先级、LLM 摘要压缩
+- **弹性机制** — 熔断器、统一重试、跨进程文件锁
+- **会话恢复** — 重启后自动恢复未回复的对话
 
 ## 快速开始
 
@@ -29,123 +32,91 @@ bun install
 
 ### 配置
 
-创建 `beeclaw.json`（参考 `beeclaw.example.json`）：
-
-```json
-{
-  "providers": [
-    {
-      "name": "zhipu",
-      "type": "zhipu",
-      "apiKey": "${ZHIPU_API_KEY}",
-      "models": ["glm-4"],
-      "default": true
-    }
-  ]
-}
-```
-
-设置环境变量：
-
 ```bash
-export ZHIPU_API_KEY=your-key-here
+# 复制配置模板
+cp .env.example .env
+
+# 编辑 .env，填入 API Key
+echo 'ZHIPU_API_KEY=your_key_here' >> .env
 ```
 
 ### 运行
 
 ```bash
-# CLI 模式
+# CLI 模式（交互式对话）
 bun run cli
 
-# Bot 模式（飞书）
+# 飞书 Bot 模式
 bun run bot
 
-# Bot 模式 + Daemon（支持定时任务）
+# Bot + 后台守护进程（定时任务）
 bun run bot --daemon
 
-# 使用 PM2 管理（推荐生产环境）
+# PM2 生产部署
 bun run pm2:start
 ```
 
-### 定时任务（Daemon 模式）
+## 使用方式
 
-Beeclaw 支持定时任务功能，包括：
-- 每日内存压缩（凌晨 3 点）
-- 目标进度检查
-- 自定义提醒和任务
+| 模式 | 命令 | 说明 |
+|------|------|------|
+| CLI | `bun run cli` | 交互式命令行 |
+| CLI + Daemon | `bun run cli --daemon` | CLI + 后台调度 |
+| Bot | `bun run bot` | 飞书机器人 |
+| Bot + Daemon | `bun run bot --daemon` | 飞书机器人 + 后台调度 |
+| PM2 | `bun run pm2:start` | 生产级进程管理 |
 
-启用方式：
+## 开发
+
 ```bash
-# 方式 1: 直接启动（带 daemon）
-bun run bot --daemon
+# 运行测试
+bun test
 
-# 方式 2: 使用 PM2（推荐）
-bun run pm2:start
+# 类型检查
+bunx tsc --noEmit
+
+# 代码检查
+bun run lint
 ```
-
-详细说明请查看：
-- [PM2 Daemon 模式快速参考](./docs/pm2-quick-reference.md)
-- [PM2 Daemon 模式详细指南](./docs/pm2-daemon-guide.md)
-
-## CLI 命令
-
-```
-/help              显示帮助
-/quit              退出
-/clear             清除对话历史
-/model list        列出可用模型
-/model switch      切换模型
-
-# 记忆管理
-/memory ls         列出记忆目录
-/memory grep       搜索记忆
-/memory record     记录事实
-
-# 目标管理
-/goal              列出所有目标
-/goal create       创建新目标
-/goal update       更新目标状态
-
-# 技能管理
-/skill list        列出所有技能
-/skill get         获取技能详情
-```
-
-## 文档
-
-| 文档 | 描述 |
-|------|------|
-| [快速开始](./docs/getting-started.md) | 详细安装和配置指南 |
-| [CLI 参考](./docs/cli-reference.md) | CLI 命令详解 |
-| [系统架构](./ARCHITECTURE.md) | 核心系统设计 |
-| [飞书集成](./docs/feishu-integration.md) | 飞书 Bot 配置 |
-| [配置指南](./docs/configuration.md) | 完整配置参考 |
-| [主动式能力指南](./docs/proactive-capabilities-guide.md) | 定时任务和主动消息 |
-| [定时执行技能](./docs/scheduled-skill-execution.md) | 如何定时执行技能 |
-| [任务处理架构](./docs/job-handler-refactoring.md) | 任务处理系统架构设计 |
-| [日志指南](./docs/logging-guide.md) | 增强的日志系统（工具调用、技能使用） |
-| [会话恢复功能](./docs/session-recovery-guide.md) | 重启后自动恢复未回复对话 |
-| [PM2 Daemon 快速参考](./docs/pm2-quick-reference.md) | PM2 管理定时任务（快速参考） |
-| [PM2 Daemon 详细指南](./docs/pm2-daemon-guide.md) | PM2 管理定时任务（详细版） |
 
 ## 项目结构
 
 ```
-src/
-├── cli.ts            # CLI 入口
-├── bot.ts            # 飞书 Bot 入口
-├── agent/            # AI Agent 核心
-├── subagent/         # 子代理系统
-├── session/          # 会话管理
-├── memory/           # 记忆系统
-├── skills/           # 技能系统
-├── goal/             # 目标系统
-└── feishu/           # 飞书集成
-
-data/memory/          # 记忆存储
-skills/               # 技能定义
-docs/                 # 文档
+beeclaw/
+├── src/
+│   ├── agent/           # Agent 核心（对话、上下文、工具调度）
+│   ├── memory/          # 记忆系统
+│   ├── skills/          # 技能存储和管理
+│   ├── tools/           # 内置工具
+│   ├── search/          # 搜索编排
+│   ├── extraction/      # 知识提取和去重
+│   ├── subagent/        # 子代理运行时
+│   ├── plugins/         # 插件系统
+│   ├── proactive/       # 主动系统（调度、通知）
+│   ├── config/          # 配置加载和热更新
+│   ├── session/         # 会话管理和恢复
+│   ├── feishu/          # 飞书集成
+│   ├── mcp/             # MCP 协议集成
+│   ├── evolution/       # 自进化模块（实验性）
+│   ├── goal/            # 目标追踪
+│   ├── persona/         # 人格系统
+│   └── utils/           # 工具函数（重试、熔断、日志）
+├── skills/              # 内置技能集
+├── docs/                # 文档体系
+├── tests/               # 测试用例
+└── plugins/             # 用户插件目录
 ```
+
+## 文档
+
+完整文档请查看 [docs/README.md](./docs/README.md)。
+
+| 分类 | 文档 |
+|------|------|
+| **入门** | [快速开始](./docs/getting-started.md) · [配置指南](./docs/configuration.md) · [CLI 参考](./docs/cli-reference.md) |
+| **用户指南** | [工具参考](./docs/tools-reference.md) · [记忆系统](./docs/guide/memory-system.md) · [技能系统](./docs/guide/skill-system.md) · [插件系统](./docs/guide/plugin-system.md) |
+| **架构** | [系统架构](./docs/architecture.md) · [上下文管理](./docs/design/context-management.md) · [弹性设计](./docs/design/resilience.md) |
+| **运维** | [PM2 部署](./docs/operations/deployment.md) · [性能优化](./docs/operations/performance.md) · [日志指南](./docs/operations/logging.md) |
 
 ## License
 

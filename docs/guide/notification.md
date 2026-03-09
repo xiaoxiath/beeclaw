@@ -329,9 +329,9 @@ notification_send({
 
 ## 📚 相关文档
 
-- [Tools 简化和增强方案](./tools-simplification-plan.md)
-- [实施完成报告](./tools-simplification-complete.md)
-- [Proactive 系统文档](../src/proactive/README.md)
+- [Tools 简化和增强方案](../../docs/archive/development/refactoring/tools-simplification-plan.md)
+- [实施完成报告](../../docs/archive/development/refactoring/tools-simplification-complete.md)
+- [Proactive 系统文档](./proactive-system.md)
 
 ---
 
