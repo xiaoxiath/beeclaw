@@ -8,6 +8,7 @@ import {
   TOOL_CATEGORIES,
   buildSystemPrompt,
   formatSkillsForPrompt,
+  SYSTEM_PROMPTS,
 } from '../tools';
 import type { OpenAITool } from '../types';
 import type { Session } from '../../session';
@@ -127,15 +128,15 @@ describe('Agent Tools', () => {
   });
 
   describe('buildSystemPrompt', () => {
-    test('returns default prompt when no session', () => {
-      const prompt = buildSystemPrompt();
+    test('returns default prompt when no context', () => {
+      const prompt = buildSystemPrompt(SYSTEM_PROMPTS.default);
       expect(prompt).toBeDefined();
       expect(typeof prompt).toBe('string');
       expect(prompt.length).toBeGreaterThan(10);
     });
 
     test('includes context section', () => {
-      const prompt = buildSystemPrompt();
+      const prompt = buildSystemPrompt(SYSTEM_PROMPTS.default);
       expect(prompt).toBeDefined();
       // The prompt should contain some context about the current time/date
       expect(prompt.length).toBeGreaterThan(0);
@@ -146,31 +147,38 @@ describe('Agent Tools', () => {
         id: 'test-session',
         createdAt: Date.now(),
         messageCount: 0,
+        messages: [],
       };
 
-      const prompt = buildSystemPrompt(session as Session);
+      const prompt = buildSystemPrompt(SYSTEM_PROMPTS.default, undefined, session as Session);
       expect(prompt).toBeDefined();
     });
 
-    test('accepts options parameter', () => {
-      const prompt = buildSystemPrompt(undefined, { style: 'concise' });
+    test('accepts core context parameter', () => {
+      const coreContext = {
+        user: 'Test user',
+        soul: 'Test soul with enough content to pass validation',
+        facts: 'Test facts',
+        skills: 'Test skills',
+      };
+      const prompt = buildSystemPrompt(SYSTEM_PROMPTS.default, coreContext);
       expect(prompt).toBeDefined();
     });
 
     test('returns prompt with verbose style', () => {
-      const prompt = buildSystemPrompt(undefined, { style: 'verbose' });
+      const prompt = buildSystemPrompt(SYSTEM_PROMPTS.verbose);
       expect(prompt).toBeDefined();
       expect(prompt.length).toBeGreaterThan(10);
     });
 
     test('returns prompt with concise style', () => {
-      const prompt = buildSystemPrompt(undefined, { style: 'concise' });
+      const prompt = buildSystemPrompt(SYSTEM_PROMPTS.concise);
       expect(prompt).toBeDefined();
       expect(prompt.length).toBeGreaterThan(10);
     });
 
     test('returns prompt with default style', () => {
-      const prompt = buildSystemPrompt(undefined, { style: 'default' });
+      const prompt = buildSystemPrompt(SYSTEM_PROMPTS.default);
       expect(prompt).toBeDefined();
       expect(prompt.length).toBeGreaterThan(10);
     });
