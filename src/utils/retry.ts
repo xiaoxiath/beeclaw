@@ -7,7 +7,7 @@
  * @deprecated Use `import { getRetryEngine } from './unified-retry'` for new code.
  */
 
-import { getRetryEngine, type RetryResult } from './unified-retry';
+import { getRetryEngine, type RetryResult, type RetryStrategy } from './unified-retry';
 
 export interface RetryOptions {
   /** Maximum number of retry attempts (default: 3) */
@@ -48,26 +48,25 @@ export async function retry<T>(
 
   const engine = getRetryEngine();
 
-  const result: RetryResult<T> = await engine.execute<T>(fn, {
-    strategyName: 'default',
-    maxAttempts: maxRetries + 1,
-    overrides: {
-      baseDelayMs: initialDelay,
-      maxDelayMs: maxDelay,
-      backoffMultiplier,
-      jitterFactor: jitter,
-    },
+  // Build a proper RetryStrategy that matches UnifiedRetryEngine.execute() signature
+  const strategy: RetryStrategy = {
+    maxRetries,
+    initialDelayMs: initialDelay,
+    maxDelayMs: maxDelay,
+    backoffMultiplier,
+    jitter,
+    backoffMode: 'exponential',
     shouldRetry: customShouldRetry
-      ? (err: unknown, attempt: number) => {
-          return customShouldRetry(err instanceof Error ? err : new Error(String(err)), attempt);
+      ? (classified, attempt) => {
+          return customShouldRetry(classified.originalError, attempt);
         }
       : undefined,
-    onRetry: onRetry
-      ? (attempt: number, error: unknown, delayMs: number) => {
-          onRetry(error instanceof Error ? error : new Error(String(error)), attempt, delayMs);
-        }
-      : undefined,
-  });
+  };
+
+  // FIX: Pass (operationName, fn, strategy) — previously fn was passed as
+  // operationName and an incompatible options object was passed as fn,
+  // causing "fn is not a function" at runtime.
+  const result: RetryResult<T> = await engine.execute<T>('legacy_retry', fn, strategy);
 
   if (result.success) {
     return result.value!;
