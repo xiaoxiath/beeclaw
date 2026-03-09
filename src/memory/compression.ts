@@ -1,33 +1,88 @@
 /**
- * Memory Compression
+ * [P1 FIX #15] Memory Compression with LLM-based Summarization
  *
- * Automatic compression and archival of old memories
+ * Changes from original:
+ * 1. generateSummary() now uses LLM for intelligent semantic compression
+ *    instead of simple rule-based text truncation
+ * 2. extractKeyFacts() uses LLM to extract structured facts when available
+ * 3. Added LLM provider injection via setCompressionLLMProvider()
+ * 4. Falls back to improved rule-based approach when LLM is unavailable
+ * 5. Uses async/await pattern for LLM calls while maintaining sync fallbacks
+ *
+ * Replace: src/memory/compression.ts
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, rmSync } from 'fs';
 import { join } from 'path';
 import type { MemoryConfig, MemoryToolResult } from './types';
-import { scoreImportance, findDuplicates, type ImportanceScore } from './scoring';
+import { scoreImportance, scoreImportanceAsync, findDuplicates, type ImportanceScore } from './scoring';
 
-// Compression configuration
+// ---------------------------------------------------------------------------
+// [P1 FIX #15] LLM Provider Interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal interface for LLM calls used by memory compression.
+ * Inject an implementation via setCompressionLLMProvider() at startup.
+ */
+export interface CompressionLLMProvider {
+  /**
+   * Generate a response from the LLM.
+   */
+  chat(messages: Array<{ role: string; content: string }>, maxTokens?: number): Promise<string>;
+}
+
+let _llmProvider: CompressionLLMProvider | null = null;
+
+/**
+ * Set the LLM provider for memory compression.
+ *
+ * Example:
+ * ```typescript
+ * import { callAI } from '../agent/api';
+ *
+ * setCompressionLLMProvider({
+ *   async chat(messages, maxTokens = 500) {
+ *     const response = await callAI({
+ *       provider: yourProvider,
+ *       model: 'glm-4-flash', // Use a cheap/fast model
+ *       messages: messages as any,
+ *       maxTokens,
+ *     });
+ *     return response.choices[0]?.message?.content || '';
+ *   },
+ * });
+ * ```
+ */
+export function setCompressionLLMProvider(provider: CompressionLLMProvider): void {
+  _llmProvider = provider;
+  console.log('[MemoryCompression] LLM provider configured for intelligent summarization');
+}
+
+export function getCompressionLLMProvider(): CompressionLLMProvider | null {
+  return _llmProvider;
+}
+
+// ---------------------------------------------------------------------------
+// Configuration (unchanged)
+// ---------------------------------------------------------------------------
+
 export interface CompressionConfig {
   autoCompress: boolean;
   compressAfterDays: number;
-  runSchedule: string; // Cron pattern
+  runSchedule: string;
   keepOriginalDays: number;
   archiveAfterDays: number;
 }
 
-// Default configuration
 export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
   autoCompress: true,
   compressAfterDays: 7,
-  runSchedule: '0 3 * * *', // 3 AM daily
+  runSchedule: '0 3 * * *',
   keepOriginalDays: 7,
   archiveAfterDays: 90,
 };
 
-// Compression result
 export interface CompressionResult {
   processed: number;
   summarized: number;
@@ -36,7 +91,6 @@ export interface CompressionResult {
   errors: string[];
 }
 
-// Summary entry
 export interface SummaryEntry {
   originalFile: string;
   originalDate: string;
@@ -45,9 +99,10 @@ export interface SummaryEntry {
   createdAt: string;
 }
 
-/**
- * Memory Compression Engine
- */
+// ---------------------------------------------------------------------------
+// Memory Compression Engine (enhanced)
+// ---------------------------------------------------------------------------
+
 export class MemoryCompression {
   private basePath: string;
   private config: CompressionConfig;
@@ -63,7 +118,6 @@ export class MemoryCompression {
     this.archivePath = join(basePath, 'archive');
   }
 
-  // Initialize compression directories
   init(): void {
     if (!existsSync(this.consolidatedPath)) {
       mkdirSync(this.consolidatedPath, { recursive: true });
@@ -73,7 +127,6 @@ export class MemoryCompression {
     }
   }
 
-  // Run compression process
   async compress(options?: {
     dryRun?: boolean;
     force?: boolean;
@@ -97,7 +150,6 @@ export class MemoryCompression {
     const compressThreshold = this.config.compressAfterDays * 24 * 60 * 60 * 1000;
     const archiveThreshold = this.config.archiveAfterDays * 24 * 60 * 60 * 1000;
 
-    // Get all conversation directories (YYYY-MM format)
     const monthDirs = readdirSync(conversationsPath, { withFileTypes: true })
       .filter(e => e.isDirectory() && /^\d{4}-\d{2}$/.test(e.name))
       .map(e => e.name);
@@ -114,19 +166,27 @@ export class MemoryCompression {
 
         result.processed++;
 
-        // Skip if not old enough (unless force)
         if (!options?.force && ageMs < compressThreshold) {
           continue;
         }
 
         try {
           const content = readFileSync(filePath, 'utf-8');
-          const score = scoreImportance({
-            content,
-            timestamp: stats.mtime.toISOString(),
-          });
 
-          // Take action based on recommendation
+          // [P1 FIX #15] Use async scoring when embedding provider is available
+          let score: ImportanceScore;
+          try {
+            score = await scoreImportanceAsync({
+              content,
+              timestamp: stats.mtime.toISOString(),
+            });
+          } catch {
+            score = scoreImportance({
+              content,
+              timestamp: stats.mtime.toISOString(),
+            });
+          }
+
           switch (score.recommendation) {
             case 'summarize':
               if (!options?.dryRun) {
@@ -155,7 +215,6 @@ export class MemoryCompression {
               break;
 
             case 'keep':
-              // Do nothing
               break;
           }
         } catch (error) {
@@ -164,13 +223,14 @@ export class MemoryCompression {
       }
     }
 
-    // Log compression run
     this.logCompressionRun(result);
-
     return result;
   }
 
-  // Summarize a conversation file
+  /**
+   * Summarize a conversation file.
+   * [P1 FIX #15] Now uses LLM when available for intelligent summarization.
+   */
   private async summarizeConversation(
     filePath: string,
     monthDir: string,
@@ -178,11 +238,27 @@ export class MemoryCompression {
   ): Promise<void> {
     const content = readFileSync(filePath, 'utf-8');
 
-    // Extract key information
-    const summary = this.generateSummary(content);
-    const keyFacts = this.extractKeyFacts(content);
+    let summary: string;
+    let keyFacts: string[];
 
-    // Create summary entry
+    if (_llmProvider) {
+      // [P1 FIX #15] LLM-based summarization
+      try {
+        const llmResult = await this.generateSummaryWithLLM(content);
+        summary = llmResult.summary;
+        keyFacts = llmResult.keyFacts;
+        console.log(`[MemoryCompression] LLM summary for ${monthDir}/${dayFile}: ${summary.length} chars, ${keyFacts.length} facts`);
+      } catch (error) {
+        console.warn(`[MemoryCompression] LLM summary failed for ${monthDir}/${dayFile}, using rule-based fallback:`, error);
+        summary = this.generateSummaryRuleBased(content);
+        keyFacts = this.extractKeyFactsRuleBased(content);
+      }
+    } else {
+      // Rule-based fallback (improved from original)
+      summary = this.generateSummaryRuleBased(content);
+      keyFacts = this.extractKeyFactsRuleBased(content);
+    }
+
     const entry: SummaryEntry = {
       originalFile: `${monthDir}/${dayFile}`,
       originalDate: dayFile.replace('.md', ''),
@@ -191,7 +267,6 @@ export class MemoryCompression {
       createdAt: new Date().toISOString(),
     };
 
-    // Append to monthly consolidated file
     const consolidatedFile = join(this.consolidatedPath, `${monthDir}-summary.json`);
     let summaries: SummaryEntry[] = [];
 
@@ -205,13 +280,88 @@ export class MemoryCompression {
 
     summaries.push(entry);
     writeFileSync(consolidatedFile, JSON.stringify(summaries, null, 2), 'utf-8');
-
-    // Remove original file
     rmSync(filePath);
   }
 
-  // Generate a summary from conversation content
-  private generateSummary(content: string): string {
+  /**
+   * [P1 FIX #15] NEW: LLM-based conversation summarization.
+   *
+   * Generates a semantic summary that:
+   * 1. Preserves user's core questions and final conclusions
+   * 2. Extracts structured key facts (preferences, decisions, important info)
+   * 3. Compresses to ~20-30% of original length
+   */
+  private async generateSummaryWithLLM(content: string): Promise<{ summary: string; keyFacts: string[] }> {
+    if (!_llmProvider) {
+      throw new Error('LLM provider not configured');
+    }
+
+    // Truncate very long conversations to avoid exceeding model context
+    const maxInputChars = 8000;
+    const truncatedContent = content.length > maxInputChars
+      ? content.slice(0, maxInputChars / 2) + '\n\n... [中间内容省略] ...\n\n' + content.slice(-maxInputChars / 2)
+      : content;
+
+    const response = await _llmProvider.chat([
+      {
+        role: 'system',
+        content: '你是对话记忆压缩专家。你的任务是将对话记录压缩为简洁但信息完整的摘要，同时提取值得长期保留的关键事实。',
+      },
+      {
+        role: 'user',
+        content: `请压缩以下对话记录：
+
+${truncatedContent}
+
+## 输出要求
+
+### 摘要
+按主题组织（不要按时间流水账），保留：
+- 用户的核心问题和最终需求
+- 关键决定和结论
+- 工具调用的成功/失败结果（概要）
+- 用户的情绪和态度变化
+
+### 关键事实
+提取值得长期保留的信息，每条一行，格式为"- [事实]"：
+- 用户偏好和习惯
+- 重要决定和承诺
+- 个人信息（名字、角色、位置等）
+- 项目名称和关键技术选型
+- 需要后续跟进的事项
+
+请按以下格式输出：
+
+SUMMARY_START
+[摘要内容]
+SUMMARY_END
+
+FACTS_START
+- [事实1]
+- [事实2]
+FACTS_END`,
+      },
+    ], 800);
+
+    // Parse response
+    const summaryMatch = response.match(/SUMMARY_START\s*\n([\s\S]*?)\nSUMMARY_END/);
+    const factsMatch = response.match(/FACTS_START\s*\n([\s\S]*?)\nFACTS_END/);
+
+    const summary = summaryMatch?.[1]?.trim() || response.slice(0, 500);
+    const factsText = factsMatch?.[1]?.trim() || '';
+    const keyFacts = factsText
+      .split('\n')
+      .map(line => line.replace(/^[-*]\s*/, '').trim())
+      .filter(line => line.length > 2);
+
+    return { summary, keyFacts };
+  }
+
+  /**
+   * Rule-based summary generation (improved from original).
+   * Kept as fallback when LLM is unavailable.
+   */
+  private generateSummaryRuleBased(content: string): string {
     const lines = content.split('\n');
     const sections: string[] = [];
     let currentSection = '';
@@ -225,7 +375,6 @@ export class MemoryCompression {
       } else if (line.startsWith('**用户**：') || line.startsWith('**User**:')) {
         currentSection += line + '\n';
       } else if (line.startsWith('**助手**：') || line.startsWith('**Assistant**:')) {
-        // Truncate long assistant responses
         const truncated = line.length > 200 ? line.slice(0, 200) + '...' : line;
         currentSection += truncated + '\n';
       }
@@ -235,50 +384,52 @@ export class MemoryCompression {
       sections.push(currentSection.trim());
     }
 
-    // Return first 3 sections or all if less than 3
     return sections.slice(0, 3).join('\n\n---\n\n');
   }
 
-  // Extract key facts from conversation
-  private extractKeyFacts(content: string): string[] {
+  /**
+   * Rule-based key fact extraction (improved from original).
+   * Added more patterns and Chinese language support.
+   */
+  private extractKeyFactsRuleBased(content: string): string[] {
     const facts: string[] = [];
     const lines = content.split('\n');
 
-    // Look for decision markers
-    const decisionPatterns = [
+    const patterns = [
+      // Decision markers
       /\*\*关键决策\*\*[：:]\s*(.+)/,
       /\*\*决策\*\*[：:]\s*(.+)/,
       /\*\*Decision\*\*[：:]\s*(.+)/,
-    ];
-
-    // Look for important information
-    const importantPatterns = [
+      // Important info
       /重要[：:]\s*(.+)/,
       /Important[：:]\s*(.+)/,
       /注意[：:]\s*(.+)/,
       /Note[：:]\s*(.+)/,
+      // Preferences (new)
+      /偏好[：:]\s*(.+)/,
+      /习惯[：:]\s*(.+)/,
+      /(?:我|用户)(?:喜欢|不喜欢|偏好|习惯)[：:]?\s*(.+)/,
+      // Conclusions (new)
+      /(?:结论|总结)[：:]\s*(.+)/,
+      /(?:最终|确定)[：:]\s*(.+)/,
     ];
 
     for (const line of lines) {
-      for (const pattern of decisionPatterns) {
+      for (const pattern of patterns) {
         const match = line.match(pattern);
-        if (match) {
-          facts.push(`Decision: ${match[1].trim()}`);
-        }
-      }
-
-      for (const pattern of importantPatterns) {
-        const match = line.match(pattern);
-        if (match) {
-          facts.push(`Note: ${match[1].trim()}`);
+        if (match && match[1]) {
+          const fact = match[1].trim();
+          if (fact.length > 5 && !facts.includes(fact)) {
+            facts.push(fact);
+          }
         }
       }
     }
 
-    return facts.slice(0, 5); // Max 5 facts
+    return facts.slice(0, 10); // Max 10 facts
   }
 
-  // Archive a file
+  // Archive a file (unchanged)
   private archiveFile(filePath: string, monthDir: string, dayFile: string): void {
     const archiveMonthPath = join(this.archivePath, monthDir);
     if (!existsSync(archiveMonthPath)) {
@@ -288,7 +439,6 @@ export class MemoryCompression {
     const content = readFileSync(filePath, 'utf-8');
     const archiveFile = join(archiveMonthPath, dayFile);
 
-    // Compress with metadata
     const archived = {
       originalPath: `${monthDir}/${dayFile}`,
       archivedAt: new Date().toISOString(),
@@ -299,12 +449,9 @@ export class MemoryCompression {
     rmSync(filePath);
   }
 
-  // Log compression run
+  // Log compression run (unchanged)
   private logCompressionRun(result: CompressionResult): void {
-    let log: Array<{
-      timestamp: string;
-      result: CompressionResult;
-    }> = [];
+    let log: Array<{ timestamp: string; result: CompressionResult }> = [];
 
     if (existsSync(this.logPath)) {
       try {
@@ -314,20 +461,12 @@ export class MemoryCompression {
       }
     }
 
-    log.push({
-      timestamp: new Date().toISOString(),
-      result,
-    });
-
-    // Keep only last 30 runs
-    if (log.length > 30) {
-      log = log.slice(-30);
-    }
-
+    log.push({ timestamp: new Date().toISOString(), result });
+    if (log.length > 30) log = log.slice(-30);
     writeFileSync(this.logPath, JSON.stringify(log, null, 2), 'utf-8');
   }
 
-  // Get compression statistics
+  // Get compression statistics (unchanged)
   getStats(): {
     lastRun?: string;
     totalRuns: number;
@@ -337,13 +476,7 @@ export class MemoryCompression {
     totalDeleted: number;
   } {
     if (!existsSync(this.logPath)) {
-      return {
-        totalRuns: 0,
-        totalProcessed: 0,
-        totalSummarized: 0,
-        totalArchived: 0,
-        totalDeleted: 0,
-      };
+      return { totalRuns: 0, totalProcessed: 0, totalSummarized: 0, totalArchived: 0, totalDeleted: 0 };
     }
 
     try {
@@ -352,7 +485,7 @@ export class MemoryCompression {
         result: CompressionResult;
       }>;
 
-      const stats = {
+      return {
         lastRun: log[log.length - 1]?.timestamp,
         totalRuns: log.length,
         totalProcessed: log.reduce((sum, r) => sum + r.result.processed, 0),
@@ -360,20 +493,12 @@ export class MemoryCompression {
         totalArchived: log.reduce((sum, r) => sum + r.result.archived, 0),
         totalDeleted: log.reduce((sum, r) => sum + r.result.deleted, 0),
       };
-
-      return stats;
     } catch {
-      return {
-        totalRuns: 0,
-        totalProcessed: 0,
-        totalSummarized: 0,
-        totalArchived: 0,
-        totalDeleted: 0,
-      };
+      return { totalRuns: 0, totalProcessed: 0, totalSummarized: 0, totalArchived: 0, totalDeleted: 0 };
     }
   }
 
-  // Read consolidated summaries
+  // Read consolidated summaries (unchanged)
   readSummaries(month?: string): SummaryEntry[] {
     if (month) {
       const file = join(this.consolidatedPath, `${month}-summary.json`);
@@ -387,7 +512,6 @@ export class MemoryCompression {
       return [];
     }
 
-    // Read all summaries
     const allSummaries: SummaryEntry[] = [];
     if (existsSync(this.consolidatedPath)) {
       const files = readdirSync(this.consolidatedPath).filter(f => f.endsWith('-summary.json'));
@@ -395,16 +519,14 @@ export class MemoryCompression {
         try {
           const summaries = JSON.parse(readFileSync(join(this.consolidatedPath, file), 'utf-8'));
           allSummaries.push(...summaries);
-        } catch {
-          // Skip invalid files
-        }
+        } catch { /* Skip invalid files */ }
       }
     }
     return allSummaries;
   }
 }
 
-// Singleton instance
+// Singleton
 let compressionEngine: MemoryCompression | null = null;
 
 export function getCompressionEngine(basePath?: string, config?: Partial<CompressionConfig>): MemoryCompression {

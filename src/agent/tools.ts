@@ -1,3 +1,17 @@
+/**
+ * [P1 FIX #1] Updated tools.ts — Dynamic Prompt Assembly with Budget Management
+ *
+ * Changes from original:
+ * 1. buildSystemPrompt() now accepts optional `budgetConfig` and `recentMessages`
+ *    to enable dynamic example selection and layer-wise budget trimming.
+ * 2. New function `buildSystemPromptWithBudget()` wraps the full flow:
+ *    detect intent → select examples → assemble layers → trim to budget.
+ * 3. SYSTEM_PROMPTS.verbose no longer statically concatenates all examples.
+ * 4. All original exports preserved for backward compatibility.
+ *
+ * Replace: src/agent/tools.ts
+ */
+
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { getMemoryToolsForAI } from '../memory';
@@ -20,11 +34,22 @@ import {
 import { getMCPManager } from '../mcp';
 import { getPluginRegistry } from '../plugins';
 import { logger } from '../utils/logger';
-import type { OpenAITool } from './types';
+import { estimateTokens } from './context';
+import type { OpenAITool, ChatMessage } from './types';
 import type { Session } from '../session';
+import {
+  type PromptBudgetConfig,
+  type TaggedExample,
+  calculatePromptBudget,
+  parseExamplesIntoTagged,
+  detectUserIntent,
+  selectExamples,
+  assembleBudgetedPrompt,
+  type PromptLayer,
+} from './prompt-budget';
 
 // ---------------------------------------------------------------------------
-// Tool Definition Types & Conversion
+// Tool Definition Types & Conversion (unchanged)
 // ---------------------------------------------------------------------------
 
 type ToolDefinition = {
@@ -53,7 +78,7 @@ function toOpenAITool(tool: ToolDefinition): OpenAITool {
 }
 
 // ---------------------------------------------------------------------------
-// Tool Collection
+// Tool Collection (unchanged)
 // ---------------------------------------------------------------------------
 
 export function getAllTools(): OpenAITool[] {
@@ -80,7 +105,6 @@ export function getAllTools(): OpenAITool[] {
     // MCP not initialized
   }
 
-  // Plugin tools
   let pluginTools: OpenAITool[] = [];
   try {
     const registry = getPluginRegistry();
@@ -120,7 +144,7 @@ export function getSkillTools(): OpenAITool[] {
 }
 
 // ---------------------------------------------------------------------------
-// Tool Categories
+// Tool Categories (unchanged)
 // ---------------------------------------------------------------------------
 
 export const TOOL_CATEGORIES = {
@@ -149,10 +173,6 @@ export function getToolsByCategory(categories: (keyof typeof TOOL_CATEGORIES)[])
 // Prompt Layers — Separated by change frequency for optimal caching
 // ---------------------------------------------------------------------------
 
-/**
- * LAYER 0: Immutable core — identity, safety, priority, rules.
- * Changes only on product iteration. Ideal for prompt caching prefix.
- */
 function loadPromptLayer(filename: string): string {
   try {
     const filePath = join(__dirname, 'prompts', filename);
@@ -167,20 +187,30 @@ const BASE_PROMPT = loadPromptLayer('base.md');
 const EXAMPLES_VERBOSE = loadPromptLayer('examples-verbose.md');
 
 /**
+ * [P1 FIX #1] Pre-parse examples into tagged entries at module load time.
+ * This avoids re-parsing on every prompt build.
+ */
+let _cachedTaggedExamples: TaggedExample[] | null = null;
+function getTaggedExamples(): TaggedExample[] {
+  if (!_cachedTaggedExamples) {
+    _cachedTaggedExamples = parseExamplesIntoTagged(EXAMPLES_VERBOSE);
+    console.log(`[PromptBudget] Parsed ${_cachedTaggedExamples.length} tagged examples from examples-verbose.md`);
+  }
+  return _cachedTaggedExamples;
+}
+
+/**
  * Three prompt tiers — all share the same BASE_PROMPT core.
- *
- * - concise:  base only (~1200 tokens) — for simple follow-up turns
- * - default:  base + trait personality (~1500 tokens) — standard mode
- * - verbose:  base + trait personality + worked examples (~2500 tokens) — onboarding or complex tasks
+ * [P1 FIX #1] verbose tier no longer statically inlines ALL examples.
  */
 export const SYSTEM_PROMPTS = {
   concise: BASE_PROMPT,
-  default: BASE_PROMPT,   // trait personality injected dynamically in buildSystemPrompt
-  verbose: `${BASE_PROMPT}\n\n---\n\n${EXAMPLES_VERBOSE}`,
+  default: BASE_PROMPT,
+  verbose: BASE_PROMPT, // Examples are now injected dynamically via buildSystemPromptWithBudget()
 };
 
 // ---------------------------------------------------------------------------
-// Dynamic Context Builders
+// Dynamic Context Builders (unchanged from original)
 // ---------------------------------------------------------------------------
 
 export function getBeeclawVersion(): string {
@@ -220,56 +250,130 @@ export function getCurrentTimeContext(): string {
   return `${locationInfo} | **Date**: ${dateStr} | **Time**: ${timeStr} | ${timezoneInfo} | **Beeclaw**: v${version}`;
 }
 
+// ---------------------------------------------------------------------------
+// [P1 FIX #1] NEW: Budget-aware System Prompt Builder
+// ---------------------------------------------------------------------------
+
 /**
- * Build the final system prompt.
+ * Build system prompt with dynamic example selection and token budget management.
  *
- * Assembly order (optimized for LLM attention & prompt caching):
+ * This is the NEW recommended entry point for prompt assembly. It replaces
+ * the old static approach where all examples were always included.
  *
- *   1. [IMMUTABLE]    Core identity + rules          ← highest attention (beginning) + cache prefix
- *   2. [IMMUTABLE]    Trait personality (if available)
- *   3. [SLOW-CHANGE]  SOUL.md / USER.md / facts / skills
- *   4. [VOLATILE]     Time / holiday / weather / goals / session stats  ← high attention (end)
- *
- * Rationale:
- * - LLMs attend most to the beginning and end of prompts (U-shaped attention)
- * - Immutable layers at the front maximize prompt-prefix caching hit rate
- * - Volatile context at the end gets strong attention AND doesn't bust the cache
+ * @param basePrompt - The base prompt text (usually SYSTEM_PROMPTS.default)
+ * @param coreContext - User/soul context from memory store
+ * @param sessionContext - Current session for stats
+ * @param recentMessages - Recent conversation messages for intent detection
+ * @param modelContextWindow - Model's total context window (e.g., 128000)
+ * @param budgetOverrides - Optional overrides for budget config
  */
-export function buildSystemPrompt(
+export function buildSystemPromptWithBudget(
   basePrompt: string,
   coreContext?: { user: string; soul: string; facts?: string; skills?: string },
-  sessionContext?: Session
-): string {
-  const parts: string[] = [];
+  sessionContext?: Session,
+  recentMessages?: ChatMessage[],
+  modelContextWindow: number = 128000,
+  budgetOverrides?: Partial<PromptBudgetConfig>,
+): {
+  prompt: string;
+  totalTokens: number;
+  selectedExamples: number;
+  droppedLayers: string[];
+} {
+  const budgetConfig = calculatePromptBudget(modelContextWindow, budgetOverrides);
 
-  // ── Layer 1: Immutable core (from base.md or variant) ──
-  parts.push(basePrompt);
+  // --- Build prompt layers with priorities ---
+  const layers: PromptLayer[] = [];
 
-  // ── Layer 2: Trait personality ──
+  // Layer 1: Immutable core (highest priority — never trimmed)
+  layers.push({
+    name: 'core',
+    content: basePrompt,
+    priority: 100,
+    trimmable: false,
+  });
+
+  // Layer 2: Trait personality (high priority)
   const traitPrompt = getTraitSystemPrompt();
   if (traitPrompt) {
-    parts.push(`\n---\n\n# Personality Traits\n\n${traitPrompt}`);
+    layers.push({
+      name: 'traits',
+      content: `\n---\n\n# Personality Traits\n\n${traitPrompt}`,
+      priority: 90,
+      trimmable: true,
+    });
   }
 
-  // ── Layer 3: Slow-changing user context ──
-  if (coreContext) {
-    if (coreContext.soul && coreContext.soul.trim().length > 50) {
-      parts.push(`\n---\n\n# Your Identity (SOUL.md)\n\n${coreContext.soul}`);
-    }
-    if (coreContext.user && coreContext.user.trim().length > 50) {
-      parts.push(`\n---\n\n# About the User\n\n${coreContext.user}`);
-    }
-    if (coreContext.facts && coreContext.facts.trim().length > 10) {
-      parts.push(`\n---\n\n# User Facts & Lessons Learned\n\n${coreContext.facts}`);
-    }
-    if (coreContext.skills && coreContext.skills.trim().length > 10) {
-      parts.push(`\n---\n\n# Available Skills\n\n${coreContext.skills}`);
+  // Layer 3: Soul context (high priority)
+  if (coreContext?.soul && coreContext.soul.trim().length > 50) {
+    layers.push({
+      name: 'soul',
+      content: `\n---\n\n# Your Identity (SOUL.md)\n\n${coreContext.soul}`,
+      priority: 85,
+      trimmable: true,
+    });
+  }
+
+  // Layer 4: User context (medium-high priority)
+  if (coreContext?.user && coreContext.user.trim().length > 50) {
+    layers.push({
+      name: 'user-context',
+      content: `\n---\n\n# About the User\n\n${coreContext.user}`,
+      priority: 80,
+      trimmable: true,
+    });
+  }
+
+  // Layer 5: Facts (medium priority — trimmable)
+  if (coreContext?.facts && coreContext.facts.trim().length > 10) {
+    layers.push({
+      name: 'facts',
+      content: `\n---\n\n# User Facts & Lessons Learned\n\n${coreContext.facts}`,
+      priority: 70,
+      trimmable: true,
+    });
+  }
+
+  // Layer 6: Skills list (medium priority — trimmable)
+  if (coreContext?.skills && coreContext.skills.trim().length > 10) {
+    layers.push({
+      name: 'skills',
+      content: `\n---\n\n# Available Skills\n\n${coreContext.skills}`,
+      priority: 65,
+      trimmable: true,
+    });
+  }
+
+  // Layer 7: [P1 FIX #1] Dynamic examples — selected by intent, lowest priority
+  let selectedExampleCount = 0;
+  if (budgetConfig.dynamicExamples) {
+    const taggedExamples = getTaggedExamples();
+    const userIntents = recentMessages
+      ? detectUserIntent(recentMessages)
+      : new Set(['general']);
+
+    // Calculate remaining budget for examples
+    const nonExampleTokens = layers.reduce((sum, l) => sum + estimateTokens(l.content), 0);
+    const exampleBudget = Math.max(0, budgetConfig.maxSystemPromptTokens - nonExampleTokens - 200); // 200 buffer for volatile
+
+    if (exampleBudget > 200 && taggedExamples.length > 0) {
+      const selected = selectExamples(taggedExamples, userIntents, exampleBudget, budgetConfig.maxExamples);
+      selectedExampleCount = selected.length;
+
+      if (selected.length > 0) {
+        const examplesContent = selected.map(e => e.content).join('\n\n---\n\n');
+        layers.push({
+          name: 'examples',
+          content: `\n---\n\n# Worked Examples\n\n${examplesContent}`,
+          priority: 10,  // Lowest priority — first to be dropped
+          trimmable: true,
+        });
+      }
     }
   }
 
-  // ── Layer 4: Volatile runtime context (at the END for attention + cache-friendliness) ──
+  // Layer 8: Volatile runtime context (medium priority — important for recency)
   const volatileParts: string[] = [];
-
   volatileParts.push(`# Runtime Context\n\n${getCurrentTimeContext()}`);
 
   try {
@@ -293,23 +397,56 @@ export function buildSystemPrompt(
   if (statsContext) volatileParts.push(statsContext);
 
   if (volatileParts.length > 0) {
-    parts.push(`\n---\n\n${volatileParts.join('\n\n')}`);
+    layers.push({
+      name: 'runtime',
+      content: `\n---\n\n${volatileParts.join('\n\n')}`,
+      priority: 75, // Higher than examples, lower than user context
+      trimmable: true,
+    });
   }
 
-  return parts.join('\n');
+  // --- Assemble with budget ---
+  const result = assembleBudgetedPrompt(layers, budgetConfig);
+
+  if (result.droppedLayers.length > 0 || result.truncatedLayers.length > 0) {
+    console.log(`[PromptBudget] System prompt: ${result.totalTokens} tokens (budget: ${budgetConfig.maxSystemPromptTokens})`);
+    if (result.droppedLayers.length > 0) {
+      console.log(`[PromptBudget] Dropped layers: ${result.droppedLayers.join(', ')}`);
+    }
+  }
+
+  return {
+    prompt: result.prompt,
+    totalTokens: result.totalTokens,
+    selectedExamples: selectedExampleCount,
+    droppedLayers: result.droppedLayers,
+  };
+}
+
+/**
+ * Original buildSystemPrompt — preserved for backward compatibility.
+ * Internally delegates to buildSystemPromptWithBudget when possible.
+ */
+export function buildSystemPrompt(
+  basePrompt: string,
+  coreContext?: { user: string; soul: string; facts?: string; skills?: string },
+  sessionContext?: Session
+): string {
+  // Use the budgeted version with defaults
+  const result = buildSystemPromptWithBudget(
+    basePrompt,
+    coreContext,
+    sessionContext,
+    undefined,  // no recent messages available in legacy path
+    128000,     // default context window
+  );
+  return result.prompt;
 }
 
 // ---------------------------------------------------------------------------
-// Skill Formatting
+// Skill Formatting (unchanged)
 // ---------------------------------------------------------------------------
 
-/**
- * Format skills for prompt injection.
- *
- * CHANGED: skill_get is now MANDATORY before execution — this is the
- * single source of truth for skill workflow steps. The summaries here
- * are for trigger matching only, NOT for execution.
- */
 export function formatSkillsForPrompt(
   skills: Array<{ name: string; description: string; triggers?: string[] }>
 ): string {
@@ -334,7 +471,7 @@ ${skillEntries}
 }
 
 // ---------------------------------------------------------------------------
-// Context Helpers
+// Context Helpers (unchanged)
 // ---------------------------------------------------------------------------
 
 function getActiveGoalsContext(): string | null {
@@ -405,3 +542,10 @@ function getSessionStatsContext(session?: Session): string | null {
 
   return context;
 }
+
+// Re-export prompt budget utilities for external usage
+export {
+  calculatePromptBudget,
+  type PromptBudgetConfig,
+  type PromptLayer,
+} from './prompt-budget';
