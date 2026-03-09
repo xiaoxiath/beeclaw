@@ -144,3 +144,15 @@ Total: 6 files changed, 470 insertions(+), 196 deletions(-)
 
 **Reviewed-by:** Claude Sonnet 4.6
 **Date:** 2026-03-09
+
+## 测试修复 (commit 366fa10)
+
+所有测试现已修复并通过:
+- ✅ 修复了所有 async/await 问题
+- ✅ 更新了 USER.md/SOUL.md 自动创建的预期（不再自动创建)
+- ✅ 修复了 memory_read 工具测试
+- ✅ 修复了 grep 测试
+- ✅ 修复了 record/recordConversation 测试
+
+**最终结果: 49 个测试全部通过 ✅
+
