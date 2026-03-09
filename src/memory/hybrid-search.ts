@@ -15,6 +15,8 @@
  * ⚡ 新增文件 — 增强 memory/store.ts 中的搜索能力
  */
 
+import { logger } from '../utils/logger';
+
 // ---------------------------------------------------------------------------
 // 1. 搜索配置
 // ---------------------------------------------------------------------------
@@ -294,7 +296,7 @@ export async function hybridSearch(
         Math.ceil(selectedProfile.maxResults * 1.5),
       );
     } catch (error) {
-      console.warn('[HybridSearch] Vector search failed, falling back to keyword-only:', error);
+      logger.warn('[HybridSearch] Vector search failed, falling back to keyword-only:', error);
       // 退化：keyword 权重提升
     }
   }

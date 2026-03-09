@@ -18,6 +18,7 @@
  */
 
 import type { AIProvider } from '../config/schema';
+import { logger } from './logger';
 
 // ---------------------------------------------------------------------------
 // 1. 结构化错误体系
@@ -433,7 +434,7 @@ export function recordFailure(providerKey: string): void {
 
   if (cb.state === 'HALF_OPEN' || cb.failureCount >= cbConfig.failureThreshold) {
     cb.state = 'OPEN';
-    console.warn(
+    logger.warn(
       `[CircuitBreaker] Provider "${providerKey}" circuit OPENED ` +
       `(failures: ${cb.failureCount}, threshold: ${cbConfig.failureThreshold}). ` +
       `Will retry in ${cbConfig.resetTimeoutMs / 1000}s.`
@@ -504,7 +505,7 @@ export function createFallbackExecutor(config: FallbackProviderConfig) {
 
       // 检查熔断
       if (isCircuitOpen(key)) {
-        console.log(`[FallbackExecutor] Skipping ${provider.type} (circuit open)`);
+        logger.debug(`[FallbackExecutor] Skipping ${provider.type} (circuit open)`);
         continue;
       }
 
@@ -525,7 +526,7 @@ export function createFallbackExecutor(config: FallbackProviderConfig) {
           throw error; // 不可恢复错误，直接抛出
         }
 
-        console.warn(
+        logger.warn(
           `[FallbackExecutor] ${provider.type} failed: ${lastError.message}. ` +
           `${i < providers.length - 1 ? 'Trying next provider...' : 'No more providers.'}`
         );
