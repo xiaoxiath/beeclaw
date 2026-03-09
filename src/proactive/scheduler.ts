@@ -656,11 +656,21 @@ export class Scheduler {
         const content = readFileSync(this.storagePath, 'utf-8');
         this.storage = JSON.parse(content);
         
-        // Migration: Add isExecuting field to existing schedules
+        // Clean up stale execution locks (e.g., after pm2 restart)
+        let hasChanges = false;
         for (const schedule of Object.values(this.storage.schedules)) {
           if (schedule.isExecuting === undefined) {
             schedule.isExecuting = false;
+            hasChanges = true;
+          } else if (schedule.isExecuting === true) {
+            schedule.isExecuting = false;
+            console.log(`[Scheduler] Cleared stale execution lock for ${schedule.name}`);
+            hasChanges = true;
           }
+        }
+        
+        if (hasChanges) {
+          this.saveStorage();
         }
       } catch {
         // Use default storage

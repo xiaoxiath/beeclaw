@@ -84,7 +84,7 @@ export class Daemon {
       // Start all enabled schedules with unified execution entry point
       // This ensures both setTimeout and periodicCheck share the same memory lock
       scheduler.startAll(async (schedule) => {
-        await this.executeSchedule(schedule, options?.onJob);
+        await this.executeScheduleWithLock(schedule, options?.onJob);
       });
     } catch (error) {
       this.recordError('Failed to load schedules: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -189,18 +189,43 @@ export class Daemon {
 
   // Private helper methods
 
+  // Execute with lock acquisition (for periodicCheck path)
+  private async executeScheduleWithLock(
+    schedule: Schedule,
+    onJob?: (job: ProactiveJobData) => Promise<void>
+  ): Promise<void> {
+    const scheduler = getScheduler(this.basePath + '/../proactive');
+    
+    // Try to acquire memory lock atomically
+    if (!scheduler.acquireExecutionLock(schedule.id)) {
+      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
+      return;
+    }
+
+    // Check storage lock
+    if (schedule.isExecuting) {
+      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
+      scheduler.releaseExecutionLock(schedule.id);
+      return;
+    }
+
+    // Set storage lock
+    scheduler.setExecuting(schedule.id, true);
+
+    try {
+      await this.executeSchedule(schedule, onJob);
+    } finally {
+      // Release memory lock (storage lock is released in recordExecution)
+      scheduler.releaseExecutionLock(schedule.id);
+    }
+  }
+
   private async executeSchedule(
     schedule: Schedule,
     onJob?: (job: ProactiveJobData) => Promise<void>
   ): Promise<void> {
-    // Get scheduler for shared memory lock check
-    const scheduler = getScheduler(this.basePath + '/../proactive');
-    
-    // Check if already executing via scheduler's memory lock
-    if (scheduler.isScheduleExecuting(schedule.id)) {
-      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
-      return;
-    }
+    // NOTE: This method should only be called after lock is acquired
+    // Either via scheduler.executeWithLock (setTimeout path) or executeScheduleWithLock (periodicCheck path)
 
     console.log(`[Daemon] Executing schedule: ${schedule.name}`);
 
@@ -220,6 +245,7 @@ export class Daemon {
       }
 
       // Record success
+      const scheduler = getScheduler(this.basePath + '/../proactive');
       scheduler.recordExecution(schedule.id, { success: true });
 
       this.state.jobsExecuted++;
@@ -229,6 +255,7 @@ export class Daemon {
       this.recordError(`Schedule ${schedule.name} failed: ${errorMessage}`);
 
       // Record failure
+      const scheduler = getScheduler(this.basePath + '/../proactive');
       scheduler.recordExecution(schedule.id, { success: false, error: errorMessage });
     }
   }
@@ -286,13 +313,8 @@ export class Daemon {
       const dueSchedules = scheduler.getDueSchedules();
 
       for (const schedule of dueSchedules) {
-        // Extra check: verify not executing via scheduler's memory lock
-        if (scheduler.isScheduleExecuting(schedule.id)) {
-          console.log(`[Daemon] [PeriodicCheck] Schedule "${schedule.name}" is executing (memory lock), skipping`);
-          continue;
-        }
-        
-        await this.executeSchedule(schedule, onJob);
+        // Use unified lock acquisition method
+        await this.executeScheduleWithLock(schedule, onJob);
       }
 
       // Push pending notifications
