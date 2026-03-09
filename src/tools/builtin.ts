@@ -81,7 +81,10 @@ export const WebSearchSchema = z.object({
 
 export const webSearchTool = {
   name: 'web_search',
-  description: 'Search the web for information using multiple search engines. Supports Chinese and English queries with automatic region detection.',
+  description: `Search the web for information using multiple search engines. Supports Chinese and English queries with automatic region detection.
+
+IMPORTANT — Time-sensitive queries:
+When the user asks for "latest", "recent", "current", "newest", "今年", "最新", "最近", or any time-sensitive information, you MUST set time_range to "week" or "month" to ensure results are fresh. Also consider appending the current year to the query string for time-sensitive topics.`,
   parameters: {
     type: 'object' as const,
     properties: {
@@ -1343,8 +1346,11 @@ export async function executeDeepResearch(params: Record<string, unknown>): Prom
       });
     } else {
       // Auto-generate diverse search angles
+      // [FIX] Use dynamic year instead of hardcoded 2024/2025
+      const currentYear = new Date().getFullYear();
+      const lastYear = currentYear - 1;
       const anglePatterns = [
-        `${topic} 最新 2024 2025`,
+        `${topic} 最新 ${lastYear} ${currentYear}`,
         `${topic} 趋势 分析`,
         `${topic} 案例 研究`,
         `${topic} 统计 数据`,
@@ -1923,6 +1929,8 @@ const BLOCKED_COMMANDS = [
 
 // Allowed commands whitelist (pattern matching)
 const ALLOWED_PATTERNS = [
+  // Directory navigation (harmless, commonly chained with other commands)
+  /^cd(\s|$)/,
   // File operations (in allowed dirs)
   /^ls(\s|$)/,
   /^ls -la(\s|$)/,
@@ -1984,39 +1992,62 @@ const ALLOWED_PATTERNS = [
 ];
 
 // Check if command is safe to execute
+// [FIX] Split compound commands (&&, ||, ;) and validate each sub-command
+// independently against the whitelist. Pipe chains are treated as a single
+// unit whose first command must be whitelisted.
 function isCommandSafe(command: string): { safe: boolean; reason?: string } {
-  const cmd = command.trim().toLowerCase();
+  const fullCmd = command.trim();
 
-  // Check for blocked commands
-  for (const blocked of BLOCKED_COMMANDS) {
-    if (cmd.includes(blocked.toLowerCase())) {
-      return { safe: false, reason: `Blocked command pattern: ${blocked}` };
-    }
-  }
-
-  // Check for dangerous patterns
-  const dangerousPatterns = [
-    /\$\(/,           // Command substitution
-    /`/,              // Backtick command substitution
-    /\|\s*sh/,        // Pipe to shell
-    /\|\s*bash/,      // Pipe to bash
-    />\s*\/dev\//,    // Device access
-    /;\s*rm/,         // Command chain with rm
-    /&&\s*rm/,        // Command chain with rm
-    /\|\s*rm/,        // Pipe to rm
+  // --- Phase 0: Global dangerous-pattern check on the raw command string ---
+  const globalDangerousPatterns: [RegExp, string][] = [
+    [/\$\(/, 'Command substitution $()'],
+    [/`/, 'Backtick command substitution'],
+    [/\|\s*sh\b/, 'Pipe to sh'],
+    [/\|\s*bash\b/, 'Pipe to bash'],
+    [/>\s*\/dev\//, 'Device file access'],
   ];
 
-  for (const pattern of dangerousPatterns) {
-    if (pattern.test(cmd)) {
-      return { safe: false, reason: `Dangerous pattern detected: ${pattern}` };
+  for (const [pattern, label] of globalDangerousPatterns) {
+    if (pattern.test(fullCmd)) {
+      return { safe: false, reason: `Dangerous pattern detected: ${label}` };
     }
   }
 
-  // Check against allowed patterns
-  const isAllowed = ALLOWED_PATTERNS.some(pattern => pattern.test(command.trim()));
+  // --- Phase 1: Split by && / || / ; into sub-commands ---
+  // Each sub-command may itself be a pipe chain (a | b | c).
+  // We validate the *first* command in each pipe chain against the whitelist,
+  // and check every segment against the blocklist.
+  const subCommands = fullCmd
+    .split(/\s*(?:&&|\|\||;)\s*/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 
-  if (!isAllowed) {
-    return { safe: false, reason: 'Command not in allowed whitelist' };
+  for (const subCommand of subCommands) {
+    // Split pipe segments
+    const pipeSegments = subCommand
+      .split(/\s*\|\s*/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    // Check every pipe segment against the blocklist
+    for (const segment of pipeSegments) {
+      const segLower = segment.toLowerCase();
+      for (const blocked of BLOCKED_COMMANDS) {
+        if (segLower.includes(blocked.toLowerCase())) {
+          return { safe: false, reason: `Blocked command pattern: ${blocked}` };
+        }
+      }
+    }
+
+    // The *first* command in the pipe chain must match the whitelist
+    const leadCmd = pipeSegments[0];
+    const isAllowed = ALLOWED_PATTERNS.some(pattern => pattern.test(leadCmd));
+    if (!isAllowed) {
+      return {
+        safe: false,
+        reason: `Command not in allowed whitelist: "${leadCmd}"`,
+      };
+    }
   }
 
   return { safe: true };

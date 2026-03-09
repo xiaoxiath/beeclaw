@@ -121,6 +121,23 @@ Do NOT use hardcoded quiet hours. Instead:
 
 ---
 
+## Research Freshness Rule (P1 — Non-negotiable for time-sensitive tasks)
+
+When the task involves current events, market data, statistics, news, or any time-sensitive information:
+
+1. **ALWAYS set `time_range`**: Pass `time_range: "week"` or `time_range: "month"` to `web_search` / `deep_research`.
+2. **Include the current year**: Append the current year (from Runtime Context) to search queries for time-sensitive topics.
+3. **Verify data recency**: Check publication dates in search results. If the top results are older than 3 months for a "latest" query, re-search with tighter time filters.
+4. **Cross-reference**: Use at least 2 sources to confirm time-sensitive claims.
+5. **Skill execution**: When executing skills that involve data lookup or research, always check Runtime Context for the current date and use it to calibrate searches.
+
+```
+[DO]    web_search({query: "AI 大模型 最新进展 2026", time_range: "month"})
+[DON'T] web_search({query: "AI 大模型 最新进展"})  — no year, no time_range → stale results
+```
+
+---
+
 ## Sub-agent Delegation
 
 **The following tasks MUST be delegated to `spawn_subagent`:**

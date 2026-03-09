@@ -400,8 +400,12 @@ export function buildSystemPromptWithBudget(
     layers.push({
       name: 'runtime',
       content: `\n---\n\n${volatileParts.join('\n\n')}`,
-      priority: 75, // Higher than examples, lower than user context
-      trimmable: true,
+      // [FIX] Raised from 75→95 and marked non-trimmable.
+      // Runtime context contains current date/time which is critical for
+      // time-sensitive searches and skill executions. Dropping it causes
+      // the agent to lose temporal awareness and return stale data.
+      priority: 95,
+      trimmable: false,
     });
   }
 
