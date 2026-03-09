@@ -65,7 +65,7 @@ export { recordSkillFailure, type ReflectionTrigger } from '../evolution';
 export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
 export { stripMessageMetadata } from './types';
 export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
-export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects } from './tool-dependencies';
+export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects, registerToolDependencyOverride, registerToolDependencyPattern, clearToolDependencyOverrides, getToolDependencyOverrides } from './tool-dependencies';
 
 // Default tool executor that handles plugin, memory, skill, goal, proactive, persona, builtin, and feishu tools
 export function createDefaultToolExecutor(): ToolExecutor {
@@ -768,8 +768,38 @@ export class Agent {
     let finalContent = '';
     let totalCompletionTokens = 0;
 
+    // [P2 FIX 4.2] Global token budget guard for tool loop
+    const maxTokensPerTurn = (this.options as any).maxTokensPerTurn
+      ?? Math.floor(this.contextConfig.maxTokens * 0.6); // Default: 60% of context window
+    const turnStartTokens = this.estimatedTokens;
+
     while (iterations < (this.options.maxToolIterations || 5)) {
       iterations++;
+
+      // [P2 FIX 4.2] Check if we've consumed too many tokens in this turn
+      const turnTokensUsed = this.estimatedTokens - turnStartTokens;
+      if (turnTokensUsed > maxTokensPerTurn) {
+        console.warn(
+          `[Agent] Token budget guard: turn used ${turnTokensUsed} tokens ` +
+          `(limit: ${maxTokensPerTurn}). Forcing completion.`
+        );
+        // Get last assistant content as fallback
+        const lastAssistant = [...this.messages].reverse().find(m => m.role === 'assistant');
+        if (lastAssistant?.content && typeof lastAssistant.content === 'string') {
+          finalContent = lastAssistant.content;
+        } else {
+          finalContent = '处理过程中消耗了过多 Token，已提前终止。请尝试简化问题或拆分为多个步骤。';
+        }
+        break;
+      }
+
+      // [P2 FIX 4.2] Warn when approaching 80% of turn budget
+      if (turnTokensUsed > maxTokensPerTurn * 0.8 && iterations > 1) {
+        console.warn(
+          `[Agent] Token budget warning: ${Math.round(turnTokensUsed / maxTokensPerTurn * 100)}% ` +
+          `of turn budget used (${turnTokensUsed}/${maxTokensPerTurn})`
+        );
+      }
 
       const aiCallParams = {
         provider: this.options.provider,
@@ -1183,8 +1213,23 @@ export class Agent {
     let iterations = 0;
     let finalContent = '';
 
+    // [P2 FIX 4.2] Global token budget guard for streaming tool loop
+    const maxTokensPerTurnStream = (this.options as any).maxTokensPerTurn
+      ?? Math.floor(this.contextConfig.maxTokens * 0.6);
+    const turnStartTokensStream = this.estimatedTokens;
+
     while (iterations < (this.options.maxToolIterations || 5)) {
       iterations++;
+
+      // [P2 FIX 4.2] Token budget check
+      const streamTurnUsed = this.estimatedTokens - turnStartTokensStream;
+      if (streamTurnUsed > maxTokensPerTurnStream) {
+        console.warn(
+          `[Agent.chatStream] Token budget guard triggered: ${streamTurnUsed}/${maxTokensPerTurnStream}`
+        );
+        yield { type: 'content' as const, content: '\n\n⚠️ 处理过程中消耗了过多 Token，已提前终止。' };
+        break;
+      }
 
       const response = await callAI({
         provider: this.options.provider,

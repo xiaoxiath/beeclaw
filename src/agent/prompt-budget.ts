@@ -33,6 +33,33 @@ export const DEFAULT_PROMPT_BUDGET: PromptBudgetConfig = {
   maxExamples: 3,
 };
 
+
+/**
+ * [P2 FIX 4.1] Named layer priority constants.
+ * Higher value = higher priority (kept first during trimming).
+ * Extracted from hardcoded magic numbers for configurability.
+ */
+export const LAYER_PRIORITIES = {
+  /** Core system prompt — never trimmed */
+  CORE: 100,
+  /** Runtime context (date/time/weather) — critical for temporal awareness */
+  RUNTIME: 95,
+  /** Personality traits from persona system */
+  TRAITS: 90,
+  /** SOUL.md identity definition */
+  SOUL: 85,
+  /** User context from memory */
+  USER_CONTEXT: 80,
+  /** Accumulated facts and lessons */
+  FACTS: 70,
+  /** Available skill summaries */
+  SKILLS: 65,
+  /** Worked examples — first to be trimmed */
+  EXAMPLES: 10,
+} as const;
+
+export type LayerPriorityKey = keyof typeof LAYER_PRIORITIES;
+
 export interface PromptLayer {
   /** Layer name for logging */
   name: string;

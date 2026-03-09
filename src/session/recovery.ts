@@ -14,7 +14,7 @@
  *   Bug #7: Recovery attempt limit (MAX_RECOVERY_ATTEMPTS)
  */
 
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { Session } from './index';
 import { confirmDelivery, MAX_RECOVERY_ATTEMPTS } from './index';
@@ -89,9 +89,7 @@ export async function detectUnansweredSessions(
 
     for (const file of files) {
       try {
-        const content = await import('fs').then(fs =>
-          fs.readFileSync(join(sessionsPath, file), 'utf-8')
-        );
+        const content = readFileSync(join(sessionsPath, file), 'utf-8');
         const session = JSON.parse(content) as Session;
         sessions.push(session);
       } catch (error) {

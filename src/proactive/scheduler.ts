@@ -4,7 +4,7 @@
  * Manages scheduled tasks and cron-based execution
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { getConfig } from '../config';
 import type {
@@ -29,9 +29,15 @@ export class Scheduler {
   // Execution callback (set by daemon)
   private executionCallback: ScheduleCallback | null = null;
 
+  /** [P2 FIX 4.5] Directory for PID-based execution lock files */
+  private lockDir: string;
+  /** [P2 FIX 4.5] Stale lock timeout in ms (120 seconds — generous for long-running tasks) */
+  private static readonly LOCK_STALE_MS = 120_000;
+
   constructor(basePath: string) {
     this.basePath = basePath;
     this.storagePath = join(basePath, 'schedules.json');
+    this.lockDir = join(basePath, 'locks');
     this.storage = {
       schedules: {},
       patterns: {},
@@ -49,18 +55,93 @@ export class Scheduler {
     return this.executingSchedules.has(scheduleId);
   }
 
-  // Acquire memory lock
+  // [P2 FIX 4.5] Acquire execution lock (memory + file-based PID lock)
   acquireExecutionLock(scheduleId: string): boolean {
     if (this.executingSchedules.has(scheduleId)) {
-      return false; // Already locked
+      return false; // Already locked in memory
     }
+
+    // File-based PID lock for cross-process safety
+    const lockPath = join(this.lockDir, `${scheduleId}.lock`);
+    try {
+      // Ensure lock directory exists
+      if (!existsSync(this.lockDir)) {
+        mkdirSync(this.lockDir, { recursive: true });
+      }
+
+      // Check for existing lock file
+      if (existsSync(lockPath)) {
+        try {
+          const lockData = JSON.parse(readFileSync(lockPath, 'utf-8'));
+          const age = Date.now() - (lockData.ts || 0);
+          const holderPid = lockData.pid;
+
+          // Check if holding process is still alive
+          let holderAlive = false;
+          try {
+            process.kill(holderPid, 0); // Signal 0 = check existence
+            holderAlive = true;
+          } catch {
+            holderAlive = false;
+          }
+
+          if (holderAlive && age < Scheduler.LOCK_STALE_MS) {
+            console.log(
+              `[Scheduler] Lock for "${scheduleId}" held by PID ${holderPid} ` +
+              `(age: ${Math.round(age / 1000)}s) — skipping`
+            );
+            return false; // Lock is valid
+          }
+
+          // Stale lock — clean up
+          console.log(
+            `[Scheduler] Clearing stale lock for "${scheduleId}" ` +
+            `(PID ${holderPid} alive=${holderAlive}, age=${Math.round(age / 1000)}s)`
+          );
+          unlinkSync(lockPath);
+        } catch {
+          // Corrupted lock file — remove it
+          try { unlinkSync(lockPath); } catch { /* ignore */ }
+        }
+      }
+
+      // Write new lock file atomically
+      writeFileSync(lockPath, JSON.stringify({
+        pid: process.pid,
+        ts: Date.now(),
+        scheduleId,
+      }), { flag: 'wx' }); // wx = exclusive create (fails if file exists)
+    } catch (err: any) {
+      if (err?.code === 'EEXIST') {
+        // Race condition: another process created the lock between our check and write
+        console.log(`[Scheduler] Lock race for "${scheduleId}" — another process won`);
+        return false;
+      }
+      // Non-critical: fall back to memory-only lock
+      console.warn(`[Scheduler] File lock failed for "${scheduleId}":`, err?.message);
+    }
+
     this.executingSchedules.add(scheduleId);
     return true;
   }
 
-  // Release memory lock
+  // [P2 FIX 4.5] Release execution lock (memory + file)
   releaseExecutionLock(scheduleId: string): void {
     this.executingSchedules.delete(scheduleId);
+
+    // Clean up file lock
+    const lockPath = join(this.lockDir, `${scheduleId}.lock`);
+    try {
+      if (existsSync(lockPath)) {
+        const lockData = JSON.parse(readFileSync(lockPath, 'utf-8'));
+        // Only delete if we own the lock
+        if (lockData.pid === process.pid) {
+          unlinkSync(lockPath);
+        }
+      }
+    } catch {
+      // Non-critical: lock file will be cleaned up as stale
+    }
   }
 
   // Initialize scheduler storage
@@ -343,7 +424,18 @@ export class Scheduler {
     for (const id of this.cronTimers.keys()) {
       this.stopScheduleTimer(id);
     }
-    // Clear all memory locks
+    // [P2 FIX 4.5] Clear memory locks and clean up own file locks
+    for (const scheduleId of this.executingSchedules) {
+      const lockPath = join(this.lockDir, `${scheduleId}.lock`);
+      try {
+        if (existsSync(lockPath)) {
+          const lockData = JSON.parse(readFileSync(lockPath, 'utf-8'));
+          if (lockData.pid === process.pid) {
+            unlinkSync(lockPath);
+          }
+        }
+      } catch { /* ignore */ }
+    }
     this.executingSchedules.clear();
   }
 

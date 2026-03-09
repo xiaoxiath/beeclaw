@@ -39,6 +39,7 @@ import type { OpenAITool, ChatMessage } from './types';
 import type { Session } from '../session';
 import {
   type PromptBudgetConfig,
+  LAYER_PRIORITIES,
   type TaggedExample,
   calculatePromptBudget,
   parseExamplesIntoTagged,
@@ -289,7 +290,7 @@ export function buildSystemPromptWithBudget(
   layers.push({
     name: 'core',
     content: basePrompt,
-    priority: 100,
+    priority: LAYER_PRIORITIES.CORE,
     trimmable: false,
   });
 
@@ -299,7 +300,7 @@ export function buildSystemPromptWithBudget(
     layers.push({
       name: 'traits',
       content: `\n---\n\n# Personality Traits\n\n${traitPrompt}`,
-      priority: 90,
+      priority: LAYER_PRIORITIES.TRAITS,
       trimmable: true,
     });
   }
@@ -309,7 +310,7 @@ export function buildSystemPromptWithBudget(
     layers.push({
       name: 'soul',
       content: `\n---\n\n# Your Identity (SOUL.md)\n\n${coreContext.soul}`,
-      priority: 85,
+      priority: LAYER_PRIORITIES.SOUL,
       trimmable: true,
     });
   }
@@ -319,7 +320,7 @@ export function buildSystemPromptWithBudget(
     layers.push({
       name: 'user-context',
       content: `\n---\n\n# About the User\n\n${coreContext.user}`,
-      priority: 80,
+      priority: LAYER_PRIORITIES.USER_CONTEXT,
       trimmable: true,
     });
   }
@@ -329,7 +330,7 @@ export function buildSystemPromptWithBudget(
     layers.push({
       name: 'facts',
       content: `\n---\n\n# User Facts & Lessons Learned\n\n${coreContext.facts}`,
-      priority: 70,
+      priority: LAYER_PRIORITIES.FACTS,
       trimmable: true,
     });
   }
@@ -339,7 +340,7 @@ export function buildSystemPromptWithBudget(
     layers.push({
       name: 'skills',
       content: `\n---\n\n# Available Skills\n\n${coreContext.skills}`,
-      priority: 65,
+      priority: LAYER_PRIORITIES.SKILLS,
       trimmable: true,
     });
   }
@@ -365,7 +366,7 @@ export function buildSystemPromptWithBudget(
         layers.push({
           name: 'examples',
           content: `\n---\n\n# Worked Examples\n\n${examplesContent}`,
-          priority: 10,  // Lowest priority — first to be dropped
+          priority: LAYER_PRIORITIES.EXAMPLES,  // Lowest priority — first to be dropped
           trimmable: true,
         });
       }
@@ -404,7 +405,7 @@ export function buildSystemPromptWithBudget(
       // Runtime context contains current date/time which is critical for
       // time-sensitive searches and skill executions. Dropping it causes
       // the agent to lose temporal awareness and return stale data.
-      priority: 95,
+      priority: LAYER_PRIORITIES.RUNTIME,
       trimmable: false,
     });
   }

@@ -4,7 +4,7 @@
  * 配置文件监听和热更新功能
  */
 
-import { watch, type FSWatcher } from 'fs';
+import { watch, existsSync, type FSWatcher } from 'fs';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { AppConfigSchema, type AppConfig } from './schema';
@@ -28,7 +28,29 @@ export interface ConfigWatcherOptions {
   notifyHooks?: boolean;
 }
 
-export type ConfigChangeListener = (change: ConfigChange) => void;
+/**
+ * [P2 FIX 4.4] Structured diff for config hot reload.
+ * Provides a comprehensive view of all changes in a single reload event.
+ */
+export interface ConfigDiff {
+  /** Keys that were added (not present in old config) */
+  added: ConfigChange[];
+  /** Keys that were removed (not present in new config) */
+  removed: ConfigChange[];
+  /** Keys whose values changed */
+  modified: ConfigChange[];
+  /** Total number of changes */
+  totalChanges: number;
+  /** Timestamp of the reload event */
+  reloadedAt: string;
+  /** Old config snapshot (for rollback reference) */
+  previousConfig: AppConfig | null;
+}
+
+/**
+ * [P2 FIX 4.4] Enhanced listener receives both individual change and full diff context.
+ */
+export type ConfigChangeListener = (change: ConfigChange, diff?: ConfigDiff) => void;
 
 // ============================================================================
 // 配置观察器
@@ -162,22 +184,30 @@ export class ConfigWatcher {
       // 更新配置
       this.currentConfig = newConfig;
 
-      // 通知监听器
+      // [P2 FIX 4.4] Build structured diff
+      const diff = this.buildDiff(oldConfig, newConfig, changes);
+
+      logger.info(
+        `[ConfigWatcher] Config reloaded: ${diff.totalChanges} change(s) ` +
+        `(+${diff.added.length} ~${diff.modified.length} -${diff.removed.length})`
+      );
+
+      // 通知监听器 (with diff context)
       for (const change of changes) {
         logger.info(`[ConfigWatcher] Config changed: ${change.key}`);
 
-        // 调用监听器
+        // [P2 FIX 4.4] Pass diff as second argument to listeners
         for (const listener of this.listeners) {
           try {
-            listener(change);
+            listener(change, diff);
           } catch (error) {
             logger.error('[ConfigWatcher] Listener error:', error);
           }
         }
 
-        // 触发钩子
+        // 触发钩子 (pass diff as part of hook context)
         if (this.options.notifyHooks) {
-          await this.notifyHooks(change);
+          await this.notifyHooks(change, diff);
         }
       }
     } catch (error) {
@@ -210,6 +240,41 @@ export class ConfigWatcher {
     this.compareObjects('', oldConfig, newConfig, changes, timestamp);
 
     return changes;
+  }
+
+  /**
+   * [P2 FIX 4.4] Build structured diff from changes
+   */
+  private buildDiff(
+    oldConfig: AppConfig | null,
+    newConfig: AppConfig,
+    changes: ConfigChange[],
+  ): ConfigDiff {
+    const added: ConfigChange[] = [];
+    const removed: ConfigChange[] = [];
+    const modified: ConfigChange[] = [];
+
+    for (const change of changes) {
+      if (change.key === '*') {
+        // Full reload (first load)
+        added.push(change);
+      } else if (change.oldValue === undefined) {
+        added.push(change);
+      } else if (change.newValue === undefined) {
+        removed.push(change);
+      } else {
+        modified.push(change);
+      }
+    }
+
+    return {
+      added,
+      removed,
+      modified,
+      totalChanges: changes.length,
+      reloadedAt: new Date().toISOString(),
+      previousConfig: oldConfig,
+    };
   }
 
   /**
@@ -259,11 +324,12 @@ export class ConfigWatcher {
   /**
    * 通知钩子系统
    */
-  private async notifyHooks(change: ConfigChange): Promise<void> {
+  private async notifyHooks(change: ConfigChange, diff?: ConfigDiff): Promise<void> {
     try {
       const hookRunner = getHookRunner();
       await hookRunner.runParallel('config_changed' as any, change, {
         timestamp: change.timestamp,
+        diff,  // [P2 FIX 4.4] Include full diff in hook context
       });
     } catch (error) {
       logger.warn('[ConfigWatcher] Failed to notify hooks:', error);
@@ -295,7 +361,6 @@ export class ConfigManager {
     for (const file of configFiles) {
       const path = join(basePath, file);
       try {
-        const { existsSync } = await import('fs');
         if (existsSync(path)) {
           foundPath = path;
           break;

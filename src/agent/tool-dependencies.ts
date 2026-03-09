@@ -110,10 +110,124 @@ const TOOL_DEPENDENCIES: Record<string, ToolDependencyConfig> = {
   state_unlock: { mode: 'sequential', hasSideEffects: true }, // Releases lock
 };
 
+// ---------------------------------------------------------------------------
+// [P2 FIX 4.8] Runtime Dependency Overrides
+// ---------------------------------------------------------------------------
+
 /**
- * Get the dependency config for a tool
+ * [P2 FIX 4.8] Runtime override registry.
+ * Allows plugins, config, and application logic to override tool dependency
+ * configurations without modifying the static defaults.
+ *
+ * Overrides take precedence over TOOL_DEPENDENCIES.
+ */
+const runtimeOverrides: Map<string, ToolDependencyConfig> = new Map();
+
+/**
+ * [P2 FIX 4.8] Pattern-based override rules.
+ * Matches tool names by prefix/regex for bulk configuration.
+ */
+const patternOverrides: Array<{
+  pattern: RegExp;
+  config: Partial<ToolDependencyConfig>;
+  source: string;
+}> = [];
+
+/**
+ * [P2 FIX 4.8] Register a runtime override for a specific tool.
+ *
+ * @param toolName - Exact tool name
+ * @param config - Override configuration (merged with defaults)
+ * @param source - Identifier for who registered this (for debugging)
+ */
+export function registerToolDependencyOverride(
+  toolName: string,
+  config: Partial<ToolDependencyConfig>,
+  source: string = 'unknown',
+): void {
+  const existing = TOOL_DEPENDENCIES[toolName] || { mode: 'parallel' as const, hasSideEffects: false };
+  const merged: ToolDependencyConfig = { ...existing, ...config };
+  runtimeOverrides.set(toolName, merged);
+  console.log(`[ToolDeps] Override registered for "${toolName}" by ${source}: mode=${merged.mode}`);
+}
+
+/**
+ * [P2 FIX 4.8] Register a pattern-based override (e.g., all MCP tools as sequential).
+ *
+ * @param pattern - RegExp to match tool names
+ * @param config - Partial config to apply to matching tools
+ * @param source - Identifier for who registered this
+ */
+export function registerToolDependencyPattern(
+  pattern: RegExp,
+  config: Partial<ToolDependencyConfig>,
+  source: string = 'unknown',
+): void {
+  patternOverrides.push({ pattern, config, source });
+  console.log(`[ToolDeps] Pattern override registered: ${pattern.source} by ${source}`);
+}
+
+/**
+ * [P2 FIX 4.8] Remove a runtime override for a specific tool.
+ */
+export function removeToolDependencyOverride(toolName: string): boolean {
+  return runtimeOverrides.delete(toolName);
+}
+
+/**
+ * [P2 FIX 4.8] Clear all runtime overrides (useful for testing).
+ */
+export function clearToolDependencyOverrides(): void {
+  runtimeOverrides.clear();
+  patternOverrides.length = 0;
+}
+
+/**
+ * [P2 FIX 4.8] Get all active overrides (for debugging/inspection).
+ */
+export function getToolDependencyOverrides(): {
+  exact: Record<string, ToolDependencyConfig>;
+  patterns: Array<{ pattern: string; config: Partial<ToolDependencyConfig>; source: string }>;
+} {
+  const exact: Record<string, ToolDependencyConfig> = {};
+  for (const [name, config] of runtimeOverrides) {
+    exact[name] = config;
+  }
+  return {
+    exact,
+    patterns: patternOverrides.map(p => ({
+      pattern: p.pattern.source,
+      config: p.config,
+      source: p.source,
+    })),
+  };
+}
+
+/**
+ * Get the dependency config for a tool.
+ *
+ * [P2 FIX 4.8] Resolution order:
+ * 1. Exact runtime override (highest priority)
+ * 2. Pattern-based override (first matching pattern)
+ * 3. Static TOOL_DEPENDENCIES
+ * 4. Default: { mode: 'parallel', hasSideEffects: false }
  */
 export function getToolDependency(toolName: string): ToolDependencyConfig {
+  // 1. Check exact runtime override
+  const exactOverride = runtimeOverrides.get(toolName);
+  if (exactOverride) {
+    return exactOverride;
+  }
+
+  // 2. Check pattern-based overrides
+  for (const { pattern, config } of patternOverrides) {
+    if (pattern.test(toolName)) {
+      const base = TOOL_DEPENDENCIES[toolName] || { mode: 'parallel' as const, hasSideEffects: false };
+      return { ...base, ...config };
+    }
+  }
+
+  // 3. Static configuration
   return TOOL_DEPENDENCIES[toolName] || { mode: 'parallel', hasSideEffects: false };
 }
 

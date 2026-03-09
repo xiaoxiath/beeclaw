@@ -8,6 +8,24 @@
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { FeishuAuthConfig } from './types';
 import { logger } from '../utils/logger';
+import type {
+  FeishuUserId,
+  FeishuOperator,
+  FeishuSender,
+  FeishuMember,
+  BaseFeishuEvent,
+  FeishuReceiveIdType,
+} from './event-types';
+
+// [P2 FIX 4.7] Re-export shared types for backward compatibility
+export type {
+  FeishuUserId,
+  FeishuOperator,
+  FeishuSender,
+  FeishuMember,
+  BaseFeishuEvent,
+  FeishuReceiveIdType,
+} from './event-types';
 
 export interface FeishuWSConfig extends FeishuAuthConfig {
   loggerLevel?: 'debug' | 'info' | 'warn' | 'error';
@@ -17,29 +35,11 @@ export interface FeishuWSConfig extends FeishuAuthConfig {
 // Event Data Types
 // ============================================================
 
-// Base event structure
-export interface BaseEventData {
-  event_id?: string;
-  token?: string;
-  create_time?: string;
-  event_type?: string;
-  tenant_key?: string;
-  ts?: string;
-  uuid?: string;
-  type?: string;
-  app_id?: string;
-}
+// [P2 FIX 4.7] BaseEventData now extends shared BaseFeishuEvent
+export interface BaseEventData extends BaseFeishuEvent {}
 
-// Sender info
-export interface SenderInfo {
-  sender_id?: {
-    union_id?: string;
-    user_id?: string;
-    open_id?: string;
-  };
-  sender_type?: string;
-  tenant_key?: string;
-}
+// [P2 FIX 4.7] SenderInfo now extends shared FeishuSender
+export interface SenderInfo extends FeishuSender {}
 
 // Message receive event (im.message.receive_v1)
 export interface MessageEventData extends BaseEventData {
@@ -433,8 +433,8 @@ export class FeishuWSClient {
   private messageHandlers: MessageHandler[] = [];
   private messageReadHandlers: MessageReadHandler[] = [];
   private messageRecalledHandlers: MessageRecalledHandler[] = [];
-  private reactionCreatedHandlers: ReactionCreatedHandler[] = [];
-  private reactionDeletedHandlers: ReactionDeletedHandler[] = [];
+  private reactionCreatedHandlers: ReactionHandler[] = [];
+  private reactionDeletedHandlers: ReactionHandler[] = [];
   private chatDisbandedHandlers: ChatDisbandedHandler[] = [];
   private chatUpdatedHandlers: ChatUpdatedHandler[] = [];
   private chatMemberAddedHandlers: ChatMemberAddedHandler[] = [];
@@ -447,21 +447,6 @@ export class FeishuWSClient {
   // Track last active chat for proactive messaging
   private _lastActiveChatId: string | null = null;
   private _lastActiveUserId: string | null = null;
-
-  // Event handlers
-  private messageHandlers: MessageHandler[] = [];
-  private messageReadHandlers: MessageReadHandler[] = [];
-  private messageRecalledHandlers: MessageRecalledHandler[] = [];
-  private reactionCreatedHandlers: ReactionHandler[] = [];
-  private reactionDeletedHandlers: ReactionHandler[] = [];
-  private chatDisbandedHandlers: ChatDisbandedHandler[] = [];
-  private chatUpdatedHandlers: ChatUpdatedHandler[] = [];
-  private chatMemberAddedHandlers: ChatMemberAddedHandler[] = [];
-  private chatMemberDeletedHandlers: ChatMemberDeletedHandler[] = [];
-  private botAddedHandlers: BotAddedHandler[] = [];
-  private botDeletedHandlers: BotDeletedHandler[] = [];
-  private p2pChatCreatedHandlers: P2PChatCreatedHandler[] = [];
-  private p2pChatEnteredHandlers: P2PChatEnteredHandler[] = [];
 
   constructor(config: FeishuWSConfig) {
     this.config = config;
