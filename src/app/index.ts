@@ -270,10 +270,11 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
   // 10.6. [P3 Enhancement] Initialize P3 modules (config, observability, vector store, etc.)
   try {
-    // Initialize unified config center
+    // Initialize unified config center with preset and config file
     const { initializeConfig: initP3Config } = await import('../utils/config-center');
     const p3ConfigResult = initP3Config({
-      // configFile: './beeclaw.config.json', // Optional: external config file
+      preset: 'auto', // Auto-detect from NODE_ENV or BEECLAW_ENV
+      configFile: './beeclaw.config.json', // Optional: user config file
       envPrefix: 'BEECLAW',
       overrides: {
         agent: {
@@ -290,21 +291,44 @@ export async function initApp(options: InitOptions = {}): Promise<{
     if (p3ConfigResult.errors.length > 0) {
       logger.warn('[App] P3 config validation issues:', p3ConfigResult.errors);
     }
-    logger.info(`[App] P3 config center initialized (${p3ConfigResult.envLoaded} env vars loaded)`);
+
+    const envInfo = p3ConfigResult.presetLoaded
+      ? ` (preset: ${p3ConfigResult.presetLoaded})`
+      : '';
+    logger.info(`[App] P3 config center initialized${envInfo} (${p3ConfigResult.envLoaded} env vars loaded)`);
 
     // Initialize observability framework
     const { Observability, createObservabilityHooks } = await import('../utils/observability');
+    const { config: p3Config } = await import('../utils/config-center');
+
     Observability.configure({
-      level: config.logging.level === 'debug' ? 'debug' : 'info',
-      structured: config.logging.format === 'json',
-      tracingEnabled: true,
-      metricsEnabled: true,
+      level: p3Config.get('observability.logLevel') || config.logging.level,
+      structured: p3Config.get('observability.structuredLogging') || false,
+      tracingEnabled: p3Config.get('observability.tracingEnabled') ?? true,
+      metricsEnabled: p3Config.get('observability.metricsEnabled') ?? true,
     });
 
     // Register observability hooks with the existing hook runner
     const obsHooks = createObservabilityHooks();
     const hookRunner = getHookRunner();
-    // Note: Hooks can be registered here or in the config.hooks section
+
+    // Register all observability hooks
+    if (obsHooks && typeof obsHooks === 'object') {
+      const hookEntries = Object.entries(obsHooks);
+      logger.info(`[App] Registering ${hookEntries.length} observability hooks`);
+
+      for (const [hookName, hookHandler] of hookEntries) {
+        try {
+          // Register hook if the hookRunner supports it
+          if (typeof hookRunner.register === 'function') {
+            hookRunner.register(hookName as any, hookHandler as any);
+          }
+        } catch (error) {
+          logger.debug(`[App] Failed to register hook ${hookName}:`, error);
+        }
+      }
+    }
+
     logger.info('[App] P3 observability framework initialized');
 
     // Initialize vector store (optional - requires embedding provider)

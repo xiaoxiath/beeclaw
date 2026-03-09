@@ -1,0 +1,86 @@
+{
+  "env": "development",
+  "agent": {
+    "defaultProvider": "openai",
+    "defaultModel": "gpt-4",
+    "maxIterations": 25,
+    "contextWindowTokens": 128000,
+    "promptTier": "default",
+    "locale": "zh-CN",
+    "timezone": "Asia/Shanghai",
+    "streamEnabled": true
+  },
+  "memory": {
+    "storageType": "filesystem",
+    "basePath": "./data/memory",
+    "indexFileName": "index.json",
+    "categories": ["conversations", "facts", "decisions", "skills", "summaries"],
+    "defaultFactFiles": ["preferences.md"],
+    "categoryTitles": {
+      "user": "用户画像",
+      "preferences": "偏好设置",
+      "events": "重要事件",
+      "investments": "投资持仓",
+      "lessons": "经验教训"
+    }
+  },
+  "retention": {
+    "conversations": "90d",
+    "facts": "forever",
+    "decisions": "forever",
+    "skills": "forever",
+    "summaries": "365d"
+  },
+  "compression": {
+    "autoCompress": true,
+    "compressAfterDays": 7,
+    "runSchedule": "0 3 * * *",
+    "keepOriginalDays": 7,
+    "archiveAfterDays": 90
+  },
+  "scoring": {
+    "weights": {
+      "recency": 0.3,
+      "frequency": 0.2,
+      "relevance": 0.3,
+      "uniqueness": 0.15,
+      "userMarked": 0.05
+    },
+    "thresholds": {
+      "keep": 60,
+      "summarize": 40,
+      "archive": 20
+    },
+    "goalKeywords": ["goal", "objective", "target", "milestone", "progress", "complete"],
+    "deduplicationThreshold": 0.7
+  },
+  "indexer": {
+    "chinesePatterns": [
+      "[\\u4e00-\\u9fff]{2,8}"
+    ],
+    "customDictionary": {},
+    "englishStopWords": [
+      "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+      "have", "has", "had", "do", "does", "did", "will", "would", "shall",
+      "should", "may", "might", "must", "can", "could", "of", "at", "by",
+      "for", "with", "about", "against", "between", "through", "during",
+      "before", "after", "above", "below", "to", "from", "up", "down",
+      "in", "out", "on", "off", "over", "under", "again", "further",
+      "then", "once", "and", "but", "or", "nor", "not", "so", "yet"
+    ],
+    "maxKeywords": 30
+  },
+  "search": {
+    "keywordWeight": 0.4,
+    "vectorWeight": 0.4,
+    "recencyWeight": 0.2,
+    "maxResults": 10,
+    "minRelevanceScore": 0.1
+  },
+  "observability": {
+    "logLevel": "info",
+    "structuredLogging": false,
+    "tracingEnabled": true,
+    "metricsEnabled": true
+  }
+}
