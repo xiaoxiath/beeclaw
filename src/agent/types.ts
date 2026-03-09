@@ -49,12 +49,42 @@ export type MultimodalContent = TextContent | ImageContent;
 // Chat message types
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
+/**
+ * [P0 FIX] Added `metadata` field to ChatMessage to replace unsafe `(msg as any)._compressed`.
+ * 
+ * The metadata field provides type-safe storage for internal message state
+ * that should NOT be sent to the LLM API. Call `stripMessageMetadata()` before
+ * sending messages to any AI provider.
+ */
+export interface MessageMetadata {
+  /** Whether this message has been compressed to save context space */
+  compressed?: boolean;
+  /** Timestamp when compression occurred */
+  compressedAt?: number;
+  /** Original token count before compression */
+  originalTokenCount?: number;
+}
+
 export interface ChatMessage {
   role: ChatRole;
   content: string | MultimodalContent[];  // Support both text and multimodal
   name?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  /** Internal metadata - NOT sent to LLM. Use stripMessageMetadata() before API calls. */
+  metadata?: MessageMetadata;
+}
+
+/**
+ * Strip internal metadata from messages before sending to LLM API.
+ * Returns a new array; does not mutate the input.
+ */
+export function stripMessageMetadata(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map(msg => {
+    if (!msg.metadata) return msg;
+    const { metadata, ...clean } = msg;
+    return clean;
+  });
 }
 
 // AI response

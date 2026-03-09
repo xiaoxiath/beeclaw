@@ -222,26 +222,26 @@ describe('Memory Tools', () => {
     }
   });
 
-  test('memory_ls tool', () => {
-    const result = executeMemoryTool('memory_ls', { path: 'facts' });
+  test('memory_ls tool', async () => {
+    const result = await executeMemoryTool('memory_ls', { path: 'facts' });
     expect(result.success).toBe(true);
   });
 
-  test('memory_grep tool', () => {
-    executeMemoryTool('memory_write', { file: 'facts/preferences.md', content: '\n- Test Preference\n' });
-    const result = executeMemoryTool('memory_grep', { query: 'Test' });
+  test('memory_grep tool', async () => {
+    await executeMemoryTool('memory_write', { file: 'facts/preferences.md', content: '\n- Test Preference\n' });
+    const result = await executeMemoryTool('memory_grep', { query: 'Test' });
     expect(result.success).toBe(true);
     expect(result.data).toContain('Test');
   });
 
-  test('memory_read tool', () => {
-    const result = executeMemoryTool('memory_read', { file: 'USER.md' });
+  test('memory_read tool', async () => {
+    const result = await executeMemoryTool('memory_read', { file: 'USER.md' });
     expect(result.success).toBe(true);
     expect(result.data).toContain('USER');
   });
 
-  test('memory_write tool', () => {
-    const result = executeMemoryTool('memory_write', {
+  test('memory_write tool', async () => {
+    const result = await executeMemoryTool('memory_write', {
       file: 'facts/preferences.md',
       content: '\n- New preference\n',
       mode: 'append',
@@ -249,25 +249,25 @@ describe('Memory Tools', () => {
     expect(result.success).toBe(true);
   });
 
-  test('memory_record tool', () => {
-    const result = executeMemoryTool('memory_record', {
+  test('memory_record tool', async () => {
+    const result = await executeMemoryTool('memory_record', {
       category: 'preferences',
       fact: 'Likes dark mode',
     });
     expect(result.success).toBe(true);
 
-    const readResult = executeMemoryTool('memory_read', { file: 'facts/preferences.md' });
+    const readResult = await executeMemoryTool('memory_read', { file: 'facts/preferences.md' });
     expect(readResult.data).toContain('Likes dark mode');
   });
 
-  test('invalid tool returns error', () => {
-    const result = executeMemoryTool('invalid_tool', {});
+  test('invalid tool returns error', async () => {
+    const result = await executeMemoryTool('invalid_tool', {});
     expect(result.success).toBe(false);
     expect(result.error).toContain('Unknown tool');
   });
 
-  test('invalid params returns error', () => {
-    const result = executeMemoryTool('memory_ls', {}); // missing path
+  test('invalid params returns error', async () => {
+    const result = await executeMemoryTool('memory_ls', {}); // missing path
     expect(result.success).toBe(false);
   });
 });

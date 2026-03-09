@@ -1,7 +1,75 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, appendFileSync, readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, appendFileSync, readFileSync, renameSync, unlinkSync } from 'fs';
+import { join, dirname, resolve, sep } from 'path';
 import type { MemoryConfig, MemoryCategory, ConversationEntry, MemoryToolResult } from './types';
 import { buildFullIndex, loadIndex, saveIndex, searchIndex, type MemoryIndex } from './indexer';
+
+/**
+ * Simple file-level lock implementation using lock files.
+ * For production environments, consider using `proper-lockfile` npm package.
+ */
+class FileLock {
+  private locks: Map<string, { promise: Promise<void>; resolve: () => void }> = new Map();
+
+  async acquire(filePath: string): Promise<() => void> {
+    const normalizedPath = resolve(filePath);
+
+    // Wait for existing lock to be released
+    while (this.locks.has(normalizedPath)) {
+      await this.locks.get(normalizedPath)!.promise;
+    }
+
+    // Create new lock
+    let lockResolve: () => void;
+    const lockPromise = new Promise<void>((r) => {
+      lockResolve = r;
+    });
+
+    this.locks.set(normalizedPath, {
+      promise: lockPromise,
+      resolve: lockResolve!,
+    });
+
+    // Return release function
+    return () => {
+      const lock = this.locks.get(normalizedPath);
+      if (lock) {
+        this.locks.delete(normalizedPath);
+        lock.resolve();
+      }
+    };
+  }
+}
+
+// Global file lock instance
+const fileLock = new FileLock();
+
+/**
+ * Atomically write content to a file using write-to-temp-then-rename pattern.
+ * This prevents partial writes and data corruption.
+ */
+function atomicWriteFileSync(filePath: string, content: string, encoding: BufferEncoding = 'utf-8'): void {
+  const dir = dirname(filePath);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+
+  try {
+    writeFileSync(tempPath, content, encoding);
+    renameSync(tempPath, filePath);  // Atomic on most file systems
+  } catch (error) {
+    // Clean up temp file on failure
+    try {
+      if (existsSync(tempPath)) {
+        unlinkSync(tempPath);
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
+}
 
 export class MemoryStore {
   private basePath: string;
@@ -10,8 +78,8 @@ export class MemoryStore {
   private index: MemoryIndex | null = null;
 
   constructor(config: MemoryConfig) {
-    this.basePath = config.path;
-    this.indexPath = join(config.path, 'index.json');
+    this.basePath = resolve(config.path);
+    this.indexPath = join(this.basePath, 'index.json');
   }
 
   // Initialize memory directory structure
@@ -65,17 +133,44 @@ export class MemoryStore {
   private ensureIndexFile(): void {
     const indexPath = join(this.basePath, 'index.json');
     if (!existsSync(indexPath)) {
-      writeFileSync(indexPath, JSON.stringify({
+      atomicWriteFileSync(indexPath, JSON.stringify({
         conversations: {},
         facts: { keywords: {} },
         lastUpdated: new Date().toISOString(),
-      }, null, 2), 'utf-8');
+      }, null, 2));
     }
   }
 
   // Get base path
   getBasePath(): string {
     return this.basePath;
+  }
+
+  /**
+   * Resolve a user-provided path relative to memory base.
+   *
+   * [P0 FIX] Secure path traversal prevention:
+   * Uses path.resolve() + prefix check instead of naive string replacement.
+   * This prevents all known path traversal attacks including:
+   *   - Simple: ../../../etc/passwd
+   *   - Encoded: ....// (which becomes ../ after naive replace)
+   *   - Null byte: path%00.md (handled by resolve normalization)
+   *   - Absolute paths: /etc/passwd
+   */
+  private resolvePath(inputPath: string): string {
+    // Strip leading slashes to prevent absolute path injection
+    const stripped = inputPath.replace(/^[/\\]+/, '');
+
+    // Resolve to absolute path under basePath
+    const resolved = resolve(this.basePath, stripped);
+
+    // Verify the resolved path is still under basePath
+    // Must start with basePath + separator, OR be exactly basePath
+    if (resolved !== this.basePath && !resolved.startsWith(this.basePath + sep)) {
+      throw new Error(`Path traversal detected: "${inputPath}" resolves outside memory directory`);
+    }
+
+    return resolved;
   }
 
   // List directory contents
@@ -209,8 +304,15 @@ export class MemoryStore {
     }
   }
 
-  // Write to file
-  write(path: string, content: string, mode: 'append' | 'overwrite' = 'append'): MemoryToolResult {
+  /**
+   * Write to file with concurrency safety.
+   *
+   * [P0 FIX] Atomic write + in-process lock:
+   * 1. Acquires a per-file lock to prevent concurrent writes
+   * 2. Uses atomic write (temp file + rename) to prevent partial writes
+   * 3. Ensures data integrity even under concurrent session access
+   */
+  async write(path: string, content: string, mode: 'append' | 'overwrite' = 'append'): Promise<MemoryToolResult> {
     try {
       const fullPath = this.resolvePath(path);
 
@@ -220,10 +322,51 @@ export class MemoryStore {
         mkdirSync(dir, { recursive: true });
       }
 
+      // Acquire file lock for concurrent access safety
+      const release = await fileLock.acquire(fullPath);
+
+      try {
+        if (mode === 'overwrite') {
+          atomicWriteFileSync(fullPath, content);
+        } else {
+          // For append mode: read current content, append, then atomic write
+          let existingContent = '';
+          if (existsSync(fullPath)) {
+            existingContent = readFileSync(fullPath, 'utf-8');
+          }
+          atomicWriteFileSync(fullPath, existingContent + content);
+        }
+      } finally {
+        release();
+      }
+
+      return { success: true, data: `Written to ${path}` };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /**
+   * Synchronous write - for backward compatibility with existing sync callers.
+   * Uses atomic write but without lock (suitable for single-threaded init paths).
+   */
+  writeSync(path: string, content: string, mode: 'append' | 'overwrite' = 'append'): MemoryToolResult {
+    try {
+      const fullPath = this.resolvePath(path);
+
+      const dir = dirname(fullPath);
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+
       if (mode === 'overwrite') {
-        writeFileSync(fullPath, content, 'utf-8');
+        atomicWriteFileSync(fullPath, content);
       } else {
-        appendFileSync(fullPath, content, 'utf-8');
+        let existingContent = '';
+        if (existsSync(fullPath)) {
+          existingContent = readFileSync(fullPath, 'utf-8');
+        }
+        atomicWriteFileSync(fullPath, existingContent + content);
       }
 
       return { success: true, data: `Written to ${path}` };
@@ -233,7 +376,7 @@ export class MemoryStore {
   }
 
   // Record a new fact
-  record(category: 'user' | 'preferences' | 'events' | 'investments' | 'lessons', fact: string): MemoryToolResult {
+  async record(category: 'user' | 'preferences' | 'events' | 'investments' | 'lessons', fact: string): Promise<MemoryToolResult> {
     try {
       const fileName = `${category}.md`;
       const filePath = join(this.basePath, 'facts', fileName);
@@ -248,13 +391,20 @@ export class MemoryStore {
           lessons: '经验教训',
         };
         const title = titles[category] || category;
-        writeFileSync(filePath, `# ${title}\n\n`, 'utf-8');
+        atomicWriteFileSync(filePath, `# ${title}\n\n`);
       }
 
-      // Append fact with timestamp
+      // Append fact with timestamp (using locked write)
       const timestamp = new Date().toISOString().split('T')[0];
       const entry = `- ${fact} (added ${timestamp})\n`;
-      appendFileSync(filePath, entry, 'utf-8');
+
+      const release = await fileLock.acquire(filePath);
+      try {
+        const existing = readFileSync(filePath, 'utf-8');
+        atomicWriteFileSync(filePath, existing + entry);
+      } finally {
+        release();
+      }
 
       return { success: true, data: `Fact recorded in ${category}: ${fact}` };
     } catch (error) {
@@ -262,8 +412,12 @@ export class MemoryStore {
     }
   }
 
-  // Record conversation
-  recordConversation(entry: ConversationEntry): MemoryToolResult {
+  /**
+   * Record conversation entry with atomic write.
+   *
+   * [P0 FIX] Uses file lock + atomic write for concurrent safety.
+   */
+  async recordConversation(entry: ConversationEntry): Promise<MemoryToolResult> {
     try {
       const date = new Date();
       const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -276,30 +430,41 @@ export class MemoryStore {
 
       const filePath = join(dirPath, `${day}.md`);
 
-      // Create file with header if not exists
-      if (!existsSync(filePath)) {
-        writeFileSync(filePath, `# ${yearMonth}-${day}\n\n`, 'utf-8');
-      }
+      // Acquire lock for this conversation file
+      const release = await fileLock.acquire(filePath);
 
-      // Format conversation entry
-      const time = entry.timestamp.split('T')[1]?.slice(0, 5) || date.toTimeString().slice(0, 5);
-      let content = `## ${time} - ${entry.source}\n\n`;
-      content += `**用户**：${entry.user}\n\n`;
-      content += `**助手**：${entry.assistant}\n`;
+      try {
+        // Create file with header if not exists
+        let existing = '';
+        if (existsSync(filePath)) {
+          existing = readFileSync(filePath, 'utf-8');
+        } else {
+          existing = `# ${yearMonth}-${day}\n\n`;
+        }
 
-      if (entry.metadata?.decision) {
-        content += `\n**关键决策**：${entry.metadata.decision}\n`;
-      }
-      if (entry.metadata?.relatedFiles?.length) {
-        content += `\n**相关文件**：${entry.metadata.relatedFiles.join(', ')}\n`;
-      }
-      if (entry.metadata?.skillTriggered) {
-        content += `\n**技能触发**：${entry.metadata.skillTriggered}\n`;
-      }
+        // Format conversation entry
+        const time = entry.timestamp.split('T')[1]?.slice(0, 5) || date.toTimeString().slice(0, 5);
+        let content = `## ${time} - ${entry.source}\n\n`;
+        content += `**用户**：${entry.user}\n\n`;
+        content += `**助手**：${entry.assistant}\n`;
 
-      content += '\n---\n\n';
+        if (entry.metadata?.decision) {
+          content += `\n**关键决策**：${entry.metadata.decision}\n`;
+        }
+        if (entry.metadata?.relatedFiles?.length) {
+          content += `\n**相关文件**：${entry.metadata.relatedFiles.join(', ')}\n`;
+        }
+        if (entry.metadata?.skillTriggered) {
+          content += `\n**技能触发**：${entry.metadata.skillTriggered}\n`;
+        }
 
-      appendFileSync(filePath, content, 'utf-8');
+        content += '\n---\n\n';
+
+        // Atomic write: existing content + new entry
+        atomicWriteFileSync(filePath, existing + content);
+      } finally {
+        release();
+      }
 
       return { success: true, data: `Conversation recorded: ${yearMonth}/${day}.md` };
     } catch (error) {
@@ -319,12 +484,12 @@ export class MemoryStore {
 
   // Write USER.md
   writeUser(content: string): MemoryToolResult {
-    return this.write('USER.md', content, 'overwrite');
+    return this.writeSync('USER.md', content, 'overwrite');
   }
 
   // Write SOUL.md
   writeSoul(content: string): MemoryToolResult {
-    return this.write('SOUL.md', content, 'overwrite');
+    return this.writeSync('SOUL.md', content, 'overwrite');
   }
 
   // Get core memory context for AI (USER.md + SOUL.md + facts/)
@@ -414,13 +579,6 @@ export class MemoryStore {
       knowledgeKeywords: Object.keys(this.index.knowledge.keywords).length,
       lastUpdated: this.index.lastFullIndex,
     };
-  }
-
-  // Resolve path relative to memory base
-  private resolvePath(path: string): string {
-    // Prevent path traversal
-    const normalized = path.replace(/\.\./g, '').replace(/^\//, '');
-    return join(this.basePath, normalized);
   }
 }
 

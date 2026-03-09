@@ -317,7 +317,7 @@ export const memoryTools = {
 };
 
 // Tool executor
-export function executeMemoryTool(name: string, params: Record<string, unknown>): MemoryToolResult {
+export async function executeMemoryTool(name: string, params: Record<string, unknown>): Promise<MemoryToolResult> {
   const store = getMemoryStore();
 
   switch (name) {
@@ -350,7 +350,7 @@ export function executeMemoryTool(name: string, params: Record<string, unknown>)
       if (!parsed.success) {
         return { success: false, error: parsed.error.message };
       }
-      return store.write(parsed.data.file, parsed.data.content, parsed.data.mode);
+      return await store.write(parsed.data.file, parsed.data.content, parsed.data.mode);
     }
 
     case 'memory_record': {
@@ -358,7 +358,7 @@ export function executeMemoryTool(name: string, params: Record<string, unknown>)
       if (!parsed.success) {
         return { success: false, error: parsed.error.message };
       }
-      return store.record(parsed.data.category, parsed.data.fact);
+      return await store.record(parsed.data.category, parsed.data.fact);
     }
 
     case 'memory_compress': {

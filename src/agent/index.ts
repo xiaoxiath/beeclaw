@@ -1,5 +1,6 @@
 import type { AIProvider } from '../config/schema';
-import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent } from './types';
+import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent, MessageMetadata } from './types';
+import { stripMessageMetadata } from './types';
 import { callAI, executeToolCalls, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
 import { logger } from '../utils/logger';
@@ -60,6 +61,7 @@ export { getMemoryTools, getSkillTools, getToolsByCategory, TOOL_CATEGORIES } fr
 export { getBuiltinToolsForAI, executeBuiltinTool, isBuiltinTool, builtinToolNames } from '../tools';
 export { recordSkillFailure, type ReflectionTrigger } from '../evolution';
 export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
+export { stripMessageMetadata } from './types';
 export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
 export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects } from './tool-dependencies';
 
@@ -88,12 +90,10 @@ export function createDefaultToolExecutor(): ToolExecutor {
 
       // Handle skill_ensure requiring skill-creator workflow
       if (name === 'skill_ensure' && result.success === false && result.error === 'NEW_SKILL_REQUIRES_CREATOR') {
-        // Get skill store base path
         const { getSkillStore } = await import('../skills/store');
         const store = getSkillStore();
         const skillBasePath = store.getBasePath();
 
-        // Return a clear instruction to use skill-creator with path guidance
         return {
           success: false,
           error: `Creating new skill "${(result.data as any)?.skillName}" requires skill-creator workflow.
@@ -191,12 +191,10 @@ This ensures skills are in the correct location and follow quality standards.`,
           };
         }
 
-        // Ensure the result has the expected format
         if (typeof result.success === 'boolean') {
           return result as { success: boolean; data?: unknown; error?: string };
         }
 
-        // Wrap the result if it doesn't have success field
         return {
           success: true,
           data: result,
@@ -254,15 +252,15 @@ export class Agent {
   private contextConfig: ContextConfig;
   private tokenStatsConfig: TokenStatsConfig;
   private estimatedTokens: number = 0;
-  private usedSkillsInTurn: Set<string> = new Set(); // Track skills used in current turn
-  private hookRunner: ReturnType<typeof createHookRunner> | null = null; // Plugin hook runner
+  private usedSkillsInTurn: Set<string> = new Set();
+  private hookRunner: ReturnType<typeof createHookRunner> | null = null;
 
   constructor(options: AgentOptions & {
     contextConfig?: Partial<ContextConfig>;
     tokenStatsConfig?: Partial<TokenStatsConfig>;
   }) {
     this.options = {
-      maxToolIterations: 30,  // Increased from 10 to support complex workflows like news aggregation
+      maxToolIterations: 30,
       ...options,
     };
     this.toolExecutor = options.toolExecutor || createDefaultToolExecutor();
@@ -291,7 +289,6 @@ export class Agent {
         timestamp: new Date().toISOString(),
       });
 
-      // Use resolved model/provider if provided
       if (modelResolution?.model) {
         resolvedModel = modelResolution.model;
       }
@@ -300,11 +297,9 @@ export class Agent {
       }
     }
 
-    // Update options with resolved model/provider
     this.options.model = resolvedModel;
     this.options.provider = resolvedProvider!;
 
-    // Calculate optimal context config based on model and response tokens
     this.contextConfig = calculateContextConfig(
       resolvedModel,
       options.maxTokens,
@@ -313,7 +308,6 @@ export class Agent {
 
     this.tokenStatsConfig = { ...DEFAULT_TOKEN_STATS_CONFIG, ...options.tokenStatsConfig };
 
-    // Initialize with system prompt
     if (options.systemPrompt) {
       this.messages.push({
         role: 'system',
@@ -324,7 +318,6 @@ export class Agent {
 
     // Trigger before_agent_start hook (async, fire-and-forget)
     if (this.hookRunner) {
-      // Use void promise to avoid blocking constructor
       Promise.resolve().then(() => {
         this.hookRunner?.runBeforeAgentStart({
           provider: this.options.provider?.type || 'unknown',
@@ -355,9 +348,8 @@ export class Agent {
   private async buildSystemPromptWithHooks(
     basePrompt: string,
     coreContext?: { user: string; soul: string; facts?: string; skills?: string },
-    sessionContext?: Session
+    sessionContext?: any
   ): Promise<string> {
-    // Trigger before_prompt_build hook
     if (this.hookRunner) {
       const modifiedContext = await this.hookRunner.runBeforePromptBuild({
         basePrompt,
@@ -366,7 +358,6 @@ export class Agent {
         timestamp: new Date().toISOString(),
       });
 
-      // Use modified context if returned
       if (modifiedContext) {
         basePrompt = modifiedContext.basePrompt || basePrompt;
         coreContext = modifiedContext.coreContext || coreContext;
@@ -374,17 +365,15 @@ export class Agent {
       }
     }
 
-    // Build the prompt
     return buildSystemPrompt(basePrompt, coreContext, sessionContext);
   }
 
-  // Refresh memory context (reload facts/*.md and skills)
+  // Refresh memory context
   refreshMemory(): void {
     try {
       const memoryStore = getMemoryStore();
       const coreContext = memoryStore.getCoreContext();
 
-      // Add available skills to context (OpenClaw-style)
       let skillsPrompt = '';
       try {
         const skillStore = getSkillStore();
@@ -407,7 +396,6 @@ export class Agent {
         skills: skillsPrompt,
       };
 
-      // Trigger before_prompt_build hook (async, but we don't wait for it in sync context)
       if (this.hookRunner) {
         this.hookRunner.runBeforePromptBuild({
           basePrompt: this.baseSystemPrompt,
@@ -420,7 +408,6 @@ export class Agent {
 
       const freshPrompt = buildSystemPrompt(this.baseSystemPrompt, contextWithSkills);
 
-      // Find and update the system message
       const systemIndex = this.messages.findIndex(m => m.role === 'system');
       if (systemIndex >= 0) {
         const oldTokens = estimateMessageTokens(this.messages[systemIndex]);
@@ -441,7 +428,7 @@ export class Agent {
     }
   }
 
-  // Refresh time context in system message (called before each chat)
+  // Refresh time context in system message
   refreshTime(): void {
     const systemIndex = this.messages.findIndex(m => m.role === 'system');
     if (systemIndex < 0) return;
@@ -449,11 +436,7 @@ export class Agent {
     const systemContent = this.messages[systemIndex].content;
     if (typeof systemContent !== 'string') return;
 
-    // Generate fresh time context
     const newTimeContext = getCurrentTimeContext();
-
-    // Replace the existing time context block
-    // Pattern matches "# Current Context" through the "---" separator
     const timeContextPattern = /# Current Context\n\n\*\*Date\*\*:.*?\n\*\*Time\*\*:.*?\n\*\*Timezone\*\*:.*?\n\n---/s;
 
     if (timeContextPattern.test(systemContent)) {
@@ -469,11 +452,17 @@ export class Agent {
     return [...this.messages];
   }
 
+  /**
+   * Get messages ready for LLM API call (with metadata stripped).
+   * [P0 FIX] Use this instead of raw this.messages when calling AI providers.
+   */
+  private getMessagesForAPI(): ChatMessage[] {
+    return stripMessageMetadata(this.messages);
+  }
+
   // Clear conversation history (keep system prompt)
   clearHistory(): void {
-    // Trigger before_reset hook
     if (this.hookRunner) {
-      // Use synchronous trigger for reset operation
       this.hookRunner.runBeforeReset({
         messageCount: this.messages.length,
         tokenCount: this.estimatedTokens,
@@ -498,7 +487,12 @@ export class Agent {
     this.trimContextIfNeeded();
   }
 
-  // Trim context if exceeding token limit
+  /**
+   * Trim context if exceeding token limit.
+   *
+   * [P0 FIX] Uses `metadata.compressed` instead of `(msg as any)._compressed`
+   * for type-safe compression tracking.
+   */
   private trimContextIfNeeded(): void {
     const threshold = this.contextConfig.maxTokens * this.contextConfig.compressionThreshold;
 
@@ -508,16 +502,12 @@ export class Agent {
 
     console.log(`[Agent] Context compression triggered: ${this.estimatedTokens} tokens > ${threshold} threshold`);
 
-    // Find system message index
     const systemIndex = this.messages.findIndex(m => m.role === 'system');
-
-    // Messages to potentially compress (exclude system and recent)
     const startIndex = systemIndex >= 0 ? systemIndex + 1 : 0;
     const keepRecent = this.contextConfig.keepRecent;
     const endIndex = this.messages.length - keepRecent;
 
     if (endIndex <= startIndex) {
-      // Not enough messages to compress, just trim oldest
       if (startIndex < this.messages.length - 2) {
         const removed = this.messages.splice(startIndex, 1);
         this.estimatedTokens -= estimateMessageTokens(removed[0]);
@@ -526,33 +516,41 @@ export class Agent {
       return;
     }
 
-    // Compress middle messages
     let tokensFreed = 0;
     for (let i = startIndex; i < endIndex && this.estimatedTokens > threshold; i++) {
       const msg = this.messages[i];
 
-      // Skip if already compressed or is critical
-      if ((msg as any)._compressed) continue;
+      // [P0 FIX] Type-safe compressed check via metadata
+      if (msg.metadata?.compressed) continue;
 
       const originalTokens = estimateMessageTokens(msg);
       let compressed = false;
 
-      // Compress tool results (only if content is string)
       if (msg.role === 'tool' && msg.content && typeof msg.content === 'string') {
         const compressedContent = compressToolResult(msg.content);
         if (compressedContent !== msg.content) {
           msg.content = compressedContent;
-          (msg as any)._compressed = true;
+          // [P0 FIX] Type-safe metadata instead of (msg as any)._compressed
+          msg.metadata = {
+            ...msg.metadata,
+            compressed: true,
+            compressedAt: Date.now(),
+            originalTokenCount: originalTokens,
+          };
           compressed = true;
         }
       }
 
-      // Compress assistant messages with tool calls (only if content is string)
       if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && typeof msg.content === 'string') {
         const compressedContent = compressAssistantMessage(msg.content || '', msg.tool_calls);
         if (compressedContent !== msg.content) {
           msg.content = compressedContent;
-          (msg as any)._compressed = true;
+          msg.metadata = {
+            ...msg.metadata,
+            compressed: true,
+            compressedAt: Date.now(),
+            originalTokenCount: originalTokens,
+          };
           compressed = true;
         }
       }
@@ -564,7 +562,6 @@ export class Agent {
       }
     }
 
-    // If still over threshold, remove oldest non-system messages
     while (this.estimatedTokens > this.contextConfig.maxTokens * 0.9 && this.messages.length > keepRecent + 1) {
       const removeIndex = systemIndex >= 0 ? 1 : 0;
       if (removeIndex < this.messages.length - keepRecent) {
@@ -584,7 +581,6 @@ export class Agent {
 
   /**
    * Compress old messages using LLM for intelligent summarization
-   * This is called proactively when context grows large
    */
   async compressContextWithLLM(): Promise<CompressionResult> {
     if (!this.options.provider) {
@@ -592,7 +588,7 @@ export class Agent {
     }
 
     const systemIndex = this.messages.findIndex(m => m.role === 'system');
-    const keepRecent = 8; // Keep more recent messages for LLM compression
+    const keepRecent = 8;
     const startIndex = systemIndex >= 0 ? systemIndex + 1 : 0;
     const endIndex = this.messages.length - keepRecent;
 
@@ -606,7 +602,6 @@ export class Agent {
 
     console.log(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
 
-    // Trigger before_compaction hook
     if (this.hookRunner) {
       await this.hookRunner.runBeforeCompaction({
         oldMessages,
@@ -625,20 +620,17 @@ export class Agent {
         {
           maxTokens: this.contextConfig.maxTokens,
           currentTokens: this.estimatedTokens,
-          config: this.options.compressionConfig,  // Use configured model
+          config: this.options.compressionConfig,
         }
       );
 
       if (result.summary) {
-        // Update compressed summary
         this.compressedSummary = this.compressedSummary
           ? `${this.compressedSummary}\n\n---\n${result.summary}`
           : result.summary;
 
-        // Rebuild messages: system + summary + recent
         const newMessages: ChatMessage[] = [];
         if (systemMessage) {
-          // Update system message to include summary
           newMessages.push({
             ...systemMessage,
             content: systemMessage.content + `\n\n## 历史对话摘要\n${this.compressedSummary}`,
@@ -646,7 +638,6 @@ export class Agent {
         }
         newMessages.push(...recentMessages);
 
-        // Calculate new token count
         const oldTokens = this.estimatedTokens;
         this.messages = newMessages;
         this.estimatedTokens = estimateTotalTokens(newMessages);
@@ -656,7 +647,6 @@ export class Agent {
           `(${Math.round((1 - this.estimatedTokens / oldTokens) * 100)}% reduction)`
         );
 
-        // Trigger after_compaction hook
         if (this.hookRunner) {
           await this.hookRunner.runAfterCompaction({
             summary: result.summary,
@@ -676,7 +666,6 @@ export class Agent {
       };
     } catch (error) {
       console.error('[Agent] LLM compression failed:', error);
-      // Fall back to rule-based compression
       this.trimContextIfNeeded();
       return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
     }
@@ -695,22 +684,16 @@ export class Agent {
     onStream?: (chunk: string) => void;
     onReflectionTrigger?: (trigger: ReflectionTrigger) => void;
   }): Promise<string> {
-    // Always refresh time context before each chat (ensures real-time accuracy)
     this.refreshTime();
 
-    // Auto-refresh memory if enabled (get latest facts/*.md)
     if (this.autoRefreshMemory) {
       this.refreshMemory();
     }
 
-    // Track tokens before this turn
     const tokensBefore = this.estimatedTokens;
-
-    // Reset failure tracking for this turn
     this.lastSkillFailed = undefined;
-    this.usedSkillsInTurn.clear(); // Reset skill tracking for this turn
+    this.usedSkillsInTurn.clear();
 
-    // Trigger message_received hook
     if (this.hookRunner) {
       await this.hookRunner.runMessageReceived({
         content: userMessage,
@@ -718,15 +701,12 @@ export class Agent {
       });
     }
 
-    // Add user message
     this.messages.push({
       role: 'user',
       content: userMessage,
     });
     this.estimatedTokens += estimateMessageTokens({ role: 'user', content: userMessage });
 
-    // Proactive LLM compression when context is getting full
-    // Use LLM compression when > 80% of max tokens (smarter than rule-based)
     const compressionThreshold = this.contextConfig.maxTokens * 0.8;
     if (this.estimatedTokens > compressionThreshold && this.messages.length > 10) {
       console.log(`[Agent] Context at ${Math.round(this.estimatedTokens / 1000)}k tokens, triggering LLM compression...`);
@@ -738,10 +718,8 @@ export class Agent {
       }
     }
 
-    // Get tools
     const tools = options?.tools || this.options.tools || getAllToolsForAI();
 
-    // Iteratively call AI and execute tools
     let iterations = 0;
     let finalContent = '';
     let totalCompletionTokens = 0;
@@ -749,18 +727,17 @@ export class Agent {
     while (iterations < (this.options.maxToolIterations || 5)) {
       iterations++;
 
-      // Prepare AI call parameters
       const aiCallParams = {
         provider: this.options.provider,
         model: this.options.model,
-        messages: this.messages,
+        // [P0 FIX] Strip metadata before sending to API
+        messages: this.getMessagesForAPI(),
         tools,
         temperature: this.options.temperature,
         topP: this.options.topP,
         maxTokens: this.options.maxTokens,
       };
 
-      // Trigger llm_input hook
       if (this.hookRunner) {
         await this.hookRunner.runLlmInput({
           provider: aiCallParams.provider,
@@ -771,10 +748,8 @@ export class Agent {
         });
       }
 
-      // Call AI
       const response = await callAI(aiCallParams);
 
-      // Trigger llm_output hook
       if (this.hookRunner) {
         await this.hookRunner.runLlmOutput({
           response,
@@ -784,15 +759,12 @@ export class Agent {
 
       const assistantMessage = response.choices[0].message;
 
-      // Track completion tokens from API if available
       if (response.usage?.completion_tokens) {
         totalCompletionTokens += response.usage.completion_tokens;
       }
 
-      // Clean token stats from assistant message before adding to history
       const cleanedContent = cleanTokenStats(assistantMessage.content || '');
 
-      // Add assistant message to history
       this.messages.push({
         role: 'assistant',
         content: cleanedContent,
@@ -804,11 +776,9 @@ export class Agent {
         tool_calls: assistantMessage.tool_calls,
       });
 
-      // Check if there are tool calls
       if (hasToolCalls(response)) {
         const toolCalls = extractToolCalls(response);
 
-        // Log LLM's tool call decisions
         console.log(`\n${'='.repeat(80)}`);
         console.log(`[Agent] LLM decided to call ${toolCalls.length} tool(s):`);
         toolCalls.forEach((tc, idx) => {
@@ -819,13 +789,10 @@ export class Agent {
         });
         console.log('='.repeat(80));
 
-        // Special handling: if skill_get is among the calls, execute it first
-        // and let LLM decide next steps after seeing the skill content
         const skillGetCall = toolCalls.find(tc => tc.function.name === 'skill_get');
         const otherCalls = toolCalls.filter(tc => tc.function.name !== 'skill_get');
 
         if (skillGetCall && otherCalls.length > 0) {
-          // Execute skill_get first, then let LLM decide
           const params = safeJsonParse(skillGetCall.function.arguments, {});
           console.log(`\n[Skill] 🎯 Getting skill: ${params.name}`);
           options?.onToolCall?.(skillGetCall.function.name, params);
@@ -833,25 +800,20 @@ export class Agent {
           const result = await this.toolExecutor(skillGetCall.function.name, params);
           options?.onToolResult?.(skillGetCall.function.name, result);
 
-          // Track skill usage
           const skillName = params.name as string;
           if (skillName) {
             this.usedSkillsInTurn.add(skillName);
             console.log(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
           }
 
-          // Replace the assistant message with one that only has skill_get
-          // This way LLM will naturally re-decide what tools to call after seeing skill content
-          // First, adjust the token estimate (remove the old, add the new)
           this.estimatedTokens -= estimateMessageTokens({
             role: 'assistant',
             content: assistantMessage.content || '',
             tool_calls: assistantMessage.tool_calls,
           });
 
-          this.messages.pop(); // Remove the original assistant message
+          this.messages.pop();
 
-          // Add assistant message with only skill_get
           this.messages.push({
             role: 'assistant',
             content: assistantMessage.content || '',
@@ -864,7 +826,6 @@ export class Agent {
             tool_calls: [skillGetCall],
           });
 
-          // Trigger tool_result_persist hook for skill_get
           let skillResultToSave = result;
           if (this.hookRunner) {
             skillResultToSave = this.hookRunner.runToolResultPersist({
@@ -875,7 +836,6 @@ export class Agent {
             });
           }
 
-          // Add skill_get result
           this.messages.push({
             role: 'tool',
             content: JSON.stringify(skillResultToSave),
@@ -887,11 +847,9 @@ export class Agent {
             tool_call_id: skillGetCall.id,
           });
 
-          // Continue to let LLM see the skill content before executing other tools
           continue;
         }
 
-        // Group tool calls into parallel and sequential batches
         const batches = groupToolCalls(toolCalls.map(tc => ({
           name: tc.function.name,
           call: tc,
@@ -910,27 +868,22 @@ export class Agent {
           });
         }
 
-        // Execute each batch
         for (const batch of batches) {
           const batchStartTime = Date.now();
 
           console.log(`\n[Batch Execution] Starting batch with ${batch.length} tool(s)...`);
 
-          // Execute batch in parallel
           const batchResults = await Promise.all(
             batch.map(async ({ call }) => {
               const params = safeJsonParse(call.function.arguments, {});
 
-              // Log individual tool execution
               const paramsStr = JSON.stringify(params);
               const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
               console.log(`  [Executing] ${call.function.name}(${paramsPreview})`);
 
-              // Notify callback
               options?.onToolCall?.(call.function.name, params);
 
               try {
-                // Trigger before_tool_call hook
                 if (this.hookRunner) {
                   await this.hookRunner.runBeforeToolCall({
                     toolName: call.function.name,
@@ -939,12 +892,10 @@ export class Agent {
                   });
                 }
 
-                // Execute tool
                 const toolStartTime = Date.now();
                 const result = await this.toolExecutor(call.function.name, params);
                 const toolElapsed = Date.now() - toolStartTime;
 
-                // Trigger after_tool_call hook
                 if (this.hookRunner) {
                   await this.hookRunner.runAfterToolCall({
                     toolName: call.function.name,
@@ -953,12 +904,10 @@ export class Agent {
                   });
                 }
 
-                // Log result summary
                 const resultStr = JSON.stringify(result);
                 const resultPreview = resultStr.length > 150 ? resultStr.substring(0, 150) + '...' : resultStr;
                 console.log(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
 
-                // Notify callback of result
                 options?.onToolResult?.(call.function.name, result);
 
                 return { call, result, error: null };
@@ -972,11 +921,9 @@ export class Agent {
             })
           );
 
-          // Process results
           for (const { call, result } of batchResults) {
             const params = safeJsonParse(call.function.arguments, {});
 
-            // Track skill failures for reflection
             if (call.function.name === 'skill_record') {
               const skillName = params.name as string;
               const success = params.success as boolean;
@@ -989,7 +936,6 @@ export class Agent {
               }
             }
 
-            // Track skill usage for attribution
             if (call.function.name === 'skill_get') {
               const skillName = params.name as string;
               if (skillName) {
@@ -998,14 +944,12 @@ export class Agent {
               }
             }
 
-            // Track skill record calls
             if (call.function.name === 'skill_record') {
               const skillName = params.name as string;
               const success = params.success as boolean;
               console.log(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
             }
 
-            // Trigger tool_result_persist hook (synchronous)
             let resultToSave = result;
             if (this.hookRunner) {
               resultToSave = this.hookRunner.runToolResultPersist({
@@ -1016,7 +960,6 @@ export class Agent {
               });
             }
 
-            // Add tool result to messages
             this.messages.push({
               role: 'tool',
               content: JSON.stringify(resultToSave),
@@ -1029,7 +972,6 @@ export class Agent {
             });
           }
 
-          // Log batch completion
           const elapsed = Date.now() - batchStartTime;
           if (batch.length > 1) {
             const toolNames = batch.map(b => b.call.function.name).join(', ');
@@ -1040,16 +982,13 @@ export class Agent {
           }
         }
 
-        // Continue loop to get next response
         continue;
       }
 
-      // No tool calls, we're done
       finalContent = extractContent(response);
       break;
     }
 
-    // If we exited the loop due to iteration limit, use the last assistant message
     if (!finalContent) {
       const lastAssistantMsg = [...this.messages].reverse().find(m => m.role === 'assistant');
       if (lastAssistantMsg?.content && typeof lastAssistantMsg.content === 'string') {
@@ -1061,7 +1000,6 @@ export class Agent {
       }
     }
 
-    // Log conversation summary
     console.log(`\n${'='.repeat(80)}`);
     console.log(`[Conversation Summary]`);
     console.log(`  Iterations: ${iterations}`);
@@ -1071,18 +1009,17 @@ export class Agent {
     console.log(`  Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
     console.log('='.repeat(80) + '\n');
 
-    // Estimate completion tokens if API didn't provide them
     if (totalCompletionTokens === 0) {
       totalCompletionTokens = estimateTokens(finalContent);
     }
 
-    // Record conversation to memory
     try {
       const memoryStore = getMemoryStore();
       const userMessageStr = typeof userMessage === 'string'
         ? userMessage
         : '[Multimodal message]';
-      memoryStore.recordConversation({
+      // [P0 FIX] recordConversation is now async
+      await memoryStore.recordConversation({
         timestamp: new Date().toISOString(),
         source: 'agent',
         user: userMessageStr,
@@ -1092,17 +1029,13 @@ export class Agent {
       logger.debug('Memory might not be initialized:', error);
     }
 
-    // Append metadata (skill attribution and token stats)
     const metadata: string[] = [];
 
-    // Append skill attribution if any skills were used
-    // But only if it's not already in the content (avoid duplication)
     if (this.usedSkillsInTurn.size > 0 && !finalContent.includes('📋 Used skill:')) {
       const skillNames = Array.from(this.usedSkillsInTurn).join(', ');
       metadata.push(`_📋 Used skill: ${skillNames}_`);
     }
 
-    // Append token stats if enabled
     if (this.tokenStatsConfig.showTokenStats) {
       const stats: TokenStats = {
         promptTokens: tokensBefore,
@@ -1116,12 +1049,10 @@ export class Agent {
       metadata.push(formatTokenStats(stats, this.tokenStatsConfig.tokenStatsFormat).trim());
     }
 
-    // Add metadata to final content
     if (metadata.length > 0) {
       finalContent += '\n\n---\n' + metadata.join('\n\n');
     }
 
-    // Trigger message_sending hook (modifying)
     if (this.hookRunner) {
       const sendingEvent = {
         content: finalContent,
@@ -1131,13 +1062,11 @@ export class Agent {
 
       const modifiedEvent = await this.hookRunner.runMessageSending(sendingEvent);
 
-      // Use modified content if returned
       if (modifiedEvent?.content) {
         finalContent = modifiedEvent.content;
       }
     }
 
-    // Trigger message_sent hook
     if (this.hookRunner) {
       await this.hookRunner.runMessageSent({
         content: finalContent,
@@ -1145,7 +1074,6 @@ export class Agent {
       });
     }
 
-    // Trigger agent_end hook
     if (this.hookRunner) {
       await this.hookRunner.runAgentEnd({
         provider: this.options.provider?.type || 'unknown',
@@ -1160,7 +1088,14 @@ export class Agent {
     return finalContent;
   }
 
-  // Chat with streaming
+  /**
+   * Chat with streaming support.
+   *
+   * [P0 FIX] Added full context management (token tracking, compression, time refresh)
+   * that was previously missing from the streaming path. Without this fix, long
+   * conversations using chatStream() would grow unbounded until exceeding the
+   * model's context window.
+   */
   async *chatStream(userMessage: string, options?: {
     tools?: OpenAITool[];
   }): AsyncGenerator<
@@ -1168,14 +1103,36 @@ export class Agent {
     | { type: 'tool_call'; name: string; params: Record<string, unknown> }
     | { type: 'tool_result'; name: string; result: unknown }
   > {
+    // [P0 FIX] Refresh time context — was missing from chatStream
+    this.refreshTime();
+
+    // [P0 FIX] Auto-refresh memory if enabled — was missing from chatStream
+    if (this.autoRefreshMemory) {
+      this.refreshMemory();
+    }
+
     // Reset skill tracking for this turn
     this.usedSkillsInTurn.clear();
 
-    // Add user message
+    // Add user message with token tracking
     this.messages.push({
       role: 'user',
       content: userMessage,
     });
+    // [P0 FIX] Track token usage — was missing from chatStream
+    this.estimatedTokens += estimateMessageTokens({ role: 'user', content: userMessage });
+
+    // [P0 FIX] Proactive LLM compression when context is getting full
+    const compressionThreshold = this.contextConfig.maxTokens * 0.8;
+    if (this.estimatedTokens > compressionThreshold && this.messages.length > 10) {
+      console.log(`[Agent.chatStream] Context at ${Math.round(this.estimatedTokens / 1000)}k tokens, triggering LLM compression...`);
+      try {
+        await this.compressContextWithLLM();
+      } catch (error) {
+        console.warn('[Agent.chatStream] LLM compression failed, using rule-based fallback');
+        this.trimContextIfNeeded();
+      }
+    }
 
     const tools = options?.tools || this.options.tools || getAllToolsForAI();
 
@@ -1188,7 +1145,8 @@ export class Agent {
       const response = await callAI({
         provider: this.options.provider,
         model: this.options.model,
-        messages: this.messages,
+        // [P0 FIX] Strip metadata before sending to API
+        messages: this.getMessagesForAPI(),
         tools,
         temperature: this.options.temperature,
         topP: this.options.topP,
@@ -1203,8 +1161,14 @@ export class Agent {
         finalContent = assistantMessage.content;
       }
 
-      // Add to history
+      // Add to history with token tracking
       this.messages.push({
+        role: 'assistant',
+        content: assistantMessage.content || '',
+        tool_calls: assistantMessage.tool_calls,
+      });
+      // [P0 FIX] Track assistant message tokens — was missing from chatStream
+      this.estimatedTokens += estimateMessageTokens({
         role: 'assistant',
         content: assistantMessage.content || '',
         tool_calls: assistantMessage.tool_calls,
@@ -1219,7 +1183,7 @@ export class Agent {
 
           yield { type: 'tool_call', name: call.function.name, params };
 
-          // Track skill usage for attribution
+          // Track skill usage
           if (call.function.name === 'skill_get') {
             const skillName = params.name as string;
             if (skillName) {
@@ -1231,7 +1195,6 @@ export class Agent {
 
           yield { type: 'tool_result', name: call.function.name, result };
 
-          // Trigger tool_result_persist hook
           let resultToSave = result;
           if (this.hookRunner) {
             resultToSave = this.hookRunner.runToolResultPersist({
@@ -1242,11 +1205,14 @@ export class Agent {
             });
           }
 
-          this.messages.push({
+          const toolMsg: ChatMessage = {
             role: 'tool',
             content: JSON.stringify(resultToSave),
             tool_call_id: call.id,
-          });
+          };
+          this.messages.push(toolMsg);
+          // [P0 FIX] Track tool result tokens — was missing from chatStream
+          this.estimatedTokens += estimateMessageTokens(toolMsg);
         }
 
         continue;
@@ -1255,10 +1221,14 @@ export class Agent {
       break;
     }
 
+    // [P0 FIX] Post-response context check — was missing from chatStream
+    this.trimContextIfNeeded();
+
     // Record to memory
     try {
       const memoryStore = getMemoryStore();
-      memoryStore.recordConversation({
+      // [P0 FIX] recordConversation is now async
+      await memoryStore.recordConversation({
         timestamp: new Date().toISOString(),
         source: 'agent',
         user: userMessage,
@@ -1273,6 +1243,9 @@ export class Agent {
       const skillNames = Array.from(this.usedSkillsInTurn).join(', ');
       yield { type: 'content', content: `\n\n---\n_📋 Used skill: ${skillNames}_` };
     }
+
+    // [P0 FIX] Log context usage for monitoring — was missing from chatStream
+    console.log(`[Agent.chatStream] Complete - Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
   }
 }
 
@@ -1287,19 +1260,17 @@ export function createAgent(options: {
   tools?: OpenAITool[];
   toolExecutor?: ToolExecutor;
   loadCoreMemory?: boolean;
-  autoRefreshMemory?: boolean; // Auto-refresh facts/*.md before each chat
-  contextConfig?: Partial<ContextConfig>; // Context management config
-  tokenStatsConfig?: Partial<TokenStatsConfig>; // Token stats display config
+  autoRefreshMemory?: boolean;
+  contextConfig?: Partial<ContextConfig>;
+  tokenStatsConfig?: Partial<TokenStatsConfig>;
 }): Agent {
   let systemPrompt = options.systemPrompt || SYSTEM_PROMPTS.default;
 
-  // Load USER.md, SOUL.md and facts/*.md if requested (default: true)
   if (options.loadCoreMemory !== false) {
     try {
       const memoryStore = getMemoryStore();
       const coreContext = memoryStore.getCoreContext();
 
-      // Add available skills to context (OpenClaw-style)
       let skillsPrompt = '';
       try {
         const skillStore = getSkillStore();
