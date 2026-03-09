@@ -53,9 +53,11 @@ describe('MemoryStore', () => {
       // Note: projects.md is no longer created by default - only preferences.md
     });
 
-    test('creates core memory files (USER.md and SOUL.md)', () => {
-      expect(existsSync(join(TEST_MEMORY_PATH, 'USER.md'))).toBe(true);
-      expect(existsSync(join(TEST_MEMORY_PATH, 'SOUL.md'))).toBe(true);
+    // Note: USER.md and SOUL.md are no longer auto-created
+    // They are created by the onboarding wizard instead
+    test('does not auto-create USER.md and SOUL.md', () => {
+      expect(existsSync(join(TEST_MEMORY_PATH, 'USER.md'))).toBe(false);
+      expect(existsSync(join(TEST_MEMORY_PATH, 'SOUL.md'))).toBe(false);
     });
 
     test('creates index file', () => {
@@ -71,11 +73,12 @@ describe('MemoryStore', () => {
       // Note: projects.md is no longer created by default
     });
 
-    test('lists memory root with USER.md and SOUL.md', () => {
+    test('lists memory root', () => {
       const result = store.ls('');
       expect(result.success).toBe(true);
-      expect(result.data).toContain('USER.md');
-      expect(result.data).toContain('SOUL.md');
+      // Note: USER.md and SOUL.md are not auto-created anymore
+      expect(result.data).toContain('facts');
+      expect(result.data).toContain('conversations');
     });
 
     test('returns error for non-existent path', () => {
@@ -86,9 +89,9 @@ describe('MemoryStore', () => {
   });
 
   describe('grep', () => {
-    test('finds content in files', () => {
+    test('finds content in files', async () => {
       // Write some content first
-      store.write('facts/preferences.md', '\n- Test Preference\n- Dark Mode\n', 'append');
+      await store.write('facts/preferences.md', '\n- Test Preference\n- Dark Mode\n', 'append');
 
       const result = store.grep('Test');
       expect(result.success).toBe(true);
@@ -104,9 +107,10 @@ describe('MemoryStore', () => {
 
   describe('read', () => {
     test('reads file content', () => {
-      const result = store.read('USER.md');
+      // Read the default preferences.md file that's created on init
+      const result = store.read('facts/preferences.md');
       expect(result.success).toBe(true);
-      expect(result.data).toContain('USER');
+      expect(result.data).toContain('Preferences');
     });
 
     test('returns error for non-existent file', () => {
@@ -117,40 +121,40 @@ describe('MemoryStore', () => {
   });
 
   describe('write', () => {
-    test('appends to file', () => {
-      const result = store.write('facts/preferences.md', '\n- New fact', 'append');
+    test('appends to file', async () => {
+      const result = await store.write('facts/preferences.md', '\n- New fact', 'append');
       expect(result.success).toBe(true);
 
       const content = readFileSync(join(TEST_MEMORY_PATH, 'facts', 'preferences.md'), 'utf-8');
       expect(content).toContain('New fact');
     });
 
-    test('overwrites file', () => {
-      const result = store.write('facts/preferences.md', 'New content', 'overwrite');
+    test('overwrites file', async () => {
+      const result = await store.write('facts/preferences.md', 'New content', 'overwrite');
       expect(result.success).toBe(true);
 
       const content = readFileSync(join(TEST_MEMORY_PATH, 'facts', 'preferences.md'), 'utf-8');
       expect(content).toBe('New content');
     });
 
-    test('creates directory if not exists', () => {
-      const result = store.write('facts/newdir/file.md', 'content', 'overwrite');
+    test('creates directory if not exists', async () => {
+      const result = await store.write('facts/newdir/file.md', 'content', 'overwrite');
       expect(result.success).toBe(true);
       expect(existsSync(join(TEST_MEMORY_PATH, 'facts', 'newdir', 'file.md'))).toBe(true);
     });
   });
 
   describe('record', () => {
-    test('records fact in preferences category', () => {
-      const result = store.record('preferences', 'Likes Alice');
+    test('records fact in preferences category', async () => {
+      const result = await store.record('preferences', 'Likes Alice');
       expect(result.success).toBe(true);
 
       const content = readFileSync(join(TEST_MEMORY_PATH, 'facts', 'preferences.md'), 'utf-8');
       expect(content).toContain('Likes Alice');
     });
 
-    test('records fact with timestamp', () => {
-      store.record('preferences', 'Likes dark mode');
+    test('records fact with timestamp', async () => {
+      await store.record('preferences', 'Likes dark mode');
 
       const content = readFileSync(join(TEST_MEMORY_PATH, 'facts', 'preferences.md'), 'utf-8');
       expect(content).toContain('Likes dark mode');
@@ -159,7 +163,7 @@ describe('MemoryStore', () => {
   });
 
   describe('recordConversation', () => {
-    test('records conversation entry', () => {
+    test('records conversation entry', async () => {
       const entry = {
         timestamp: new Date().toISOString(),
         source: 'cli',
@@ -167,7 +171,7 @@ describe('MemoryStore', () => {
         assistant: 'Hi there!',
       };
 
-      const result = store.recordConversation(entry);
+      const result = await store.recordConversation(entry);
       expect(result.success).toBe(true);
 
       const date = new Date();
@@ -181,7 +185,7 @@ describe('MemoryStore', () => {
       expect(content).toContain('Hi there!');
     });
 
-    test('records conversation with metadata', () => {
+    test('records conversation with metadata', async () => {
       const entry = {
         timestamp: new Date().toISOString(),
         source: 'cli',
@@ -193,7 +197,7 @@ describe('MemoryStore', () => {
         },
       };
 
-      store.recordConversation(entry);
+      await store.recordConversation(entry);
 
       const date = new Date();
       const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -235,6 +239,13 @@ describe('Memory Tools', () => {
   });
 
   test('memory_read tool', async () => {
+    // Create USER.md first since it's not auto-created anymore
+    await executeMemoryTool('memory_write', {
+      file: 'USER.md',
+      content: '# USER\n\nTest user profile\n',
+      mode: 'overwrite',
+    });
+
     const result = await executeMemoryTool('memory_read', { file: 'USER.md' });
     expect(result.success).toBe(true);
     expect(result.data).toContain('USER');
