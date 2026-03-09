@@ -5,12 +5,8 @@
  */
 
 export {
-  analyzeForTriggers,
   recordSkillFailure,
-  recordQuery,
-  checkRepetitivePattern,
   checkConsecutiveFailures,
-  generateReflectionContext,
   checkReflectionTriggers,
   clearReflectionTracking,
   getReflectionStats,

@@ -10,7 +10,7 @@ import { evaluatePatterns } from '../proactive/triggers';
 import { getGoalStore } from '../goal/store';
 import { initFeishuWSClient, getFeishuWSClient } from '../feishu';
 import type { AIProvider, FeishuConfig } from '../config/schema';
-import { analyzeForTriggers, checkPreferenceTriggers, recordQuery } from '../evolution';
+import { checkReflectionTriggers, checkPreferenceTriggers } from '../evolution';
 import type { TokenStatsConfig } from '../agent';
 import { MessageDeduplicator } from '../utils/deduplicator';
 import { GracefulShutdown } from '../utils/graceful-shutdown';
@@ -299,9 +299,9 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
 
     // Self-evolution: Analyze message for reflection triggers
     try {
-      const trigger = analyzeForTriggers(messageText, {});
-      if (trigger) {
-        console.log(`[Evolution] Detected trigger: ${trigger.type} (${trigger.severity})`);
+      const result = checkReflectionTriggers(messageText, {});
+      if (result.shouldReflect && result.trigger) {
+        console.log(`[Evolution] Detected trigger: ${result.trigger.type} (${result.trigger.severity})`);
         // Store trigger for later reflection (could trigger skill improvement)
         // In a full implementation, this would queue a reflection task
       }
@@ -313,7 +313,8 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       }
 
       // Record query for pattern detection
-      recordQuery(messageText);
+      // TODO: Implement recordQuery in evolution module
+      // recordQuery(messageText);
     } catch (error) {
       // Non-critical - evolution should not block message processing
       console.log('[Evolution] Analysis failed (non-critical):', error);

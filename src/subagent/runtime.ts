@@ -355,8 +355,7 @@ export class SubagentRuntime {
     maxConcurrency?: number
   ): Promise<SubagentResult[]> {
     const concurrency = maxConcurrency
-      ?? parseInt(process.env.SUBAGENT_MAX_CONCURRENCY || '', 10)
-      || DEFAULT_MAX_CONCURRENT_SUBAGENTS;
+      ?? (parseInt(process.env.SUBAGENT_MAX_CONCURRENCY || '0', 10) || DEFAULT_MAX_CONCURRENT_SUBAGENTS);
 
     console.log(
       `[Subagent] Spawning ${configs.length} subagents in parallel ` +
