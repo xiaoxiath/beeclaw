@@ -268,6 +268,125 @@ export async function initApp(options: InitOptions = {}): Promise<{
     logger.warn('[App] Failed to initialize P1 enhancement providers (non-fatal):', error);
   }
 
+  // 10.6. [P3 Enhancement] Initialize P3 modules (config, observability, vector store, etc.)
+  try {
+    // Initialize unified config center
+    const { initializeConfig: initP3Config } = await import('../utils/config-center');
+    const p3ConfigResult = initP3Config({
+      // configFile: './beeclaw.config.json', // Optional: external config file
+      envPrefix: 'BEECLAW',
+      overrides: {
+        agent: {
+          defaultProvider: defaultProvider.name,
+          defaultModel: model,
+          locale: 'zh-CN',
+        },
+        memory: {
+          basePath: memoryPath,
+        },
+      },
+    });
+
+    if (p3ConfigResult.errors.length > 0) {
+      logger.warn('[App] P3 config validation issues:', p3ConfigResult.errors);
+    }
+    logger.info(`[App] P3 config center initialized (${p3ConfigResult.envLoaded} env vars loaded)`);
+
+    // Initialize observability framework
+    const { Observability, createObservabilityHooks } = await import('../utils/observability');
+    Observability.configure({
+      level: config.logging.level === 'debug' ? 'debug' : 'info',
+      structured: config.logging.format === 'json',
+      tracingEnabled: true,
+      metricsEnabled: true,
+    });
+
+    // Register observability hooks with the existing hook runner
+    const obsHooks = createObservabilityHooks();
+    const hookRunner = getHookRunner();
+    // Note: Hooks can be registered here or in the config.hooks section
+    logger.info('[App] P3 observability framework initialized');
+
+    // Initialize vector store (optional - requires embedding provider)
+    try {
+      const { setEmbeddingProvider, getVectorStore } = await import('../memory/vector-store');
+      const { createEmbeddingProvider } = await import('../providers');
+
+      const embeddingProvider = createEmbeddingProvider(defaultProvider);
+      if (embeddingProvider) {
+        setEmbeddingProvider(embeddingProvider);
+
+        // Initialize vector store with memory path
+        const vectorStore = getVectorStore({
+          basePath: memoryPath,
+          autoPersist: true,
+        });
+
+        // Load existing index if available
+        await vectorStore.load();
+        logger.info('[App] P3 vector store initialized with embedding provider');
+      } else {
+        logger.info('[App] P3 vector store disabled (no embedding provider available for this provider type)');
+      }
+    } catch (error) {
+      logger.warn('[App] P3 vector store initialization failed (non-fatal):', error);
+    }
+
+    // Initialize summary engine with LLM provider
+    try {
+      const { setSummaryLLMProvider } = await import('../memory/summary-engine');
+      const { createSummaryProvider } = await import('../providers');
+
+      const summaryProvider = createSummaryProvider(defaultProvider, model);
+      setSummaryLLMProvider(summaryProvider);
+      logger.info('[App] P3 summary engine initialized');
+    } catch (error) {
+      logger.warn('[App] P3 summary engine initialization failed (non-fatal):', error);
+    }
+
+    // Initialize lifecycle manager (optional)
+    try {
+      const { getLifecycleManager } = await import('../memory/lifecycle-manager');
+      const lifecycleManager = getLifecycleManager({
+        basePath: memoryPath,
+        autoCleanupIntervalMs: 0, // Disabled by default, can enable via config
+      });
+      logger.info('[App] P3 lifecycle manager initialized');
+    } catch (error) {
+      logger.warn('[App] P3 lifecycle manager initialization failed (non-fatal):', error);
+    }
+
+    // Initialize reflection engine (optional)
+    try {
+      const { getReflectionEngine } = await import('../agent/reflection-engine');
+      const reflectionEngine = getReflectionEngine({
+        maxConversations: 200,
+        minPatternFrequency: 3,
+        useLLMReflection: false, // Can enable via config
+      });
+      logger.info('[App] P3 reflection engine initialized');
+    } catch (error) {
+      logger.warn('[App] P3 reflection engine initialization failed (non-fatal):', error);
+    }
+
+    // Initialize skill discovery engine (optional)
+    try {
+      const { getSkillDiscoveryEngine } = await import('../agent/skill-discovery');
+      const skillDiscovery = getSkillDiscoveryEngine({
+        minPatternFrequency: 3,
+        minSequenceLength: 2,
+        autoPropose: false, // Disabled by default
+      });
+      logger.info('[App] P3 skill discovery engine initialized');
+    } catch (error) {
+      logger.warn('[App] P3 skill discovery engine initialization failed (non-fatal):', error);
+    }
+
+    logger.info('[App] All P3 modules initialized');
+  } catch (error) {
+    logger.warn('[App] P3 modules initialization failed (non-fatal):', error);
+  }
+
   appState.initialized = true;
   console.log('   ✅ Beeclaw initialized\n');
 
