@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'fs';
 import { join, resolve, dirname, basename, extname } from 'path';
 import { create, all } from 'mathjs';
+import { parse as parseShell } from 'shell-quote';
 import { logger } from '../utils/logger';
 import { getConfig } from '../config';
 import type { MemoryToolResult } from '../memory/types';
@@ -1992,16 +1993,66 @@ const ALLOWED_PATTERNS = [
 ];
 
 // Check if command is safe to execute
-// [FIX] Split compound commands (&&, ||, ;) and validate each sub-command
-// independently against the whitelist. Pipe chains are treated as a single
-// unit whose first command must be whitelisted.
-function isCommandSafe(command: string): { safe: boolean; reason?: string } {
+// [FIX] Use shell-quote for robust parsing that respects quotes and escaping
+export function isCommandSafe(command: string): { safe: boolean; reason?: string } {
   const fullCmd = command.trim();
 
-  // --- Phase 0: Global dangerous-pattern check on the raw command string ---
+  // --- Phase 0: Try to parse with shell-quote ---
+  let tokens: any[];
+  try {
+    tokens = parseShell(fullCmd);
+  } catch (error) {
+    return {
+      safe: false,
+      reason: `Failed to parse command: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+
+  // --- Phase 1: Check for dangerous operations in parsed tokens ---
+  // Command substitution: $(...) is parsed as: "$", {op: "("}, ..., {op: ")"}
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const nextToken = tokens[i + 1];
+
+    // Check for $( pattern
+    if (token === '$' && typeof nextToken === 'object' && nextToken?.op === '(') {
+      return { safe: false, reason: 'Dangerous pattern detected: Command substitution' };
+    }
+
+    // Check for backtick command substitution (appears as string like "`pwd`")
+    if (typeof token === 'string' && /^`.*`$/.test(token)) {
+      return { safe: false, reason: 'Dangerous pattern detected: Backtick command substitution' };
+    }
+  }
+
+  // --- Phase 2: Split into command segments by &&, ||, ;, | ---
+  const segments: string[][] = [];
+  let currentSegment: string[] = [];
+
+  for (const token of tokens) {
+    if (typeof token === 'string') {
+      currentSegment.push(token);
+    } else if (typeof token === 'object' && token !== null && 'op' in token) {
+      const op = token.op;
+
+      // Segment separators
+      if (op === '&&' || op === '||' || op === ';' || op === '|') {
+        if (currentSegment.length > 0) {
+          segments.push(currentSegment);
+          currentSegment = [];
+        }
+      }
+    }
+  }
+
+  // Don't forget the last segment
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+
+  // --- Phase 3: Check for dangerous patterns BEFORE whitelist validation ---
+  // This provides better error messages for known dangerous patterns
   const globalDangerousPatterns: [RegExp, string][] = [
-    [/\$\(/, 'Command substitution $()'],
-    [/`/, 'Backtick command substitution'],
     [/\|\s*sh\b/, 'Pipe to sh'],
     [/\|\s*bash\b/, 'Pipe to bash'],
     [/>\s*\/dev\//, 'Device file access'],
@@ -2013,39 +2064,24 @@ function isCommandSafe(command: string): { safe: boolean; reason?: string } {
     }
   }
 
-  // --- Phase 1: Split by && / || / ; into sub-commands ---
-  // Each sub-command may itself be a pipe chain (a | b | c).
-  // We validate the *first* command in each pipe chain against the whitelist,
-  // and check every segment against the blocklist.
-  const subCommands = fullCmd
-    .split(/\s*(?:&&|\|\||;)\s*/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
+  // --- Phase 4: Validate each segment against whitelist and blocklist ---
+  for (const segment of segments) {
+    const cmdStr = segment.join(' ');
 
-  for (const subCommand of subCommands) {
-    // Split pipe segments
-    const pipeSegments = subCommand
-      .split(/\s*\|\s*/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-
-    // Check every pipe segment against the blocklist
-    for (const segment of pipeSegments) {
-      const segLower = segment.toLowerCase();
-      for (const blocked of BLOCKED_COMMANDS) {
-        if (segLower.includes(blocked.toLowerCase())) {
-          return { safe: false, reason: `Blocked command pattern: ${blocked}` };
-        }
+    // Check against blocklist
+    const cmdLower = cmdStr.toLowerCase();
+    for (const blocked of BLOCKED_COMMANDS) {
+      if (cmdLower.includes(blocked.toLowerCase())) {
+        return { safe: false, reason: `Blocked command pattern: ${blocked}` };
       }
     }
 
-    // The *first* command in the pipe chain must match the whitelist
-    const leadCmd = pipeSegments[0];
-    const isAllowed = ALLOWED_PATTERNS.some(pattern => pattern.test(leadCmd));
+    // Check against whitelist
+    const isAllowed = ALLOWED_PATTERNS.some(pattern => pattern.test(cmdStr));
     if (!isAllowed) {
       return {
         safe: false,
-        reason: `Command not in allowed whitelist: "${leadCmd}"`,
+        reason: `Command not in allowed whitelist: "${cmdStr}"`,
       };
     }
   }

@@ -35,11 +35,13 @@
     "clipboardy": "5.3.1",
     "jiti": "2.6.1",
     "mathjs": "15.1.1",
+    "shell-quote": "1.8.3",
     "yaml": "2.8.2",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/shell-quote": "1.7.5",
     "typescript": "^5.6.0"
   }
 }
