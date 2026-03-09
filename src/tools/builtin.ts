@@ -49,6 +49,9 @@ import {
   updateUserSettingsTool,
   executeUpdateUserSettings,
 } from './user-settings';
+import { createDeepResearchHandler, type ResearchDepth } from '../research/deep-research-v2';
+import { callAI } from '../agent/api';
+import { getProvider, getModel } from '../app';
 
 // Tool result type
 export type BuiltinToolResult = MemoryToolResult;
@@ -1326,189 +1329,61 @@ export async function executeDeepResearch(params: Record<string, unknown>): Prom
     const orchestrator = getSearchOrchestrator();
     const extractor = getContentExtractor();
 
-    // Determine search count based on depth
-    const searchCounts = {
-      quick: 3,
-      standard: 5,
-      comprehensive: 8,
-    };
-    const numSearches = searchCounts[depth || 'standard'];
-
-    // Phase 1: Generate search queries
-    const queries: string[] = [];
-
-    // Primary query
-    queries.push(topic);
-
-    // If aspects provided, use them; otherwise generate derived queries
-    if (aspects && aspects.length > 0) {
-      aspects.slice(0, numSearches - 1).forEach(aspect => {
-        queries.push(`${topic} ${aspect}`);
-      });
-    } else {
-      // Auto-generate diverse search angles
-      // [FIX] Use dynamic year instead of hardcoded 2024/2025
-      const currentYear = new Date().getFullYear();
-      const lastYear = currentYear - 1;
-      const anglePatterns = [
-        `${topic} 最新 ${lastYear} ${currentYear}`,
-        `${topic} 趋势 分析`,
-        `${topic} 案例 研究`,
-        `${topic} 统计 数据`,
-        `${topic} 挑战 问题`,
-        `${topic} 专家 观点`,
-        `${topic} 对比 比较`,
-        `${topic} 报告 研究`,
-      ];
-      queries.push(...anglePatterns.slice(0, numSearches - 1));
-    }
-
-    // Phase 2: Execute parallel searches
-    const searchPromises = queries.slice(0, numSearches).map(async (query) => {
-      try {
+    // Create Deep Research V2 handler with dependencies
+    const deepResearchHandler = createDeepResearchHandler({
+      searchFn: async (query, opts) => {
         const results = await orchestrator.search({
           query,
-          numResults: 5,
+          numResults: opts?.maxResults || 5,
           timeRange: time_range,
         });
-        return { query, results };
-      } catch (error) {
-        logger.debug('Search failed, returning empty results:', error);
-        return { query, results: [] };
-      }
-    });
-
-    const searchResults = await Promise.all(searchPromises);
-
-    // Phase 3: Collect and deduplicate sources
-    const allSources = new Map<string, ResearchSource>();
-
-    for (const { query, results } of searchResults) {
-      for (const result of results) {
-        if (!allSources.has(result.url)) {
-          allSources.set(result.url, {
-            title: result.title,
-            url: result.url,
-            snippet: result.snippet,
-            source: result.source,
-          });
-        }
-      }
-    }
-
-    // Phase 4: Fetch top sources for full content
-    const topSources = Array.from(allSources.values())
-      .sort((a, b) => b.snippet.length - a.snippet.length)
-      .slice(0, depth === 'comprehensive' ? 6 : depth === 'standard' ? 4 : 2);
-
-    const fetchPromises = topSources.map(async (source) => {
-      try {
-        const content = await extractor.extract(source.url, {
-          maxLength: 3000,
+        return results.map(r => ({
+          title: r.title,
+          url: r.url,
+          snippet: r.snippet,
+          source: r.source,
+        }));
+      },
+      fetchFn: async (url, opts) => {
+        const content = await extractor.extract(url, {
+          maxLength: opts?.maxLength || 15000,
           includeImages: false,
         });
-        source.content = cleanText(content);
-        return source;
-      } catch (error) {
-        logger.debug('Content extraction failed, returning original source:', error);
-        return source;
-      }
-    });
+        return { content: cleanText(content) };
+      },
+      llmCall: async (messages, opts) => {
+        // Get provider and model from app context
+        const provider = getProvider();
+        const model = opts?.model || getModel();
 
-    const fetchedSources = await Promise.all(fetchPromises);
+        // Convert CoreMessage to the format expected by callAI
+        const apiMessages = messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        }));
 
-    // Update sources with fetched content
-    for (const source of fetchedSources) {
-      if (source.content) {
-        allSources.set(source.url, source);
-      }
-    }
-
-    // Phase 5: Synthesize findings
-    const findings: ResearchFinding[] = [];
-    const sourceList = Array.from(allSources.values());
-
-    // Group findings by aspect
-    const aspectsToAnalyze = aspects || ['概述', '趋势', '案例', '数据', '挑战'];
-
-    for (const aspect of aspectsToAnalyze) {
-      const relevantSources = sourceList.filter(s =>
-        s.snippet.toLowerCase().includes(aspect.toLowerCase()) ||
-        (s.content && s.content.toLowerCase().includes(aspect.toLowerCase()))
-      );
-
-      if (relevantSources.length > 0) {
-        const keyFacts: string[] = [];
-
-        for (const source of relevantSources.slice(0, 3)) {
-          if (source.content) {
-            // Extract key sentences
-            const sentences = source.content.split(/[。.!?\n]/).filter(s => s.length > 20 && s.length < 200);
-            keyFacts.push(...sentences.slice(0, 2));
-          } else {
-            keyFacts.push(source.snippet);
-          }
-        }
-
-        findings.push({
-          aspect,
-          keyFacts: [...new Set(keyFacts)].slice(0, 5),
-          sources: relevantSources.slice(0, 3),
+        const response = await callAI({
+          provider,
+          model,
+          messages: apiMessages,
+          temperature: opts?.temperature,
+          maxTokens: opts?.maxTokens,
         });
-      }
-    }
 
-    // Phase 6: Generate report
-    const report: string[] = [];
-
-    report.push(`# "${topic}" 深度研究报告`);
-    report.push('');
-    report.push(`*研究深度: ${depth} | 搜索次数: ${queries.length} | 来源数: ${sourceList.length}*`);
-    report.push('');
-
-    // Executive Summary
-    report.push('## 执行摘要');
-    const summaryFacts = findings.flatMap(f => f.keyFacts.slice(0, 1)).slice(0, 3);
-    if (summaryFacts.length > 0) {
-      report.push(summaryFacts.map(f => `- ${f}`).join('\n'));
-    } else {
-      report.push('基于多角度搜索收集的信息综合分析如下。');
-    }
-    report.push('');
-
-    // Key Findings by Aspect
-    report.push('## 关键发现');
-
-    for (const finding of findings) {
-      if (finding.keyFacts.length > 0) {
-        report.push(``);
-        report.push(`### ${finding.aspect}`);
-        for (const fact of finding.keyFacts) {
-          report.push(`- ${fact}`);
-        }
-      }
-    }
-
-    // Sources
-    report.push('');
-    report.push('## 来源');
-    const uniqueUrls = [...new Set(sourceList.map(s => s.url))].slice(0, 10);
-    uniqueUrls.forEach((url, i) => {
-      const source = sourceList.find(s => s.url === url);
-      if (source) {
-        report.push(`${i + 1}. [${source.title}](${url})${source.source ? ` (${source.source})` : ''}`);
-      }
+        return response.choices[0].message?.content || '';
+      },
     });
 
-    // Research Methodology
-    report.push('');
-    report.push('## 研究方法');
-    report.push(`- 搜索查询: ${queries.slice(0, numSearches).map(q => `"${q}"`).join(', ')}`);
-    report.push(`- 深度内容抓取: ${fetchedSources.filter(s => s.content).length} 个来源`);
+    // Execute Deep Research V2
+    const result = await deepResearchHandler({
+      topic,
+      depth: depth as ResearchDepth,
+      aspects,
+    });
 
     return {
       success: true,
-      data: cleanText(report.join('\n')),
+      data: result.report,
     };
   } catch (error) {
     return {
