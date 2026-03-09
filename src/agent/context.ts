@@ -20,12 +20,73 @@ const RATIOS = {
 };
 
 /**
- * Estimate tokens in a string
- * Uses simple heuristic based on character types
+ * Optional tiktoken encoder — lazy-loaded to avoid hard dependency.
+ * If `tiktoken` or `gpt-tokenizer` is not installed, falls back to heuristic.
  */
-export function estimateTokens(text: string): number {
+let _tiktokenEncode: ((text: string) => number) | null | undefined = undefined; // undefined = not yet attempted
+
+function _loadTiktoken(): ((text: string) => number) | null {
+  if (_tiktokenEncode !== undefined) return _tiktokenEncode;
+  try {
+    // Try tiktoken first (official OpenAI tokenizer)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const tiktoken = require('tiktoken');
+    const enc = tiktoken.encoding_for_model('gpt-4o');
+    _tiktokenEncode = (text: string) => enc.encode(text).length;
+    console.log('[TokenEstimation] tiktoken loaded — using precise token counting');
+    return _tiktokenEncode;
+  } catch {
+    try {
+      // Fallback: gpt-tokenizer (pure JS, no native deps)
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { encode } = require('gpt-tokenizer');
+      _tiktokenEncode = (text: string) => encode(text).length;
+      console.log('[TokenEstimation] gpt-tokenizer loaded — using precise token counting');
+      return _tiktokenEncode;
+    } catch {
+      _tiktokenEncode = null;
+      console.log('[TokenEstimation] No tokenizer library found — using heuristic estimation');
+      return null;
+    }
+  }
+}
+
+/**
+ * Dynamic ratio calibration.
+ * Periodically compares heuristic estimates vs precise counts and adjusts RATIOS.
+ */
+const _calibrationSamples: Array<{ heuristic: number; precise: number }> = [];
+const MAX_CALIBRATION_SAMPLES = 50;
+let _calibrationFactor = 1.0; // Multiplier applied to heuristic result
+
+function _updateCalibration(heuristic: number, precise: number): void {
+  if (heuristic === 0) return;
+  _calibrationSamples.push({ heuristic, precise });
+  if (_calibrationSamples.length > MAX_CALIBRATION_SAMPLES) {
+    _calibrationSamples.shift();
+  }
+  // Recalculate mean ratio
+  const sumRatio = _calibrationSamples.reduce((s, x) => s + x.precise / x.heuristic, 0);
+  _calibrationFactor = sumRatio / _calibrationSamples.length;
+}
+
+/**
+ * Estimate tokens in a string.
+ *
+ * Strategy:
+ *   1. Always compute heuristic estimate (fast, zero-dependency).
+ *   2. If a tokenizer library is available, use precise count for
+ *      budget-critical decisions and calibrate the heuristic.
+ *   3. Apply rolling calibration factor to heuristic results.
+ *
+ * @param text     The text to estimate
+ * @param precise  Force precise counting (default: false).
+ *                 Set to true before prompt budget trimming decisions.
+ */
+export function estimateTokens(text: string, precise = false): number {
   if (!text) return 0;
 
+  // --- Heuristic path (always computed) ---
   // Count Chinese characters (CJK range)
   const chineseChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
 
@@ -46,7 +107,43 @@ export function estimateTokens(text: string): number {
   // Add overhead for message structure (role, formatting)
   const overhead = 4;
 
-  return Math.ceil(chineseTokens + codeTokens + otherTokens + overhead);
+  const rawHeuristic = chineseTokens + codeTokens + otherTokens + overhead;
+  const calibratedHeuristic = Math.ceil(rawHeuristic * _calibrationFactor);
+
+  // --- Precise path (optional) ---
+  const encoder = precise ? _loadTiktoken() : null;
+  if (encoder) {
+    const preciseCount = encoder(text) + overhead;
+    // Feed back to calibration
+    _updateCalibration(rawHeuristic, preciseCount - overhead);
+    return preciseCount;
+  }
+
+  // --- Auto-calibration sampling (non-blocking) ---
+  // Every ~20 calls, run a precise count in the background to keep calibration fresh
+  if (_calibrationSamples.length < MAX_CALIBRATION_SAMPLES && Math.random() < 0.05) {
+    const enc = _loadTiktoken();
+    if (enc) {
+      const preciseCount = enc(text);
+      _updateCalibration(rawHeuristic, preciseCount);
+    }
+  }
+
+  return calibratedHeuristic;
+}
+
+/**
+ * Get current calibration factor (useful for debugging/monitoring)
+ */
+export function getTokenCalibrationFactor(): number {
+  return _calibrationFactor;
+}
+
+/**
+ * Get calibration sample count
+ */
+export function getTokenCalibrationSampleCount(): number {
+  return _calibrationSamples.length;
 }
 
 /**
@@ -102,6 +199,14 @@ export function estimateMessageTokens(message: {
 /**
  * Estimate total tokens for an array of messages
  */
+/**
+ * Estimate tokens precisely (forces tiktoken if available).
+ * Use this before budget trimming decisions.
+ */
+export function estimateTokensPrecise(text: string): number {
+  return estimateTokens(text, true);
+}
+
 export function estimateTotalTokens(messages: Array<{
   role: string;
   content?: string | MultimodalContent[];

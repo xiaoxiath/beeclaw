@@ -1,3 +1,5 @@
+import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../utils/circuit-breaker';
+
 import type { AIProvider } from '../config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent, MessageMetadata } from './types';
 import { stripMessageMetadata } from './types';
@@ -67,7 +69,50 @@ export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, ha
 
 // Default tool executor that handles plugin, memory, skill, goal, proactive, persona, builtin, and feishu tools
 export function createDefaultToolExecutor(): ToolExecutor {
+  // Initialize circuit breaker registry with tool-specific presets
+  const cbRegistry = getCircuitBreakerRegistry();
+  cbRegistry.registerToolConfig('web_search', CIRCUIT_BREAKER_PRESETS.mcp_tool);
+  cbRegistry.registerToolConfig('deep_research', { failureThreshold: 2, cooldownMs: 120_000 });
+
   return async (name: string, params: Record<string, unknown>) => {
+    // Determine if this tool needs circuit breaker protection
+    const needsCircuitBreaker = (
+      name.startsWith('feishu_') ||
+      name.startsWith('mcp_') ||
+      name === 'web_search' ||
+      name === 'deep_research' ||
+      isBuiltinTool(name) && ['web_search', 'deep_research'].includes(name)
+    );
+
+    // If circuit breaker applies, wrap the execution
+    if (needsCircuitBreaker) {
+      try {
+        return await cbRegistry.execute(name, async () => {
+          return await _executeToolInner(name, params);
+        });
+      } catch (error) {
+        if (error instanceof CircuitOpenError) {
+          const remainSec = Math.round(error.cooldownRemainingMs / 1000);
+          return {
+            success: false,
+            error: `Tool "${name}" is temporarily unavailable (circuit breaker open). ` +
+                   `Too many recent failures. Will auto-recover in ~${remainSec}s. ` +
+                   `Please try an alternative approach or wait.`,
+          };
+        }
+        // Re-throw non-circuit-breaker errors as tool failure
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        return { success: false, error: errorMsg };
+      }
+    }
+
+    // Non-protected tools: execute directly
+    return _executeToolInner(name, params);
+  };  // end of createDefaultToolExecutor return
+}
+
+// Inner tool execution logic (separated for circuit breaker wrapping)
+async function _executeToolInner(name: string, params: Record<string, unknown>): Promise<{ success: boolean; data?: unknown; error?: string }> {
     // Plugin tools (highest priority)
     try {
       const registry = getPluginRegistry();
@@ -238,7 +283,6 @@ This ensures skills are in the correct location and follow quality standards.`,
       success: false,
       error: `Unknown tool: ${name}`,
     };
-  };
 }
 
 // Agent class

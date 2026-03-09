@@ -1,12 +1,13 @@
 /**
- * Retry Utility
+ * Retry Utility — Compatibility Shim
  *
- * Provides retry mechanism with exponential backoff for API calls.
- * Now integrated with error classification system.
+ * This module now delegates to unified-retry.ts for all retry logic.
+ * Kept for backward compatibility. New code should import from unified-retry directly.
+ *
+ * @deprecated Use `import { getRetryEngine } from './unified-retry'` for new code.
  */
 
-import { classifyError as classifyErrorNew, type ClassifiedError } from './error-handler';
-import { calculateDelay } from './retry-strategy';
+import { getRetryEngine, type RetryResult } from './unified-retry';
 
 export interface RetryOptions {
   /** Maximum number of retry attempts (default: 3) */
@@ -19,69 +20,17 @@ export interface RetryOptions {
   backoffMultiplier?: number;
   /** Jitter factor to add randomness (0-1, default: 0.1) */
   jitter?: number;
-  /** HTTP status codes that should trigger retry (deprecated, use error classification) */
-  retryStatusCodes?: number[];
   /** Custom retry condition function */
   shouldRetry?: (error: Error, attempt: number) => boolean;
   /** Callback for retry events */
   onRetry?: (error: Error, attempt: number, delay: number) => void;
-  /** Callback for classified error (new) */
-  onClassifiedError?: (error: ClassifiedError, attempt: number, delay: number) => void;
-}
-
-const DEFAULT_RETRY_STATUS_CODES = [
-  408, // Request Timeout
-  429, // Too Many Requests (rate limit)
-  500, // Internal Server Error
-  502, // Bad Gateway
-  503, // Service Unavailable
-  504, // Gateway Timeout
-];
-
-/**
- * Sleep for specified milliseconds
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Classify error with context (wrapper for new error handler)
- */
-function classifyError(error: Error, context?: any): ClassifiedError {
-  try {
-    return classifyErrorNew(error, context);
-  } catch {
-    // Fallback if error handler not available
-    return {
-      type: 'UNKNOWN' as any,
-      retryable: false,
-      message: error.message,
-      userMessage: error.message,
-      originalError: error,
-      timestamp: new Date(),
-    };
-  }
-}
-
-/**
- * Execute a function with retry logic
+ * Execute a function with retry logic.
+ * Delegates to UnifiedRetryEngine under the hood.
  *
- * Now uses error classification to determine retryability.
- *
- * @example
- * ```typescript
- * const result = await retry(
- *   async () => {
- *     const response = await fetch('https://api.example.com/data');
- *     if (!response.ok) {
- *       throw new Error(`HTTP ${response.status}`);
- *     }
- *     return response.json();
- *   },
- *   { maxRetries: 3, initialDelay: 1000 }
- * );
- * ```
+ * @deprecated Use `getRetryEngine().execute()` for new code.
  */
 export async function retry<T>(
   fn: () => Promise<T>,
@@ -95,75 +44,41 @@ export async function retry<T>(
     jitter = 0.1,
     shouldRetry: customShouldRetry,
     onRetry,
-    onClassifiedError,
   } = options;
 
-  let lastError: Error | undefined;
-  let lastClassifiedError: ClassifiedError | undefined;
+  const engine = getRetryEngine();
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+  const result: RetryResult<T> = await engine.execute<T>(fn, {
+    strategyName: 'default',
+    maxAttempts: maxRetries + 1,
+    overrides: {
+      baseDelayMs: initialDelay,
+      maxDelayMs: maxDelay,
+      backoffMultiplier,
+      jitterFactor: jitter,
+    },
+    shouldRetry: customShouldRetry
+      ? (err: unknown, attempt: number) => {
+          return customShouldRetry(err instanceof Error ? err : new Error(String(err)), attempt);
+        }
+      : undefined,
+    onRetry: onRetry
+      ? (attempt: number, error: unknown, delayMs: number) => {
+          onRetry(error instanceof Error ? error : new Error(String(error)), attempt, delayMs);
+        }
+      : undefined,
+  });
 
-      // Classify the error using new error handler
-      lastClassifiedError = classifyError(lastError, { attempt });
-
-      // Check if we should retry
-      const isLastAttempt = attempt === maxRetries;
-      const defaultShouldRetry = lastClassifiedError.retryable;
-      const customShouldRetryResult = customShouldRetry?.(lastError, attempt);
-
-      // Decision: use custom logic if provided, otherwise use classification
-      const shouldRetryNow = customShouldRetryResult !== undefined
-        ? customShouldRetryResult
-        : defaultShouldRetry;
-
-      if (isLastAttempt || !shouldRetryNow) {
-        throw lastError;
-      }
-
-      // Calculate delay
-      const delay = calculateDelay(
-        attempt,
-        initialDelay,
-        maxDelay,
-        backoffMultiplier,
-        jitter
-      );
-
-      // Notify callbacks
-      onRetry?.(lastError, attempt + 1, delay);
-      onClassifiedError?.(lastClassifiedError, attempt + 1, delay);
-
-      // Log retry
-      console.log(
-        `[Retry] Attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}\n` +
-        `  Type: ${lastClassifiedError.type} (${lastClassifiedError.retryable ? 'retryable' : 'non-retryable'})\n` +
-        `  Retrying in ${Math.round(delay / 1000)}s...`
-      );
-
-      // Wait before next attempt
-      await sleep(delay);
-    }
+  if (result.success) {
+    return result.value!;
   }
-
-  // This should never be reached, but TypeScript needs it
-  throw lastError;
+  throw result.error;
 }
 
 /**
- * Create a retry wrapper for fetch
+ * Create a retry wrapper for fetch.
  *
- * @example
- * ```typescript
- * const fetchWithRetry = createRetryFetch({ maxRetries: 3 });
- * const response = await fetchWithRetry('https://api.example.com/data', {
- *   method: 'POST',
- *   body: JSON.stringify({ query: 'hello' }),
- * });
- * ```
+ * @deprecated Use unified-retry for new code.
  */
 export function createRetryFetch(
   options: RetryOptions = {}
@@ -172,34 +87,28 @@ export function createRetryFetch(
     return retry(
       async () => {
         const response = await fetch(url, init);
-
         if (!response.ok) {
-          // Try to get error body for more context
           let errorBody = '';
           try {
             errorBody = await response.text();
           } catch {
             // Ignore
           }
-
           throw new Error(
             `HTTP ${response.status} ${response.statusText}${errorBody ? `: ${errorBody}` : ''}`
           );
         }
-
         return response;
       },
-      {
-        ...options,
-        // For HTTP errors, parse status code from error message
-        retryStatusCodes: options.retryStatusCodes || DEFAULT_RETRY_STATUS_CODES,
-      }
+      options
     );
   };
 }
 
 /**
- * Retry wrapper specifically for AI API calls
+ * Retry wrapper specifically for AI API calls.
+ *
+ * @deprecated Use `getRetryEngine().execute(fn, { strategyName: 'ai_api' })` for new code.
  */
 export async function retryAICall<T>(
   fn: () => Promise<T>,
@@ -208,7 +117,7 @@ export async function retryAICall<T>(
   return retry(fn, {
     maxRetries: 3,
     initialDelay: 1000,
-    maxDelay: 60000, // Allow up to 60s delay for AI APIs
+    maxDelay: 60000,
     backoffMultiplier: 2,
     jitter: 0.2,
     onRetry: (error, attempt, delay) => {

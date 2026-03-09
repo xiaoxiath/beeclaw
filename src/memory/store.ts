@@ -4,39 +4,110 @@ import type { MemoryConfig, MemoryCategory, ConversationEntry, MemoryToolResult 
 import { buildFullIndex, loadIndex, saveIndex, searchIndex, type MemoryIndex } from './indexer';
 
 /**
- * Simple file-level lock implementation using lock files.
- * For production environments, consider using `proper-lockfile` npm package.
+ * Cross-process file lock using .lock files with PID + stale detection.
+ *
+ * Works across PM2 cluster workers and multiple Node.js processes.
+ * Uses a lockfile (<path>.lock) containing the holder PID + timestamp.
+ * Stale locks (holder PID no longer running, or older than STALE_MS) are
+ * automatically broken to prevent deadlocks after crashes.
+ *
+ * Also maintains an in-process queue so that concurrent async callers
+ * within the same process are properly serialized.
  */
 class FileLock {
-  private locks: Map<string, { promise: Promise<void>; resolve: () => void }> = new Map();
+  /** In-process waiting queue (serializes callers within one process) */
+  private inProcessQueue: Map<string, Promise<void>> = new Map();
+
+  /** Stale threshold: if a lockfile is older than this, treat it as stale */
+  private static readonly STALE_MS = 10_000; // 10 seconds
+
+  /** Max time to wait for a lock before giving up */
+  private static readonly MAX_WAIT_MS = 30_000; // 30 seconds
+
+  /** Polling interval when spinning on a lockfile */
+  private static readonly POLL_MS = 50;
 
   async acquire(filePath: string): Promise<() => void> {
     const normalizedPath = resolve(filePath);
+    const lockPath = normalizedPath + '.lock';
 
-    // Wait for existing lock to be released
-    while (this.locks.has(normalizedPath)) {
-      await this.locks.get(normalizedPath)!.promise;
+    // Phase 1: In-process queue — serialize concurrent callers in this process
+    while (this.inProcessQueue.has(normalizedPath)) {
+      await this.inProcessQueue.get(normalizedPath);
     }
 
-    // Create new lock
-    let lockResolve: () => void;
-    const lockPromise = new Promise<void>((r) => {
-      lockResolve = r;
-    });
+    let queueResolve!: () => void;
+    const queuePromise = new Promise<void>((r) => { queueResolve = r; });
+    this.inProcessQueue.set(normalizedPath, queuePromise);
 
-    this.locks.set(normalizedPath, {
-      promise: lockPromise,
-      resolve: lockResolve!,
-    });
+    // Phase 2: Cross-process lock via lockfile
+    const startTime = Date.now();
+    const pid = process.pid;
+
+    while (true) {
+      try {
+        // Attempt exclusive creation (O_EXCL equivalent)
+        const lockContent = JSON.stringify({ pid, ts: Date.now() });
+        writeFileSync(lockPath, lockContent, { flag: 'wx' });
+        // Lock acquired!
+        break;
+      } catch (err: any) {
+        if (err.code !== 'EEXIST') {
+          // Unexpected error (permission, disk full, etc.) — release queue and throw
+          this.inProcessQueue.delete(normalizedPath);
+          queueResolve();
+          throw err;
+        }
+
+        // Lockfile exists — check if it's stale
+        try {
+          const raw = readFileSync(lockPath, 'utf-8');
+          const holder = JSON.parse(raw) as { pid: number; ts: number };
+          const age = Date.now() - holder.ts;
+          const holderAlive = this._isPidAlive(holder.pid);
+
+          if (!holderAlive || age > FileLock.STALE_MS) {
+            // Stale lock — break it
+            try { unlinkSync(lockPath); } catch { /* race: another process may have removed it */ }
+            continue; // retry immediately
+          }
+        } catch {
+          // Corrupt lockfile — remove and retry
+          try { unlinkSync(lockPath); } catch { /* ignore */ }
+          continue;
+        }
+
+        // Check timeout
+        if (Date.now() - startTime > FileLock.MAX_WAIT_MS) {
+          this.inProcessQueue.delete(normalizedPath);
+          queueResolve();
+          throw new Error(`FileLock: timed out waiting for lock on ${filePath} after ${FileLock.MAX_WAIT_MS}ms`);
+        }
+
+        // Spin-wait
+        await new Promise<void>((r) => setTimeout(r, FileLock.POLL_MS));
+      }
+    }
 
     // Return release function
+    let released = false;
     return () => {
-      const lock = this.locks.get(normalizedPath);
-      if (lock) {
-        this.locks.delete(normalizedPath);
-        lock.resolve();
-      }
+      if (released) return;
+      released = true;
+      try { unlinkSync(lockPath); } catch { /* ignore */ }
+      this.inProcessQueue.delete(normalizedPath);
+      queueResolve();
     };
+  }
+
+  /** Check if a PID is still alive (works on Linux/macOS/Windows) */
+  private _isPidAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0); // Signal 0 = existence check, doesn't kill
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
