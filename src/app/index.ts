@@ -263,7 +263,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
       },
     });
 
-    logger.info('[App] P1 enhancement providers initialized');
   } catch (error) {
     logger.warn('[App] Failed to initialize P1 enhancement providers (non-fatal):', error);
   }
@@ -292,11 +291,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
       logger.warn('[App] P3 config validation issues:', p3ConfigResult.errors);
     }
 
-    const envInfo = p3ConfigResult.presetLoaded
-      ? ` (preset: ${p3ConfigResult.presetLoaded})`
-      : '';
-    logger.info(`[App] P3 config center initialized${envInfo} (${p3ConfigResult.envLoaded} env vars loaded)`);
-
     // Initialize observability framework
     const { Observability, createObservabilityHooks } = await import('../utils/observability');
     const { config: p3Config } = await import('../utils/config-center');
@@ -315,7 +309,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
     // Register all observability hooks
     if (obsHooks && typeof obsHooks === 'object') {
       const hookEntries = Object.entries(obsHooks);
-      logger.info(`[App] Registering ${hookEntries.length} observability hooks`);
 
       for (const [hookName, hookHandler] of hookEntries) {
         try {
@@ -328,8 +321,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
         }
       }
     }
-
-    logger.info('[App] P3 observability framework initialized');
 
     // Initialize vector store (optional - requires embedding provider)
     try {
@@ -348,9 +339,8 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
         // Load existing index if available
         await vectorStore.load();
-        logger.info('[App] P3 vector store initialized with embedding provider');
       } else {
-        logger.info('[App] P3 vector store disabled (no embedding provider available for this provider type)');
+        // Vector store disabled - no embedding provider available
       }
     } catch (error) {
       logger.warn('[App] P3 vector store initialization failed (non-fatal):', error);
@@ -363,7 +353,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
       const summaryProvider = createSummaryProvider(defaultProvider, model);
       setSummaryLLMProvider(summaryProvider);
-      logger.info('[App] P3 summary engine initialized');
     } catch (error) {
       logger.warn('[App] P3 summary engine initialization failed (non-fatal):', error);
     }
@@ -375,7 +364,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
         basePath: memoryPath,
         autoCleanupIntervalMs: 0, // Disabled by default, can enable via config
       });
-      logger.info('[App] P3 lifecycle manager initialized');
     } catch (error) {
       logger.warn('[App] P3 lifecycle manager initialization failed (non-fatal):', error);
     }
@@ -388,7 +376,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
         minPatternFrequency: 3,
         useLLMReflection: false, // Can enable via config
       });
-      logger.info('[App] P3 reflection engine initialized');
     } catch (error) {
       logger.warn('[App] P3 reflection engine initialization failed (non-fatal):', error);
     }
@@ -401,12 +388,9 @@ export async function initApp(options: InitOptions = {}): Promise<{
         minSequenceLength: 2,
         autoPropose: false, // Disabled by default
       });
-      logger.info('[App] P3 skill discovery engine initialized');
     } catch (error) {
       logger.warn('[App] P3 skill discovery engine initialization failed (non-fatal):', error);
     }
-
-    logger.info('[App] All P3 modules initialized');
   } catch (error) {
     logger.warn('[App] P3 modules initialization failed (non-fatal):', error);
   }
