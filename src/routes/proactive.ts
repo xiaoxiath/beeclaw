@@ -14,6 +14,7 @@ import { checkReflectionTriggers, checkPreferenceTriggers } from '../evolution';
 import type { TokenStatsConfig } from '../agent';
 import { MessageDeduplicator } from '../utils/deduplicator';
 import { GracefulShutdown } from '../utils/graceful-shutdown';
+import { getMessageGateway } from '../channel/gateway';
 
 // BUG #6 FIX: Replace Set<string> with LRU+TTL deduplicator
 const deduplicator = new MessageDeduplicator({
@@ -247,9 +248,15 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     // Log result for debugging
     if (!result.success) {
       console.error(`[FeishuWS:${process.pid}] ❌ Failed to process message: ${result.error || 'Unknown error'}`);
-      // Send error notification to user
+      // Send error notification to user via Gateway
       try {
-        await client.replyText(messageId, `处理消息时出错：${result.error || '未知错误'}。请稍后重试。`);
+        const gateway = getMessageGateway();
+        await gateway.replyMessage('feishu', {
+          sessionId,
+          userId,
+          chatId,
+          parentMessageId: messageId,
+        }, `处理消息时出错：${result.error || '未知错误'}。请稍后重试。`);
       } catch (replyError) {
         // Check if error is due to withdrawn message
         const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
@@ -265,7 +272,13 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     if (!result.response) {
       console.error(`[FeishuWS:${process.pid}] ❌ Empty response from agent`);
       try {
-        await client.replyText(messageId, '收到消息，但无法生成回复。请稍后重试。');
+        const gateway = getMessageGateway();
+        await gateway.replyMessage('feishu', {
+          sessionId,
+          userId,
+          chatId,
+          parentMessageId: messageId,
+        }, '收到消息，但无法生成回复。请稍后重试。');
       } catch (replyError) {
         // Check if error is due to withdrawn message
         const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
@@ -278,13 +291,24 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       return;
     }
 
-    // Reply to the message directly
+    // Reply to the message directly via Gateway
     try {
       console.log(`[FeishuWS:${process.pid}] Replying to message ${messageId} (${result.response.length} chars)...`);
 
-      // Always send new message (can't update text messages in Feishu)
-      await client.replyTextSmart(messageId, result.response);
-      console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully`);
+      // Send reply via Gateway (always send new message - can't update text messages in Feishu)
+      const gateway = getMessageGateway();
+      const replyResult = await gateway.replyMessage('feishu', {
+        sessionId,
+        userId,
+        chatId,
+        parentMessageId: messageId,
+      }, result.response);
+
+      if (!replyResult.success) {
+        throw new Error(replyResult.error || 'Reply failed');
+      }
+
+      console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully via Gateway`);
 
       // Mark response as delivered (for tracking purposes)
       // BUG #2 FIX: Use confirmDelivery() instead of separate markResponseDelivered()
@@ -302,7 +326,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
       // BUG #2 FIX: Do NOT confirm delivery - leave pendingRecovery=true so recovery can retry
       console.warn(`[FeishuWS:${process.pid}] Message ${messageId} will be retried on recovery (delivery failed)`);
-      // Try fallback with simple text
+      // Try fallback with simple text via direct client (fallback to old behavior)
       try {
         // Strip markdown for fallback
         const plainText = result.response
@@ -310,7 +334,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
           .replace(/`/g, '')
           .replace(/\n/g, '\n');
         await client.replyText(messageId, plainText);
-        console.log(`[FeishuWS:${process.pid}] ✅ Fallback reply sent`);
+        console.log(`[FeishuWS:${process.pid}] ✅ Fallback reply sent via direct client`);
       } catch (fallbackError) {
         console.error(`[FeishuWS:${process.pid}] ❌ Fallback reply also failed:`, fallbackError);
       }

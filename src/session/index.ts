@@ -27,6 +27,9 @@ import { createHookRunner } from '../plugins/hook-runner';
 import { logger } from '../utils/logger';
 import { SessionMessageQueue } from '../utils/session-lock';
 import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../utils/atomic-fs';
+import { getDataConnection } from '../db';
+import { sessions as sessionsTable } from '../db/schema';
+import { eq } from 'drizzle-orm';
 
 export interface SessionOptions {
   sessionId: string;
@@ -96,6 +99,9 @@ let sessionConfig: SessionConfig = {
 
 /** Maximum recovery attempts before marking a message as "poison" */
 export const MAX_RECOVERY_ATTEMPTS = 3;
+
+// Feature flag for SQLite (dual-mode)
+const USE_SQLITE = process.env.USE_SQLITE_SESSIONS === 'true';
 
 // Active sessions cache
 const sessions: Map<string, Session> = new Map();
@@ -255,9 +261,13 @@ export function saveSession(session: Session): void {
       logger.debug('Plugin system not initialized:', error);
     }
 
+    // Save to JSON (always for backward compatibility)
     const filePath = getSessionFilePath(session.id);
     // BUG #3 FIX: Use atomic write instead of writeFileSync
     writeFileAtomic(filePath, JSON.stringify(session, null, 2));
+
+    // Save to SQLite if enabled (dual-mode)
+    saveSessionToSQLite(session);
   } catch (error) {
     console.error('[Session] Failed to save session:', error);
   }
@@ -267,6 +277,16 @@ export function saveSession(session: Session): void {
  * Load session from disk
  */
 function loadSession(sessionId: string): Session | null {
+  // Try SQLite first if enabled (RFC-03)
+  if (USE_SQLITE) {
+    const sqliteSession = loadSessionFromSQLite(sessionId);
+    if (sqliteSession) {
+      console.log(`[Session] Loaded from SQLite: ${sessionId}`);
+      return sqliteSession;
+    }
+  }
+
+  // Fallback to JSON file
   try {
     const filePath = getSessionFilePath(sessionId);
 
@@ -298,9 +318,96 @@ function isValidSession(data: unknown): data is Session {
 }
 
 /**
+ * Load session from SQLite database (RFC-03)
+ */
+function loadSessionFromSQLite(sessionId: string): Session | null {
+  if (!USE_SQLITE) return null;
+
+  try {
+    const db = getDataConnection();
+    const results = db.select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.id, sessionId))
+      .limit(1)
+      .all();
+
+    if (results.length === 0) return null;
+
+    const row = results[0];
+    const session: Session = {
+      id: row.id,
+      channel: row.channel,
+      userId: row.userId,
+      messages: row.messages as SessionMessage[],
+      metadata: row.metadata || undefined,
+      pendingRecovery: row.needsRecovery || undefined,
+      recoveredAt: row.recoveredAt?.toISOString() || undefined,
+      createdAt: row.createdAt?.toISOString() || new Date().toISOString(),
+      updatedAt: row.updatedAt?.toISOString() || new Date().toISOString(),
+    };
+
+    return session;
+  } catch (error) {
+    console.error('[Session] Failed to load from SQLite:', error);
+    return null;
+  }
+}
+
+/**
+ * Save session to SQLite database (RFC-03)
+ */
+function saveSessionToSQLite(session: Session): void {
+  if (!USE_SQLITE) return;
+
+  try {
+    const db = getDataConnection();
+    const now = new Date();
+
+    // Upsert session
+    const existing = db.select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.id, session.id))
+      .limit(1)
+      .all();
+
+    if (existing.length === 0) {
+      // Insert
+      db.insert(sessionsTable).values({
+        id: session.id,
+        channel: session.channel,
+        userId: session.userId,
+        messages: session.messages,
+        metadata: session.metadata || null,
+        needsRecovery: session.pendingRecovery || false,
+        recoveredAt: session.recoveredAt ? new Date(session.recoveredAt) : null,
+        createdAt: new Date(session.createdAt),
+        updatedAt: now,
+      }).run();
+    } else {
+      // Update
+      db.update(sessionsTable)
+        .set({
+          channel: session.channel,
+          userId: session.userId,
+          messages: session.messages,
+          metadata: session.metadata || null,
+          needsRecovery: session.pendingRecovery || false,
+          recoveredAt: session.recoveredAt ? new Date(session.recoveredAt) : null,
+          updatedAt: now,
+        })
+        .where(eq(sessionsTable.id, session.id))
+        .run();
+    }
+  } catch (error) {
+    console.error('[Session] Failed to save to SQLite:', error);
+  }
+}
+
+/**
  * Delete session from disk
  */
 function deleteSessionFile(sessionId: string): void {
+  // Delete JSON file
   try {
     const filePath = getSessionFilePath(sessionId);
     if (existsSync(filePath)) {
@@ -308,6 +415,18 @@ function deleteSessionFile(sessionId: string): void {
     }
   } catch (error) {
     console.error('[Session] Failed to delete session file:', error);
+  }
+
+  // Delete from SQLite if enabled
+  if (USE_SQLITE) {
+    try {
+      const db = getDataConnection();
+      db.delete(sessionsTable)
+        .where(eq(sessionsTable.id, sessionId))
+        .run();
+    } catch (error) {
+      console.error('[Session] Failed to delete session from SQLite:', error);
+    }
   }
 }
 

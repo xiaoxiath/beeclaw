@@ -89,6 +89,65 @@ export async function initApp(options: InitOptions = {}): Promise<{
   initStores({ basePath: memoryPath, autoInit: true });
   console.log(`   📁 Memory: ${memoryPath}`);
 
+  // 4.6. Initialize DataConnection (RFC-03: SQLite + Drizzle ORM)
+  try {
+    const { initDataConnection } = await import('../db');
+    const { join } = await import('path');
+    const dbPath = join(memoryPath, 'beeclaw.db');
+    initDataConnection({ path: dbPath, migrate: true });
+    console.log(`   🗄️  Database: ${dbPath}`);
+  } catch (error) {
+    logger.warn('[App] DataConnection initialization failed (non-fatal):', error);
+  }
+
+  // 4.7. Initialize MessageGateway (RFC-01: MessageChannel/Gateway)
+  try {
+    const { getMessageGateway } = await import('../channel/gateway');
+    const { CLIChannel } = await import('../channel/cli');
+    const { FeishuChannel } = await import('../channel/feishu');
+
+    const gateway = getMessageGateway();
+
+    // Always register CLI channel
+    gateway.registerChannel(new CLIChannel());
+
+    // Register Feishu channel if enabled
+    if (config.feishu?.enabled) {
+      try {
+        gateway.registerChannel(new FeishuChannel());
+      } catch (error) {
+        logger.warn('[App] Failed to register Feishu channel (non-fatal):', error);
+      }
+    }
+
+    const channels = gateway.getRegisteredChannels();
+    console.log(`   📨 Gateway: ${channels.join(', ')} channels`);
+  } catch (error) {
+    logger.warn('[App] MessageGateway initialization failed (non-fatal):', error);
+  }
+
+  // 4.8. Initialize TaskDispatcher (RFC-02: TaskDispatcher)
+  try {
+    const { getTaskDispatcher } = await import('../dispatcher');
+    const { registerDefaultHandlers } = await import('../dispatcher/handlers');
+
+    const dispatcher = getTaskDispatcher({
+      maxConcurrency: 10,
+      lockTimeoutMs: 300000, // 5 minutes
+      retryAttempts: 3,
+      pollIntervalMs: 1000,
+    });
+
+    // Register default handlers
+    registerDefaultHandlers();
+
+    // Start dispatcher
+    dispatcher.start();
+    console.log(`   ⚡ Dispatcher: Task processing started`);
+  } catch (error) {
+    logger.warn('[App] TaskDispatcher initialization failed (non-fatal):', error);
+  }
+
   // 4.5. Check for onboarding (SOUL.md and USER.md)
   if (needsOnboarding(memoryPath)) {
     console.log('\n🎬 First-time setup detected!');
