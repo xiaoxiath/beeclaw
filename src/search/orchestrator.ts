@@ -14,6 +14,61 @@ import { GoogleProvider } from './providers/google';
 import { BochaProvider } from './providers/bocha';
 import { TavilyProvider } from './providers/tavily';
 
+// ============================================================================
+// TTL-based LRU Cache for search results
+// ============================================================================
+
+interface CacheEntry<T> {
+  value: T;
+  createdAt: number;
+}
+
+class SearchCache {
+  private cache = new Map<string, CacheEntry<SearchResult[]>>();
+  private readonly maxSize: number;
+  private readonly ttlMs: number;
+
+  constructor(maxSize = 50, ttlMs = 5 * 60 * 1000) { // default: 50 entries, 5 min TTL
+    this.maxSize = maxSize;
+    this.ttlMs = ttlMs;
+  }
+
+  /** Generate a cache key from search request */
+  static key(request: SearchRequest): string {
+    return `${request.query}|${request.region || 'auto'}|${request.numResults || 10}|${request.timeRange || ''}`;
+  }
+
+  get(key: string): SearchResult[] | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.createdAt > this.ttlMs) {
+      this.cache.delete(key);
+      return null;
+    }
+    // Move to end (LRU)
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: string, value: SearchResult[]): void {
+    // Evict oldest if full
+    if (this.cache.size >= this.maxSize) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
+    this.cache.set(key, { value, createdAt: Date.now() });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
 export class SearchOrchestrator {
   private providers: SearchProvider[] = [];
   private fallbackChain: Map<string, string[]> = new Map();
@@ -394,62 +449,6 @@ export function initSearchFromEnv(): SearchOrchestrator {
     bingApiKey: process.env.BING_SEARCH_API_KEY,
     braveApiKey: process.env.BRAVE_SEARCH_API_KEY,
   };
-
-// ============================================================================
-// TTL-based LRU Cache for search results
-// ============================================================================
-
-interface CacheEntry<T> {
-  value: T;
-  createdAt: number;
-}
-
-class SearchCache {
-  private cache = new Map<string, CacheEntry<SearchResult[]>>();
-  private readonly maxSize: number;
-  private readonly ttlMs: number;
-
-  constructor(maxSize = 50, ttlMs = 5 * 60 * 1000) { // default: 50 entries, 5 min TTL
-    this.maxSize = maxSize;
-    this.ttlMs = ttlMs;
-  }
-
-  /** Generate a cache key from search request */
-  static key(request: SearchRequest): string {
-    return `${request.query}|${request.region || 'auto'}|${request.numResults || 10}|${request.timeRange || ''}`;
-  }
-
-  get(key: string): SearchResult[] | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.createdAt > this.ttlMs) {
-      this.cache.delete(key);
-      return null;
-    }
-    // Move to end (LRU)
-    this.cache.delete(key);
-    this.cache.set(key, entry);
-    return entry.value;
-  }
-
-  set(key: string, value: SearchResult[]): void {
-    // Evict oldest if full
-    if (this.cache.size >= this.maxSize) {
-      const oldest = this.cache.keys().next().value;
-      if (oldest !== undefined) this.cache.delete(oldest);
-    }
-    this.cache.set(key, { value, createdAt: Date.now() });
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  get size(): number {
-    return this.cache.size;
-  }
-}
-
 
   const config: SearchConfig = {
     providers: {

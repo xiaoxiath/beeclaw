@@ -251,7 +251,13 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       try {
         await client.replyText(messageId, `处理消息时出错：${result.error || '未知错误'}。请稍后重试。`);
       } catch (replyError) {
-        console.error(`[FeishuWS:${process.pid}] Failed to send error reply:`, replyError);
+        // Check if error is due to withdrawn message
+        const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
+        if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
+          console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn, error reply skipped`);
+        } else {
+          console.error(`[FeishuWS:${process.pid}] Failed to send error reply:`, replyError);
+        }
       }
       return;
     }
@@ -261,7 +267,13 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       try {
         await client.replyText(messageId, '收到消息，但无法生成回复。请稍后重试。');
       } catch (replyError) {
-        console.error(`[FeishuWS:${process.pid}] Failed to send empty response reply:`, replyError);
+        // Check if error is due to withdrawn message
+        const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
+        if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
+          console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn, error reply skipped`);
+        } else {
+          console.error(`[FeishuWS:${process.pid}] Failed to send empty response reply:`, replyError);
+        }
       }
       return;
     }
@@ -280,6 +292,13 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
         confirmDelivery(result.sessionId);
       }
     } catch (error) {
+      // Check if error is due to withdrawn message
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
+        console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn by user, reply skipped`);
+        return; // Exit gracefully - no need to retry or send error message
+      }
+
       console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
       // BUG #2 FIX: Do NOT confirm delivery - leave pendingRecovery=true so recovery can retry
       console.warn(`[FeishuWS:${process.pid}] Message ${messageId} will be retried on recovery (delivery failed)`);

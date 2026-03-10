@@ -195,7 +195,11 @@ export function formatSubagentResult(
 
   if (result.error) {
     lines.push(`\n### Error\n`);
-    lines.push(result.error);
+    // Ensure error is a string
+    const errorStr = typeof result.error === 'string'
+      ? result.error
+      : JSON.stringify(result.error);
+    lines.push(errorStr);
   }
 
   return lines.join('\n');
@@ -229,7 +233,11 @@ export function formatParallelResults(
     if (result.success) {
       lines.push(result.output);
     } else {
-      lines.push(`**Error**: ${result.error || 'Unknown error'}`);
+      // Ensure error is a string
+      const errorStr = typeof result.error === 'string'
+        ? result.error
+        : (result.error ? JSON.stringify(result.error) : 'Unknown error');
+      lines.push(`**Error**: ${errorStr}`);
     }
 
     lines.push(`\n---\n`);

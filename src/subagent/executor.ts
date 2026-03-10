@@ -7,14 +7,14 @@
 import { spawnSubagent, spawnParallelSubagents } from './runtime';
 import { formatSubagentResult, formatParallelResults } from './tools';
 import type { SpawnSubagentParams, SpawnParallelParams } from './tools';
-import type { ToolResult } from '../tools/builtin';
+import type { BuiltinToolResult } from '../tools/builtin';
 
 /**
  * Execute spawn_subagent tool
  */
 export async function executeSpawnSubagent(
   params: SpawnSubagentParams
-): Promise<ToolResult> {
+): Promise<BuiltinToolResult> {
   try {
     console.log(`[SubagentTool] Spawning ${params.type} subagent`);
     console.log(`[SubagentTool] Task: ${params.task.substring(0, 100)}...`);
@@ -32,25 +32,40 @@ export async function executeSpawnSubagent(
 
       return {
         success: true,
-        output: formatSubagentResult(result, params.task),
-        data: result,
+        data: formatSubagentResult(result, params.task),
       };
     } else {
-      console.error(`[SubagentTool] Failed: ${result.error}`);
+      // Ensure error is a string
+      const errorStr = typeof result.error === 'string'
+        ? result.error
+        : JSON.stringify(result.error);
+
+      console.error(`[SubagentTool] Failed: ${errorStr}`);
 
       return {
         success: false,
-        output: `Subagent failed: ${result.error}`,
-        error: result.error,
+        error: errorStr,
       };
     }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    // Properly serialize error to string
+    let errorMsg: string;
+    if (error instanceof Error) {
+      errorMsg = error.message;
+    } else if (typeof error === 'string') {
+      errorMsg = error;
+    } else {
+      try {
+        errorMsg = JSON.stringify(error);
+      } catch {
+        errorMsg = 'Unknown error';
+      }
+    }
+
     console.error('[SubagentTool] Error:', errorMsg);
 
     return {
       success: false,
-      output: `Failed to spawn subagent: ${errorMsg}`,
       error: errorMsg,
     };
   }
@@ -61,7 +76,7 @@ export async function executeSpawnSubagent(
  */
 export async function executeSpawnParallel(
   params: SpawnParallelParams
-): Promise<ToolResult> {
+): Promise<BuiltinToolResult> {
   try {
     console.log(`[SubagentTool] Spawning ${params.tasks.length} subagents in parallel`);
 
@@ -83,21 +98,27 @@ export async function executeSpawnParallel(
 
     return {
       success: successful > 0,
-      output: formatParallelResults(results, taskDescriptions),
-      data: {
-        results,
-        successful,
-        total,
-        parallelism: params.maxParallelism || 3,
-      },
+      data: formatParallelResults(results, taskDescriptions),
     };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    // Properly serialize error to string
+    let errorMsg: string;
+    if (error instanceof Error) {
+      errorMsg = error.message;
+    } else if (typeof error === 'string') {
+      errorMsg = error;
+    } else {
+      try {
+        errorMsg = JSON.stringify(error);
+      } catch {
+        errorMsg = 'Unknown error';
+      }
+    }
+
     console.error('[SubagentTool] Error:', errorMsg);
 
     return {
       success: false,
-      output: `Failed to spawn parallel subagents: ${errorMsg}`,
       error: errorMsg,
     };
   }

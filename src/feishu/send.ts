@@ -31,6 +31,11 @@ export async function sendTextMessage(
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error codes 230011, 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`Failed to send message to ${receiveId}: withdrawn or not found`);
+        throw new Error('MESSAGE_WITHDRAWN');
+      }
       throw new Error(`Failed to send message: ${response.msg}`);
     }
 
@@ -76,6 +81,11 @@ export async function sendPostMessage(
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error codes 230011, 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`Message to ${receiveId} was withdrawn or not found`);
+        throw new Error('MESSAGE_WITHDRAWN');
+      }
       throw new Error(`Failed to send post message: ${response.msg}`);
     }
 
@@ -120,6 +130,11 @@ export async function sendMarkdownMessage(
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error codes 230011, 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`Message to ${receiveId} was withdrawn or not found`);
+        throw new Error('MESSAGE_WITHDRAWN');
+      }
       throw new Error(`Failed to send markdown message: ${response.msg}`);
     }
 
@@ -153,6 +168,11 @@ export async function sendCardMessage(
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error codes 230011, 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`Message to ${receiveId} was withdrawn or not found`);
+        throw new Error('MESSAGE_WITHDRAWN');
+      }
       throw new Error(`Failed to send card message: ${response.msg}`);
     }
 
@@ -272,6 +292,11 @@ export async function replyMessage(
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error codes 230011, 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`Message ${messageId} was withdrawn or not found`);
+        throw new Error('MESSAGE_WITHDRAWN');
+      }
       throw new Error(`Failed to reply to message: ${response.msg}`);
     }
 

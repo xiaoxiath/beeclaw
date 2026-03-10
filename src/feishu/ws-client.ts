@@ -1227,6 +1227,11 @@ export class FeishuWSClient {
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error code 230011 or 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`[FeishuWS] Message ${messageId} was withdrawn or not found, skipping reply`);
+        return; // Exit gracefully without throwing
+      }
       console.error('[FeishuWS] Reply message failed:', response.msg);
       throw new Error(`Reply message failed: ${response.msg}`);
     }
@@ -1291,6 +1296,11 @@ export class FeishuWSClient {
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error code 230011 or 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`[FeishuWS] Message ${messageId} was withdrawn or not found, skipping reply`);
+        return; // Exit gracefully without throwing
+      }
       console.error('[FeishuWS] Reply post failed:', response.msg);
       throw new Error(`Reply post failed: ${response.msg}`);
     }
@@ -1322,6 +1332,11 @@ export class FeishuWSClient {
     });
 
     if (response.code !== 0) {
+      // Check if message was withdrawn (error code 230011 or 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`[FeishuWS] Message ${messageId} was withdrawn or not found, skipping reply`);
+        return; // Exit gracefully without throwing
+      }
       console.error('[FeishuWS] Reply card failed:', response.msg);
       throw new Error(`Reply card failed: ${response.msg}`);
     }

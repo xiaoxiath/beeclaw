@@ -203,8 +203,23 @@ export class SubagentRuntime {
           break;
 
         } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-          const errorMsg = lastError.message;
+          // Properly serialize error to string
+          let errorMsg: string;
+          if (error instanceof Error) {
+            errorMsg = error.message;
+            lastError = error;
+          } else if (typeof error === 'string') {
+            errorMsg = error;
+            lastError = new Error(error);
+          } else {
+            // For objects, try to stringify them
+            try {
+              errorMsg = JSON.stringify(error);
+            } catch {
+              errorMsg = String(error);
+            }
+            lastError = new Error(errorMsg);
+          }
 
           // Check if this is the last attempt
           if (attempt === MAX_RETRIES) {
@@ -278,7 +293,7 @@ export class SubagentRuntime {
         // Apply modifications if returned
         if (modifiedDelivery?.output) {
           output = modifiedDelivery.output;
-          result.output = output;
+          result.output = output || '';
         }
         if (modifiedDelivery?.result) {
           result = { ...result, ...modifiedDelivery.result };
@@ -308,7 +323,21 @@ export class SubagentRuntime {
 
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Properly serialize error to string
+      let errorMessage: string;
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else {
+        // For objects, try to stringify them
+        try {
+          errorMessage = JSON.stringify(error);
+        } catch {
+          errorMessage = String(error);
+        }
+      }
 
       this.stats.failed++;
       this.stats.totalDuration += duration;

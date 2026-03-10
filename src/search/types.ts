@@ -52,4 +52,6 @@ export interface SearchConfig {
   timeout?: number;
   enableDedup?: boolean;
   enableRanking?: boolean;
+  cacheMaxSize?: number;
+  cacheTtlMs?: number;
 }
