@@ -16,7 +16,7 @@ function extractKeywords(content: string): string[] {
   // 硬编码的模式匹配
   const patterns = [
     /([汤吴纪修][\u4e00-\u9fa5]{1,3})/g,  // 人名
-    /(字节|百度|腾讯|阿里)/g,              // 公司
+    /( A 司|百度|腾讯|阿里)/g,              // 公司
     /(期权|股票|基金)/g,                   // 金融
     // ...
   ];

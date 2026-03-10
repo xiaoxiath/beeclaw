@@ -5,6 +5,8 @@
  * Usage:
  *   bun run src/cli.ts          # Start interactive chat
  *   bun run src/cli.ts --help   # Show help
+ *
+ * Note: Bun automatically loads .env file
  */
 
 import { createInterface } from 'readline';

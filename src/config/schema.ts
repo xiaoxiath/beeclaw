@@ -276,6 +276,21 @@ export const RecoveryConfigSchema = z.object({
   startupDelay: z.number().default(10000),
 });
 
+// Web UI configuration schema
+export const WebConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  port: z.number().default(3000),
+  host: z.string().default('0.0.0.0'),
+  auth: z.object({
+    level: z.enum(['none', 'token', 'basic']).default('none'),
+    token: z.string().optional(),
+    basicUsers: z.array(z.object({
+      username: z.string(),
+      password: z.string(),
+    })).optional(),
+  }).default({}),
+});
+
 // Main configuration schema
 export const AppConfigSchema = z.object({
   server: ServerConfigSchema.default({}),
@@ -302,6 +317,7 @@ export const AppConfigSchema = z.object({
   mcp: MCPConfigSchema.default({}),
   hooks: HooksConfigSchema.default({}),
   recovery: RecoveryConfigSchema.optional(),
+  web: WebConfigSchema.default({}),
 });
 
 // Type exports
@@ -331,4 +347,5 @@ export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 export type HooksConfig = z.infer<typeof HooksConfigSchema>;
 export type RecoveryConfig = z.infer<typeof RecoveryConfigSchema>;
+export type WebConfig = z.infer<typeof WebConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

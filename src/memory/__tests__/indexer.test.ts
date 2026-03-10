@@ -89,13 +89,13 @@ describe('Memory Indexer', () => {
       mkdirSync(factsPath, { recursive: true });
       writeFileSync(
         join(factsPath, 'chinese.md'),
-        '# 中文测试\n\n他在北京字节跳动工作，年薪很高。',
+        '# 中文测试\n\n他在北京 A 司工作，年薪很高。',
         'utf-8'
       );
 
       const index = buildFullIndex(TEST_INDEXER_PATH);
 
-      // Should extract Chinese keywords like 北京, 字节, 年薪
+      // Should extract Chinese keywords like 北京,  A 司, 年薪
       const allKeywords = Object.keys(index.facts.keywords);
       expect(allKeywords.length).toBeGreaterThan(0);
     });

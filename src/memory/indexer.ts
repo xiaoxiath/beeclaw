@@ -29,7 +29,7 @@ function extractChineseKeywords(text: string): string[] {
     // Names (2-4 Chinese characters followed by context)
     /([汤吴纪修][\u4e00-\u9fa5]{1,3})/g,
     // Companies
-    /(字节|百度|腾讯|阿里|美团|快手|小红书|百奥赛图|特斯拉|Tesla)/g,
+    /( A 司|百度|腾讯|阿里|美团|快手|小红书|百奥赛图|特斯拉|Tesla)/g,
     // Financial terms
     /(期权|股票|基金|港股|A股|美股|存款|资产|收入|年薪|月薪|赔偿|FIRE)/g,
     // Family terms

@@ -29,6 +29,7 @@
     "check:daemon:fix": "./scripts/check-daemon.sh --fix"
   },
   "dependencies": {
+    "@hono/zod-validator": "0.7.6",
     "@larksuiteoapi/node-sdk": "1.59.0",
     "ajv": "8.18.0",
     "bunqueue": "2.5.5",
@@ -41,8 +42,25 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@monaco-editor/react": "4.7.0",
+    "@tanstack/react-query": "5.90.21",
+    "@tanstack/react-router": "1.166.6",
     "@types/bun": "latest",
+    "@types/dagre": "0.7.54",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "@types/shell-quote": "1.7.5",
+    "@xyflow/react": "12.10.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "dagre": "0.8.5",
+    "lucide-react": "0.577.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-markdown": "10.1.0",
+    "tailwind-merge": "3.5.0",
+    "tailwindcss": "4.2.1",
+    "tailwindcss-cli": "0.1.2",
     "typescript": "^5.6.0"
   }
 }

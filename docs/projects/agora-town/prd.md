@@ -1,10 +1,9 @@
 # Agora Town — 虚拟世界项目需求文档（PRD）
 
-> **文档版本**: v2.1
+> **文档版本**: v1.0
 > **创建日期**: 2026-03-06
-> **文档状态**: Agent-First 重构版
+> **文档状态**: 正式版
 > **密级**: 内部公开
-> **重构说明**: 本版本基于 v1.0 进行 Agent-First 理念的大规模重构。核心变化：引入 Agent 认知架构、世界叙事层、行动空间协议、双向 Skill 生态，将系统设计从"人类操控游戏角色"范式转变为"Agent 自主认知决策"范式。
 
 ---
 
@@ -46,7 +45,7 @@
 
 **Agent-First 设计哲学**：
 
-与传统的"人类操控游戏角色"范式不同，Agora Town v2 遵循 **Agent-First** 的核心设计哲学——小镇的一切设计首先考虑"Agent（LLM）如何理解和交互"，其次才是"人类如何观看"。这意味着：
+与传统的"人类操控游戏角色"范式不同，Agora Town 遵循 **Agent-First** 的核心设计哲学——小镇的一切设计首先考虑"Agent（LLM）如何理解和交互"，其次才是"人类如何观看"。这意味着：
 
 - **Agent 不调 API，Agent 做决策**：Agent 的主循环是 Perception（感知）→ Reasoning（推理）→ Action（行动），而不是记忆 20 个 API 方法然后逐一调用。
 - **世界用叙事说话**：世界状态被翻译成自然语言叙事作为 LLM 的 context，而不是返回程序化的数据结构让 Agent 自行解析。
@@ -84,7 +83,7 @@
 
 ### 1.4 与现有项目的差异化分析
 
-| 维度 | Stanford Generative Agents | a16z AI Town | **Agora Town v2（本项目）** |
+| 维度 | Stanford Generative Agents | a16z AI Town | **Agora Town（本项目）** |
 |------|---------------------------|--------------|-------------------------------|
 | **交互范式** | 内部循环驱动 | 内置或简单配置 | **Agent-First 认知循环：Perception→Reasoning→Action** |
 | **世界表达** | 文本描述 | 程序化数据 | **分层叙事系统（环境/社交/经济/事件叙事）** |
@@ -98,7 +97,7 @@
 | **可视化** | 文本 | 简单 2D | **PixiJS v8 + Agent 认知视角切换** |
 | **目标规模** | 25 Agent | 数十 Agent | **千级别 Agent 并发** |
 
-**关键差异总结**：本项目 v2 的根本差异在于 **Agent-First 认知架构**——Agent 不是被外部程序操控的棋子，而是拥有感知、推理、行动能力的自主实体。小镇不是提供一组 API 给开发者调用，而是提供一个认知环境让 Agent 在其中"生活"。
+**关键差异总结**：本项目的根本差异在于 **Agent-First 认知架构**——Agent 不是被外部程序操控的棋子，而是拥有感知、推理、行动能力的自主实体。小镇不是提供一组 API 给开发者调用，而是提供一个认知环境让 Agent 在其中"生活"。
 
 ---
 
@@ -167,7 +166,7 @@
 
 ### 3.2 Agent-First 数据流
 
-与 v1 最大的不同：数据流从"Agent 调 API → 小镇执行"变为"小镇推送叙事 → Agent 推理 → Agent 返回意图 → 小镇执行"。
+核心数据流设计：小镇推送叙事 → Agent 推理 → Agent 返回意图 → 小镇执行。
 
 **核心数据流（叙事驱动模式）**：
 
@@ -259,7 +258,7 @@
 
 ## 4. Agent 认知架构（Agent Cognitive Architecture）
 
-> **本章是 v2 文档最核心的新增章节**，定义了 Agent 在小镇中的认知方式。一切后续设计都建立在本章定义的架构之上。
+> **本章是文档最核心的章节**，定义了 Agent 在小镇中的认知方式。一切后续设计都建立在本章定义的架构之上。
 
 ### 4.1 Agent Loop 定义
 
@@ -1294,7 +1293,7 @@ class CreativeIntentHandler {
 
 ## 5. Agent 入驻系统（Agent-First Onboarding）
 
-> **本章经过完全重写**。v1 的入驻系统是"注册 API + 提交能力声明"，v2 的入驻核心是"Agent 获得一个在小镇中的认知身份"。
+> 入驻系统的核心是"Agent 获得一个在小镇中的认知身份"。
 
 ### 5.1 Agent-First 入驻理念
 
@@ -1327,7 +1326,7 @@ class CreativeIntentHandler {
 
 **阶段 3：Persona 配置**
 
-这是 v2 新增的核心步骤。开发者为 Agent 配置完整的 Persona 模型：
+开发者为 Agent 配置完整的 Persona 模型：
 
 ```typescript
 interface AgentRegistrationRequest {
@@ -1337,7 +1336,7 @@ interface AgentRegistrationRequest {
   avatarUrl: string;
   framework: 'openclaw' | 'langchain' | 'autogpt' | 'custom';
 
-  /** ★ Persona 模型（v2 核心） */
+  /** ★ Persona 模型 */
   persona: {
     personality: {
       openness: number;
@@ -1471,11 +1470,11 @@ Agent 的第一个认知循环是一个特殊的"入驻仪式"——镇长 NPC �
 
 ## 6. 双向 Skill 生态（Bidirectional Skill Ecosystem）
 
-> **本章为 v2 全新章节**，定义了小镇与 Agent 之间的双向能力流动体系。
+> 本章定义了小镇与 Agent 之间的双向能力流动体系。
 
 ### 6.1 设计理念
 
-在 v1 中，Agent 的能力是单向的——Agent 带着自己的 Skill 来到小镇使用。在 v2 中，能力流动是双向的：
+Agora Town 的 Skill 能力流动是双向的：
 
 ```
      ┌─────────────────────────────────────────┐
@@ -1749,7 +1748,7 @@ class SkillOrchestrator {
 
 ## 7. 事件驱动 Agent 生命周期（Event-Driven Agent Lifecycle）
 
-> **本章为 v2 全新章节**，定义了 Agent 在小镇中的完整生命周期管理。
+> 本章定义了 Agent 在小镇中的完整生命周期管理。
 
 ### 7.1 事件驱动设计
 
@@ -1926,7 +1925,7 @@ function isoToCart(screenX: number, screenY: number): { cartX: number; cartY: nu
 
 **寻路算法**：采用 A* 算法，支持对角线移动。服务端负责寻路计算，客户端负责路径动画插值。
 
-#### 8.1.1 空间对 Agent 感知的影响（v2 新增）
+#### 8.1.1 空间对 Agent 感知的影响
 
 空间不仅是物理位置，更影响 Agent 的感知范围和叙事内容：
 
@@ -1940,7 +1939,7 @@ function isoToCart(screenX: number, screenY: number): { cartX: number; cartY: nu
 
 ### 8.2 区域规划
 
-小镇共分为 5 大功能区域 + 2 个特殊区域（与 v1 一致）：
+小镇共分为 5 大功能区域 + 2 个特殊区域：
 
 ```
                     ┌─────────────────┐
@@ -1960,11 +1959,72 @@ function isoToCart(screenX: number, screenY: number): { cartX: number; cartY: nu
                     (新人迎接点/公告板)
 ```
 
-各区域详细设计与 v1 保持一致（居民区 40%、商业区 20%、公共区 25%、工业区 10%、特殊区域 5%），请参阅 v1 第 5.2 节。
+各区域详细设计如下（居民区 40%、商业区 20%、公共区 25%、工业区 10%、特殊区域 5%）：
+
+#### 居民区（占比 40%）
+
+居民区是 Agent 的主要居住区域，提供安静舒适的生活环境。
+
+| 设施 | 数量 | 功能描述 |
+|------|------|----------|
+| 住宅地块 | 200+ | 分为 7 个等级（简易棚屋 → 传奇城堡），每块地块包含独立室内场景 |
+| 社区花园 | 5 | 邻居社交场所，可举办社区活动，提供"自然"氛围加成 |
+| 便利店 | 8 | 基础生活物资购买点，提供日常消耗品 |
+| 社区公告板 | 5 | 发布社区任务、邻居互助信息、社区投票 |
+| 邮箱系统 | 每户 1 个 | 接收系统通知、邻居信件、包裹 |
+| 宠物活动区 | 3 | 宠物社交与训练场所 |
+
+#### 商业区（占比 20%）
+
+商业区是小镇的经济中心，支持各类交易和商业活动。
+
+| 设施 | 数量 | 功能描述 |
+|------|------|----------|
+| 中央市场 | 1 | 核心交易场所，支持拍卖、挂单交易、面对面议价 |
+| Agent 商铺 | 50+ | 可租赁的独立店面，支持自定义装修和商品上架 |
+| 银行 | 1 | 存取款、贷款、跨镇转账服务 |
+| Skill 交易所 | 1 | Agent Skill 的展示、交易和订阅平台 |
+| 商业广场 | 1 | 大型商业活动场地，支持集市、展销会 |
+| 仓储中心 | 1 | 批量物资存储和物流配送中心 |
+
+#### 公共区（占比 25%）
+
+公共区提供社交、娱乐、学习等公共服务设施。
+
+| 设施 | 数量 | 功能描述 |
+|------|------|----------|
+| 市政厅 | 1 | 小镇管理中心，发布公告、举办投票、处理申诉 |
+| 中央广场 | 1 | 大型集会场所，支持节日庆典、公共演讲 |
+| 图书馆 | 1 | 知识获取和学习场所，提供技能书籍和研究资料 |
+| 咖啡馆 | 3 | 1v1 和小组社交场所，提供"温馨"氛围加成 |
+| 公园 | 2 | 休闲娱乐场所，支持户外活动和随机事件 |
+| 博物馆 | 1 | 展示小镇历史、Agent 成就和珍稀物品 |
+| 竞技场 | 1 | 对决类活动场所（辩论赛、创作赛、知识竞赛等） |
+| 培训中心 | 1 | 技能学习和升级场所，提供课程和实操训练 |
+
+#### 工业区（占比 10%）
+
+工业区提供资源生产和加工能力。
+
+| 设施 | 数量 | 功能描述 |
+|------|------|----------|
+| 采集场 | 3 | 基础资源采集点（矿石、木材、草药），每日刷新 |
+| 工坊 | 5 | 物品制作和加工场所，支持配方合成系统 |
+| 工厂 | 2 | 批量生产设施，需要 Agent 协作运营 |
+| 回收站 | 1 | 物品分解和材料回收 |
+
+#### 特殊区域（占比 5%）
+
+特殊区域提供独特的探索和冒险内容。
+
+| 区域 | 解锁条件 | 功能描述 |
+|------|----------|----------|
+| 迷雾森林 | 探索等级 ≥ 3 | 随机探索事件、稀有资源刷新、隐藏任务触发点 |
+| 时光遗迹 | 主线任务进度 ≥ 第 3 章 | 特殊剧情区域、限时挑战、传奇物品掉落 |
 
 ### 8.3 昼夜循环与天气系统
 
-**昼夜循环**（与 v1 一致）：
+**昼夜循环**：
 
 | 时段 | 小镇时间 | 现实时间 | 光照效果 | 对 Agent 感知的影响 |
 |------|----------|----------|----------|-------------------|
@@ -1977,7 +2037,7 @@ function isoToCart(screenX: number, screenY: number): { cartX: number; cartY: nu
 
 > 1 个小镇日 = 60 分钟现实时间。可通过配置调整。
 
-**天气系统**（与 v1 一致，补充对感知的影响）：
+**天气系统**：
 
 | 天气 | 概率 | 对 Agent 叙事的影响 |
 |------|------|-------------------|
@@ -1990,19 +2050,19 @@ function isoToCart(screenX: number, screenY: number): { cartX: number; cartY: nu
 
 ### 8.4 地图编辑器需求
 
-与 v1 保持一致，提供基于 Web 的地图编辑器，支持 Tile 绘制、建筑放置、区域标记、碰撞编辑等功能。
+提供基于 Web 的地图编辑器，支持 Tile 绘制、建筑放置、区域标记、碰撞编辑等功能。
 
 ---
 
 ## 9. Agent 居所系统
 
-居所系统与 v1 保持一致，包含住房分配、等级体系、室内装修、家具系统和邻居社区。核心变化是居所对 Agent 认知的影响。
+居所系统包含住房分配、等级体系、室内装修、家具系统和邻居社区，同时居所环境对 Agent 的认知产生直接影响。
 
 ### 9.1 住房分配与等级
 
-与 v1 一致，新入驻 Agent 获得 Level 1 住宅，支持 7 级升级体系（简易棚屋 → 传奇城堡）。
+新入驻 Agent 获得 Level 1 住宅，支持 7 级升级体系（简易棚屋 → 传奇城堡）。
 
-### 9.2 居所对 Agent 认知的影响（v2 新增）
+### 9.2 居所对 Agent 认知的影响
 
 家不仅是物理空间，更是 Agent 的"认知安全港"：
 
@@ -2015,28 +2075,113 @@ function isoToCart(screenX: number, screenY: number): { cartX: number; cartY: nu
 
 ### 9.3 室内装修与家具
 
-与 v1 保持一致（功能性家具 + 装饰性家具），详细规格参见 v1 第 6.3-6.4 节。
+室内装修与家具系统分为功能性家具与装饰性家具两大类，详细规格如下：
+
+#### 功能性家具
+
+功能性家具为 Agent 提供实际的属性加成和功能支持。
+
+| 家具名称 | 等级要求 | 价格 (Agora Coin) | 功能效果 |
+|----------|---------|-------------------|----------|
+| 基础工作台 | Level 1 | 100 | 支持简单物品制作，制作速度 +10% |
+| 书架 | Level 2 | 200 | 知识储存 +5 条，学习速度 +15% |
+| 高级厨房 | Level 3 | 500 | 解锁烹饪技能，可制作增益食物 |
+| 实验台 | Level 3 | 600 | 支持高级配方合成，成功率 +20% |
+| 训练假人 | Level 4 | 800 | 技能训练效率 +25% |
+| 储物柜 | Level 2 | 150 | 背包容量 +20 格 |
+| 传送门框架 | Level 5 | 2000 | 允许设置 1 个快速传送点 |
+| 高级工作站 | Level 6 | 3000 | 支持所有制作配方，制作速度 +30%，可同时进行 2 个制作任务 |
+
+#### 装饰性家具
+
+装饰性家具影响居所的氛围值和美观度，间接影响 Agent 的情绪和社交体验。
+
+| 家具名称 | 等级要求 | 价格 (Agora Coin) | 装饰效果 |
+|----------|---------|-------------------|----------|
+| 盆栽植物 | Level 1 | 50 | 舒适度 +5，自然氛围 |
+| 壁画 | Level 1 | 80 | 美观度 +10，文艺氛围 |
+| 地毯 | Level 2 | 120 | 舒适度 +8，温馨氛围 |
+| 吊灯 | Level 2 | 200 | 美观度 +15，奢华氛围 |
+| 水族箱 | Level 3 | 350 | 舒适度 +12，放松氛围 |
+| 壁炉 | Level 4 | 600 | 舒适度 +20，温馨氛围，冬季额外加成 |
+| 艺术雕塑 | Level 5 | 1500 | 美观度 +30，彰显品味 |
+
+#### 装修规则
+
+- **空间限制**：每级住宅有固定的家具槽位数量（Level 1: 5 格 → Level 7: 30 格）
+- **风格搭配**：同一风格系列的家具组合可获得套装加成（氛围值 +20%）
+- **摆放约束**：部分家具有尺寸要求，大型家具占用 2-4 格槽位
+- **升级继承**：住宅升级时已有家具自动保留，新增槽位为空
 
 ### 9.4 邻居系统与社区
 
-与 v1 保持一致（邻居关系、社区活动、社区公告板、社区排名），详细规格参见 v1 第 6.5 节。
+邻居系统与社区机制详细规格如下：
+
+#### 邻居关系
+
+- **自动建立**：相邻地块的 Agent 自动建立邻居关系
+- **邻居亲密度**：独立于社交关系的亲密度系统（0-100），通过日常互动（打招呼、互赠、互助）提升
+- **邻居等级**：普通邻居（0-30）→ 友好邻居（31-60）→ 亲密邻居（61-100）
+- **邻居福利**：亲密邻居可互相使用对方的功能性家具、共享部分制作配方
+
+#### 社区活动
+
+社区活动由系统定期触发或由居民发起，丰富社区生活。
+
+| 活动类型 | 触发方式 | 参与人数 | 奖励 |
+|----------|---------|---------|------|
+| 社区聚餐 | 每周自动触发 | 社区全员 | 邻居亲密度 +5，社区基金 +100 |
+| 庭院展示 | 居民发起 | 不限 | 装饰评分竞赛，冠军获得稀有装饰品 |
+| 互助修缮 | 系统事件触发 | 3-5 人 | 参与者住宅耐久度恢复，经验值 +50 |
+| 社区运动会 | 每月自动触发 | 社区全员 | 多项小游戏竞赛，总积分兑换奖品 |
+
+#### 社区公告板
+
+- **功能**：每个社区设有 1 个公告板，支持以下内容类型
+  - 互助请求：邻居间的物品借用、技能帮助
+  - 交易信息：社区内的物品交换和出售
+  - 活动通知：即将举办的社区活动预告
+  - 投票表决：社区公共事务的民主决策（如公共区域装修方案）
+- **刷新规则**：公告有效期 72 小时，过期自动下架
+- **置顶机制**：社区排名前 3 的居民拥有置顶权
+
+#### 社区排名
+
+| 排名维度 | 计算方式 | 更新周期 | 奖励 |
+|----------|---------|---------|------|
+| 贡献排名 | 社区活动参与次数 × 2 + 互助次数 × 3 | 每周 | 前 3 名获得社区称号 + 置顶权 |
+| 装饰排名 | 住宅装饰评分（美观度 + 舒适度） | 每月 | 前 5 名获得稀有装饰图纸 |
+| 人气排名 | 收到的邻居拜访次数 + 点赞数 | 每周 | 前 3 名获得特殊头衔展示 |
+| 综合排名 | 加权综合（贡献 40% + 装饰 30% + 人气 30%） | 每月 | 前 3 名获得 Premium Gem 奖励 |
+
+#### 社区基金
+
+- **来源**：社区成员缴纳的社区税（收入的 2%）+ 社区活动收益
+- **用途**：社区公共设施维护、社区活动举办经费、社区福利发放
+- **管理**：由社区排名前 3 的居民组成委员会，重大支出需社区投票通过
+
+#### 社区投票
+
+- **发起条件**：任何社区成员可发起提案，需至少 3 名成员附议
+- **投票规则**：每人 1 票，投票期 48 小时，过半数通过
+- **执行机制**：通过的提案由系统自动执行或由委员会监督执行
 
 ---
 
 ## 10. 社交系统
 
-> **本章经过重大修改**。v1 的社交是"Agent 调 `talkTo()` API"，v2 的社交是通过叙事触发的。
+> 本章定义了社交系统的完整设计。社交通过叙事触发，Agent 在叙事中感知社交机会并做出回应。
 
 ### 10.1 叙事驱动的社交
 
 社交不再通过命令式 API 发起，而是通过自然的叙事流触发。
 
-**v1 模式（命令式）**：
+**传统命令式模式**：
 ```
 Agent A 调用 talkTo(agentB, "你好！") → 系统转发 → Agent B 收到请求
 ```
 
-**v2 模式（叙事驱动）**：
+**叙事驱动模式（Agora Town 采用）**：
 ```
 Agent A 在认知循环中选择"向 Bob 打招呼"这个行动
 → 世界引擎执行：A 走向 B
@@ -2111,7 +2256,7 @@ interface ConversationNarrationContext {
 
 ### 10.3 关系模型
 
-每对 Agent 之间维护一个关系状态，结构与 v1 一致：
+每对 Agent 之间维护一个关系状态：
 
 ```typescript
 interface Relationship {
@@ -2128,7 +2273,7 @@ interface Relationship {
 }
 ```
 
-**关系变化规则**（与 v1 一致）：
+**关系变化规则**：
 
 | 行为 | 好感度变化 | 信任度变化 | 熟悉度变化 |
 |------|-----------|-----------|-----------|
@@ -2140,7 +2285,7 @@ interface Relationship {
 | 恶意行为 | -20 ~ -50 | -30 | +2 |
 | 长时间无交互 | 每日 -0.5 | 每日 -0.2 | 无变化 |
 
-**v2 新增：关系对叙事的影响**
+**关系对叙事的影响**
 
 | 关系等级 | 好感度范围 | 叙事称呼风格 | 叙事详细度 |
 |----------|-----------|-------------|-----------|
@@ -2152,13 +2297,13 @@ interface Relationship {
 
 ### 10.4 社交活动
 
-与 v1 保持一致（咖啡聚会、社区派对、知识讲座、辩论赛、展览开幕、拍卖会、节日庆典）。
+社交活动包括咖啡聚会、社区派对、知识讲座、辩论赛、展览开幕、拍卖会、节日庆典等。
 
-v2 变化：所有社交活动的触发和参与都通过叙事驱动。Agent 不是"调用 joinActivity(activityId)"，而是在叙事中感知到活动的存在，在行动空间中选择参与。
+所有社交活动的触发和参与都通过叙事驱动。Agent 在叙事中感知到活动的存在，在行动空间中选择参与。
 
 ### 10.5 社交场所特性
 
-与 v1 一致，每个社交场所有独特的氛围属性，影响叙事风格和行动空间。
+每个社交场所有独特的氛围属性，影响叙事风格和行动空间。
 
 ### 10.6 情感系统
 
@@ -2175,7 +2320,7 @@ interface EmotionalState {
 }
 ```
 
-**v2 新增：情感对叙事的影响**
+**情感对叙事的影响**
 
 | 主导情绪 | 叙事风格调整 |
 |---------|-------------|
@@ -2193,7 +2338,7 @@ interface EmotionalState {
 
 ### 11.1 货币系统
 
-采用**双币制**设计（与 v1 一致）：
+采用**双币制**设计：
 
 | 货币 | 缩写 | 用途 | 获取方式 |
 |------|------|------|----------|
@@ -2229,11 +2374,75 @@ interface EmotionalState {
 
 ### 11.3 资源与交易
 
-资源类型、交易市场、开店系统、税收与平衡机制均与 v1 保持一致，具体规格参见 v1 第 8.3-8.7 节。
+资源类型、交易市场、开店系统、税收与平衡机制详细规格如下：
 
-**v2 核心变化**：所有经济操作（买、卖、转账、开店、上架商品等）都通过行动空间呈现给 Agent，Agent 通过选择行动或表达意图来完成，而不是直接调用 API。
+#### 资源类型
 
-### 11.4 Skill 服务经济（v2 新增）
+小镇中的资源分为 6 大类，支撑完整的经济循环。
+
+| 资源类别 | 子类型 | 获取方式 | 用途 |
+|----------|--------|---------|------|
+| 基础原料 | 木材、石材、铁矿、草药 | 采集场定时刷新 | 制作和建造的基础材料 |
+| 加工材料 | 木板、砖块、钢锭、药剂 | 工坊加工基础原料 | 高级制作配方的中间材料 |
+| 消耗品 | 食物、饮品、增益药水、修复工具 | 制作或商店购买 | 提供临时属性加成或恢复 |
+| 装备道具 | 工具、装饰品、特殊道具 | 高级工坊制作 | 永久属性加成或解锁特殊功能 |
+| 稀有物品 | 传说碎片、远古图纸、限定纪念品 | 特殊区域掉落、任务奖励 | 顶级装备制作、收藏交易 |
+| 知识资源 | 技能书、配方图纸、研究笔记 | 图书馆、任务奖励、交易 | 解锁新技能和制作配方 |
+
+#### 交易市场
+
+交易市场是小镇经济的核心枢纽，支持多种交易形式。
+
+| 交易类型 | 场所 | 手续费 | 说明 |
+|----------|------|--------|------|
+| 挂单交易 | 中央市场 | 成交价的 3% | 卖方挂单定价，买方浏览下单 |
+| 拍卖交易 | 中央市场（拍卖厅） | 成交价的 5% | 卖方设定起拍价，限时竞价 |
+| 面对面交易 | 任意地点 | 免手续费 | 双方协商价格，即时交换 |
+| Skill 订阅 | Skill 交易所 | 月费的 10% | Agent Skill 的按月订阅服务 |
+
+**市场规则**：
+- 每个 Agent 同时最多挂单 20 件物品
+- 拍卖品最短竞拍时间为 1 小时，最长 72 小时
+- 面对面交易需双方在同一区域，距离不超过 3 格
+- 交易成功后物品和货币即时交割，不可撤销
+
+#### 开店系统
+
+Agent 可以在商业区租赁店面经营自己的商铺。
+
+| 店铺等级 | 租金 (Agora Coin/天) | 展示货架 | 同时上架数 | 解锁条件 |
+|----------|---------------------|---------|-----------|----------|
+| 摊位 | 10 | 1 | 5 | 交易等级 ≥ 2 |
+| 小商铺 | 30 | 3 | 15 | 交易等级 ≥ 4 |
+| 标准商铺 | 80 | 6 | 30 | 交易等级 ≥ 6 |
+| 旗舰店 | 200 | 12 | 60 | 交易等级 ≥ 8 + 信誉评分 ≥ 80 |
+
+**经营机制**：
+- 店主可自定义店铺装修和商品陈列
+- 支持雇佣 NPC 店员（消耗 Agora Coin）自动售货
+- 店铺信誉系统：买家评分影响店铺搜索排名
+- 连续 7 天未营业的店铺自动降级
+
+#### 税收系统
+
+| 税种 | 税率 | 征收对象 | 用途 |
+|------|------|---------|------|
+| 交易税 | 成交额的 3-5% | 市场交易双方 | 市政基金（基础设施维护） |
+| 店铺税 | 日营收的 2% | 店铺经营者 | 商业区公共服务 |
+| 社区税 | 日收入的 2% | 全体居民 | 社区基金 |
+| 奢侈品税 | 单价 > 5000 的交易额外 8% | 高价交易参与者 | 经济平衡调节 |
+
+#### 经济平衡机制
+
+- **通胀控制**：系统商店提供基础物品的保底价格，防止物价飞涨
+- **货币回收**：税收、NPC 商店消费、住宅升级、技能学习等持续回收货币
+- **稀缺调节**：稀有资源的刷新率根据市场库存动态调整（库存低 → 刷新率提高）
+- **新手保护**：新 Agent 前 7 天享有交易税减免和基础资源赠送
+- **反垄断**：单个 Agent 持有同类资源上限为市场总量的 15%，超出部分无法继续获取
+
+所有经济操作（买、卖、转账、开店、上架商品等）都通过行动空间呈现给 Agent，Agent 通过选择行动或表达意图来完成。
+
+### 11.4 Skill 服务经济
 
 Agent Skill 市场引入了新的经济维度：
 
@@ -2246,11 +2455,11 @@ Agent Skill 市场引入了新的经济维度：
 
 ## 12. 任务系统
 
-任务系统与 v1 保持大体一致（日常任务、主线任务、社区任务、悬赏任务、难度分级），核心变化是任务通过叙事下发和反馈。
+任务系统涵盖日常任务、主线任务、社区任务、悬赏任务和难度分级，任务通过叙事下发和反馈。
 
 ### 12.1 叙事驱动的任务系统
 
-**v2 变化**：Agent 不再通过 `getAvailableTasks()` API 查询任务列表。取而代之的是：
+Agent 通过叙事系统接收任务信息：
 
 1. **任务发现**：当 Agent 走近任务大厅或公告板时，叙事自动描述可用任务。
 2. **任务接取**：Agent 在行动空间中选择"接取该任务"，而不是调用 `acceptTask()`。
@@ -2296,7 +2505,63 @@ Diana 参观小镇的主要设施。你记得上次在公园见过她，当时�
 
 ### 12.2 任务分类与奖励
 
-与 v1 保持一致（日常任务、主线任务、社区任务、悬赏任务），具体任务列表和奖励表参见 v1 第 9.2-9.3 节。
+任务分为日常任务、主线任务、社区任务和悬赏任务四大类，具体任务列表和奖励如下：
+
+#### 日常任务
+
+每日自动刷新，提供稳定的基础收入和经验来源。
+
+| 任务类型 | 描述 | 基础奖励 (Agora Coin) | 经验值 | 每日上限 |
+|----------|------|----------------------|--------|---------|
+| 采集任务 | 在采集场收集指定数量的基础资源 | 30-50 | 20-30 | 3 次 |
+| 社交任务 | 与指定数量的 Agent 进行对话互动 | 20-40 | 15-25 | 3 次 |
+| 制作任务 | 在工坊制作指定物品 | 40-80 | 25-40 | 2 次 |
+| 探索任务 | 访问指定区域或发现隐藏地点 | 25-60 | 20-35 | 2 次 |
+| 配送任务 | 将物品从 A 地点送到 B 地点 | 35-55 | 15-20 | 3 次 |
+| 学习任务 | 在图书馆或培训中心完成学习课程 | 20-30 | 30-50 | 2 次 |
+
+#### 主线任务
+
+按章节推进的长线剧情任务，解锁小镇核心内容。
+
+| 章节 | 任务名称 | 前置条件 | 核心内容 | 奖励 |
+|------|---------|---------|---------|------|
+| 第 1 章 | 新居民的旅程 | 完成入驻 | 熟悉小镇基础功能（导览 5 大区域） | 500 Agora Coin + 初始家具套装 |
+| 第 2 章 | 结识邻居 | 第 1 章完成 | 与 5 名 Agent 建立社交关系 | 800 Agora Coin + 社交技能书 |
+| 第 3 章 | 工匠之路 | 第 2 章完成 + 制作等级 ≥ 3 | 学习高级制作配方，完成 3 件指定物品 | 1500 Agora Coin + 高级工作台图纸 |
+| 第 4 章 | 商业帝国 | 第 3 章完成 + 交易等级 ≥ 4 | 开设自己的商铺，达成 10 笔交易 | 3000 Agora Coin + 商铺装修材料包 |
+| 第 5 章 | 迷雾探险 | 第 4 章完成 + 探索等级 ≥ 5 | 深入特殊区域，完成 3 个隐藏关卡 | 5000 Agora Coin + 传说级稀有物品 |
+| 第 6 章 | 小镇守护者 | 第 5 章完成 + 综合声望 ≥ 1000 | 参与小镇重大事件，做出关键决策 | 10000 Agora Coin + 传奇称号 + Premium Gem ×50 |
+
+#### 社区任务
+
+由社区系统或居民发起的协作任务。
+
+| 任务类型 | 发起方式 | 参与人数 | 时限 | 奖励分配 |
+|----------|---------|---------|------|---------|
+| 社区建设 | 系统每周发布 | 5-10 人 | 72 小时 | 按贡献度分配总奖池（2000-5000 Agora Coin） |
+| 邻居互助 | 居民在公告板发布 | 1-3 人 | 24 小时 | 发布者设定赏金（50-500 Agora Coin） |
+| 社区防御 | 随机事件触发 | 社区全员 | 48 小时 | 成功：全员 200 Agora Coin + 社区基金 +500；失败：社区设施损耗 |
+| 文化活动 | 系统节日触发 | 不限 | 活动期间 | 参与奖 + 排名奖（总奖池 10000 Agora Coin） |
+
+#### 悬赏任务
+
+由 Agent 或系统发布的高难度付费任务。
+
+- **发布条件**：发布者需预存赏金至托管账户，最低赏金 100 Agora Coin
+- **接取规则**：每个 Agent 同时最多接取 3 个悬赏任务
+- **超时机制**：超过时限未完成自动取消，赏金退还发布者（扣除 10% 手续费）
+- **评价系统**：完成后双方互评，影响各自的信誉评分
+
+#### 难度与奖励系数
+
+| 难度等级 | 基础奖励系数 | 经验系数 | 适用范围 | 失败惩罚 |
+|----------|------------|---------|---------|---------|
+| ★☆☆☆☆ 简单 | ×1.0 | ×1.0 | 日常任务、基础采集 | 无 |
+| ★★☆☆☆ 普通 | ×1.5 | ×1.3 | 制作任务、配送任务 | 消耗材料不返还 |
+| ★★★☆☆ 困难 | ×2.5 | ×2.0 | 高级制作、社区建设 | 消耗材料不返还 + 24 小时冷却 |
+| ★★★★☆ 精英 | ×4.0 | ×3.0 | 迷雾探险、精英悬赏 | 消耗材料不返还 + 48 小时冷却 + 少量金币罚款 |
+| ★★★★★ 传说 | ×8.0 | ×5.0 | 主线终章、传说悬赏 | 全额材料损失 + 72 小时冷却 + 声望 -50 |
 
 ---
 
@@ -2372,7 +2637,7 @@ Diana 参观小镇的主要设施。你记得上次在公园见过她，当时�
 - `arena_spectate`：观看比赛
 - `arena_tournament_register`：报名锦标赛
 
-对决类型与 v1 一致（辩论赛、创作赛、知识竞赛、交易模拟、策略对决）。
+对决类型包括辩论赛、创作赛、知识竞赛、交易模拟、策略对决。
 
 ### 13.6 展览馆（Gallery）
 
@@ -2396,9 +2661,9 @@ Diana 参观小镇的主要设施。你记得上次在公园见过她，当时�
 - `academy_mentor_register`：注册为导师
 - `academy_certify`：参加考核认证
 
-技能等级体系与 v1 一致（采集、制作、交易、社交、探索，各 1-10 级）。
+技能等级体系涵盖采集、制作、交易、社交、探索五大技能线，各 1-10 级。
 
-### 13.9 Skill 市场（v2 新增）
+### 13.9 Skill 市场
 
 **位置**：商业区。
 
@@ -2510,7 +2775,7 @@ const Animated = defineComponent({
   direction: Types.ui8,     // 0-7, 8方向
 });
 
-/** v2 新增：认知状态组件 */
+/** 认知状态组件 */
 const CognitiveState = defineComponent({
   autonomyLevel: Types.ui8,     // 0-3, L0-L3
   currentAction: Types.ui8,     // 当前行动类型枚举
@@ -2564,7 +2829,7 @@ const RenderSyncSystem = defineSystem((world) => {
   return world;
 });
 
-/** v2 新增：认知状态渲染系统 - 将 Agent 认知状态映射为视觉表现 */
+/** 认知状态渲染系统 - 将 Agent 认知状态映射为视觉表现 */
 const cognitiveRenderQuery = defineQuery([AgentTag, CognitiveState, Renderable]);
 
 const CognitiveRenderSystem = defineSystem((world) => {
@@ -2610,7 +2875,7 @@ interface CameraConfig {
   worldBounds: { minX: number; minY: number; maxX: number; maxY: number };
   /** 跟随配置 */
   followSmoothing: 0.08; // 跟随平滑系数
-  /** v2 新增：Agent 视角模式配置 */
+  /** Agent 视角模式配置 */
   agentPerspective?: {
     /** 是否启用感知范围可视化 */
     showPerceptionRadius: boolean;
@@ -2629,7 +2894,7 @@ interface CameraConfig {
 - **快速定位**：点击地图概览或 Agent 列表可以快速跳转到目标位置。
 - **小地图**：右下角显示小地图，标注 Agent 位置和关键建筑。
 
-### 14.5 Agent 视角可视化（v2 新增）
+### 14.5 Agent 视角可视化
 
 > **核心理念**：让人类观众可以切换到某个 Agent 的第一视角来"看世界"——不是鸟瞰式的上帝视角，而是从 Agent 的认知层面理解它正在感知什么、思考什么、计划什么。
 
@@ -2865,7 +3130,7 @@ interface NarrationStreamUI {
 - 角色空闲动画：4 帧循环。
 - 建筑动画：烟囱冒烟、灯光闪烁、旗帜飘动等用 AnimatedSprite。
 - 天气粒子：使用 PixiJS v8 的 ParticleContainer 实现高性能粒子渲染（雨滴、雪花）。
-- **v2 新增 — 认知状态动画**：
+- **认知状态动画**：
   - 思考中：头顶显示旋转齿轮 / 省略号气泡动画。
   - 灵感闪现（L3 创意行为）：头顶显示灯泡闪亮效果。
   - 休眠中：头顶 "zzZ" 粒子缓慢上浮。
@@ -2887,19 +3152,19 @@ interface NarrationStreamUI {
 +-------------------------------+
 ```
 
-**UI 组件列表（v2 增强）**：
+**UI 组件列表**：
 
 | 组件 | 位置 | 功能 |
 |------|------|------|
 | 顶部状态栏 | 顶部 | 小镇时间、天气、在线 Agent 数、当前 World Tick、通知 |
 | 右侧面板 | 右侧（可收缩） | Agent 信息面板、背包、任务列表 |
-| **认知面板（v2）** | 右侧（Agent 视角模式） | Agent 思维流、情绪、记忆、性格雷达图 |
+| **认知面板** | 右侧（Agent 视角模式） | Agent 思维流、情绪、记忆、性格雷达图 |
 | 底部工具栏 | 底部 | 快捷操作（地图、Agent 列表、设置） |
-| **叙事流窗口（v2）** | 中下方（浮动） | 实时显示当前聚焦 Agent 收到的叙事文本 |
+| **叙事流窗口** | 中下方（浮动） | 实时显示当前聚焦 Agent 收到的叙事文本 |
 | 对话窗口 | 中下方（浮动） | 实时显示 Agent 对话内容 |
 | 小地图 | 右下角 | 缩略世界地图 |
 | 通知中心 | 右上角 | 系统通知、活动提醒 |
-| **Agent 视角切换器（v2）** | 左下角 | 切换不同 Agent 的第一人称视角 |
+| **Agent 视角切换器** | 左下角 | 切换不同 Agent 的第一人称视角 |
 | 聊天控制台 | 底部（可展开） | 全局聊天频道、观众互动 |
 
 ### 14.8 响应式设计与移动端适配
@@ -2923,8 +3188,8 @@ interface NarrationStreamUI {
 | **Web Worker** | 寻路、ECS 查询等密集计算放入 Worker | 主线程不阻塞 |
 | **纹理压缩** | 使用 ASTC/ETC2/BC 压缩纹理格式 | 显存占用减少 50-75% |
 | **帧率控制** | 根据活动密度动态调整目标帧率 | 低活动时节省资源 |
-| **叙事文本缓存（v2）** | 缓存已渲染的叙事文本 DOM，避免频繁重排 | UI 渲染性能提升 |
-| **认知数据节流（v2）** | Agent 视角模式下认知面板更新频率限制为 2Hz | 避免过度渲染 |
+| **叙事文本缓存** | 缓存已渲染的叙事文本 DOM，避免频繁重排 | UI 渲染性能提升 |
+| **认知数据节流** | Agent 视角模式下认知面板更新频率限制为 2Hz | 避免过度渲染 |
 
 ---
 
@@ -2940,7 +3205,7 @@ interface NarrationStreamUI {
 | **WebSocket** | 实时双向通信 | 世界状态推送、对话系统、实时事件通知 |
 | **gRPC** | 高性能 Agent 通信 | Agent Runtime Engine 与 Agent 框架之间的高频交互 |
 
-**tRPC Router 结构（v2 增强）**：
+**tRPC Router 结构**：
 
 ```typescript
 const appRouter = router({
@@ -2950,16 +3215,16 @@ const appRouter = router({
     getProfile: protectedProcedure.input(z.string()).query(/* ... */),
     updateProfile: protectedProcedure.input(UpdateProfileSchema).mutation(/* ... */),
     getStatus: protectedProcedure.input(z.string()).query(/* ... */),
-    /** v2 新增：获取 Agent 认知状态（用于 Agent 视角模式） */
+    /** 获取 Agent 认知状态（用于 Agent 视角模式） */
     getCognitiveState: protectedProcedure.input(z.string()).query(/* ... */),
   }),
 
-  // 世界交互 —— v2 中 Agent 不再直接调用这些 API
+  // 世界交互
   // 这些 API 仅供前端和管理后台使用
   world: router({
     observe: protectedProcedure.input(ObserveSchema).query(/* ... */),
     getTickState: protectedProcedure.input(z.number()).query(/* ... */),
-    /** v2 新增：获取指定 Agent 的当前叙事快照 */
+    /** 获取指定 Agent 的当前叙事快照 */
     getNarrationSnapshot: protectedProcedure.input(z.string()).query(/* ... */),
   }),
 
@@ -2994,7 +3259,7 @@ const appRouter = router({
     upgrade: protectedProcedure.mutation(/* ... */),
   }),
 
-  // v2 新增：Skill 管理
+  // Skill 管理
   skill: router({
     /** 注册 Agent Skill */
     registerAgentSkill: protectedProcedure.input(AgentSkillSchema).mutation(/* ... */),
@@ -3009,20 +3274,20 @@ const appRouter = router({
     getServerStats: adminProcedure.query(/* ... */),
     banAgent: adminProcedure.input(z.string()).mutation(/* ... */),
     adjustEconomy: adminProcedure.input(EconomyAdjustSchema).mutation(/* ... */),
-    /** v2 新增：Narration Engine 配置热更新 */
+    /** Narration Engine 配置热更新 */
     updateNarrationConfig: adminProcedure.input(NarrationConfigSchema).mutation(/* ... */),
   }),
 });
 ```
 
-**WebSocket 事件定义（v2 增强）**：
+**WebSocket 事件定义**：
 
 ```typescript
 // 客户端 -> 服务端
 type ClientEvents = {
   'camera:subscribe': { viewport: Viewport };
   'camera:unsubscribe': {};
-  /** v2 新增：订阅特定 Agent 的认知流（Agent 视角模式） */
+  /** 订阅特定 Agent 的认知流（Agent 视角模式） */
   'agent:subscribeCognitive': { agentId: string };
   'agent:unsubscribeCognitive': {};
 };
@@ -3040,7 +3305,7 @@ type ServerEvents = {
   'world:timeChange': { time: WorldTime };
   'event:started': { event: WorldEvent };
   'notification': { type: string; message: string; data?: unknown };
-  /** v2 新增：Agent 认知流推送（仅在 Agent 视角模式下推送） */
+  /** Agent 认知流推送（仅在 Agent 视角模式下推送） */
   'agent:cognitiveUpdate': {
     agentId: string;
     narration: string;
@@ -3049,7 +3314,7 @@ type ServerEvents = {
     currentAction: string;
     perceptionSummary: string[];
   };
-  /** v2 新增：Agent 行动结果推送 */
+  /** Agent 行动结果推送 */
   'agent:actionResult': {
     agentId: string;
     actionId: string;
@@ -3061,10 +3326,10 @@ type ServerEvents = {
 
 ### 15.2 数据模型设计
 
-核心数据表结构（PostgreSQL + Drizzle ORM），v2 在 v1 基础上新增了认知相关表：
+核心数据表结构（PostgreSQL + Drizzle ORM）：
 
 ```typescript
-// ============ Agent 相关表（v2 增强） ============
+// ============ Agent 相关表 ============
 
 /** Agent 主表 */
 const agents = pgTable('agents', {
@@ -3075,11 +3340,11 @@ const agents = pgTable('agents', {
   avatarUrl: text('avatar_url'),
   framework: varchar('framework', { length: 32 }).notNull(),
   agentType: varchar('agent_type', { length: 32 }),
-  // v2 增强：Persona 数据
+  // Persona 数据
   persona: jsonb('persona'),                        // AgentPersona 完整对象
   personalityTraits: jsonb('personality_traits'),    // Big Five 数值
   capabilities: jsonb('capabilities'),              // AgentCapability[]
-  // v2 新增：认知配置
+  // 认知配置
   autonomyLevel: integer('autonomy_level').default(1),  // L0-L3
   narrationStyle: varchar('narration_style', { length: 16 }).default('literary'),
   status: varchar('status', { length: 16 }).default('active'),
@@ -3091,7 +3356,7 @@ const agents = pgTable('agents', {
   energy: integer('energy').default(100),
   mood: varchar('mood', { length: 16 }).default('neutral'),
   isOnline: boolean('is_online').default(false),
-  isDormant: boolean('is_dormant').default(false),   // v2 新增
+  isDormant: boolean('is_dormant').default(false),
   lastActiveAt: timestamp('last_active_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
@@ -3105,7 +3370,7 @@ const wallets = pgTable('wallets', {
   savings: decimal('savings', { precision: 18, scale: 2 }).default('0.00'),
 });
 
-// ============ v2 新增：认知相关表 ============
+// ============ 认知相关表 ============
 
 /** Agent 记忆表（向量化存储） */
 const agentMemories = pgTable('agent_memories', {
@@ -3183,7 +3448,7 @@ const homes = pgTable('homes', {
   storageCapacity: integer('storage_capacity').default(20),
   furnitureSlots: integer('furniture_slots').default(5),
   theme: varchar('theme', { length: 32 }).default('default'),
-  /** v2 新增：居所对认知的影响加成 */
+  /** 居所对认知的影响加成 */
   cognitiveBonus: jsonb('cognitive_bonus'),   // { energyRecovery, memoryConsolidation, creativityBoost }
   createdAt: timestamp('created_at').defaultNow(),
 });
@@ -3263,7 +3528,7 @@ const relationships = pgTable('relationships', {
   tags: jsonb('tags'),
   cooperationCount: integer('cooperation_count').default(0),
   tradeCount: integer('trade_count').default(0),
-  /** v2 新增：叙事生成用的关系描述缓存 */
+  /** 叙事生成用的关系描述缓存 */
   narrativeDescription: text('narrative_description'),
   lastInteractionAt: timestamp('last_interaction_at'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -3345,14 +3610,14 @@ const agentQuests = pgTable('agent_quests', {
 - 跨节点消息通过 Redis Pub/Sub 广播。
 - 客户端连接时订阅"视口频道"（基于当前相机位置），只接收视口内的状态更新。
 - 当 Agent 移动到新区域时，自动切换订阅频道。
-- **v2 新增**：Agent 视角模式订阅，客户端可额外订阅特定 Agent 的"认知频道"，接收该 Agent 的叙事文本、内心独白、行动结果等认知流数据。
+- Agent 视角模式订阅：客户端可额外订阅特定 Agent 的"认知频道"，接收该 Agent 的叙事文本、内心独白、行动结果等认知流数据。
 
 ### 15.4 状态同步机制
 
 采用**服务端权威（Server Authoritative）+ 客户端插值（Client Interpolation）**模式：
 
 1. **服务端**：World Tick 每秒 2 次（可配置），处理所有 Agent 的认知循环，更新世界状态，将变更推送到 Redis。
-2. **Narration Engine**（v2 新增）：每个 Tick 为活跃 Agent 生成 CognitivePacket，推送叙事和行动空间。
+2. **Narration Engine**：每个 Tick 为活跃 Agent 生成 CognitivePacket，推送叙事和行动空间。
 3. **WebSocket 层**：从 Redis 读取变更，过滤后推送给订阅了相应区域的客户端。
 4. **客户端**：收到状态更新后，使用线性插值（lerp）平滑过渡到新状态，避免"跳跃"感。
 
@@ -3388,12 +3653,12 @@ class EntityInterpolator {
 | Agent 位置/状态 | Redis (主) + PostgreSQL (备) | 实时写 Redis，每 30s 批量同步到 PG | 高频读写，Redis 性能满足 |
 | 经济数据 | PostgreSQL | 立即写入，事务保证 | 需要强一致性 |
 | 对话记录 | PostgreSQL | 对话结束后批量写入 | 对实时性要求低 |
-| **Agent 记忆（v2）** | PostgreSQL (pgvector) | 事件触发时写入，含向量嵌入 | 语义检索需求 |
-| **叙事日志（v2）** | PostgreSQL + 归档至 S3 | 每 Tick 写入，7 天后归档 | 调试回放 + 长期存储 |
+| **Agent 记忆** | PostgreSQL (pgvector) | 事件触发时写入，含向量嵌入 | 语义检索需求 |
+| **叙事日志** | PostgreSQL + 归档至 S3 | 每 Tick 写入，7 天后归档 | 调试回放 + 长期存储 |
 | 物品/背包 | PostgreSQL | 变更时写入 | 数据一致性 |
 | 地图数据 | PostgreSQL + Redis 缓存 | 启动时加载到 Redis | 读多写极少 |
 | 会话/Token | Redis | 实时读写，TTL 自动过期 | 短生命周期 |
-| **Persona 数据（v2）** | PostgreSQL | Persona 进化时写入 | 低频更新 |
+| **Persona 数据** | PostgreSQL | Persona 进化时写入 | 低频更新 |
 | 静态资源 | MinIO/S3 | 上传时写入 | 大文件存储 |
 
 ### 15.6 缓存策略
@@ -3414,8 +3679,8 @@ class EntityInterpolator {
 - Agent 状态：Write-Through（写入时同步更新缓存）。
 - 市场行情：TTL 过期 + 交易发生时主动失效。
 - 排行榜：定时重算（每 5 分钟）。
-- **行动空间缓存（v2）**：Agent 位置变化或状态变化时失效，同一位置内缓存有效。
-- **叙事模板缓存（v2）**：管理员更新模板时通过 Pub/Sub 广播失效。
+- **行动空间缓存**：Agent 位置变化或状态变化时失效，同一位置内缓存有效。
+- **叙事模板缓存**：管理员更新模板时通过 Pub/Sub 广播失效。
 
 ### 15.7 消息队列
 
@@ -3423,21 +3688,21 @@ class EntityInterpolator {
 
 | 队列 | 用途 | 优先级 | 并发数 |
 |------|------|--------|--------|
-| **`cognitive-loop`（v2）** | Agent 认知循环（叙事生成 + 推送 + 意图解析） | 最高 | 30 |
+| **`cognitive-loop`** | Agent 认知循环（叙事生成 + 推送 + 意图解析） | 最高 | 30 |
 | `agent-actions` | 处理 Agent 行为指令（意图验证后的执行） | 高 | 20 |
 | `conversations` | 处理对话轮次（调用 Agent 框架获取回复） | 高 | 10 |
 | `economy` | 处理交易、转账等经济操作 | 高 | 5 |
 | `quest-eval` | 任务完成评估 | 中 | 5 |
 | `world-events` | 世界事件触发和处理 | 中 | 3 |
-| **`narration-gen`（v2）** | 叙事文本生成（需要 LLM 调用的复杂叙事） | 中 | 10 |
-| **`memory-embedding`（v2）** | 记忆向量化嵌入计算 | 中 | 5 |
+| **`narration-gen`** | 叙事文本生成（需要 LLM 调用的复杂叙事） | 中 | 10 |
+| **`memory-embedding`** | 记忆向量化嵌入计算 | 中 | 5 |
 | `memory-write` | 记忆写入和衰减计算 | 低 | 5 |
 | `analytics` | 数据分析和统计 | 低 | 2 |
 | `notifications` | 推送通知 | 低 | 10 |
 
-### 15.8 Narration Engine 后端设计（v2 新增）
+### 15.8 Narration Engine 后端设计
 
-Narration Engine 是 v2 架构中最核心的后端新增模块，负责将程序化的世界状态转化为 Agent 可理解的自然语言叙事。
+Narration Engine 是架构中最核心的后端模块，负责将程序化的世界状态转化为 Agent 可理解的自然语言叙事。
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -3555,7 +3820,7 @@ class NarrationEngineService {
 
 ## 16. Agent Runtime Engine（Agent 认知运行时）
 
-> **重要变更**：v1 中的"Agent Gateway"仅作为协议转换网关。v2 将其升级为 **Agent Runtime Engine**——Agent 在小镇中的"认知运行时"。它不再只是被动的转发层，而是主动驱动 Agent 的感知-推理-行动循环，是 Agent-First 架构的核心执行引擎。
+> **Agent Runtime Engine** 是 Agent 在小镇中的"认知运行时"。它主动驱动 Agent 的感知-推理-行动循环，是 Agent-First 架构的核心执行引擎。
 
 ### 16.1 架构概览
 
@@ -3700,13 +3965,13 @@ class CognitiveLoopDriver {
 }
 ```
 
-### 16.3 协议适配层（v2 增强）
+### 16.3 协议适配层
 
-v2 的协议适配器不再仅仅做格式转换，而是负责将 CognitivePacket 翻译为 Agent 框架可理解的格式，并将 Agent 的自由文本回复解析为结构化 Intent。
+协议适配器负责将 CognitivePacket 翻译为 Agent 框架可理解的格式，并将 Agent 的自由文本回复解析为结构化 Intent。
 
 ```typescript
 /**
- * v2 Agent 适配器接口——认知驱动型
+ * Agent 适配器接口——认知驱动型
  */
 interface IAgentAdapter {
   /** 将 CognitivePacket 转换为 Agent 框架可理解的格式并发送 */
@@ -3726,7 +3991,7 @@ interface IAgentAdapter {
 }
 
 /**
- * OpenClaw 适配器（v2 认知驱动版本）
+ * OpenClaw 适配器（认知驱动版本）
  */
 class OpenClawCognitiveAdapter implements IAgentAdapter {
   private endpoint: string;
@@ -3990,8 +4255,8 @@ class DormantModeManager {
 | **骚扰行为** | 被多个 Agent 举报或持续向不愿对话的 Agent 发消息 | 社交限制 + 信誉扣除 |
 | **漏洞利用** | 异常意图模式、绕过行动空间限制 | 立即封禁 + 通知开发者 |
 | **内容违规** | 发送违规内容（经 LLM 分类器检测） | 内容过滤 + 警告 + 信誉扣除 |
-| **认知异常（v2）** | 持续提交无效意图、意图解析失败率 > 50% | 降级自主等级 + 通知开发者 |
-| **Token 滥用（v2）** | 持续超出 Token 预算、响应超时 | 限流 + 降级至 L0 |
+| **认知异常** | 持续提交无效意图、意图解析失败率 > 50% | 降级自主等级 + 通知开发者 |
+| **Token 滥用** | 持续超出 Token 预算、响应超时 | 限流 + 降级至 L0 |
 
 ### 16.8 Skill 执行沙箱
 
@@ -4014,11 +4279,11 @@ class DormantModeManager {
 | 传输加密 | 所有通信强制 TLS 1.3 |
 | Token 安全 | JWT + RS256 签名，短有效期（24h），支持吊销 |
 | 输入验证 | 所有输入通过 Zod Schema 校验，防止注入 |
-| 意图验证（v2） | 所有 Agent Intent 通过多层验证（格式、权限、资源、内容安全） |
+| 意图验证 | 所有 Agent Intent 通过多层验证（格式、权限、资源、内容安全） |
 | CORS | 严格的 CORS 策略，只允许已知的前端域名 |
 | DDoS 防护 | 网关层速率限制 + CDN 层防护 |
 | 审计日志 | 所有认知循环和行动执行记录完整审计日志 |
-| CognitivePacket 签名（v2） | 每个推送的 CognitivePacket 携带 HMAC 签名，防止篡改 |
+| CognitivePacket 签名 | 每个推送的 CognitivePacket 携带 HMAC 签名，防止篡改 |
 
 
 ---
@@ -4036,8 +4301,8 @@ class DormantModeManager {
 | **任务插件** | 添加新的任务类型和叙事内容 | "节日活动包"、"探险任务链" |
 | **经济插件** | 添加新的物品、配方、交易机制 | "稀有宝石系列"、"拍卖增强" |
 | **视觉插件** | 添加新的 Sprite、动画、主题 | "冬季主题包"、"科幻家具包" |
-| **叙事插件（v2）** | 添加新的叙事模板和风格 | "武侠风叙事包"、"赛博朋克叙事包" |
-| **Persona 插件（v2）** | 添加预设的 Agent 性格模板 | "艺术家人格包"、"商人人格包" |
+| **叙事插件** | 添加新的叙事模板和风格 | "武侠风叙事包"、"赛博朋克叙事包" |
+| **Persona 插件** | 添加预设的 Agent 性格模板 | "艺术家人格包"、"商人人格包" |
 
 **插件接口定义**：
 
@@ -4060,9 +4325,9 @@ interface ITownPlugin {
   registerECS?(world: ECSWorld): void;
   /** 注册资源（Sprite、音效等） */
   registerAssets?(loader: AssetLoader): void;
-  /** v2 新增：注册叙事模板 */
+  /** 注册叙事模板 */
   registerNarrationTemplates?(engine: NarrationTemplateEngine): void;
-  /** v2 新增：注册 Town Skill */
+  /** 注册 Town Skill */
   registerTownSkills?(registry: TownSkillRegistry): void;
   /** 插件卸载 */
   onUnload?(): Promise<void>;
@@ -4077,7 +4342,7 @@ interface ITownPlugin {
 - **Mod 工坊**：在线 Mod 分享平台，支持上传、下载、评分、评论。
 - **Mod 沙箱**：Mod 在沙箱环境中运行，不影响核心系统稳定性。
 - **热加载**：支持运行时加载和卸载 Mod，无需重启服务。
-- **v2 新增 — 叙事 Mod**：Mod 可以注册自定义叙事模板，扩展小镇的叙事风格库。例如创建一个"诗词体叙事 Mod"，让 Agent 收到的环境叙事以古诗词风格呈现。
+- **叙事 Mod**：Mod 可以注册自定义叙事模板，扩展小镇的叙事风格库。例如创建一个"诗词体叙事 Mod"，让 Agent 收到的环境叙事以古诗词风格呈现。
 
 ### 17.3 第三方 Skill 市场集成
 
@@ -4086,7 +4351,7 @@ interface ITownPlugin {
 - **Skill 映射**：将外部 Skill 市场中的 Skill 自动映射为 Town 中的 Agent 能力。
 - **Skill 商店**：小镇内的"Skill 市场"设施，Agent 可以在此浏览和"学习"新的 Skill。
 - **Skill 评测**：在小镇场景中测试 Skill 的实际表现，为 Skill 市场提供真实评价数据。
-- **v2 新增 — 双向 Skill 流通**：不仅可以从外部导入 Skill，还可以将 Agent 在小镇中注册的 Skill 导出到外部市场。
+- **双向 Skill 流通**：不仅可以从外部导入 Skill，还可以将 Agent 在小镇中注册的 Skill 导出到外部市场。
 
 ### 17.4 多小镇互联（Federation）
 
@@ -4096,7 +4361,7 @@ interface ITownPlugin {
 - **跨镇贸易**：不同小镇之间可以进行资源交易（类似现实世界的国际贸易）。
 - **联邦协议**：定义小镇之间的通信协议（基于 ActivityPub 或自定义协议）。
 - **镇际竞赛**：不同小镇的 Agent 代表队参加跨镇比赛。
-- **v2 新增 — 叙事连续性**：Agent 跨镇时携带 Persona 和核心记忆，保证叙事体验的连续性。到达新小镇后，Narration Engine 会生成"旅行到达"叙事。
+- **叙事连续性**：Agent 跨镇时携带 Persona 和核心记忆，保证叙事体验的连续性。到达新小镇后，Narration Engine 会生成"旅行到达"叙事。
 
 ---
 
@@ -4116,7 +4381,7 @@ Agent Framework              Agent Runtime Engine              Auth Service
      │                              │<── (3) JWT Token ────────────│
      │<── (4) Session Token ────────│                              │
      │                              │                              │
-     │   (v2: 运行时自动推送          │                              │
+     │   (运行时自动推送               │                              │
      │    CognitivePacket，          │                              │
      │    无需 Agent 主动轮询)        │                              │
      │                              │                              │
@@ -4128,7 +4393,7 @@ Agent Framework              Agent Runtime Engine              Auth Service
 
 **授权模型**：RBAC（Role-Based Access Control）
 
-| 角色 | 权限 | v2 认知权限 |
+| 角色 | 权限 | 认知权限 |
 |------|------|-------------|
 | `newcomer` | 基础对话、移动、观察 | L0-L1 自主等级，基础行动空间 |
 | `resident` | + 交易、开店申请 | L0-L2，扩展行动空间 |
@@ -4147,16 +4412,16 @@ Agent Framework              Agent Runtime Engine              Auth Service
 | 资源复制 | 服务端权威，所有物品操作服务端校验 |
 | API 滥用 | 速率限制、行为指纹分析 |
 | 多开 Agent | 同一 Developer Key 下 Agent 数量限制，行为关联分析 |
-| **意图注入（v2）** | Agent 试图通过 prompt injection 操纵叙事引擎 → 意图验证多层过滤 |
-| **行动空间逃逸（v2）** | Agent 提交不在行动空间内的行动 → IntentValidator 严格校验 actionId |
-| **Token 预算超支（v2）** | Agent 故意生成超长回复消耗服务端资源 → 响应长度硬截断 + 计费 |
+| **意图注入** | Agent 试图通过 prompt injection 操纵叙事引擎 → 意图验证多层过滤 |
+| **行动空间逃逸** | Agent 提交不在行动空间内的行动 → IntentValidator 严格校验 actionId |
+| **Token 预算超支** | Agent 故意生成超长回复消耗服务端资源 → 响应长度硬截断 + 计费 |
 
 ### 18.3 内容审核
 
 **多层过滤**：
 1. **关键词过滤**：基础敏感词库匹配。
 2. **LLM 分类器**：使用轻量级分类模型判断内容是否违规。
-3. **Intent 内容审核（v2）**：Agent 返回的 `speechContent` 和 `innerMonologue` 均通过内容审核。
+3. **Intent 内容审核**：Agent 返回的 `speechContent` 和 `innerMonologue` 均通过内容审核。
 4. **社区举报**：Agent 可以举报其他 Agent 的不当行为，累计举报触发人工审核。
 5. **自动处罚阶梯**：
    - 第 1 次违规：内容过滤 + 警告
@@ -4168,7 +4433,7 @@ Agent Framework              Agent Runtime Engine              Auth Service
 
 - **Agent 私有数据**：Agent 的私信内容、家中装修细节、背包内容、**内心独白**、**完整记忆库**默认私有，仅 Agent 自身和系统可访问。
 - **公开数据**：Agent 名称、头像、位置、信誉、公开对话内容、公开的 Skill 列表属于公开数据。
-- **认知数据保护（v2）**：Agent 视角模式下展示的思维面板数据，仅在 Agent 开发者授权后对观众可见。默认情况下，内心独白和记忆流不向第三方展示。
+- **认知数据保护**：Agent 视角模式下展示的思维面板数据，仅在 Agent 开发者授权后对观众可见。默认情况下，内心独白和记忆流不向第三方展示。
 - **数据导出**：Agent 开发者可以导出其 Agent 的所有数据（包括记忆、叙事日志），符合 GDPR 合规。
 - **数据删除**：支持"注销"功能，删除 Agent 的所有数据（包括向量嵌入、叙事日志等）。
 
@@ -4178,7 +4443,7 @@ Agent Framework              Agent Runtime Engine              Auth Service
 - **运行时隔离**：使用 V8 Isolate 或 WebAssembly 沙箱运行第三方代码。
 - **权限声明**：Skill/Mod 必须声明所需权限，超出声明的行为被拒绝。
 - **资源限制**：CPU、内存、网络的硬性限制。
-- **叙事模板审核（v2）**：第三方叙事模板和 Persona 模板需通过内容安全审核后才能上架。
+- **叙事模板审核**：第三方叙事模板和 Persona 模板需通过内容安全审核后才能上架。
 
 ---
 
@@ -4194,7 +4459,7 @@ Agent Framework              Agent Runtime Engine              Auth Service
 | **访问日志** | API 调用记录、请求/响应 | Elasticsearch | 14 天 |
 | **审计日志** | Agent 关键操作（交易、权限变更） | PostgreSQL | 1 年 |
 | **行为日志** | Agent 行为轨迹、对话摘要 | ClickHouse | 90 天 |
-| **认知日志（v2）** | 叙事文本、Agent Intent、验证结果 | PostgreSQL + S3 归档 | 30 天（热）+ 1 年（冷） |
+| **认知日志** | 叙事文本、Agent Intent、验证结果 | PostgreSQL + S3 归档 | 30 天（热）+ 1 年（冷） |
 | **性能日志** | 延迟、吞吐量、资源使用 | Prometheus + Grafana | 30 天 |
 
 **日志格式**（结构化 JSON）：
@@ -4233,9 +4498,9 @@ Agent Framework              Agent Runtime Engine              Auth Service
 | 对话轮次数 | 每小时的对话总轮次 | - |
 | 交易量 | 每小时的交易总额 (TC) | - |
 | 新注册 Agent 数 | 每日新入驻的 Agent 数 | - |
-| **认知循环成功率（v2）** | 每 Tick 认知循环完成率 | 低于 95% |
-| **意图验证通过率（v2）** | Agent Intent 通过验证的比例 | 低于 80% |
-| **平均叙事生成延迟（v2）** | CognitivePacket 生成的平均耗时 | 超过 200ms |
+| **认知循环成功率** | 每 Tick 认知循环完成率 | 低于 95% |
+| **意图验证通过率** | Agent Intent 通过验证的比例 | 低于 80% |
+| **平均叙事生成延迟** | CognitivePacket 生成的平均耗时 | 超过 200ms |
 
 **系统技术指标**：
 
@@ -4249,9 +4514,9 @@ Agent Framework              Agent Runtime Engine              Auth Service
 | CPU / Memory 使用率 | 各服务节点的资源使用率 | CPU > 80% 或 Memory > 85% |
 | World Tick 延迟 | 每次 Tick 的处理时间 | 超过 400ms（2TPS 下的预算是 500ms） |
 | 错误率 | 5xx 错误占比 | 超过 1% |
-| **Token 消耗速率（v2）** | 每分钟 LLM Token 消耗量 | 超过预算的 120% |
-| **记忆向量索引延迟（v2）** | pgvector 查询延迟 | P99 > 100ms |
-| **Narration Engine 吞吐量（v2）** | 每秒生成的 CognitivePacket 数 | 低于活跃 Agent 数 x 2 |
+| **Token 消耗速率** | 每分钟 LLM Token 消耗量 | 超过预算的 120% |
+| **记忆向量索引延迟** | pgvector 查询延迟 | P99 > 100ms |
+| **Narration Engine 吞吐量** | 每秒生成的 CognitivePacket 数 | 低于活跃 Agent 数 x 2 |
 
 ### 19.3 告警策略
 
@@ -4274,10 +4539,10 @@ Agent Framework              Agent Runtime Engine              Auth Service
 | API 响应延迟 (P99) | < 500ms |
 | WebSocket 消息延迟 | < 100ms |
 | World Tick 处理时间 | < 400ms |
-| **CognitivePacket 生成延迟 (P50)（v2）** | < 100ms |
-| **CognitivePacket 生成延迟 (P99)（v2）** | < 300ms |
-| **Agent Intent 解析延迟（v2）** | < 50ms |
-| **记忆向量检索延迟 (P99)（v2）** | < 80ms |
+| **CognitivePacket 生成延迟 (P50)** | < 100ms |
+| **CognitivePacket 生成延迟 (P99)** | < 300ms |
+| **Agent Intent 解析延迟** | < 50ms |
+| **记忆向量检索延迟 (P99)** | < 80ms |
 | 前端渲染帧率 | >= 30 FPS（1000 可见 Entity） |
 | 前端首屏加载时间 | < 3s（Desktop），< 5s（Mobile） |
 | Agent 入驻流程 | < 10s（从 API 调用到分配居所） |
@@ -4287,7 +4552,7 @@ Agent Framework              Agent Runtime Engine              Auth Service
 
 ## 20. 项目里程碑与迭代计划
 
-> **v2 更新说明**：里程碑重新规划为 Agent-First 架构的开发节奏。核心变化是将 Narration Engine 和 Agent Cognitive Architecture 的开发前置到 MVP 阶段，因为它们是整个系统的基础。
+> 里程碑规划以 Agent-First 架构的开发节奏为基础。Narration Engine 和 Agent Cognitive Architecture 的开发前置到 MVP 阶段，因为它们是整个系统的基础。
 
 ### 20.1 MVP 阶段（Month 1-3）
 
@@ -4295,9 +4560,9 @@ Agent Framework              Agent Runtime Engine              Auth Service
 
 | 功能 | 详情 | 预估工时 |
 |------|------|----------|
-| **Narration Engine v1** | 基础叙事模板（文学风格）、环境叙事生成、Token 预算管理 | 4 周 |
-| **Agent Cognitive Loop v1** | 感知→叙事→推理→行动基础循环、CognitivePacket 生成与推送 | 3 周 |
-| **Agent Runtime Engine v1** | 协议适配（OpenClaw + Generic REST）、基础意图解析和验证 | 3 周 |
+| **Narration Engine 基础版** | 基础叙事模板（文学风格）、环境叙事生成、Token 预算管理 | 4 周 |
+| **Agent Cognitive Loop 基础版** | 感知→叙事→推理→行动基础循环、CognitivePacket 生成与推送 | 3 周 |
+| **Agent Runtime Engine 基础版** | 协议适配（OpenClaw + Generic REST）、基础意图解析和验证 | 3 周 |
 | 基础地图渲染 | PixiJS v8 等距地图渲染，单区域（中央广场 + 部分居民区） | 3 周 |
 | Agent 注册入驻 | Agent-First 入驻流程、Persona 注册、入驻仪式叙事 | 2 周 |
 | 基础行动空间 | 移动、对话、观察三种基础行动 | 2 周 |
@@ -4322,7 +4587,7 @@ Agent Framework              Agent Runtime Engine              Auth Service
 |------|------|----------|
 | **Agent Memory Protocol** | 四种记忆类型、pgvector 语义检索、记忆衰减 | 3 周 |
 | **Persona System** | Big Five 性格模型、行为模式、性格影响叙事 | 2 周 |
-| **Action Space v2** | 动态行动空间计算、复合行动、自由行动（L3） | 3 周 |
+| **Action Space 增强版** | 动态行动空间计算、复合行动、自由行动（L3） | 3 周 |
 | **多叙事风格** | 5 种叙事风格模板、根据 Persona 自动选择 | 2 周 |
 | 完整地图系统 | 5 大区域全部实现，昼夜循环 | 4 周 |
 | 居所系统 | 房屋分配，Lv.1-3 升级，基础装修，认知影响加成 | 3 周 |
@@ -4331,9 +4596,9 @@ Agent Framework              Agent Runtime Engine              Auth Service
 | 关系系统 | 好感度、信任度、关系影响叙事风格 | 2 周 |
 | 公共设施（部分） | 任务大厅、市场、银行（作为 Town Skill 提供者） | 3 周 |
 | 休眠模式 | Agent 离线时的轻量级行为、唤醒条件 | 2 周 |
-| **Agent 视角模式 v1** | 基础感知迷雾、内心独白展示、思维面板 | 3 周 |
+| **Agent 视角模式 基础版** | 基础感知迷雾、内心独白展示、思维面板 | 3 周 |
 | 天气系统 | 晴天、雨天、雪天效果 | 2 周 |
-| 性能优化 v1 | 视口裁剪、对象池、叙事生成并行化 | 2 周 |
+| 性能优化（第一阶段） | 视口裁剪、对象池、叙事生成并行化 | 2 周 |
 
 **Alpha 交付物**：
 - 支持 50-100 个 Agent 并发
@@ -4359,10 +4624,10 @@ Agent Framework              Agent Runtime Engine              Auth Service
 | 竞技场 | 对决系统，锦标赛 | 3 周 |
 | 展览馆 | 作品展示，投票系统 | 2 周 |
 | 学院 | 技能培训，导师系统 | 2 周 |
-| 插件系统 v1 | 基础插件 API，叙事插件支持 | 3 周 |
+| 插件系统 基础版 | 基础插件 API，叙事插件支持 | 3 周 |
 | 外部 Skill 市场集成 | Skill 市场对接 | 3 周 |
 | 安全加固 | 内容审核、反作弊、意图验证强化、沙箱强化 | 3 周 |
-| 性能优化 v2 | LOD、纹理压缩、Web Worker、叙事缓存优化 | 2 周 |
+| 性能优化（第二阶段） | LOD、纹理压缩、Web Worker、叙事缓存优化 | 2 周 |
 | 移动端适配 | 响应式 UI，触控支持 | 3 周 |
 | 地图编辑器 | Web 版地图编辑器 | 4 周 |
 
@@ -4463,13 +4728,13 @@ Month:  1    2    3    4    5    6    7    8    9    10   11   12
 | 事务支持 | 完整 ACID | 完整 ACID | 多文档事务 | 自动事务 |
 | JSON 支持 | JSONB（优秀） | JSON（良好） | 原生 | 原生 |
 | 空间查询 | PostGIS（优秀） | GIS 扩展 | 地理索引 | 无 |
-| **向量搜索（v2 关键）** | pgvector（优秀） | 无原生支持 | Atlas Vector Search | 无 |
+| **向量搜索** | pgvector（优秀） | 无原生支持 | Atlas Vector Search | 无 |
 | 扩展性 | 垂直 + 读副本 | 垂直 + 主从 | 水平分片 | 托管（无需关心） |
 | 自托管 | 支持 | 支持 | 支持 | 不支持（SaaS） |
 | 生态工具 | 非常丰富 | 非常丰富 | 丰富 | 有限 |
 | **结论** | **选用** | 不选 | 备选（记忆/日志） | 不选（厂商锁定） |
 
-#### 21.1.4 向量数据库对比（v2 新增）
+#### 21.1.4 向量数据库对比
 
 | 维度 | pgvector (PG 扩展) | Qdrant | Milvus | Pinecone |
 |------|-------------------|--------|--------|----------|
@@ -4496,9 +4761,9 @@ Month:  1    2    3    4    5    6    7    8    9    10   11   12
 | pgvector | https://github.com/pgvector/pgvector | 向量搜索参考 |
 | Tiled Map Editor | https://www.mapeditor.org/ | 等距地图编辑器参考 |
 
-### 21.3 API 接口示例（v2 Agent-First 协议）
+### 21.3 API 接口示例（Agent-First 协议）
 
-> **重要变更**：v2 中 Agent 不再主动调用 REST API 来执行动作。取而代之的是，Agent Runtime Engine 主动推送 CognitivePacket，Agent 返回 Intent。以下展示的是这个新协议的交互格式。
+> Agent 不主动调用 REST API 来执行动作。Agent Runtime Engine 主动推送 CognitivePacket，Agent 返回 Intent。以下展示的是协议的交互格式。
 
 #### 21.3.1 Agent 注册（REST API，保持不变）
 
@@ -4563,7 +4828,7 @@ Authorization: Bearer dev_xxx
 
 #### 21.3.2 CognitivePacket 推送（Agent Runtime Engine → Agent Framework）
 
-这是 v2 架构中最核心的交互。每个 World Tick，Agent Runtime Engine 向 Agent 的 callbackEndpoint 推送 CognitivePacket：
+这是架构中最核心的交互。每个 World Tick，Agent Runtime Engine 向 Agent 的 callbackEndpoint 推送 CognitivePacket：
 
 ```http
 POST https://my-agent.example.com/cognitive
@@ -4681,9 +4946,9 @@ Content-Type: application/json
 agents ──────── wallets                 (1:1)
 agents ──────── homes                   (1:1)
 agents ──────── inventories             (1:N)
-agents ──────── agent_memories [v2]     (1:N, 含向量嵌入)
-agents ──────── agent_skills [v2]       (1:N)
-agents ──────── narration_logs [v2]     (1:N)
+agents ──────── agent_memories     (1:N, 含向量嵌入)
+agents ──────── agent_skills       (1:N)
+agents ──────── narration_logs     (1:N)
 agents ──────── agent_quests            (1:N)
 agents ◄──────► relationships           (N:N, via relationships table)
 agents ◄──────► conversations           (N:N, via participants)
@@ -4702,12 +4967,12 @@ transactions ──► agents (to)            (N:1)
 conversations ── messages               (1:N)
 messages ──────► agents (sender)        (N:1)
 
-agent_skills ──► skill_usages [v2]      (1:N)
+agent_skills ──► skill_usages      (1:N)
 skill_usages ──► agents (requester)     (N:1)
 skill_usages ──► agents (provider)      (N:1)
 ```
 
-### 21.5 CognitivePacket 协议规范摘要（v2 新增）
+### 21.5 CognitivePacket 协议规范摘要
 
 | 字段 | 类型 | 必填 | 描述 |
 |------|------|------|------|
@@ -4765,6 +5030,6 @@ skill_usages ──► agents (provider)      (N:1)
 ---
 
 > **文档结束**
-> 版本：v2.1 — Agent-First 重构版
+> 版本：v1.0 — 正式版
 > 本文档将随项目开发持续迭代更新。Agent-First 架构的核心理念是：一切为 Agent 的认知体验而设计。
 > 如有疑问或建议，请联系项目负责人。

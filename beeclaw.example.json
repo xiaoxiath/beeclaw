@@ -119,5 +119,20 @@
   "hooks": {
     "enabled": true,
     "directories": ["./hooks"]
+  },
+  "web": {
+    "enabled": true,
+    "port": 3000,
+    "host": "0.0.0.0",
+    "auth": {
+      "level": "token",
+      "token": "${WEB_AUTH_TOKEN}",
+      "basicUsers": [
+        {
+          "username": "admin",
+          "password": "${WEB_ADMIN_PASSWORD}"
+        }
+      ]
+    }
   }
 }

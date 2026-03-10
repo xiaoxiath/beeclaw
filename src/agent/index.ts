@@ -298,6 +298,14 @@ export class Agent {
   private estimatedTokens: number = 0;
   private usedSkillsInTurn: Set<string> = new Set();
   private hookRunner: ReturnType<typeof createHookRunner> | null = null;
+  private lastToolCalls: Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }> = [];
 
   constructor(options: AgentOptions & {
     contextConfig?: Partial<ContextConfig>;
@@ -494,6 +502,18 @@ export class Agent {
   // Get conversation history
   getMessages(): ChatMessage[] {
     return [...this.messages];
+  }
+
+  // Get last tool calls from the most recent assistant message
+  getLastToolCalls(): Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }> {
+    return this.lastToolCalls;
   }
 
   /**
@@ -737,6 +757,7 @@ export class Agent {
     const tokensBefore = this.estimatedTokens;
     this.lastSkillFailed = undefined;
     this.usedSkillsInTurn.clear();
+    this.lastToolCalls = []; // Clear tool calls from previous turn
 
     if (this.hookRunner) {
       await this.hookRunner.runMessageReceived({
@@ -849,6 +870,11 @@ export class Agent {
         content: cleanedContent,
         tool_calls: assistantMessage.tool_calls,
       });
+
+      // Update lastToolCalls for session persistence
+      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        this.lastToolCalls = assistantMessage.tool_calls;
+      }
 
       if (hasToolCalls(response)) {
         const toolCalls = extractToolCalls(response);

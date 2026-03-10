@@ -99,7 +99,7 @@ data/memory/
   },
   "knowledge": {
     "keywords": {
-      "字节": ["knowledge/career.md"],
+      " A 司": ["knowledge/career.md"],
       "期权": ["knowledge/career.md", "knowledge/finance.md"],
       "媳妇": ["knowledge/family.md"]
     },

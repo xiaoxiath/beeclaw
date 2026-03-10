@@ -106,7 +106,7 @@ type KnowledgeCategory =
 interface ExtractedKnowledge {
   category: KnowledgeCategory;
   key: string;          // 唯一标识: "wife.company"
-  value: string;        // 值: "字节跳动"
+  value: string;        // 值: " A 司"
   confidence: number;   // 置信度: 0-1
   source: string;       // 来源对话 ID
   timestamp: Date;
@@ -146,7 +146,7 @@ export const EXTRACTION_PROMPT = `你是一个知识提取专家。分析以下�
     {
       "category": "family",
       "key": "wife.company",
-      "value": "字节跳动",
+      "value": " A 司",
       "confidence": 0.95,
       "reason": "用户明确提到妻子的公司"
     }
@@ -381,13 +381,13 @@ async function backgroundExtraction(session: Session) {
 ### 6.1 自动提取场景
 
 ```
-用户: 我老婆最近在准备换工作，已经面试了字节和阿里
+用户: 我老婆最近在准备换工作，已经面试了 A 司和阿里
 
-AI: 听起来是个好机会！字节和阿里的什么岗位呢？
+AI: 听起来是个好机会！ A 司和阿里的什么岗位呢？
 
-用户: 字节是前端，阿里是全栈，她更倾向于字节
+用户:  A 司是前端，阿里是全栈，她更倾向于 A 司
 
-AI: 了解。字节的前端岗位确实机会更多。
+AI: 了解。 A 司的前端岗位确实机会更多。
 
 [后台自动提取]
 {
@@ -395,7 +395,7 @@ AI: 了解。字节的前端岗位确实机会更多。
     {
       "category": "family",
       "key": "wife.job_search",
-      "value": "正在换工作，面试了字节前端和阿里全栈，倾向于字节",
+      "value": "正在换工作，面试了 A 司前端和阿里全栈，倾向于 A 司",
       "confidence": 0.95
     },
     {
@@ -408,7 +408,7 @@ AI: 了解。字节的前端岗位确实机会更多。
 }
 
 [系统通知]
-💡 我记下了：你老婆正在换工作，倾向于字节的前端岗位
+💡 我记下了：你老婆正在换工作，倾向于 A 司的前端岗位
 ```
 
 ### 6.2 手动触发
@@ -437,13 +437,13 @@ AI: 好的，我来记录。
 
 ```
 [之前记录]
-wife.company = "字节跳动"
+wife.company = " A 司"
 
 [新提取]
-wife.company = "字节"
+wife.company = " A 司"
 
 [合并结果]
-wife.company = "字节跳动"  // 保持更完整的版本
+wife.company = " A 司"  // 保持更完整的版本
 wife.company_updated = "2026-03-02"
 ```
 

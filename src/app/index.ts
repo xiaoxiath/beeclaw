@@ -398,6 +398,32 @@ export async function initApp(options: InitOptions = {}): Promise<{
   appState.initialized = true;
   console.log('   ✅ Beeclaw initialized\n');
 
+  // 11.5. Start web server if enabled
+  if (config.web?.enabled) {
+    try {
+      const { createWebApp } = await import('../web/server');
+      const { app } = createWebApp(config.web);
+
+      const port = config.web.port || 3000;
+      const host = config.web.host || '0.0.0.0';
+
+      Bun.serve({
+        port,
+        hostname: host,
+        fetch: app.fetch,
+        idleTimeout: 255, // Set idle timeout to 255 seconds (max allowed by Bun) for SSE streaming
+      });
+
+      console.log(`   🌐 Web UI: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
+    } catch (error) {
+      logger.error('Failed to start web server:', error);
+      if (error instanceof Error) {
+        logger.error('Error details:', error.message);
+        logger.error('Stack trace:', error.stack);
+      }
+    }
+  }
+
   // 11. Session recovery (delayed execution)
   if (options.enableRecovery !== false && process.env.ENABLE_RECOVERY !== 'false') {
     const recoveryConfig = config.recovery || {

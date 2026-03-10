@@ -6,6 +6,8 @@
  *   bun run src/bot.ts          # Start Feishu bot
  *   bun run src/bot.ts --help   # Show help
  *   bun run src/bot.ts --daemon # Start with daemon (proactive scheduling)
+ *
+ * Note: Bun automatically loads .env file
  */
 
 import { join } from 'path';

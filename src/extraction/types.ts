@@ -22,7 +22,7 @@ export interface ExtractedKnowledge {
   id: string;              // UUID
   category: KnowledgeCategory;
   key: string;              // 唯一标识: "wife.company"
-  value: string;            // 值: "字节跳动"
+  value: string;            // 值: " A 司"
   confidence: number;       // 置信度: 0-1
   source: string;           // 来源会话 ID
   timestamp: Date;

@@ -61,7 +61,7 @@ export const EXTRACTION_PROMPT = `你是一个知识提取专家。分析以下�
 ## 示例
 
 对话：
-[用户] 我老婆在字节跳动做产品经理，我们下个月结婚纪念日想去日本
+[用户] 我老婆在 A 司做产品经理，我们下个月结婚纪念日想去日本
 [助手] 日本是个好选择！需要我帮忙规划行程吗？
 
 提取：
@@ -71,7 +71,7 @@ export const EXTRACTION_PROMPT = `你是一个知识提取专家。分析以下�
     {
       "category": "family",
       "key": "wife.company",
-      "value": "字节跳动",
+      "value": " A 司",
       "confidence": 0.95,
       "reason": "用户明确提到妻子的公司"
     },

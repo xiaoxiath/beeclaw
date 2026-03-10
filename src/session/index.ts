@@ -39,6 +39,14 @@ export interface SessionMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
+  toolCalls?: Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
 }
 
 export interface Session {
@@ -224,7 +232,7 @@ function getSessionFilePath(sessionId: string): string {
 /**
  * Save session to disk
  */
-function saveSession(session: Session): void {
+export function saveSession(session: Session): void {
   try {
     // Trigger before_message_write hook (synchronous)
     try {
@@ -809,11 +817,16 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       assistantContentString = response;
     }
 
-    // Save assistant response
+    // Get tool calls from agent if available
+    const lastToolCalls = agent.getLastToolCalls?.() || [];
+    console.log('[Session] Tool calls from agent:', lastToolCalls.length, lastToolCalls);
+
+    // Save assistant response with tool calls
     session.messages.push({
       role: 'assistant',
       content: assistantContentString,
       timestamp: new Date().toISOString(),
+      toolCalls: lastToolCalls.length > 0 ? lastToolCalls : undefined,
     });
 
     // CRITICAL FIX: Clear pendingRecovery flag immediately after AI responds
