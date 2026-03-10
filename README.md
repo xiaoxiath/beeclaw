@@ -2,11 +2,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-一个可进化的 AI 助手，支持 CLI 和飞书 Bot 两种使用方式。
+一个可进化的 AI 助手，支持 CLI、飞书 Bot 和 Web UI 三种使用方式。
 
 ## 特性
 
 - **多 Provider 支持** — OpenAI、智谱 GLM、MiniMax、Anthropic
+- **多端支持** — CLI 命令行、飞书机器人、Web UI 界面
 - **记忆系统** — 文件系统持久化，关键词索引，自动压缩
 - **技能系统** — 可复用的技能模块，支持自动创建和进化
 - **子代理系统** — 并行任务执行，DAG 任务编排，共享状态
@@ -52,6 +53,9 @@ bun run bot
 # Bot + 后台守护进程（定时任务）
 bun run bot --daemon
 
+# 构建 Web UI
+bun run build:web
+
 # PM2 生产部署
 bun run pm2:start
 ```
@@ -64,6 +68,7 @@ bun run pm2:start
 | CLI + Daemon | `bun run cli --daemon` | CLI + 后台调度 |
 | Bot | `bun run bot` | 飞书机器人 |
 | Bot + Daemon | `bun run bot --daemon` | 飞书机器人 + 后台调度 |
+| Web UI | `bun run build:web && bun run bot` | Web 界面（需先构建） |
 | PM2 | `bun run pm2:start` | 生产级进程管理 |
 
 ## 开发
@@ -77,6 +82,12 @@ bunx tsc --noEmit
 
 # 代码检查
 bun run lint
+
+# 构建 Web UI
+bun run build:web
+
+# Web UI 开发模式（监听变化）
+bun run dev:web
 ```
 
 ## 项目结构
@@ -97,6 +108,7 @@ beeclaw/
 │   ├── session/         # 会话管理和恢复
 │   ├── feishu/          # 飞书集成
 │   ├── mcp/             # MCP 协议集成
+│   ├── web/             # Web UI（React + Hono）
 │   ├── evolution/       # 自进化模块（实验性）
 │   ├── goal/            # 目标追踪
 │   ├── persona/         # 人格系统
@@ -115,6 +127,7 @@ beeclaw/
 |------|------|
 | **入门** | [快速开始](./docs/getting-started.md) · [配置指南](./docs/configuration.md) · [CLI 参考](./docs/cli-reference.md) |
 | **用户指南** | [工具参考](./docs/tools-reference.md) · [记忆系统](./docs/guide/memory-system.md) · [技能系统](./docs/guide/skill-system.md) · [插件系统](./docs/guide/plugin-system.md) |
+| **Web UI** | [开发指南](./docs/web-development.md) · [功能文档](./docs/webui.md) · [认证配置](./docs/webui-auth.md) |
 | **架构** | [系统架构](./docs/architecture.md) · [上下文管理](./docs/design/context-management.md) · [弹性设计](./docs/design/resilience.md) |
 | **运维** | [PM2 部署](./docs/operations/deployment.md) · [性能优化](./docs/operations/performance.md) · [日志指南](./docs/operations/logging.md) |
 

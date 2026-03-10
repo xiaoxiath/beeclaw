@@ -24,6 +24,7 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingSessionId, setStreamingSessionId] = useState<string | null>(null);
   const [expandedToolCalls, setExpandedToolCalls] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -48,17 +49,32 @@ export default function Chat() {
       console.log('[Chat] History loaded:', data);
       return data;
     },
-    enabled: !!currentSessionId,
+    enabled: !!currentSessionId && streamingSessionId !== currentSessionId,
+    refetchOnWindowFocus: false,
+    staleTime: 5000, // Don't refetch for 5 seconds
   });
 
   // Update messages when session history loads
+  // Skip if this session is currently being streamed to
   useEffect(() => {
-    console.log('[Chat] Session history effect:', { hasHistory: !!sessionHistory, isLoading: isLoadingHistory });
+    console.log('[Chat] Session history effect:', {
+      hasHistory: !!sessionHistory,
+      isLoading: isLoadingHistory,
+      currentSessionId,
+      streamingSessionId
+    });
+
     if (sessionHistory?.session?.messages) {
+      // Don't update messages if we're currently streaming this session
+      if (streamingSessionId === currentSessionId) {
+        console.log('[Chat] Skipping history update - session is being streamed');
+        return;
+      }
+
       console.log('[Chat] Setting messages from history, count:', sessionHistory.session.messages.length);
       setMessages(sessionHistory.session.messages);
     }
-  }, [sessionHistory, isLoadingHistory]);
+  }, [sessionHistory, isLoadingHistory, currentSessionId, streamingSessionId]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -154,6 +170,7 @@ export default function Chat() {
               if (currentEvent === 'session') {
                 console.log('[Chat] Setting session ID:', parsed.sessionId);
                 setCurrentSessionId(parsed.sessionId);
+                setStreamingSessionId(parsed.sessionId); // Mark this session as being streamed
                 // Immediately refresh sessions list when a new session is created
                 queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
               } else if (currentEvent === 'tool_calls') {
@@ -177,9 +194,11 @@ export default function Chat() {
                 });
               } else if (currentEvent === 'done') {
                 console.log('[Chat] Done event received');
+                setStreamingSessionId(null); // Allow history updates for this session now
                 queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
               } else if (currentEvent === 'error') {
                 console.error('[Chat] Stream error:', parsed);
+                setStreamingSessionId(null); // Clear on error too
               }
             } catch (e) {
               console.error('[Chat] Failed to parse JSON:', data, e);
@@ -191,6 +210,7 @@ export default function Chat() {
       }
     } catch (error) {
       console.error('Failed to send message:', error);
+      setStreamingSessionId(null); // Clear on error
     } finally {
       setIsStreaming(false);
     }
@@ -209,7 +229,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
+    <div className="flex h-full -m-6">
       {/* Sessions Sidebar */}
       <div className="w-64 border-r bg-gray-50 flex flex-col">
         <div className="p-4 border-b">
@@ -253,6 +273,7 @@ export default function Chat() {
           <button
             onClick={() => {
               setCurrentSessionId(null);
+              setStreamingSessionId(null);
               setMessages([]);
             }}
             className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"

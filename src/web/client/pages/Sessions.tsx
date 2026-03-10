@@ -101,7 +101,7 @@ export default function Sessions() {
   const sessions: Session[] = sessionsData?.sessions || [];
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
+    <div className="flex h-full -m-6">
       {/* Sidebar - Sessions List */}
       <div className="w-80 border-r bg-gray-50 flex flex-col">
         <div className="p-4 border-b">
@@ -246,17 +246,23 @@ export default function Sessions() {
                 {/* Content - Messages or DAG */}
                 {viewMode === 'dag' ? (
                   // DAG View
-                  <div className="h-[600px] border rounded">
+                  <div className="min-h-[500px] h-[calc(100vh-20rem)] border rounded relative">
                     {isLoadingDAG ? (
                       <div className="flex items-center justify-center h-full">
                         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
                       </div>
                     ) : dagData && dagData.nodes && dagData.nodes.length > 0 ? (
-                      <DAGViewer
-                        key={dagKey}
-                        nodes={dagData.nodes}
-                        edges={dagData.edges}
-                      />
+                      <>
+                        <DAGViewer
+                          key={dagKey}
+                          nodes={dagData.nodes}
+                          edges={dagData.edges}
+                        />
+                        {/* Zoom hint */}
+                        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-md px-3 py-1.5 text-xs text-gray-600 pointer-events-none z-10">
+                          💡 使用鼠标滚轮或右下角按钮缩放，拖拽移动
+                        </div>
+                      </>
                     ) : (
                       <div className="flex flex-col items-center justify-center h-full text-gray-500">
                         <Network className="w-16 h-16 mb-4 text-gray-300" />

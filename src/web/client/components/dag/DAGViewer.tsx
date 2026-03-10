@@ -4,9 +4,10 @@ import {
   Node,
   Edge,
   Background,
-  Controls,
   MiniMap,
   MarkerType,
+  useReactFlow,
+  ReactFlowProvider,
 } from '@xyflow/react';
 import dagre from 'dagre';
 import '@xyflow/react/dist/style.css';
@@ -18,6 +19,9 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from 'lucide-react';
 
 interface DAGNode {
@@ -130,7 +134,11 @@ function TaskNode({ data, id }: { data: any; id: string }) {
 
         {data.arguments && (
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setIsExpanded(!isExpanded);
+            }}
             className="flex items-center justify-between w-full text-xs text-gray-600 hover:text-gray-900"
           >
             <span className="font-medium">Arguments</span>
@@ -155,6 +163,37 @@ function TaskNode({ data, id }: { data: any; id: string }) {
 const nodeTypes = {
   task: TaskNode,
 };
+
+// Custom Zoom Controls Component
+function CustomControls() {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+
+  return (
+    <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-20">
+      <button
+        onClick={() => zoomIn({ duration: 200 })}
+        className="w-10 h-10 bg-white border border-gray-300 rounded-lg shadow-lg hover:bg-gray-100 flex items-center justify-center transition"
+        title="Zoom In"
+      >
+        <ZoomIn className="w-5 h-5 text-gray-700" />
+      </button>
+      <button
+        onClick={() => zoomOut({ duration: 200 })}
+        className="w-10 h-10 bg-white border border-gray-300 rounded-lg shadow-lg hover:bg-gray-100 flex items-center justify-center transition"
+        title="Zoom Out"
+      >
+        <ZoomOut className="w-5 h-5 text-gray-700" />
+      </button>
+      <button
+        onClick={() => fitView({ padding: 0.3, duration: 200 })}
+        className="w-10 h-10 bg-white border border-gray-300 rounded-lg shadow-lg hover:bg-gray-100 flex items-center justify-center transition"
+        title="Fit View"
+      >
+        <Maximize2 className="w-5 h-5 text-gray-700" />
+      </button>
+    </div>
+  );
+}
 
 export default function DAGViewer({ nodes: initialNodes, edges: initialEdges }: DAGViewerProps) {
   console.log('[DAGViewer] Render with:', {
@@ -219,62 +258,66 @@ export default function DAGViewer({ nodes: initialNodes, edges: initialEdges }: 
   }
 
   return (
-    <div className="h-full w-full relative">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        minZoom={0.1}
-        maxZoom={2}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-      >
-        <Background color="#e2e8f0" gap={16} />
+    <ReactFlowProvider>
+      <div className="h-full w-full relative" style={{ background: '#f9fafb' }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
+          minZoom={0.1}
+          maxZoom={3}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          attributionPosition="bottom-right"
+          proOptions={{ hideAttribution: true }}
+          // Disable node interactions (read-only view)
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          // Enable canvas interactions
+          // Default: mouse drag = pan, scroll = zoom
+        >
+          <Background color="#e2e8f0" gap={16} />
 
-        {/* Default Controls */}
-        <Controls
-          className="bg-white border rounded-lg shadow-lg"
-          showZoom={true}
-          showFitView={true}
-          showInteractive={true}
-        />
+          {/* MiniMap */}
+          <MiniMap
+            position="bottom-right"
+            nodeColor={(node) => {
+              if (node.data.status === 'completed') return '#10b981';
+              if (node.data.status === 'failed') return '#ef4444';
+              return '#3b82f6';
+            }}
+            maskColor="rgba(0, 0, 0, 0.05)"
+          />
+        </ReactFlow>
 
-        {/* MiniMap */}
-        <MiniMap
-          nodeColor={(node) => {
-            if (node.data.status === 'completed') return '#10b981';
-            if (node.data.status === 'failed') return '#ef4444';
-            return '#3b82f6';
-          }}
-          maskColor="rgba(0, 0, 0, 0.05)"
-          className="bg-white border rounded-lg shadow-lg"
-          style={{ background: 'white' }}
-        />
-      </ReactFlow>
+        {/* Custom Zoom Controls */}
+        <CustomControls />
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 text-xs">
-        <div className="font-semibold mb-2 text-gray-700">Status Legend</div>
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-3 h-3 text-green-500" />
-            <span>Completed</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <XCircle className="w-3 h-3 text-red-500" />
-            <span>Failed</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Loader2 className="w-3 h-3 text-blue-500" />
-            <span>Running</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-3 h-3 text-yellow-500" />
-            <span>Pending</span>
+        {/* Legend */}
+        <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-3 text-xs z-10">
+          <div className="font-semibold mb-2 text-gray-700">Status Legend</div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-3 h-3 text-green-500" />
+              <span>Completed</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <XCircle className="w-3 h-3 text-red-500" />
+              <span>Failed</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-3 h-3 text-blue-500" />
+              <span>Running</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-3 h-3 text-yellow-500" />
+              <span>Pending</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </ReactFlowProvider>
   );
 }

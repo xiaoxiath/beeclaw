@@ -71,26 +71,49 @@ export default new Hono()
         console.log('[Chat API] Getting agent');
         const agent = getAgent();
 
+        // Collect tool calls during streaming
+        const collectedToolCalls: any[] = [];
+
         console.log('[Chat API] Calling agent.chat()');
         const fullResponse = await agent.chat(message, {
           sessionId: session.id,
           loadMemory: true,
           autoRefreshMemory: false,
+          onToolCall: (name, params) => {
+            console.log('[Chat API] Tool call:', name);
+          },
+          onToolResult: (name, result) => {
+            console.log('[Chat API] Tool result:', name);
+          },
         });
 
         console.log('[Chat API] Agent response received, length:', fullResponse.length);
+
+        // Get tool calls from agent and save to session
+        const toolCalls = agent.getLastToolCalls();
+        console.log('[Chat API] Tool calls from agent:', toolCalls?.length || 0);
 
         // Save assistant response to session
         session.messages.push({
           role: 'assistant',
           content: fullResponse,
           timestamp: new Date().toISOString(),
+          toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
         });
         session.updatedAt = new Date().toISOString();
 
         // Save session to disk
         saveSession(session);
         console.log('[Chat API] Assistant response saved to session');
+
+        // Send tool calls if any
+        if (toolCalls && toolCalls.length > 0) {
+          await stream.writeSSE({
+            event: 'tool_calls',
+            data: JSON.stringify({ toolCalls }),
+          });
+          console.log('[Chat API] Tool calls sent');
+        }
 
         // Send the full response
         await stream.writeSSE({
