@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { setupMockConsole, restoreConsole, getConsoleMessages } from '../../__tests__/mocks/console';
-import { retry, createRetryFetch, retryAICall, type RetryOptions } from '../../retry';
+import { setupMockConsole, restoreConsole, getConsoleMessages } from '../../testing/mocks/console';
+import { retry, createRetryFetch, retryAICall, type RetryOptions } from '../retry';
 
 describe('retry', () => {
   beforeEach(() => {

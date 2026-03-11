@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { setupMockConsole, restoreConsole, getConsoleCalls, getConsoleCallsFor, consoleCalledWith } from '../../__tests__/mocks/console';
+import { setupMockConsole, restoreConsole, getConsoleCalls, getConsoleCallsFor, consoleCalledWith } from '../../testing/mocks/console';
 
 // Re-import logger to get a fresh instance for testing
 // Since logger is a singleton, we need to work with it directly
-import { logger, type LoggerConfig, type LogLevel } from '../../logger';
+import { logger, type LoggerConfig, type LogLevel } from '../logger';
 
 describe('Logger', () => {
   beforeEach(() => {

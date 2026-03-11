@@ -206,6 +206,75 @@ const { reloadConfig } = await import('../config');
 - Better IDE support (autocompletion, go-to-definition)
 - Bundle optimization (tree-shaking, code splitting)
 
+### Testing Conventions
+
+**Test Organization**:
+
+1. **Unit Tests** → `src/module/__tests__/` (co-located with implementation)
+   ```typescript
+   src/
+   ├── adapter/
+   │   └── feishu/
+   │       ├── client.ts
+   │       └── __tests__/
+   │           └── client.test.ts
+   └── domain/
+       └── agent/
+           ├── agent.ts
+           └── __tests__/
+               └── agent.test.ts
+   ```
+
+2. **Integration Tests** → `tests/integration/` (multi-module collaboration)
+   ```typescript
+   tests/
+   └── integration/
+       └── p3-integration.test.ts
+   ```
+
+3. **E2E Tests** → `tests/e2e/` (full system workflows)
+   ```typescript
+   tests/
+   └── e2e/
+       └── feishu-webhook.test.ts
+   ```
+
+**Shared Test Utilities** → `src/infra/testing/`:
+```typescript
+src/infra/testing/
+├── mocks/           # Mock implementations (console, fetch, etc.)
+│   ├── console.ts
+│   └── fetch.ts
+└── helpers/         # Test utilities and fixtures
+    └── test-utils.ts
+```
+
+**Test Naming**:
+- Unit tests: `*.test.ts` (e.g., `agent.test.ts`)
+- Integration tests: `*.integration.test.ts`
+- E2E tests: `*.e2e.test.ts`
+
+**Test Principles**:
+- ✅ **Co-location**: Tests live next to the code they test
+- ✅ **Independence**: Each test should run independently
+- ✅ **Fast**: Unit tests should be fast (< 100ms each)
+- ✅ **Descriptive**: Test names should explain the behavior
+
+**Running Tests**:
+```bash
+# Run all tests
+bun test
+
+# Run specific test file
+bun test src/domain/agent/__tests__/agent.test.ts
+
+# Run tests with pattern
+bun test -t "should handle"
+
+# Run integration tests only
+bun test tests/integration
+```
+
 ### File Organization
 ```
 src/
@@ -243,14 +312,6 @@ src/
 - **bunqueue** - Job queue for background tasks
 - **yaml** - YAML parsing for frontmatter
 - **clipboardy** - Clipboard access (CLI mode)
-
-## Testing Conventions
-
-- Test files are co-located with source in `__tests__/` directories
-- Use descriptive test names that explain the behavior
-- Mock external dependencies (APIs, filesystem) for unit tests
-- Integration tests should use temporary directories
-- Run tests with `bun test` (uses Bun's built-in test runner)
 
 ## Feishu Integration
 
