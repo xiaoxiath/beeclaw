@@ -866,7 +866,17 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     try {
       const config = getConfig_();
-      const useCardV2 = config?.feishu?.useCardV2 ?? false;
+      logger.debug('[Session] Config check:', {
+        config: config,
+        feishu: feishuConfig: config?.feishu;
+        logger.debug('[Session] Feishu config:', feishuConfig);
+        logger.debug('[Session] useCardV2:', feishuConfig?.useCardV2);
+
+        logger.debug('[Session] channel:', channel);
+        logger.debug('[Session] parentMessageId:', options.context?.parentMessageId);
+      const useCardV2 = feishuConfig?.useCardV2 ?? false;
+
+      logger.debug('[Session] useCardV2 is false, skipping StreamingMessageController creation');
 
       if (channel === 'feishu' && useCardV2 && options.context?.parentMessageId) {
         const feishuClient = getFeishuWSClient()?.getApiClient();
@@ -878,6 +888,8 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             debounceMs: 500,
           });
           console.log('[Session] 🚀 Card V2 streaming enabled');
+        } else {
+          logger.warn('[Session] FeishuWSClient or getApiClient() returned null, cannot create streaming controller');
         }
       }
     } catch (error) {
