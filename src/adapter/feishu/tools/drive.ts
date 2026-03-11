@@ -7,6 +7,7 @@
 import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../../infra/observability/logger';
 import { z } from 'zod';
+import { readFile } from 'fs/promises';
 
 const logger = getLogger('feishu:drive');
 
@@ -896,7 +897,6 @@ export async function executeDriveTool(
           return { success: false, error: parsed.error.message };
         }
 
-        const { readFile } = await import('fs/promises');
         const fileData = await readFile(parsed.data.filePath);
 
         const file = await uploadFile(

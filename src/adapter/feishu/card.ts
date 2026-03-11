@@ -6,6 +6,7 @@
 
 import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
+import { sendCardMessage } from './send';
 
 const logger = getLogger('feishu:card');
 
@@ -236,7 +237,6 @@ export class CardBuilder {
     receiveId: string,
     receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'
   ): Promise<{ messageId: string }> {
-    const { sendCardMessage } = await import('./send');
     const card = this.build();
     return await sendCardMessage(client, receiveId, receiveIdType, card);
   }

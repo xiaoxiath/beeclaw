@@ -8,6 +8,7 @@
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { FeishuAuthConfig } from './types';
 import { logger } from '../../infra/observability/logger';
+import { sendPostMessage, sendMarkdownMessage, sendMarkdownCard } from './send';
 import type {
   FeishuUserId,
   FeishuOperator,
@@ -1163,8 +1164,6 @@ export class FeishuWSClient {
       throw new Error('[FeishuWS] Client not initialized');
     }
 
-    // Import the sendPostMessage function
-    const { sendPostMessage } = await import('./send');
     await sendPostMessage(this.client, receiveId, receiveIdType, content, options);
   }
 
@@ -1183,8 +1182,6 @@ export class FeishuWSClient {
       throw new Error('[FeishuWS] Client not initialized');
     }
 
-    // Import the sendMarkdownMessage function
-    const { sendMarkdownMessage } = await import('./send');
     await sendMarkdownMessage(this.client, receiveId, receiveIdType, markdown, options);
   }
 
@@ -1204,7 +1201,6 @@ export class FeishuWSClient {
       throw new Error('[FeishuWS] Client not initialized');
     }
 
-    const { sendMarkdownCard } = await import('./send');
     await sendMarkdownCard(this.client, receiveId, receiveIdType, markdown, options);
   }
 

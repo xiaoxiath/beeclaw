@@ -7,6 +7,7 @@
 import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import { extname } from 'path';
+import { readFile } from 'fs/promises';
 
 const logger = getLogger('feishu:media');
 
@@ -71,7 +72,6 @@ export async function uploadImage(
         }
       } else {
         // Local file path - read from filesystem
-        const { readFile } = await import('fs/promises');
         imageBuffer = await readFile(source);
         filename = extname(source) || filename;
       }
@@ -141,7 +141,6 @@ export async function uploadFile(
         }
       } else {
         // Local file path
-        const { readFile } = await import('fs/promises');
         fileBuffer = await readFile(source);
         filename = extname(source) || filename;
       }

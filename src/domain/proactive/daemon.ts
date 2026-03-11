@@ -10,6 +10,15 @@ import type { DaemonState, Schedule, ProactiveJobData } from './types';
 import { getScheduler } from './scheduler';
 import { getNotificationManager } from './notifications';
 import { getGoalStore } from '../goal/store';
+import {
+  handleLlmProactiveChatJob,
+  handleSelfEvolutionJob,
+  handleMemoryCompressJob,
+  handleGoalProgressCheckJob,
+  handleCustomJob,
+  handleSendReminderJob,
+} from './job-handlers';
+import { pushPendingNotifications } from './pusher';
 
 export class Daemon {
   private basePath: string;
@@ -261,17 +270,6 @@ export class Daemon {
   }
 
   private async executeDefaultJobHandler(job: ProactiveJobData): Promise<void> {
-    // Import unified handlers
-    const {
-      handleRunSkillJob,
-      handleLlmProactiveChatJob,
-      handleSelfEvolutionJob,
-      handleMemoryCompressJob,
-      handleGoalProgressCheckJob,
-      handleCustomJob,
-      handleSendReminderJob,
-    } = await import('./job-handlers');
-
     switch (job.taskType) {
       case 'llm_proactive_chat':
         await handleLlmProactiveChatJob(job);
@@ -319,7 +317,6 @@ export class Daemon {
 
       // Push pending notifications
       try {
-        const { pushPendingNotifications } = await import('./pusher');
         const { pushed, failed } = await pushPendingNotifications();
         if (pushed > 0 || failed > 0) {
           console.log(`[Daemon] Pushed ${pushed} notifications, failed ${failed}`);

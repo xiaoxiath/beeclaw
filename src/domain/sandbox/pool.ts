@@ -14,8 +14,10 @@
 import { logger } from '../../infra/observability/logger';
 import type { SandboxConfig } from './types';
 
-// Lazy-import dockerode
+// Lazy-import dockerode (optional dependency for container environments)
 let Docker: any = null;
+
+// Optional: dockerode may not be installed in all environments
 async function getDockerModule(): Promise<any> {
   if (Docker) return Docker;
   try {

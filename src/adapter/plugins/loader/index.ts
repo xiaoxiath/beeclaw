@@ -15,6 +15,7 @@ import { discoverPlugins } from "../discovery";
 import { loadPluginManifest, validatePluginConfig } from "../manifest";
 import { getOrCreatePluginRegistry } from "../registry";
 import { createPluginRuntimeShim } from "../runtime-shim";
+import { createHookRunner } from "../hook-runner";
 import type { PluginManifest } from "../manifest";
 
 export interface LoadPluginsOptions {
@@ -155,7 +156,6 @@ export async function loadPlugins(options: LoadPluginsOptions = {}): Promise<Loa
   }
 
   // 4. ─── 创建 Hook Runner ───
-  const { createHookRunner } = await import("../hook-runner");
   const hookRunner = createHookRunner(registry);
 
   console.log(`[Loader] Done. Loaded: ${loaded.length}, Failed: ${failed.length}`);
