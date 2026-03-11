@@ -85,6 +85,7 @@ export interface ProactiveMessageResult {
   sessionId?: string;
   response?: string;
   error?: string;
+  usedCardV2?: boolean; // Whether Card V2 was used for response
 }
 
 // Configuration
@@ -866,20 +867,19 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     try {
       const config = getConfig_();
-      logger.debug('[Session] Config check:', {
-        config: config,
-        feishu: feishuConfig: config?.feishu;
-        logger.debug('[Session] Feishu config:', feishuConfig);
-        logger.debug('[Session] useCardV2:', feishuConfig?.useCardV2);
+      const feishuConfig = config?.feishu;
 
-        logger.debug('[Session] channel:', channel);
-        logger.debug('[Session] parentMessageId:', options.context?.parentMessageId);
+      logger.debug('[Session] Config check:', { config });
+      logger.debug('[Session] Feishu config:', feishuConfig);
+      logger.debug('[Session] useCardV2:', feishuConfig?.useCardV2);
+      logger.debug('[Session] channel:', channel);
+      logger.debug('[Session] parentMessageId:', options.context?.parentMessageId);
+
       const useCardV2 = feishuConfig?.useCardV2 ?? false;
 
-      logger.debug('[Session] useCardV2 is false, skipping StreamingMessageController creation');
-
       if (channel === 'feishu' && useCardV2 && options.context?.parentMessageId) {
-        const feishuClient = getFeishuWSClient()?.getApiClient();
+        logger.debug('[Session] Card V2 conditions met, creating StreamingMessageController');
+        const feishuClient = getFeishuWSClient();
         if (feishuClient) {
           streamingController = new StreamingMessageController({
             client: feishuClient,
@@ -889,8 +889,14 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           });
           console.log('[Session] 🚀 Card V2 streaming enabled');
         } else {
-          logger.warn('[Session] FeishuWSClient or getApiClient() returned null, cannot create streaming controller');
+          logger.warn('[Session] FeishuWSClient not initialized, cannot create streaming controller');
         }
+      } else {
+        logger.debug('[Session] Card V2 NOT enabled', {
+          channel,
+          useCardV2,
+          hasParentMessageId: !!options.context?.parentMessageId,
+        });
       }
     } catch (error) {
       logger.warn('[Session] Failed to create streaming controller:', error);
@@ -1036,7 +1042,12 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // Clear deep analysis context
     clearDeepAnalysisContext();
 
-    return { success: true, sessionId, response };
+    return {
+      success: true,
+      sessionId,
+      response,
+      usedCardV2: !!streamingController, // Indicate if Card V2 was used
+    };
   } catch (error) {
     // Clear deep analysis context on error too
     clearDeepAnalysisContext();

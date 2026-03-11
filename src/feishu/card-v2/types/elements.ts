@@ -129,6 +129,63 @@ export const DivElementSchema = z.object({
 export type DivElement = z.infer<typeof DivElementSchema>;
 
 // ============================================
+// Collapsible Panel Header
+// ============================================
+
+/**
+ * Header for collapsible panel (no tag field, but nested elements have tags)
+ * Based on Feishu Card Schema 2.0 specification
+ */
+export const CollapsiblePanelHeaderSchema = z.object({
+  /**
+   * Header title (PlainText or Markdown)
+   */
+  title: z.union([PlainTextElementSchema, MarkdownElementSchema]).optional(),
+
+  /**
+   * Header icon
+   */
+  icon: StandardIconElementSchema.optional(),
+
+  /**
+   * Icon position
+   */
+  icon_position: z.enum(['left', 'right', 'follow_text']).optional(),
+
+  /**
+   * Icon rotation angle when expanded
+   */
+  icon_expanded_angle: z.number().optional(),
+
+  /**
+   * Background color
+   */
+  background_color: z.string().optional(),
+
+  /**
+   * Vertical alignment
+   */
+  vertical_align: z.enum(['top', 'center', 'bottom']).optional(),
+
+  /**
+   * Padding
+   */
+  padding: z.string().optional(),
+
+  /**
+   * Position (top or bottom)
+   */
+  position: z.enum(['top', 'bottom']).optional(),
+
+  /**
+   * Width
+   */
+  width: z.string().optional(),
+});
+
+export type CollapsiblePanelHeader = z.infer<typeof CollapsiblePanelHeaderSchema>;
+
+// ============================================
 // Collapsible Panel
 // ============================================
 
@@ -143,9 +200,9 @@ export const CollapsiblePanelSchema = z.object({
   tag: z.literal('collapsible_panel'),
 
   /**
-   * Panel header
+   * Panel header (no tag field, but nested elements have tags)
    */
-  header: DivElementSchema,
+  header: CollapsiblePanelHeaderSchema,
 
   /**
    * Panel content elements
@@ -158,6 +215,54 @@ export const CollapsiblePanelSchema = z.object({
    * - false after completion (collapsed by default)
    */
   expanded: z.boolean().optional(),
+
+  /**
+   * Direction (vertical or horizontal)
+   */
+  direction: z.enum(['vertical', 'horizontal']).optional(),
+
+  /**
+   * Vertical spacing
+   */
+  vertical_spacing: z.string().optional(),
+
+  /**
+   * Horizontal spacing
+   */
+  horizontal_spacing: z.string().optional(),
+
+  /**
+   * Vertical alignment
+   */
+  vertical_align: z.enum(['top', 'center', 'bottom']).optional(),
+
+  /**
+   * Horizontal alignment
+   */
+  horizontal_align: z.enum(['left', 'center', 'right']).optional(),
+
+  /**
+   * Padding
+   */
+  padding: z.string().optional(),
+
+  /**
+   * Margin
+   */
+  margin: z.string().optional(),
+
+  /**
+   * Background color
+   */
+  background_color: z.string().optional(),
+
+  /**
+   * Border style
+   */
+  border: z.object({
+    color: z.string().optional(),
+    corner_radius: z.string().optional(),
+  }).optional(),
 
   /**
    * Callback for panel toggle (optional)
@@ -270,12 +375,38 @@ export function createDivElement(options: {
 }
 
 /**
+ * Create a Collapsible Panel Header (no tag field, but nested elements have tags)
+ */
+export function createCollapsiblePanelHeader(options: {
+  title?: PlainTextElement | MarkdownElement;
+  icon?: StandardIconElement;
+  icon_position?: 'left' | 'right' | 'follow_text';
+  icon_expanded_angle?: number;
+  background_color?: string;
+  vertical_align?: 'top' | 'center' | 'bottom';
+  padding?: string;
+  position?: 'top' | 'bottom';
+  width?: string;
+}): CollapsiblePanelHeader {
+  return CollapsiblePanelHeaderSchema.parse(options);
+}
+
+/**
  * Create a Collapsible Panel
  */
 export function createCollapsiblePanel(options: {
-  header: DivElement;
+  header: CollapsiblePanelHeader;
   elements: unknown[];
   expanded?: boolean;
+  direction?: 'vertical' | 'horizontal';
+  vertical_spacing?: string;
+  horizontal_spacing?: string;
+  vertical_align?: 'top' | 'center' | 'bottom';
+  horizontal_align?: 'left' | 'center' | 'right';
+  padding?: string;
+  margin?: string;
+  background_color?: string;
+  border?: { color?: string; corner_radius?: string };
 }): CollapsiblePanel {
   return CollapsiblePanelSchema.parse({
     tag: 'collapsible_panel',

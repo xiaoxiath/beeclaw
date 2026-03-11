@@ -138,6 +138,9 @@ export class StreamingMessageController {
       // Render initial card
       const card = renderMessageCard(this.state.blocks, { streaming: true });
 
+      // Debug: Log the full card JSON
+      console.log('[StreamingController] 📤 Card JSON:', JSON.stringify(card, null, 2));
+
       // Send message
       const messageId = await this.options.client.replyCard(
         this.options.parentMessageId,
@@ -149,7 +152,7 @@ export class StreamingMessageController {
       this.state.initialized = true;
       this.state.lastUpdate = Date.now();
     } catch (error) {
-      console.error('Failed to send initial card message:', error);
+      console.error('[StreamingController] Failed to send initial card message:', error);
       throw error;
     }
   }

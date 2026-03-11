@@ -22,7 +22,6 @@ import {
   createCollapsiblePanel,
   createHrElement,
   type CollapsiblePanel,
-  type DivElement,
 } from './types/elements';
 import { IconToken, Color } from './types/styles';
 
@@ -119,18 +118,33 @@ export function renderStepsPanel(
     // TODO: Handle thinking blocks if needed
   });
 
-  // Create panel header
+  // Create panel header (following agentara structure)
   const headerText = summary || `Agent reasoning (${stepCount} steps)`;
-  const header = createDivElement({
-    text: createPlainTextElement(headerText),
-    icon: createStandardIconElement(IconToken.Brain, { color: Color.Blue }),
-  });
 
-  // Create collapsible panel
+  // Create collapsible panel following agentara pattern
   return createCollapsiblePanel({
-    header,
+    header: {
+      title: {
+        tag: 'plain_text',
+        content: headerText,
+        text_color: 'grey',
+        text_size: 'notation',
+      },
+      icon: {
+        tag: 'standard_icon',
+        token: 'right_outlined',
+        color: 'grey',
+      },
+      icon_position: 'right',
+      icon_expanded_angle: 90,
+    },
     elements: stepElements,
     expanded: streaming, // Expanded during streaming, collapsed after completion
+    border: {
+      color: 'grey-300',
+      corner_radius: '6px',
+    },
+    vertical_spacing: '2px',
   });
 }
 
@@ -153,10 +167,106 @@ export function renderToolUseStep(block: ToolUseBlock, stepNumber: number): DivE
 }
 
 /**
+ * Simplify markdown content if it has too many tables
+ * Feishu Card limit: ~3 tables
+ */
+function simplifyMarkdownTables(content: string, maxTables: number = 3): string {
+  // Split content by table blocks
+  const lines = content.split('\n');
+  const segments: Array<{ type: 'text' | 'table'; content: string }> = [];
+
+  let currentText: string[] = [];
+  let currentTable: string[] = [];
+  let inTable = false;
+
+  for (const line of lines) {
+    const isTableRow = line.trim().startsWith('|');
+    const isTableSeparator = /^\|[\s\-:|]+\|$/.test(line.trim());
+
+    if (isTableRow || isTableSeparator) {
+      if (!inTable) {
+        // Save previous text segment
+        if (currentText.length > 0) {
+          segments.push({ type: 'text', content: currentText.join('\n') });
+          currentText = [];
+        }
+        inTable = true;
+      }
+      currentTable.push(line);
+    } else {
+      if (inTable) {
+        // Save table segment
+        segments.push({ type: 'table', content: currentTable.join('\n') });
+        currentTable = [];
+        inTable = false;
+      }
+      currentText.push(line);
+    }
+  }
+
+  // Save last segment
+  if (inTable && currentTable.length > 0) {
+    segments.push({ type: 'table', content: currentTable.join('\n') });
+  } else if (currentText.length > 0) {
+    segments.push({ type: 'text', content: currentText.join('\n') });
+  }
+
+  // Count tables
+  const tableSegments = segments.filter(s => s.type === 'table');
+  if (tableSegments.length <= maxTables) {
+    return content; // No need to simplify
+  }
+
+  console.log(`[MessageRenderer] 📊 Simplifying ${tableSegments.length} tables to ${maxTables}`);
+
+  // Keep first maxTables tables, convert rest to lists or remove
+  let tableCount = 0;
+  const simplifiedSegments = segments.map(segment => {
+    if (segment.type === 'table') {
+      tableCount++;
+      if (tableCount <= maxTables) {
+        return segment.content;
+      } else {
+        // Convert table to simple list or skip
+        const lines = segment.content.split('\n').filter(l => l.trim() && !/^\|[\s\-:|]+\|$/.test(l.trim()));
+        if (lines.length <= 2) {
+          return ''; // Skip small tables
+        }
+
+        // Try to extract key-value pairs from first 2 rows
+        const headerRow = lines[0];
+        const valueRow = lines[1] || '';
+
+        const headers = headerRow.split('|').filter(h => h.trim());
+        const values = valueRow.split('|').filter(v => v.trim());
+
+        if (headers.length === values.length && headers.length <= 4) {
+          // Convert to bullet list
+          const items = headers.map((h, i) => `- **${h.trim()}**: ${values[i].trim()}`);
+          return items.join('\n');
+        }
+
+        return ''; // Skip complex tables
+      }
+    }
+    return segment.content;
+  });
+
+  return simplifiedSegments.filter(s => s.trim()).join('\n\n');
+}
+
+/**
  * Render final answer (markdown)
+ * NOTE: Feishu has limits on table count in cards (ErrCode: 11310)
+ * If content has too many tables, we need to simplify it
  */
 export function renderFinalAnswer(block: TextBlock): any {
-  return createMarkdownElement(block.text);
+  let content = block.text;
+
+  // Simplify tables if needed (Feishu limit is around 3 tables)
+  content = simplifyMarkdownTables(content, 3);
+
+  return createMarkdownElement(content);
 }
 
 /**

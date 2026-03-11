@@ -1324,6 +1324,12 @@ export class FeishuWSClient {
 
     const cardContent = typeof card === 'string' ? card : JSON.stringify(card);
 
+    // Debug: Log the card JSON being sent
+    console.log('[FeishuWS] 📤 Sending card reply:', {
+      messageId,
+      cardPreview: cardContent.substring(0, 500),
+    });
+
     const response = await this.client.im.v1.message.reply({
       path: {
         message_id: messageId,

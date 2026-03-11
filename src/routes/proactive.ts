@@ -242,6 +242,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       context: {
         chatId,
         messageId,
+        parentMessageId: messageId, // Required for Card V2 streaming
       },
     });
 
@@ -292,6 +293,18 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     }
 
     // Reply to the message directly via Gateway
+    // NOTE: If Card V2 was used, skip sending text message (Card V2 already sent via StreamingMessageController)
+    if (result.usedCardV2) {
+      console.log(`[FeishuWS:${process.pid}] ✅ Card V2 already sent, skipping text reply`);
+
+      // Mark response as delivered
+      if (result.sessionId) {
+        confirmDelivery(result.sessionId);
+      }
+
+      return; // Exit early - Card V2 message already sent
+    }
+
     try {
       console.log(`[FeishuWS:${process.pid}] Replying to message ${messageId} (${result.response.length} chars)...`);
 
