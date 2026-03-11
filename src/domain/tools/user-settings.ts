@@ -88,7 +88,6 @@ export async function executeUpdateUserSettings(params: {
     writeFileSync(configPath, JSON.stringify(config, null, 2));
 
     // 3. Reload config
-    const { reloadConfig } = await import('../config');
     reloadConfig();
 
     // 4. Return success message

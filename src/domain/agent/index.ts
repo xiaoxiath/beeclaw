@@ -135,7 +135,6 @@ async function _executeToolInner(name: string, params: Record<string, unknown>):
 
       // Handle skill_ensure requiring skill-creator workflow
       if (name === 'skill_ensure' && result.success === false && result.error === 'NEW_SKILL_REQUIRES_CREATOR') {
-        const { getSkillStore } = await import('../skills/store');
         const store = getSkillStore();
         const skillBasePath = store.getBasePath();
 
