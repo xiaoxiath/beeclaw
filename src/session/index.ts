@@ -32,6 +32,7 @@ import { sessions as sessionsTable } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { StreamingMessageController } from '../feishu/card-v2';
 import { getFeishuWSClient } from '../feishu';
+import { getConfig_ } from '../app';
 
 export interface SessionOptions {
   sessionId: string;
@@ -863,8 +864,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // Create StreamingMessageController if Card V2 is enabled
     let streamingController: StreamingMessageController | null = null;
 
-    if (channel === 'feishu' && options.context?.parentMessageId) {
-      try {
+    try {
+      const config = getConfig_();
+      const useCardV2 = config?.feishu?.useCardV2 ?? false;
+
+      if (channel === 'feishu' && useCardV2 && options.context?.parentMessageId) {
         const feishuClient = getFeishuWSClient()?.getApiClient();
         if (feishuClient) {
           streamingController = new StreamingMessageController({
@@ -875,9 +879,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           });
           console.log('[Session] 🚀 Card V2 streaming enabled');
         }
-      } catch (error) {
-        logger.warn('[Session] Failed to create streaming controller:', error);
       }
+    } catch (error) {
+      logger.warn('[Session] Failed to create streaming controller:', error);
     }
 
     try {
