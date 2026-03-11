@@ -180,6 +180,6 @@ const isolated = createIsolatedPluginRegistry();
 
 ## 相关文档
 
-- [工具参考](../tools-reference.md) — 内置工具列表
+- [工具参考](../references/tools.md) — 内置工具列表
 - [系统架构](../architecture.md) — 整体架构设计
 - [错误处理](./error-handling.md) — 插件错误处理

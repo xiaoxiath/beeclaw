@@ -211,6 +211,6 @@ Beeclaw 支持配置文件的热加载，修改 `beeclaw.json` 后无需重启�
 ## 相关文档
 
 - [快速开始](./getting-started.md) — 安装和首次运行
-- [CLI 参考](./cli-reference.md) — 命令行使用详解
-- [飞书指南](./feishu-guide.md) — 飞书 Bot 配置
+- [CLI 参考](./references/cli.md) — 命令行使用详解
+- [飞书集成](./guide/feishu-integration.md) — 飞书 Bot 配置
 - [部署指南](./operations/deployment.md) — PM2 生产部署

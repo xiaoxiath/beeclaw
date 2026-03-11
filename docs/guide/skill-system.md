@@ -176,6 +176,6 @@ Beeclaw 附带一组内置技能（位于项目 `skills/` 目录）：
 
 ## 相关文档
 
-- [工具参考](../tools-reference.md) — 所有工具的详细参数
+- [工具参考](../references/tools.md) — 所有工具的详细参数
 - [记忆系统](./memory-system.md) — 技能依赖的记忆基础
 - [子代理系统](./subagent-system.md) — 技能与子代理的协作

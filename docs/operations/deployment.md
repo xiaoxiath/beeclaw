@@ -891,7 +891,7 @@ pm2 logs beeclaw --lines 20
 
 - [PM2 官方文档](https://pm2.keymetrics.io/docs/usage/quick-start/)
 - [Beeclaw 定时任务机制](../guide/proactive-system.md)
-- [飞书集成指南](../feishu-guide.md)
+- [飞书集成指南](../guide/feishu-integration.md)
 - [主动能力指南](../guide/proactive-system.md)
 
 ---

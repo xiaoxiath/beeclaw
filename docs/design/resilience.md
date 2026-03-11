@@ -11,8 +11,8 @@
 根据任务复杂度选择合适的预设：
 
 ```typescript
-import { createResilienceContext } from './agent/resilience-integration';
-import { ResilienceConfig } from './config/resilience-config';
+import { createResilienceContext } from '../../src/domain/agent/resilience-integration';
+import { ResilienceConfig } from '../../src/infra/config/resilience-config';
 
 // 快速任务
 const quickCtx = createResilienceContext({ preset: 'quick_task' });

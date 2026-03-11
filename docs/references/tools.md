@@ -478,6 +478,6 @@ const status = await shell({
 
 | 文档 | 描述 |
 |------|------|
-| [CLI 参考](./cli-reference.md) | CLI 命令详解 |
-| [API 参考](./tools-reference.md) | HTTP API 文档 |
+| [CLI 参考](./cli.md) | CLI 命令详解 |
+| [API 参考](./tools.md) | HTTP API 文档 |
 | [配置指南](./configuration.md) | 配置选项 |

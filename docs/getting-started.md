@@ -110,7 +110,7 @@ export LARK_BEECLAW_AS="your-app-secret"
 bun run bot
 ```
 
-详见 [飞书指南](./feishu-guide.md)。
+详见 [飞书集成](./guide/feishu-integration.md)。
 
 ## CLI 基本使用
 
@@ -131,8 +131,8 @@ bun run bot
 
 ## 下一步
 
-- [CLI 参考](./cli-reference.md) - CLI 命令详解
-- [飞书指南](./feishu-guide.md) - 飞书 Bot 配置
+- [CLI 参考](./references/cli.md) - CLI 命令详解
+- [飞书集成](./guide/feishu-integration.md) - 飞书 Bot 配置
 - [配置指南](./configuration.md) - 详细配置选项
 - [记忆系统](./guide/memory-system.md) - 记忆系统设计
 

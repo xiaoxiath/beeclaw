@@ -302,7 +302,7 @@ f health.md
 - 📝 `task_list` - 列出所有任务
 - ❌ `task_cancel` - 取消任务
 
-详细文档参见 [工具参考](./tools-reference.md)。
+详细文档参见 [工具参考](./tools.md)。
 
 ### 多行输入模式
 
