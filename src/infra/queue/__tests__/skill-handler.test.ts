@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { rmSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { handleSkillJob } from '../handlers/skill-handler';
-import { getSkillStore, resetSkillStore } from '../../skills/store';
-import type { SkillJobData } from '../../types';
+import { handleSkillJob } from '../../../app/queue-handlers/handlers/skill-handler';
+import { getSkillStore, resetSkillStore } from '../../../domain/skills/store';
+import type { SkillJobData } from '../types';
 import type { Job } from 'bunqueue/client';
 
 const TEST_SKILL_PATH = './test-skill-data';

@@ -4,7 +4,7 @@ import {
   getPendingNotifications,
   hasPendingNotifications,
 } from '../handlers/reminder-handler';
-import type { ReminderJobData } from '../../types';
+import type { ReminderJobData } from '../types';
 import type { Job } from 'bunqueue/client';
 
 // Mock Job object

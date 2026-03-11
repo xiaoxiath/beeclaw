@@ -3,7 +3,7 @@ import { rmSync, existsSync, mkdirSync } from 'fs';
 import {
   handleSearchJob,
 } from '../handlers/search-handler';
-import type { SearchJobData } from '../../types';
+import type { SearchJobData } from '../types';
 import type { Job } from 'bunqueue/client';
 
 // Mock Job object

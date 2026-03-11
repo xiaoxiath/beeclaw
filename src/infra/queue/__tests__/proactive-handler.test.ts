@@ -1,11 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { rmSync, existsSync, mkdirSync } from 'fs';
-import { handleProactiveJob } from '../handlers/proactive-handler';
-import { getGoalStore, resetGoalStore } from '../../goal/store';
-import { getNotificationManager, resetNotificationManager } from '../../proactive/notifications';
-import { setCliDeliveryHandler } from '../../proactive/pusher';
-import { initStores, resetStores } from '../../store';
-import type { ProactiveJobData } from '../../types';
+import { handleProactiveJob } from '../../../app/queue-handlers/handlers/proactive-handler';
+import { getGoalStore, resetGoalStore } from '../../../domain/goal/store';
+import { getNotificationManager, resetNotificationManager } from '../../../domain/proactive/notifications';
+import { setCliDeliveryHandler } from '../../../domain/proactive/pusher';
+import { initStores, resetStores } from '../../../infra/db/store';
+import type { ProactiveJobData } from '../types';
 import type { Job } from 'bunqueue/client';
 
 const TEST_PROACTIVE_HANDLER_PATH = './test-proactive-handler-data';

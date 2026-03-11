@@ -5,8 +5,8 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { getTaskManager } from '../manager';
-import { initWorkers } from '../workers';
-import { handleProactiveJob } from '../handlers';
+import { initWorkers } from '../../../app/queue-handlers/workers';
+import { handleProactiveJob } from '../../../app/queue-handlers/handlers';
 
 const TEST_DB_PATH = './test-schedule-once.db';
 

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, mkdirSync, rmSync } from 'fs';
-import { createJobProcessor } from '../workers';
+import { createJobProcessor } from '../../../app/queue-handlers/workers';
 
 const TEST_WORKERS_PATH = './test-workers-data';
 
