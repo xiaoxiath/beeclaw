@@ -8,6 +8,10 @@ import type {
   UpdateSkillOptions,
   MaturityAssessment,
   SkillToolResult,
+  SkillEvals,
+  GradingResult,
+  TimingData,
+  BenchmarkResult,
 } from './types';
 import { SkillFrontmatterSchema } from './types';
 
@@ -542,7 +546,7 @@ export class SkillStore {
   }
 
   // Create/update evals for a skill
-  setEvals(skillName: string, evals: import('./types').SkillEvals): SkillToolResult {
+  setEvals(skillName: string, evals: SkillEvals): SkillToolResult {
     const skillPath = join(this.basePath, skillName);
     const evalsDir = join(skillPath, 'evals');
 
@@ -585,7 +589,7 @@ export class SkillStore {
   }
 
   // Save grading result
-  saveGrading(skillName: string, runDir: string, grading: import('./types').GradingResult): SkillToolResult {
+  saveGrading(skillName: string, runDir: string, grading: GradingResult): SkillToolResult {
     const gradingPath = join(runDir, 'grading.json');
 
     try {
@@ -597,7 +601,7 @@ export class SkillStore {
   }
 
   // Save timing data
-  saveTiming(runDir: string, timing: import('./types').TimingData): SkillToolResult {
+  saveTiming(runDir: string, timing: TimingData): SkillToolResult {
     const timingPath = join(runDir, 'timing.json');
 
     try {
@@ -609,7 +613,7 @@ export class SkillStore {
   }
 
   // Save benchmark result
-  saveBenchmark(skillName: string, benchmark: import('./types').BenchmarkResult): SkillToolResult {
+  saveBenchmark(skillName: string, benchmark: BenchmarkResult): SkillToolResult {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const benchmarkDir = join(this.basePath, skillName, 'benchmarks', timestamp);
 
@@ -633,7 +637,7 @@ export class SkillStore {
   }
 
   // Format benchmark as markdown
-  private formatBenchmarkMd(benchmark: import('./types').BenchmarkResult): string {
+  private formatBenchmarkMd(benchmark: BenchmarkResult): string {
     const lines: string[] = [
       `# Benchmark: ${benchmark.metadata.skill_name}`,
       '',

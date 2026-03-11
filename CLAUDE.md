@@ -176,6 +176,36 @@ export function getAllToolsForAI(): OpenAITool[] {
 - Session recovery handles crashes gracefully
 - Always log errors with context using `logger.error()`
 
+### Import Best Practices
+
+**Prefer static imports over dynamic imports** to enable compile-time validation:
+
+✅ **Use static imports by default**:
+```typescript
+// Good: Compile-time validation, type safety, IDE support
+import { getSkillStore } from '../skills/store';
+import { reloadConfig } from '../config';
+```
+
+❌ **Avoid unnecessary dynamic imports**:
+```typescript
+// Bad: Runtime errors, no type checking, poor IDE support
+const { getSkillStore } = await import('../skills/store');
+const { reloadConfig } = await import('../config');
+```
+
+**Valid use cases for dynamic imports**:
+- Plugin systems (e.g., Jiti loading TypeScript plugins)
+- Breaking circular dependencies
+- Optional dependencies (e.g., MCP HTTP transport)
+- Test isolation (reloading modules in each test)
+
+**Rationale**: Static imports provide:
+- Compile-time error detection (missing modules, typos)
+- Full TypeScript type checking
+- Better IDE support (autocompletion, go-to-definition)
+- Bundle optimization (tree-shaking, code splitting)
+
 ### File Organization
 ```
 src/

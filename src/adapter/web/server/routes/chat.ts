@@ -3,7 +3,7 @@ import { streamSSE } from 'hono/streaming';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { getAgent } from '@/app';
-import { getOrCreateSession, getSession, saveSession } from '@/domain/session';
+import { getOrCreateSession, getSession, saveSession, listSessions, deleteSession } from '@/domain/session';
 
 const sendMessageSchema = z.object({
   message: z.string().min(1),
@@ -147,7 +147,6 @@ export default new Hono()
   // Get chat sessions
   .get('/sessions', async (c) => {
     console.log('[Chat API] GET /sessions');
-    const { listSessions } = await import('../../../session');
     const sessions = listSessions();
 
     return c.json({
@@ -167,7 +166,6 @@ export default new Hono()
   .get('/sessions/:id', async (c) => {
     const sessionId = c.req.param('id');
     console.log('[Chat API] GET /sessions/:id', sessionId);
-    const { getSession } = await import('../../../session');
     const session = getSession(sessionId);
 
     if (!session) {
@@ -190,7 +188,6 @@ export default new Hono()
   .delete('/sessions/:id', async (c) => {
     const sessionId = c.req.param('id');
     console.log('[Chat API] DELETE /sessions/:id', sessionId);
-    const { deleteSession } = await import('../../../session');
     const success = deleteSession(sessionId);
 
     if (!success) {

@@ -110,7 +110,7 @@ export async function executeRequestDeepAnalysis(
 
   try {
     // Import feishu client dynamically to avoid circular dependencies
-    const { getFeishuWSClient } = await import('../feishu');
+    const { getFeishuWSClient } = await import('../../adapter/feishu');
 
     // 1. Send quick reply to Feishu
     const client = getFeishuWSClient();
