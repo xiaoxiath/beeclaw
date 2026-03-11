@@ -112,13 +112,19 @@ export async function initApp(options: InitOptions = {}): Promise<{
     // Always register CLI channel
     gateway.registerChannel(new CLIChannel());
 
-    // Register Feishu channel if enabled
-    if (config.feishu?.enabled) {
+    // Register Feishu channel if enabled or if Feishu credentials exist
+    const shouldRegisterFeishu = config.feishu?.enabled ||
+                                  (config.feishu?.appId && config.feishu?.appSecret);
+
+    if (shouldRegisterFeishu) {
       try {
         gateway.registerChannel(new FeishuChannel());
+        console.log('   📨 Feishu channel registered');
       } catch (error) {
         logger.warn('[App] Failed to register Feishu channel (non-fatal):', error);
       }
+    } else {
+      console.log('   📨 Feishu channel not registered (no credentials or disabled)');
     }
 
     const channels = gateway.getRegisteredChannels();
