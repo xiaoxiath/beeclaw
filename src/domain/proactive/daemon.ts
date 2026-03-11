@@ -90,10 +90,11 @@ export class Daemon {
       this.state.schedulesLoaded = scheduler.listSchedules().length;
       this.saveState();
 
-      // Start all enabled schedules with unified execution entry point
-      // This ensures both setTimeout and periodicCheck share the same memory lock
+      // Start all enabled schedules
+      // NOTE: scheduler.executeWithLock already handles lock acquisition
+      // So callback should directly call executeSchedule (not executeScheduleWithLock)
       scheduler.startAll(async (schedule) => {
-        await this.executeScheduleWithLock(schedule, options?.onJob);
+        await this.executeSchedule(schedule, options?.onJob);
       });
     } catch (error) {
       this.recordError('Failed to load schedules: ' + (error instanceof Error ? error.message : 'Unknown error'));

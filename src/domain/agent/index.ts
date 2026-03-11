@@ -1,4 +1,6 @@
 import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../../infra/resilience/circuit-breaker';
+$IMP
+import { LoopDetector, createLoopDetector, type LoopDetectionResult } from '../../infra/resilience/loop-detector';
 
 import type { AIProvider } from '../../infra/config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent, MessageMetadata } from './types';
@@ -305,6 +307,7 @@ export class Agent {
       arguments: string;
     };
   }> = [];
+  private loopDetector: LoopDetector = createLoopDetector();
 
   constructor(options: AgentOptions & {
     contextConfig?: Partial<ContextConfig>;
@@ -761,7 +764,10 @@ export class Agent {
     const tokensBefore = this.estimatedTokens;
     this.lastSkillFailed = undefined;
     this.usedSkillsInTurn.clear();
+    this.loopDetector.reset(); // Reset loop detector for new turn
     this.lastToolCalls = []; // Clear tool calls from previous turn
+    this.loopDetector.reset(); // Reset loop detector for new turn
+    this.loopDetector.reset(); // Reset loop detector for new turn
 
     if (this.hookRunner) {
       await this.hookRunner.runMessageReceived({
@@ -1013,7 +1019,26 @@ export class Agent {
                 }
 
                 const toolStartTime = Date.now();
-                const result = await this.toolExecutor(call.function.name, params);
+                // 循环检测：执行前检查
+              const loopCheck = this.loopDetector.check(call.function.name, params);
+              if (loopCheck.action === 'warn') {
+                // 注入警告给 LLM
+                this.messages.push({
+                  role: 'system',
+                  content: loopCheck.warningMessage || '检测到可能的循环行为',
+                });
+                this.loopDetector.acknowledgeWarning();
+              } else if (loopCheck.action === 'break') {
+                // 强制退出
+                const errorMsg = `检测到循环行为: ${loopCheck.details}。请尝试不同的方法。`;
+                options?.onToolResult?.(call.function.name, { success: false, error: errorMsg });
+                return errorMsg;
+              }
+              
+              // 记录工具调用
+              this.loopDetector.recordToolCall(call.function.name, params, iterations);
+              
+              const result = await this.toolExecutor(call.function.name, params);
                 const toolElapsed = Date.now() - toolStartTime;
 
                 if (this.hookRunner) {
@@ -1029,6 +1054,9 @@ export class Agent {
                 console.log(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
 
                 options?.onToolResult?.(call.function.name, result);
+
+              // 记录工具结果用于循环检测
+              this.loopDetector.recordToolResult(result);
 
                 return { call, result, error: null };
               } catch (error) {
@@ -1254,6 +1282,7 @@ export class Agent {
 
     // Reset skill tracking for this turn
     this.usedSkillsInTurn.clear();
+    this.loopDetector.reset(); // Reset loop detector for new turn
 
     // Add user message with token tracking
     this.messages.push({
