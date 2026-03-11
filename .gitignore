@@ -12,6 +12,9 @@ beeclaw.yml
 # Session data
 data/
 
+# Test debug data
+test-debug-data/
+
 # Logs
 *.log
 logs/
