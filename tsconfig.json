@@ -15,7 +15,11 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@infra/*": ["./src/infra/*"],
+      "@domain/*": ["./src/domain/*"],
+      "@adapter/*": ["./src/adapter/*"],
+      "@app/*": ["./src/app/*"]
     }
   },
   "include": ["src/**/*"],

@@ -5,11 +5,11 @@
  * All users (just Keith!) get the same experience.
  */
 
-import { loadConfig, getConfig, shouldShowTokenStats } from '../config';
+import { loadConfig, getConfig, shouldShowTokenStats } from '../infra/config';
 import { initStores } from '../store';
 import { getMemoryStore } from '../memory';
 import { createAgent, getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt } from '../agent';
-import { sessionService } from '../services/session';
+import { sessionService } from '../domain/session/service';
 import { initSessionManager, loadAllSessions, getOrCreateSession, type Session } from '../session';
 import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../subagent';
 import { initializeMCP, getMCPManager, shutdownMCP } from '../mcp';
@@ -17,7 +17,7 @@ import { getHookRunner, resetHookRunner } from '../hooks';
 import { loadPlugins, getPluginRegistry } from '../plugins';
 import { logger } from '../utils/logger';
 import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
-import type { AIProvider, AppConfig } from '../config/schema';
+import type { AIProvider, AppConfig } from '../infra/config/schema';
 import type { TokenStatsConfig } from '../agent/context';
 import { SandboxManager } from '../sandbox';
 
