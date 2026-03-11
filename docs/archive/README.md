@@ -16,6 +16,12 @@
 | `plugin-system/` | 插件系统开发总结 |
 | `refactoring/` | 系统重构和工具简化 |
 | `subagent-phases/` | 子代理 Phase 2-5 实现记录 |
+| `webui-phase3-complete.md` | Web UI Phase 3 完成报告 |
+| `webui-phase4-complete.md` | Web UI Phase 4 完成报告 |
+| `webui-auth.md` | Web UI 认证指南（已合并） |
+| `webui-current-status.md` | Web UI 历史状态报告 |
+| `architecture-upgrade-verification.md` | 架构升级验证报告 |
+| `sqlite-test-results.md` | SQLite 集成测试结果 |
 
 ### analysis/ — 技术分析
 
@@ -55,12 +61,11 @@
 | `TODO.md` | 过时的 TODO 列表 |
 | `recovery-fix-test-plan.md` | 测试方案，功能已稳定 |
 
-### temp/ — 临时文档
+### archive/ 根目录 — 临时文档
 
 | 文档 | 说明 |
 |------|------|
 | `beeclaw-update.md` | 项目深度分析报告（一次性） |
-| `P0_PATCH_SUMMARY.md` | P0 安全补丁总结（已合入） |
 
 ---
 

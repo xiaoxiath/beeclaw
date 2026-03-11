@@ -7,7 +7,7 @@
 import { createInterface } from 'readline';
 import { writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { logger } from '../utils/logger';
+import { logger } from '../infra/observability/logger';
 
 const rl = createInterface({
   input: process.stdin,

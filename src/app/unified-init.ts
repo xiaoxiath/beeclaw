@@ -7,7 +7,7 @@
 import { getHookRunner, resetHookRunner, type HookName, type HookHandler } from '../hooks';
 import { getMCPManager, resetMCPManager, type MCPServerConfig } from '../mcp';
 import { getSubagentRegistry, resetSubagentRegistry, type SubagentRegistryConfig } from '../subagent/registry';
-import { getHybridSearchManager, resetHybridSearchManager, type HybridSearchConfig } from '../memory/hybrid-search';
+import { getHybridSearchManager, resetHybridSearchManager, type HybridSearchConfig } from '../domain/memory/hybrid-search';
 
 // ============================================================================
 // 配置类型

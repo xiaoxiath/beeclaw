@@ -10,18 +10,24 @@
  */
 
 import { createInterface } from 'readline';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import clipboardy from 'clipboardy';
-import { sessionService } from './services/session';
-import { getMemoryStore, executeMemoryTool, getMemoryToolsForAI } from './memory';
-import { getSkillStore, executeSkillTool, getSkillToolsForAI } from './skills';
-import { getGoalStore, executeGoalTool, getGoalToolsForAI } from './goal';
-import { getScheduler, getNotificationManager, getDaemon, executeProactiveTool, pushPendingNotifications, formatNotifications, setCliDeliveryHandler } from './proactive';
-import { getAllToolsForAI, SYSTEM_PROMPTS } from './agent';
-import { initTaskManager, initWorkers, createReminderTask, getPendingNotifications, getQueueStatistics } from './queue';
-import { LoadingIndicator, formatElapsed, withSpinner, rewriteLine } from './cli/input';
+import { sessionService } from './domain/session/service';
+import { getMemoryStore, executeMemoryTool, getMemoryToolsForAI } from './domain/memory';
+import { getSkillStore, executeSkillTool, getSkillToolsForAI } from './domain/skills';
+import { getGoalStore, executeGoalTool, getGoalToolsForAI } from './domain/agent/goal';
+import { getScheduler, getNotificationManager, getDaemon, executeProactiveTool, pushPendingNotifications, formatNotifications, setCliDeliveryHandler } from './domain/proactive';
+import { getAllToolsForAI, SYSTEM_PROMPTS } from './domain/agent';
+import { getCompressionEngine } from './domain/memory/compression';
+import { initTaskManager, createReminderTask, getQueueStatistics } from './infra/queue';
+import { initWorkers } from './app/queue-handlers/workers';
+import { getPendingNotifications } from './app/queue-handlers/handlers/reminder-handler';
+import { LoadingIndicator, formatElapsed, withSpinner, rewriteLine } from './adapter/cli/input';
 import { initApp, getAgent, getProvider, getModel, switchModel, isInitialized, getConfig_, getOrCreateSession, continueConversation, listSessions, getSession, deleteSession, getSessionStats, type Session } from './app';
-import { recommendSessions, formatRecommendation } from './session/recommender';
-import type { AIProvider } from './config/schema';
+import { recommendSessions, formatRecommendation } from './domain/session/recommender';
+import { getPersonaStore, executePersonaTool } from './domain/agent/persona';
+import { getMBTIDescription, getOCEANDescription, getOCEANLevel } from './domain/agent/persona/traits';
+import type { AIProvider } from './infra/config/schema';
 
 let rl = createInterface({
   input: process.stdin,
@@ -1064,10 +1070,6 @@ async function handlePersonaCommand(input: string): Promise<void> {
   const subCmd = parts[0]?.toLowerCase() || 'info';
 
   try {
-    const { getPersonaStore } = await import('./persona/store');
-    const { executePersonaTool } = await import('./persona/tools');
-    const { getMBTIDescription, getOCEANDescription, getOCEANLevel } = await import('./persona/traits');
-
     switch (subCmd) {
       case '':
       case 'info': {
@@ -1156,8 +1158,7 @@ async function handlePersonaCommand(input: string): Promise<void> {
         if (result.success && result.data) {
           const pkg = result.data as any;
           const filename = `persona-${Date.now()}.json`;
-          const fs = await import('fs');
-          fs.writeFileSync(filename, JSON.stringify(pkg, null, 2));
+          writeFileSync(filename, JSON.stringify(pkg, null, 2));
           console.log(`\n📤 Persona exported to: ${filename}\n`);
           console.log(`  Schema: ${pkg.schema}`);
           console.log(`  Exported at: ${pkg.exportedAt}`);

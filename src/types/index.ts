@@ -6,6 +6,18 @@
 
 import { z } from 'zod';
 
+// Re-export channel types
+export type {
+  ChannelType,
+  MessageChannel,
+  MessageContent,
+  MultimodalContent,
+  PostMessageOptions,
+  ReplyMessageOptions,
+  UpdateMessageOptions,
+  MessageResult,
+} from './channel';
+
 // ============================================================
 // Unified Tool Result Type
 // ============================================================

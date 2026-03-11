@@ -10,8 +10,8 @@ const isWatch = args.includes('--watch') || args.includes('-w');
 
 console.log('🔨 Building Beeclaw Web UI...\n');
 
-const distDir = './src/web/client/dist';
-const indexHtmlPath = './src/web/client/index.html';
+const distDir = './dist/web';
+const indexHtmlPath = './src/adapter/web/client/index.html';
 
 // Clean dist directory
 if (existsSync(distDir)) {
@@ -27,7 +27,7 @@ if (existsSync(distDir)) {
 }
 
 const buildOptions = {
-  entrypoints: ['./src/web/client/main.tsx'],
+  entrypoints: ['./src/adapter/web/client/main.tsx'],
   outdir: distDir,
   target: 'browser' as const,
   format: 'esm' as const,
