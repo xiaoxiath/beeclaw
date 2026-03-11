@@ -54,6 +54,11 @@ import { callAI } from '../agent/api';
 import { getProvider, getModel } from '../app';
 
 // Tool result type
+import {
+  sandboxTools,
+  sandboxToolNames,
+  executeSandboxTool,
+} from '../sandbox/tools';
 export type BuiltinToolResult = MemoryToolResult;
 
 /**
@@ -2268,6 +2273,12 @@ export const builtinTools = {
   state_unlock: stateUnlockTool,
   request_deep_analysis: requestDeepAnalysisTool,
   update_user_settings: updateUserSettingsTool,
+  // Sandbox tools
+  sandbox_exec: sandboxTools.sandbox_exec,
+  sandbox_write_file: sandboxTools.sandbox_write_file,
+  sandbox_read_file: sandboxTools.sandbox_read_file,
+  sandbox_list_files: sandboxTools.sandbox_list_files,
+  sandbox_status: sandboxTools.sandbox_status,
 };
 
 export const builtinToolNames = Object.keys(builtinTools);
@@ -2350,6 +2361,13 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeRequestDeepAnalysis(params);
     case 'update_user_settings':
       return executeUpdateUserSettings(params);
+    // Sandbox tools
+    case 'sandbox_exec':
+    case 'sandbox_write_file':
+    case 'sandbox_read_file':
+    case 'sandbox_list_files':
+    case 'sandbox_status':
+      return executeSandboxTool(name, params);
     default:
       return { success: false, error: `Unknown builtin tool: ${name}` };
   }

@@ -19,6 +19,7 @@ import { logger } from '../utils/logger';
 import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
 import type { AIProvider, AppConfig } from '../config/schema';
 import type { TokenStatsConfig } from '../agent/context';
+import { SandboxManager } from '../sandbox';
 
 // Global app state (singleton)
 let appState: {
@@ -517,6 +518,21 @@ export async function initApp(options: InitOptions = {}): Promise<{
     }
   }
 
+  // 10. Initialize sandbox system
+  try {
+    const { SandboxManager } = await import('../sandbox/manager');
+    const sandboxConfig = (config as any).sandbox || {};
+
+    if (sandboxConfig.enabled) {
+      const sandboxManager = SandboxManager.getInstance();
+      await sandboxManager.initialize(sandboxConfig);
+      const stats = sandboxManager.getStats();
+      console.log(`   🔒 Sandbox: ${stats.providers.join(', ')} provider(s) ready`);
+    }
+  } catch (error) {
+    console.warn('   ⚠️  Sandbox initialization failed (non-fatal):', error);
+  }
+
   return {
     config,
     provider: defaultProvider,
@@ -617,6 +633,14 @@ export async function resetApp(): Promise<void> {
     await shutdownMCP();
   } catch (error) {
     logger.debug('Error during MCP shutdown (ignored):', error);
+  }
+
+  // Shutdown sandbox
+  try {
+    const { SandboxManager } = await import('../sandbox/manager');
+    await SandboxManager.getInstance().shutdown();
+  } catch (error) {
+    logger.debug('Error during sandbox shutdown (ignored):', error);
   }
 
   // Reset hook runner

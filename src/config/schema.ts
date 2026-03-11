@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SandboxConfigSchema } from '../sandbox/types';
 
 // Server configuration schema
 export const ServerConfigSchema = z.object({
@@ -316,6 +317,7 @@ export const AppConfigSchema = z.object({
   extraction: ExtractionConfigSchema.default({}),
   mcp: MCPConfigSchema.default({}),
   hooks: HooksConfigSchema.default({}),
+  sandbox: SandboxConfigSchema.default({}),
   recovery: RecoveryConfigSchema.optional(),
   web: WebConfigSchema.default({}),
 });
@@ -348,4 +350,5 @@ export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 export type HooksConfig = z.infer<typeof HooksConfigSchema>;
 export type RecoveryConfig = z.infer<typeof RecoveryConfigSchema>;
 export type WebConfig = z.infer<typeof WebConfigSchema>;
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

@@ -19,6 +19,7 @@ import { getSkillToolsForAI } from '../skills';
 import { getGoalToolsForAI } from '../goal';
 import { getProactiveToolsForAI } from '../proactive';
 import { getBuiltinToolsForAI, builtinToolNames } from '../tools';
+import { getSandboxToolsForAI } from '../sandbox/tools';
 import { getPersonaToolsForAI, getTraitSystemPrompt } from '../persona';
 import { getGoalStore } from '../goal/store';
 import { getDateContext } from '../utils/holiday';
@@ -131,6 +132,7 @@ export function getAllTools(): OpenAITool[] {
     ...feishuTools.map(toOpenAITool),
     ...mcpTools,
     ...pluginTools,
+    ...getSandboxToolsForAI(),
   ];
 }
 
@@ -154,6 +156,7 @@ export const TOOL_CATEGORIES = {
   goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],
   proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once', 'notification_send', 'notification_list', 'notification_mark_read', 'notification_delete', 'notification_history', 'notification_stats'],
   builtin: [...builtinToolNames],
+  sandbox: ['sandbox_exec', 'sandbox_write_file', 'sandbox_read_file', 'sandbox_list_files', 'sandbox_status'],
   persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],
   feishu: [
     'feishu_calendar_list', 'feishu_calendar_get', 'feishu_calendar_event_create', 'feishu_calendar_event_list', 'feishu_calendar_event_get', 'feishu_calendar_event_update', 'feishu_calendar_event_delete', 'feishu_calendar_event_search', 'feishu_calendar_today', 'feishu_calendar_quick_event',

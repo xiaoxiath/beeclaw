@@ -15,3 +15,5 @@ export * as ShellTools from './categories/shell';
 export * as FinanceTools from './categories/finance';
 export * as UtilityTools from './categories/utility';
 export * as SubagentTools from './categories/subagent';
+
+export * as SandboxTools from './categories/sandbox';
