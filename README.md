@@ -134,3 +134,55 @@ beeclaw/
 ## License
 
 MIT
+
+## Sandbox 沙箱系统
+
+Beeclaw 提供安全的代码执行沙箱环境，支持本地进程隔离和 Docker 容器隔离两种模式。
+
+### 特性
+- **多种隔离级别**： 本地进程（开发）、Docker 容器（生产）
+- **安全保护**: 命令黑名单、路径遍历检测、资源限制
+- **虚拟路径**: 真实路径映射，防止路径泄露
+- **容器池**: 预热容器，减少冷启动延迟
+
+### 快速开始
+
+#### 本地模式（开发)
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "provider": "local",
+    "workspaceBase": "./data/sandbox"
+  }
+}
+```
+
+#### Docker 模式（生产）
+```bash
+# 构建镜像
+docker build -t beeclaw-sandbox:latest -f src/sandbox/image/Dockerfile .
+
+# 配置
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "provider": "docker",
+    "docker": {
+      "enabled": true,
+      "image": "beeclaw-sandbox:latest"
+    }
+  }
+}
+```
+
+### 已具列表
+- `sandbox_exec` - 在沙箱中执行命令
+- `sandbox_write_file` - 写入文件
+- `sandbox_read_file` - 读取文件
+- `sandbox_list_files` - 列出文件
+- `sandbox_status` - 沙箱状态
+
+### 更多信息
+详见 [src/sandbox/README.md](./src/sandbox/README.md) 和 [src/sandbox/DOCKER.md](./src/sandbox/DOCKER.md)
