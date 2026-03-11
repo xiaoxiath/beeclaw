@@ -14,8 +14,10 @@
 
 import { mkdirSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 import { VirtualPathMapper } from './path-mapper';
+import { LocalSandboxProvider } from './providers/local';
+import { DockerSandboxProvider } from './providers/docker';
 import type {
   Sandbox,
   SandboxProvider,
@@ -71,7 +73,6 @@ export class SandboxManager {
     // Initialize local provider (always available)
     if (config.local.enabled) {
       try {
-        const { LocalSandboxProvider } = await import('./providers/local');
         const localProvider = new LocalSandboxProvider(config);
         const available = await localProvider.isAvailable();
         if (available) {
@@ -86,7 +87,6 @@ export class SandboxManager {
     // Initialize Docker provider (optional)
     if (config.docker.enabled) {
       try {
-        const { DockerSandboxProvider } = await import('./providers/docker');
         const dockerProvider = new DockerSandboxProvider(config);
         const available = await dockerProvider.isAvailable();
         if (available) {

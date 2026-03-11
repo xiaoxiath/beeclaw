@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SandboxConfigSchema } from '../sandbox/types';
+import { SandboxConfigSchema } from '../../domain/sandbox/types';
 
 // Server configuration schema
 export const ServerConfigSchema = z.object({

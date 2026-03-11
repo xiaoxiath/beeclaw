@@ -5,7 +5,7 @@
  * This module decouples domain/tools from app layer.
  */
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 
 // Global state for provider and model access
 let currentProvider: AIProvider | null = null;

@@ -4,9 +4,9 @@
  * Free search provider using HTML scraping - no API key required
  */
 
-import { SearchProvider } from '../../base';
-import { SearchRegion } from '../../types';
-import type { SearchRequest, SearchResult } from '../../types';
+import { SearchProvider } from '../base';
+import { SearchRegion } from '../types';
+import type { SearchRequest, SearchResult } from '../types';
 
 export class DuckDuckGoProvider extends SearchProvider {
   name = 'duckduckgo';

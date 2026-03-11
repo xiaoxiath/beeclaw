@@ -1,7 +1,7 @@
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import type { AIResponse, ChatMessage, OpenAITool, ToolCall, ToolResult, ToolExecutor } from './types';
-import { retryAICall } from '../utils/retry';
-import { logger } from '../infra/observability/logger';
+import { retryAICall } from '../../infra/resilience/retry';
+import { logger } from '../../infra/observability/logger';
 
 // Provider-specific configurations
 const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBody?: Record<string, unknown> }> = {

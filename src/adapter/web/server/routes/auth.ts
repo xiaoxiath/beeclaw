@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import type { WebConfig } from '../../../config/schema';
+import type { WebConfig } from '@/infra/config/schema';
 
 const loginSchema = z.object({
   token: z.string().optional(),

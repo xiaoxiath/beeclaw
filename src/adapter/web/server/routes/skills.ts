@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getSkillStore } from '../../../skills/store';
-import type { CreateSkillOptions, UpdateSkillOptions } from '../../../skills/types';
+import { getSkillStore } from '@/domain/skills/store';
+import type { CreateSkillOptions, UpdateSkillOptions } from '@/domain/skills/types';
 
 const createSkillSchema = z.object({
   name: z.string().min(1).max(100),

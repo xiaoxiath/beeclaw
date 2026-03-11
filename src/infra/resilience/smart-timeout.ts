@@ -5,7 +5,7 @@
  * by monitoring inactivity (no LLM output, tool calls, etc.)
  */
 
-import { ActivityMonitor, type ActivityType } from './activity-monitor';
+import { ActivityMonitor, type ActivityType } from '../utils/activity-monitor';
 
 /**
  * Smart timeout configuration

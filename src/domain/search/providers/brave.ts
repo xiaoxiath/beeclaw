@@ -4,9 +4,9 @@
  * Uses Brave Search API - 2000 free searches/month
  */
 
-import { SearchProvider } from '../../base';
-import { SearchRegion } from '../../types';
-import type { SearchRequest, SearchResult } from '../../types';
+import { SearchProvider } from '../base';
+import { SearchRegion } from '../types';
+import type { SearchRequest, SearchResult } from '../types';
 
 export class BraveProvider extends SearchProvider {
   name = 'brave';

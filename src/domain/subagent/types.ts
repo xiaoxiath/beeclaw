@@ -4,7 +4,7 @@
  * Type definitions for the subagent system
  */
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 
 /**
  * Subagent types - each type has a specialized role

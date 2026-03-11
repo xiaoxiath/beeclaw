@@ -13,7 +13,7 @@
  */
 
 import { z } from 'zod';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 
 // ---------------------------------------------------------------------------
 // [P1 FIX #12] Embedding Provider Interface

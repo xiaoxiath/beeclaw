@@ -8,7 +8,7 @@ import { watch, existsSync, type FSWatcher } from 'fs';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { AppConfigSchema, type AppConfig } from './schema';
-import { logger } from '../utils/logger';
+import { logger } from '../observability/logger';
 import { getHookRunner } from '../hooks';
 
 // ============================================================================

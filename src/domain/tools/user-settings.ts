@@ -7,7 +7,8 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { BuiltinToolResult } from './builtin';
-import { getTimezoneFromLocation } from '../utils/timezone';
+import { getTimezoneFromLocation } from './timezone';
+import { reloadConfig } from '../../infra/config';
 
 /**
  * Update user settings tool definition

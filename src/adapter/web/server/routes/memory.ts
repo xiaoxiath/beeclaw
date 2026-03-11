@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getMemoryStore } from '../../../memory';
+import { getMemoryStore } from '@/domain/memory';
 
 export default new Hono()
   // List/search memory entries

@@ -5,7 +5,7 @@
  */
 
 import type { Job } from 'bunqueue/client';
-import type { ReminderJobData } from '../types';
+import type { ReminderJobData } from '../../../infra/queue/types';
 
 // Store pending notifications (in production, this would use a proper notification system)
 const pendingNotifications: Map<string, ReminderJobData[]> = new Map();

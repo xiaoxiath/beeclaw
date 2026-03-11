@@ -4,9 +4,9 @@
  * Uses Bing Web Search API v7 - works in both China and globally
  */
 
-import { SearchProvider } from '../../base';
-import { SearchRegion } from '../../types';
-import type { SearchRequest, SearchResult } from '../../types';
+import { SearchProvider } from '../base';
+import { SearchRegion } from '../types';
+import type { SearchRequest, SearchResult } from '../types';
 
 export class BingProvider extends SearchProvider {
   name = 'bing';

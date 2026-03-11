@@ -1,18 +1,18 @@
-import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../utils/circuit-breaker';
+import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../../infra/resilience/circuit-breaker';
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent, MessageMetadata } from './types';
 import { stripMessageMetadata } from './types';
 import { callAI, executeToolCalls, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 import { getMemoryStore } from '../memory';
 import { getSkillStore } from '../skills/store';
 import { executeMemoryTool } from '../memory/tools';
 import { executeSkillTool } from '../skills/tools';
-import { executeGoalTool } from '../goal/tools';
+import { executeGoalTool } from './goal/tools';
 import { executeProactiveTool } from '../proactive/tools';
-import { executePersonaTool } from '../persona/tools';
+import { executePersonaTool } from './persona/tools';
 import { executeBuiltinTool, isBuiltinTool } from '../tools';
 import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
@@ -25,7 +25,7 @@ import {
   executeBitableTool,
   executeWikiTool,
   getFeishuWSClient,
-} from '../adapter/feishu';
+} from '../../adapter/feishu';
 import {
   estimateMessageTokens,
   estimateTotalTokens,

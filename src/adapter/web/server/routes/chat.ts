@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getAgent } from '../../../app';
-import { getOrCreateSession, getSession, saveSession } from '../../../session';
+import { getAgent } from '@/app';
+import { getOrCreateSession, getSession, saveSession } from '@/domain/session';
 
 const sendMessageSchema = z.object({
   message: z.string().min(1),

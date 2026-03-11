@@ -5,8 +5,8 @@
  */
 
 import type { Job } from 'bunqueue/client';
-import { getTaskManager } from '../manager';
-import type { QueueConfig } from '../types';
+import { getTaskManager } from '../../../infra/queue/manager';
+import type { QueueConfig } from '../../../infra/queue/types';
 import {
   handleSearchJob,
   handleSkillJob,

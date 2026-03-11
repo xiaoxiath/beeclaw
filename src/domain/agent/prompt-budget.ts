@@ -7,7 +7,7 @@
  * Drop this file into src/agent/prompt-budget.ts
  */
 
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 import { estimateTokens } from './context';
 import type { ChatMessage } from './types';
 

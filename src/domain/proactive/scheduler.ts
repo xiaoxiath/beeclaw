@@ -6,7 +6,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { getConfig } from '../infra/config';
+import { getConfig } from '../../infra/config';
 import type {
   Schedule,
   Pattern,
@@ -550,7 +550,6 @@ export class Scheduler {
     // Get timezone from config (fallback to Asia/Shanghai)
     let TZ = 'Asia/Shanghai';
     try {
-      const { getConfig } = require('../config');
       const config = getConfig();
       if (config?.user?.timezone) {
         TZ = config.user.timezone;

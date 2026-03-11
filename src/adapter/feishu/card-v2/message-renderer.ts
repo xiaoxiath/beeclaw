@@ -308,3 +308,6 @@ export function updateMessageCard(
   // Simply re-render with new blocks
   return renderMessageCard(blocks, options);
 }
+
+// Re-export Card type for convenience
+export { type Card } from './types/card';

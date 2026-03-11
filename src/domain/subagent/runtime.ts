@@ -7,11 +7,11 @@
 import { createAgent, getAllToolsForAI } from '../agent';
 import { buildSubagentSystemPrompt } from './prompts';
 import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import type { OpenAITool } from '../agent/types';
 import { getPluginRegistry } from '../../adapter/plugins';
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 
 /**
  * Simple concurrency limiter (avoids p-limit dependency)

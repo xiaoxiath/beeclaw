@@ -4,7 +4,7 @@
  * 使用 LLM 从对话中提取结构化知识
  */
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
 import { callAI } from '../agent/api';
 import {

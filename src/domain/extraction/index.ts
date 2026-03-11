@@ -64,7 +64,7 @@ export {
   type StoreResult,
 } from './store';
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
 import { type ExtractionConfig, DEFAULT_EXTRACTION_CONFIG } from './types';
 import { ExtractionTrigger, getExtractionTrigger } from './trigger';

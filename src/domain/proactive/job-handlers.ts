@@ -6,16 +6,19 @@
  */
 
 import type { ProactiveJobData } from './types';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 import { getCompressionEngine } from '../memory/compression';
 import { getMemoryStore } from '../memory';
+import { getConfig } from '../../infra/config';
+import { sendProactiveMessage } from '../session';
+import { getSkillStore } from '../skills/store';
+import { pushNotification } from './pusher';
 
 /**
  * Get default push target from config
  */
 function getDefaultPushTarget(): { channel: string; chatId: string; userId: string } | null {
   try {
-    const { getConfig } = require('../config');
     const config = getConfig();
     if (config?.defaultPushTarget) {
       return {
@@ -70,9 +73,6 @@ export async function handleRunSkillJob(
   console.log(`[Daemon] Skill params:`, JSON.stringify(skillParams).substring(0, 100));
 
   try {
-    const { sendProactiveMessage } = await import('../session');
-    const { getSkillStore } = await import('../skills/store');
-
     // Get the skill content
     const skillStore = getSkillStore();
     const skill = skillStore.get(skillName);
@@ -120,7 +120,6 @@ ${JSON.stringify(skillParams, null, 2)}
         console.log(`[Daemon] 📤 Skill result pushed to Feishu chat: ${chatId}`);
       } else if (!chatId) {
         // Fallback: push as notification if no chatId
-        const { pushNotification } = await import('./pusher');
         await pushNotification({
           message: result.response,
           priority: 'normal',
@@ -148,9 +147,6 @@ export async function handleLlmProactiveChatJob(
   console.log('[Daemon] LLM proactive chat triggered...');
 
   try {
-    const { sendProactiveMessage } = await import('../session');
-    const { getMemoryStore } = await import('../memory');
-
     // 获取用户上下文
     let context = '';
     try {
@@ -198,7 +194,6 @@ export async function handleLlmProactiveChatJob(
       } else if (!chatId) {
         console.warn('[Daemon] No chatId available, message not pushed to Feishu');
         // Fallback to notification
-        const { pushNotification } = await import('./pusher');
         await pushNotification({
           message: result.response,
           priority: 'normal',
@@ -221,10 +216,7 @@ export async function handleSelfEvolutionJob(job: ProactiveJobData): Promise<voi
   console.log('[Daemon] Self-evolution triggered...');
 
   try {
-    const { sendProactiveMessage } = await import('../session');
-    const { getMemoryStore } = await import('../memory');
-
-    // 获取当前记忆上下文
+    // Get current memory context
     let context = '';
     try {
       const memoryStore = getMemoryStore();
@@ -325,7 +317,6 @@ export async function handleSendReminderJob(
     }
   } else {
     // Fallback to notification
-    const { pushNotification } = await import('./pusher');
     await pushNotification({
       message: job.params?.message as string,
       priority: (job.params?.priority as 'low' | 'normal' | 'high' | 'urgent') || 'normal',

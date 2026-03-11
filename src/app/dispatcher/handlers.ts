@@ -4,8 +4,8 @@
  */
 
 import type { Task } from './types';
-import { sendProactiveMessage, confirmDelivery } from '../session';
-import { getMessageGateway } from '../channel/gateway';
+import { sendProactiveMessage, confirmDelivery } from '../../domain/session';
+import { getMessageGateway } from '../gateway-channel';
 
 /**
  * Register all default task handlers

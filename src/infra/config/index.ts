@@ -2,7 +2,7 @@ import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { AppConfigSchema, type AppConfig, type WeatherConfig, type SearchConfig, type FinanceConfig, type AgentDisplayConfig } from './schema';
-import { logger } from '../utils/logger';
+import { logger } from '../observability/logger';
 
 const CONFIG_FILES = ['beeclaw.json', 'beeclaw.yaml', 'beeclaw.yml'];
 

@@ -4,17 +4,17 @@
  * Provides Feishu bot integration with memory system
  */
 
-import { initSessionManager, sendProactiveMessage, confirmDelivery } from '../session';
-import { pushNotification } from '../proactive/pusher';
-import { evaluatePatterns } from '../proactive/triggers';
-import { getGoalStore } from '../goal/store';
-import { initFeishuWSClient, getFeishuWSClient } from '../feishu';
-import type { AIProvider, FeishuConfig } from '../infra/config/schema';
-import { checkReflectionTriggers, checkPreferenceTriggers } from '../evolution';
-import type { TokenStatsConfig } from '../agent';
-import { MessageDeduplicator } from '../utils/deduplicator';
-import { GracefulShutdown } from '../utils/graceful-shutdown';
-import { getMessageGateway } from '../channel/gateway';
+import { initSessionManager, sendProactiveMessage, confirmDelivery } from '../../domain/session';
+import { pushNotification } from '../../domain/proactive/pusher';
+import { evaluatePatterns } from '../../domain/proactive/triggers';
+import { getGoalStore } from '../../domain/agent/goal/store';
+import { initFeishuWSClient, getFeishuWSClient } from '../../adapter/feishu';
+import type { AIProvider, FeishuConfig } from '../../infra/config/schema';
+import { checkReflectionTriggers, checkPreferenceTriggers } from '../../domain/agent/evolution';
+import type { TokenStatsConfig } from '../../domain/agent';
+import { MessageDeduplicator } from '../../infra/utils/deduplicator';
+import { GracefulShutdown } from '../../infra/utils/graceful-shutdown';
+import { getMessageGateway } from '../gateway-channel';
 
 // BUG #6 FIX: Replace Set<string> with LRU+TTL deduplicator
 const deduplicator = new MessageDeduplicator({

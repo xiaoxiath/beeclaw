@@ -5,9 +5,13 @@
  */
 
 import type { Job } from 'bunqueue/client';
-import type { ProactiveJobData } from '../types';
-import { getGoalStore } from '../../goal/store';
-import { getNotificationManager } from '../../proactive/notifications';
+import type { ProactiveJobData } from '../../../infra/queue/types';
+import { getGoalStore } from '../../../domain/agent/goal/store';
+import { getNotificationManager } from '../../../domain/proactive/notifications';
+import { pushNotification } from '../../../domain/proactive/pusher';
+import { getFeishuWSClient } from '../../../adapter/feishu';
+import { sendProactiveMessage } from '../../../domain/session';
+import { getMemoryStore } from '../../../domain/memory';
 
 export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<unknown> {
   const { scheduleId, taskType, params, triggeredAt, triggeredBy } = job.data;
@@ -143,15 +147,11 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
   }
 
   try {
-    // Import pusher for immediate delivery
-    const { pushNotification } = await import('../../proactive/pusher');
-
     // Determine channels and metadata: use Feishu if available, otherwise CLI
     let channels: ('cli' | 'feishu')[] = ['cli'];
     let metadata: Record<string, unknown> = {};
 
     try {
-      const { getFeishuWSClient } = await import('../../feishu');
       const client = getFeishuWSClient();
       if (client?.lastActiveChatId) {
         channels = ['feishu'];
@@ -226,7 +226,6 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
 
   if (!chatId) {
     try {
-      const { getFeishuWSClient } = await import('../../feishu');
       const client = getFeishuWSClient();
       if (client?.lastActiveChatId) {
         chatId = client.lastActiveChatId;
@@ -241,10 +240,6 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
   console.log(`[Worker:proactive] chatId: ${chatId || '(not available)'}, userId: ${userId}`);
 
   try {
-    // Dynamic import to avoid circular dependency
-    const { sendProactiveMessage } = await import('../../session');
-    const { getMemoryStore } = await import('../../memory');
-
     // Get context
     let context = '';
     try {
@@ -285,7 +280,6 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
       // Push to Feishu if chatId available
       if (chatId) {
         try {
-          const { getFeishuWSClient } = await import('../../feishu');
           const client = getFeishuWSClient();
           if (client) {
             await client.sendTextMessage(chatId, 'chat_id', result.response);

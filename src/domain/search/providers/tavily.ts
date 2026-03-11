@@ -5,9 +5,9 @@
  * https://tavily.com/
  */
 
-import { SearchProvider } from '../../base';
-import { SearchRegion } from '../../types';
-import type { SearchRequest, SearchResult } from '../../types';
+import { SearchProvider } from '../base';
+import { SearchRegion } from '../types';
+import type { SearchRequest, SearchResult } from '../types';
 
 export class TavilyProvider extends SearchProvider {
   name = 'tavily';

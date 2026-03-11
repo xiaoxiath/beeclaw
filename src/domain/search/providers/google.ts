@@ -4,9 +4,9 @@
  * Uses Google Custom Search JSON API - 100 free searches/day
  */
 
-import { SearchProvider } from '../../base';
-import { SearchRegion } from '../../types';
-import type { SearchRequest, SearchResult } from '../../types';
+import { SearchProvider } from '../base';
+import { SearchRegion } from '../types';
+import type { SearchRequest, SearchResult } from '../types';
 
 export class GoogleProvider extends SearchProvider {
   name = 'google';

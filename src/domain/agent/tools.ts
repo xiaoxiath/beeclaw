@@ -21,20 +21,20 @@ import { getProactiveToolsForAI } from '../proactive';
 import { getBuiltinToolsForAI, builtinToolNames } from '../tools';
 import { getSandboxToolsForAI } from '../sandbox/tools';
 import { getPersonaToolsForAI, getTraitSystemPrompt } from './persona';
-import { getGoalStore } from '../goal/store';
-import { getDateContext } from '../utils/holiday';
-import { getWeatherContext } from '../utils/weather';
-import { resolveUserLocation, resolveUserTimezone } from '../utils/timezone';
+import { getGoalStore } from './goal/store';
+import { getDateContext } from '../tools/holiday';
+import { getWeatherContext } from '../tools/weather';
+import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
 import {
   calendarToolDefinitions,
   docxToolDefinitions,
   driveToolDefinitions,
   bitableToolDefinitions,
   wikiToolDefinitions,
-} from '../adapter/feishu';
+} from '../../adapter/feishu';
 import { getMCPManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 import { estimateTokens } from './context';
 import type { OpenAITool, ChatMessage } from './types';
 import type { Session } from '../session';

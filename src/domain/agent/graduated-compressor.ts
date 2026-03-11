@@ -14,11 +14,11 @@
  * Drop this file into src/agent/graduated-compressor.ts
  */
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from './types';
 import { estimateTokens, estimateMessageTokens, estimateTotalTokens } from './context';
 import { callAI } from './api';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 
 // ---------------------------------------------------------------------------
 // Types

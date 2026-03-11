@@ -6,7 +6,7 @@
 
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { DEFAULT_MEMORY_BASE_PATH } from '../types';
+import { DEFAULT_MEMORY_BASE_PATH } from '../../types';
 import { MemoryStore, getMemoryStore, resetMemoryStore } from '../../domain/memory/store';
 import { GoalStore, getGoalStore, resetGoalStore } from '../../domain/agent/goal/store';
 import { Scheduler, getScheduler, resetScheduler } from '../../domain/proactive/scheduler';

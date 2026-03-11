@@ -4,7 +4,7 @@
  * Main orchestrator for task decomposition and execution
  */
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import { decomposeTask } from './decompose';
 import { DAGScheduler } from './scheduler';
 import { getSubagentRuntime, spawnSubagent } from './runtime';

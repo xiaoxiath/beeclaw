@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { ToolResult } from '../types';
 
 // Re-export from config schema
-export { MemoryConfigSchema } from '../infra/config/schema';
+export { MemoryConfigSchema } from '../../infra/config/schema';
 
 // Memory configuration schema (local version for types)
 export const MemoryConfigLocalSchema = z.object({

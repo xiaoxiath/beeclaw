@@ -6,8 +6,8 @@
  */
 
 import { searchCity } from './weather';
-import { logger } from './logger';
-import { getConfig } from '../infra/config';
+import { logger } from '../../infra/observability/logger';
+import { getConfig } from '../../infra/config';
 
 const locationTimezoneCache = new Map<string, string>();
 
@@ -54,7 +54,6 @@ export async function initializeTimezoneCache(): Promise<void> {
  */
 export function resolveUserTimezone(): string {
   try {
-    const { getConfig } = require('../config');
     const config = getConfig();
 
     // 1. Explicit timezone config (highest priority)
@@ -82,7 +81,6 @@ export function resolveUserTimezone(): string {
  */
 export function resolveUserLocation(): string {
   try {
-    const { getConfig } = require('../config');
     const config = getConfig();
 
     // 1. User location (highest priority)

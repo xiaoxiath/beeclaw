@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { AppConfigSchema } from '../../../config/schema';
+import { AppConfigSchema } from '@/infra/config/schema';
 
 const CONFIG_FILE = join(process.cwd(), 'beeclaw.json');
 

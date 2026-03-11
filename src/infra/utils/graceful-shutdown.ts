@@ -8,7 +8,7 @@
  * Solution: Ordered shutdown with configurable grace period.
  */
 
-import { SessionMessageQueue } from './session-lock';
+import { SessionMessageQueue } from '../resilience/session-lock';
 
 export interface ShutdownCleanupFn {
   name: string;

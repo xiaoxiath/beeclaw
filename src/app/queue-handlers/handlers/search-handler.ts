@@ -5,8 +5,8 @@
  */
 
 import type { Job } from 'bunqueue/client';
-import type { SearchJobData } from '../types';
-import { webSearch } from '../../search';
+import type { SearchJobData } from '../../../infra/queue/types';
+import { webSearch } from '../../../domain/search';
 
 export async function handleSearchJob(job: Job<SearchJobData>): Promise<unknown> {
   const { query, numResults, region, timeRange } = job.data;

@@ -5,7 +5,7 @@
  * Supports multiple providers: ollama (local), zhipu (remote)
  */
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 
 // Embedding result
 export interface EmbeddingResult {

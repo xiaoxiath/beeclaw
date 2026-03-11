@@ -14,7 +14,7 @@
 
 import { z } from 'zod';
 import { SandboxManager } from './manager';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 import type { SandboxConfig } from './types';
 
 // ─── Tool Result Type (matches BuiltinToolResult) ────────────────────────────

@@ -10,7 +10,7 @@
  */
 
 import { callAI } from '../agent/api';
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 import type { TaskDecomposition, SubTask } from './orchestration-types';
 
 /**

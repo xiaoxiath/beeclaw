@@ -6,15 +6,6 @@
 
 export * from './types';
 export { TaskManager, getTaskManager, initTaskManager } from './manager';
-export { initWorkers, createJobProcessor } from './workers';
-export {
-  handleSearchJob,
-  handleSkillJob,
-  handleReminderJob,
-  getPendingNotifications,
-  hasPendingNotifications,
-  handleAnalysisJob,
-} from './handlers';
 
 // Import for internal use
 import { getTaskManager } from './manager';

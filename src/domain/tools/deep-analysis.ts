@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import { getTaskManager } from '../queue/manager';
+import { getTaskManager } from '../../infra/queue/manager';
 import type { AnalysisJobData } from '../queue/types';
 
 // Tool result type

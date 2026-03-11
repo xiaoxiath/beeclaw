@@ -5,9 +5,9 @@
  */
 
 import type { Pattern } from './types';
-import { getSchedulerLazy } from '../store';
+import { getSchedulerLazy } from '../../infra/db/store';
 import { pushNotification } from './pusher';
-import { getGoalStore } from '../goal/store';
+import { getGoalStore } from '../agent/goal/store';
 
 export interface TriggerContext {
   now: Date;

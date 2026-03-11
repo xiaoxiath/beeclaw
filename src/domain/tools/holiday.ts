@@ -5,7 +5,7 @@
  * Provides dynamic context about whether today is a workday, holiday, or adjusted workday (调休)
  */
 
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 
 const HOLIDAY_API_BASE = 'https://holiday.ailcc.com/api/holiday/info';
 

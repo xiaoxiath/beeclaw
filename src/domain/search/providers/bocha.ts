@@ -5,9 +5,9 @@
  * https://bochaai.com/
  */
 
-import { SearchProvider } from '../../base';
-import { SearchRegion } from '../../types';
-import type { SearchRequest, SearchResult } from '../../types';
+import { SearchProvider } from '../base';
+import { SearchRegion } from '../types';
+import type { SearchRequest, SearchResult } from '../types';
 
 export class BochaProvider extends SearchProvider {
   name = 'bocha';

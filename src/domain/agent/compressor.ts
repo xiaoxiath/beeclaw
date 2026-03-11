@@ -9,7 +9,7 @@
  * 5. Added token-based target calculation instead of character count
  */
 
-import type { AIProvider, CompressionConfig } from '../infra/config/schema';
+import type { AIProvider, CompressionConfig } from '../../infra/config/schema';
 import type { ChatMessage } from './types';
 import { estimateTokens, estimateTotalTokens } from './context';
 import { callAI } from './api';

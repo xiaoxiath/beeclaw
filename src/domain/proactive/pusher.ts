@@ -5,7 +5,7 @@
  */
 
 import type { PendingNotification, NotificationPriority } from '../proactive/types';
-import { getNotificationsLazy } from '../store';
+import { getNotificationsLazy } from '../../infra/db/store';
 
 export interface PushOptions {
   message: string;

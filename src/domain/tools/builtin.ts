@@ -9,8 +9,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdir
 import { join, resolve, dirname, basename, extname } from 'path';
 import { create, all } from 'mathjs';
 import { parse as parseShell } from 'shell-quote';
-import { logger } from '../infra/observability/logger';
-import { getConfig } from '../infra/config';
+import { logger } from '../../infra/observability/logger';
+import { getConfig } from '../../infra/config';
 import type { MemoryToolResult } from '../memory/types';
 import {
   getSearchOrchestrator,
@@ -20,10 +20,12 @@ import {
 } from '../search';
 import {
   getFinanceOrchestrator,
-} from '../finance';
+} from './categories/finance';
 import {
   spawnSubagentTool,
   spawnParallelTool,
+  type SpawnSubagentParams,
+  type SpawnParallelParams,
 } from '../subagent/tools';
 import {
   executeSpawnSubagent,
@@ -39,7 +41,26 @@ import {
   stateStatsTool,
   stateLockTool,
   stateUnlockTool,
+  type StateSetParams,
+  type StateGetParams,
+  type StateDeleteParams,
+  type StateUpdateParams,
+  type StateExistsParams,
+  type StateListParams,
+  type StateLockParams,
+  type StateUnlockParams,
 } from '../subagent/state-tools';
+import {
+  executeStateSet,
+  executeStateGet,
+  executeStateDelete,
+  executeStateUpdate,
+  executeStateExists,
+  executeStateList,
+  executeStateStats,
+  executeStateLock,
+  executeStateUnlock,
+} from '../subagent/state-executor';
 import {
   requestDeepAnalysisTool,
   executeRequestDeepAnalysis,
@@ -49,9 +70,15 @@ import {
   updateUserSettingsTool,
   executeUpdateUserSettings,
 } from './user-settings';
-import { createDeepResearchHandler, type ResearchDepth } from '../research/deep-research-v2';
+import { createDeepResearchHandler, type ResearchDepth } from '../search/research/deep-research-v2';
 import { callAI } from '../agent/api';
-import { getProvider, getModel } from '../app';
+import { getProvider, getModel } from '../../app';
+import {
+  fetchWeatherInfo,
+  formatWeatherDescription,
+  fetchDailyWeatherInfo,
+  formatDailyWeatherDescription,
+} from '../tools/weather';
 
 // Tool result type
 import {
@@ -662,14 +689,6 @@ export async function executeWeather(params: Record<string, unknown>): Promise<B
   const { location, format, days } = parsed.data;
 
   try {
-    // Import weather utilities
-    const {
-      fetchWeatherInfo,
-      formatWeatherDescription,
-      fetchDailyWeatherInfo,
-      formatDailyWeatherDescription
-    } = await import('../utils/weather.js');
-
     // Handle different formats
     if (format === 'forecast') {
       // Fetch multi-day forecast
@@ -2177,13 +2196,11 @@ Best practices:
 };
 
 export async function executeSpawnSubagentTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeSpawnSubagent } = await import('../subagent/executor');
-  return executeSpawnSubagent(params as import('../subagent/tools').SpawnSubagentParams);
+  return executeSpawnSubagent(params as SpawnSubagentParams);
 }
 
 export async function executeSpawnParallelTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeSpawnParallel } = await import('../subagent/executor');
-  return executeSpawnParallel(params as import('../subagent/tools').SpawnParallelParams);
+  return executeSpawnParallel(params as SpawnParallelParams);
 }
 
 // ============================================================================
@@ -2191,48 +2208,39 @@ export async function executeSpawnParallelTool(params: Record<string, unknown>):
 // ============================================================================
 
 export async function executeStateSetTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateSet } = await import('../subagent/state-executor');
-  return executeStateSet(params as import('../subagent/state-tools').StateSetParams);
+  return executeStateSet(params as StateSetParams);
 }
 
  export async function executeStateGetTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateGet } = await import('../subagent/state-executor');
-  return executeStateGet(params as import('../subagent/state-tools').StateGetParams);
+  return executeStateGet(params as StateGetParams);
 }
 
  export async function executeStateDeleteTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateDelete } = await import('../subagent/state-executor');
-  return executeStateDelete(params as import('../subagent/state-tools').StateDeleteParams);
+  return executeStateDelete(params as StateDeleteParams);
  }
 
  export async function executeStateUpdateTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateUpdate } = await import('../subagent/state-executor');
-  return executeStateUpdate(params as import('../subagent/state-tools').StateUpdateParams);
+  return executeStateUpdate(params as StateUpdateParams);
  }
 
  export async function executeStateExistsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateExists } = await import('../subagent/state-executor');
-  return executeStateExists(params as import('../subagent/state-tools').StateExistsParams);
+  return executeStateExists(params as StateExistsParams);
  }
 
  export async function executeStateListTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateList } = await import('../subagent/state-executor');
-  return executeStateList(params as import('../subagent/state-tools').StateListParams);
+  return executeStateList(params as StateListParams);
  }
 
  export async function executeStateStatsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateStats } = await import('../subagent/state-executor');
   return executeStateStats();
  }
 
  export async function executeStateLockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateLock } = await import('../subagent/state-executor');
-  return executeStateLock(params as import('../subagent/state-tools').StateLockParams);
+  return executeStateLock(params as StateLockParams);
  }
 
  export async function executeStateUnlockTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const { executeStateUnlock } = await import('../subagent/state-executor');
-  return executeStateUnlock(params as import('../subagent/state-tools').StateUnlockParams);
+  return executeStateUnlock(params as StateUnlockParams);
  }
 
 // ============================================================================

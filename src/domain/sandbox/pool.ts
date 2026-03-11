@@ -11,7 +11,7 @@
  * - Graceful shutdown support
  */
 
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 import type { SandboxConfig } from './types';
 
 // Lazy-import dockerode

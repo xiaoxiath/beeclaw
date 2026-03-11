@@ -6,8 +6,12 @@
 
 import { z } from 'zod';
 import type { ProactiveToolResult, CreateScheduleOptions } from './types';
-import { getSchedulerLazy } from '../store';
-import { getNotificationsLazy } from '../store';
+import { getSchedulerLazy } from '../../infra/db/store';
+import { getNotificationsLazy } from '../../infra/db/store';
+import { getTaskManager } from '../../infra/queue/manager';
+import { pushNotification } from './pusher';
+import { getTaskManager } from '../../infra/queue/manager';
+import { pushNotification } from './pusher';
 
 // Tool definitions for AI function calling
 export const proactiveTools = {
@@ -440,7 +444,6 @@ export async function executeProactiveTool(name: string, params: Record<string, 
 
         try {
           // Use the queue system for one-time tasks
-          const { getTaskManager } = require('../queue/manager');
           const manager = getTaskManager();
           await manager.initialize();
 
@@ -495,7 +498,6 @@ export async function executeProactiveTool(name: string, params: Record<string, 
         }
 
         // Use pushNotification for immediate delivery
-        const { pushNotification } = await import('./pusher');
         return await pushNotification({
           message: parsed.data.message,
           priority: parsed.data.priority,

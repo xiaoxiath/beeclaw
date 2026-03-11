@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { listSessions, getAgent } from '../../../app';
-import { getSkillStore } from '../../../skills/store';
+import { listSessions, getAgent } from '@/app';
+import { getSkillStore } from '@/domain/skills/store';
 
 // Track app start time
 const appStartTime = Date.now();

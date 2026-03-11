@@ -5,9 +5,9 @@
  */
 
 import type { Job } from 'bunqueue/client';
-import type { AnalysisJobData } from '../types';
-import { getFeishuWSClient } from '../../feishu';
-import { sendProactiveMessage } from '../../session';
+import type { AnalysisJobData } from '../../../infra/queue/types';
+import { getFeishuWSClient } from '../../../adapter/feishu';
+import { sendProactiveMessage } from '../../../domain/session';
 
 export async function handleAnalysisJob(job: Job<AnalysisJobData>): Promise<unknown> {
   const { sessionId, userId, chatId, originalMessage, analysisTasks, context } = job.data;

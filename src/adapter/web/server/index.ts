@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { serveStatic } from 'hono/bun';
-import type { WebConfig } from '../../config/schema';
+import type { WebConfig } from '../../../infra/config/schema';
 import { createAuthMiddleware } from './middleware/auth';
 import { createAuthRoutes } from './routes/auth';
 import healthRoutes from './routes/health';

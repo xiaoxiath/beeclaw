@@ -5,8 +5,8 @@
  */
 
 import type { Job } from 'bunqueue/client';
-import type { SkillJobData } from '../types';
-import { getSkillStore } from '../../skills';
+import type { SkillJobData } from '../../../infra/queue/types';
+import { getSkillStore } from '../../../domain/skills';
 
 export async function handleSkillJob(job: Job<SkillJobData>): Promise<unknown> {
   const { skillName, action, params, sessionId } = job.data;

@@ -1,5 +1,5 @@
 import { Context, Next } from 'hono';
-import type { WebConfig } from '../../../config/schema';
+import type { WebConfig } from '@/infra/config/schema';
 
 export function createAuthMiddleware(config: WebConfig) {
   return async (c: Context, next: Next) => {

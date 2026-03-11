@@ -12,15 +12,25 @@
 
 import { join } from 'path';
 import { initApp, getAgent, getProvider, getModel, getTokenStatsConfig } from './app';
-import { initFeishuWSIntegration } from './routes/proactive';
-import { loadAllSessions, saveAllSessions } from './session';
-import { getDaemon, getScheduler, registerFeishuHandler, pushPendingNotifications, setCliDeliveryHandler } from './proactive';
-import { getFeishuWSClient } from './feishu';
-import { initSelfEvolution } from './evolution/self-evolution';
-import { fetchHolidayInfo } from './utils/holiday';
-import { fetchWeatherInfo } from './utils/weather';
-import { initTaskManager, initWorkers } from './queue';
-import { GracefulShutdown } from './utils/graceful-shutdown';
+import { initFeishuWSIntegration } from './app/routes/proactive';
+import { loadAllSessions, saveAllSessions } from './domain/session';
+import { getDaemon, getScheduler, registerFeishuHandler, pushPendingNotifications, setCliDeliveryHandler } from './domain/proactive';
+import { getFeishuWSClient } from './adapter/feishu';
+import { initSelfEvolution } from './domain/agent/evolution/self-evolution';
+import { fetchHolidayInfo } from './domain/tools/holiday';
+import { fetchWeatherInfo } from './domain/tools/weather';
+import { initTaskManager } from './infra/queue';
+import { initWorkers } from './app/queue-handlers/workers';
+import { GracefulShutdown } from './infra/utils/graceful-shutdown';
+import {
+  handleRunSkillJob,
+  handleLlmProactiveChatJob,
+  handleSelfEvolutionJob,
+  handleMemoryCompressJob,
+  handleGoalProgressCheckJob,
+  handleCustomJob,
+  handleSendReminderJob,
+} from './domain/proactive/job-handlers';
 
 function showHelp(): void {
   console.log(`
@@ -238,7 +248,7 @@ async function main() {
             handleGoalProgressCheckJob,
             handleCustomJob,
             handleSendReminderJob,
-          } = await import('./proactive/job-handlers');
+          } = jobHandlers;
 
           switch (job.taskType) {
             case 'send_reminder':

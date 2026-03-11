@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSy
 import { join } from 'path';
 import type { MemoryConfig, MemoryToolResult } from './types';
 import { scoreImportance, scoreImportanceAsync, findDuplicates, type ImportanceScore } from './scoring';
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 
 // ---------------------------------------------------------------------------
 // [P1 FIX #15] LLM Provider Interface

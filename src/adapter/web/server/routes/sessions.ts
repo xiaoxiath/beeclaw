@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { listSessions, getSession } from '../../../session';
+import { listSessions, getSession } from '@/domain/session';
 
 export default new Hono()
   // List all sessions

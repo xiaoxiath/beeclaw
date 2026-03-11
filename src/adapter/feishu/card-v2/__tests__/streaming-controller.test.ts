@@ -55,6 +55,33 @@ describe('StreamingMessageController', () => {
       const block = createTextBlock('Test');
       await expect(controller.pushContent(block)).rejects.toThrow('Send failed');
     });
+
+    test('should prevent race condition when multiple blocks pushed concurrently', async () => {
+      // Simulate parallel tool execution (the bug scenario from the logs)
+      // When 5 tools execute in parallel, each calls pushContent simultaneously
+      // Without the fix, this would create 5 separate card replies
+
+      const blocks = [
+        createToolUseBlock('call_1', 'stock_quote', { symbol: 'sh000001' }),
+        createToolUseBlock('call_2', 'stock_quote', { symbol: 'sz399001' }),
+        createToolUseBlock('call_3', 'stock_quote', { symbol: 'sz399006' }),
+        createToolUseBlock('call_4', 'stock_quote', { symbol: 'hkHSI' }),
+        createToolUseBlock('call_5', 'stock_quote', { symbol: 'hkHSTECH' }),
+      ];
+
+      // Push all blocks concurrently (no awaiting between them)
+      const promises = blocks.map(block => controller.pushContent(block));
+      await Promise.all(promises);
+
+      // Wait for any pending debounced updates
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // CRITICAL: Should only send ONE replyCard, not 5
+      expect(mockClient.replyCard).toHaveBeenCalledTimes(1);
+
+      // Subsequent updates should use patchCard
+      expect(mockClient.patchCard).toHaveBeenCalled();
+    });
   });
 
   describe('Debounced Updates', () => {

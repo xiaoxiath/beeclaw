@@ -15,7 +15,7 @@ import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, forma
 import { getMemoryStore } from '../memory';
 import { getSkillStore } from '../skills/store';
 import { setDeepAnalysisContext, clearDeepAnalysisContext } from '../tools/deep-analysis';
-import type { AIProvider, ExtractionConfigSchemaType } from '../infra/config/schema';
+import type { AIProvider, ExtractionConfigSchemaType } from '../../infra/config/schema';
 import {
   initExtractionManager,
   getExtractionManager,
@@ -24,15 +24,16 @@ import {
 } from '../extraction';
 import { getPluginRegistry } from '../../adapter/plugins';
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
-import { logger } from '../infra/observability/logger';
-import { SessionMessageQueue } from '../utils/session-lock';
-import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../utils/atomic-fs';
-import { getDataConnection } from '../db';
-import { sessions as sessionsTable } from '../db/schema';
+import { logger } from '../../infra/observability/logger';
+import { SessionMessageQueue } from '../../infra/resilience/session-lock';
+import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../../infra/utils/atomic-fs';
+import { getDataConnection } from '../../infra/db';
+import { sessions as sessionsTable } from '../../infra/db/schema';
 import { eq } from 'drizzle-orm';
-import { StreamingMessageController } from '../adapter/feishu/card-v2';
-import { getFeishuWSClient } from '../adapter/feishu';
+import { StreamingMessageController } from '../../adapter/feishu/card-v2';
+import { getFeishuWSClient } from '../../adapter/feishu';
 import { getConfig_ } from '../../app';
+import { SmartTimeout } from '../../infra/resilience/smart-timeout';
 
 export interface SessionOptions {
   sessionId: string;
@@ -825,7 +826,6 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // - Complex tasks: can run for hours as long as agent is active
     // - Truly stuck: detected by 10 minutes of NO activity
     //
-    const { SmartTimeout } = await import('../utils/smart-timeout.js');
 
     let response: string | undefined;
     let timeoutError: Error | undefined;

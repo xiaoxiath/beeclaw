@@ -5,8 +5,8 @@
  * Provides dynamic weather context for system prompts
  */
 
-import { logger } from '../infra/observability/logger';
-import { getWeatherConfig } from '../infra/config';
+import { logger } from '../../infra/observability/logger';
+import { getWeatherConfig } from '../../infra/config';
 
 // Get configuration from unified config system
 function getConfig() {

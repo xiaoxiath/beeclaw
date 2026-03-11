@@ -72,6 +72,11 @@ interface StreamingState {
    * Initial message sent
    */
   initialized: boolean;
+
+  /**
+   * Pending initialization promise (prevents race conditions)
+   */
+  initPromise?: Promise<void>;
 }
 
 /**
@@ -105,7 +110,17 @@ export class StreamingMessageController {
 
     // Send initial message if not done
     if (!this.state.initialized) {
-      await this.sendInitialMessage();
+      // If initialization is already in progress, wait for it
+      if (this.state.initPromise) {
+        await this.state.initPromise;
+        // After waiting, schedule update for this new block
+        this.scheduleUpdate();
+        return;
+      }
+
+      // Start initialization and store promise
+      this.state.initPromise = this.sendInitialMessage();
+      await this.state.initPromise;
       return;
     }
 

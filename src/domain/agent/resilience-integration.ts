@@ -14,15 +14,15 @@
  *   7. 使用 ProgressAwareMonitor 监控进度
  */
 
-import { resolveConfig, type ResilienceConfig, type PresetName } from '../infra/config/resilience-config';
-import { TimeoutOrchestrator } from '../utils/timeout-hierarchy';
-import { LoopDetector } from '../utils/loop-detector';
-import { CircuitBreakerRegistry } from '../utils/circuit-breaker';
-import { BudgetManager } from '../utils/budget-manager';
-import { CheckpointManager } from '../utils/checkpoint-manager';
-import { UnifiedRetryEngine } from '../utils/unified-retry';
-import { ParallelToolExecutor, type ToolCallRequest } from '../utils/parallel-tool-executor';
-import { ProgressAwareMonitor } from '../utils/progress-aware-monitor';
+import { resolveConfig, type ResilienceConfig, type PresetName } from '../../infra/config/resilience-config';
+import { TimeoutOrchestrator } from '../../infra/utils/timeout-hierarchy';
+import { LoopDetector } from '../../infra/utils/loop-detector';
+import { CircuitBreakerRegistry } from '../../infra/resilience/circuit-breaker';
+import { BudgetManager } from '../../infra/utils/budget-manager';
+import { CheckpointManager } from '../../infra/utils/checkpoint-manager';
+import { UnifiedRetryEngine } from '../../infra/resilience/unified-retry';
+import { ParallelToolExecutor, type ToolCallRequest } from '../../infra/utils/parallel-tool-executor';
+import { ProgressAwareMonitor } from '../../infra/utils/progress-aware-monitor';
 
 // ─── 韧性上下文 ────────────────────────────────────────────
 

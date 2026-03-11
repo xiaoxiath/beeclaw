@@ -14,7 +14,7 @@
  * - Rollback mechanism for SOUL.md changes that degrade performance
  */
 
-import { getScheduler } from '../proactive';
+import { getScheduler } from '../../proactive';
 import { join } from 'path';
 
 /** @experimental */

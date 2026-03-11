@@ -12,7 +12,7 @@ import type {
   UpdateMessageOptions,
   MessageResult,
 } from './types';
-import { getFeishuWSClient } from '../feishu';
+import { getFeishuWSClient } from './index';
 
 /**
  * Feishu channel - sends messages via Feishu/Lark API

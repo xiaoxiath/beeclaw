@@ -4,7 +4,7 @@
  * 支持多种 embedding 后端，参考 OpenClaw 的设计
  */
 
-import type { AIProvider } from '../infra/config/schema';
+import type { AIProvider } from '../../infra/config/schema';
 
 // ============================================================================
 // 类型定义

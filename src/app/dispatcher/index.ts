@@ -4,8 +4,8 @@
  */
 
 import { randomUUID } from 'crypto';
-import { getDataConnection } from '../db';
-import { tasks as tasksTable } from '../db/schema';
+import { getDataConnection } from '../../infra/db';
+import { tasks as tasksTable } from '../../infra/db/schema';
 import { eq, and, lt, gte, isNull, or } from 'drizzle-orm';
 import type {
   Task,

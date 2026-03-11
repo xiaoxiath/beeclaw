@@ -15,7 +15,7 @@
  * ⚡ 新增文件 — 增强 memory/store.ts 中的搜索能力
  */
 
-import { logger } from '../infra/observability/logger';
+import { logger } from '../../infra/observability/logger';
 
 // ---------------------------------------------------------------------------
 // 1. 搜索配置
