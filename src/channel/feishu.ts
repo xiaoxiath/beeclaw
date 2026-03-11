@@ -96,11 +96,15 @@ export class FeishuChannel implements MessageChannel {
   }
 
   async updateMessageContent(options: UpdateMessageOptions): Promise<void> {
-    // Feishu doesn't support updating text messages
+    // Note: Card V2 streaming updates are handled by StreamingMessageController directly
+    // via FeishuWSClient.patchCard(), not through this channel
     console.log(`[Feishu] Message update requested for ${options.messageId} (not supported for text messages)`);
   }
 
   supportsUpdates(): boolean {
+    // Note: Card V2 supports updates via StreamingMessageController + FeishuWSClient.patchCard()
+    // This method returns false for traditional text messages
+    // Card V2 updates bypass this channel and go directly to FeishuWSClient
     return false; // Feishu doesn't support updating text messages
   }
 

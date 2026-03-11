@@ -30,6 +30,8 @@ import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../util
 import { getDataConnection } from '../db';
 import { sessions as sessionsTable } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { StreamingMessageController } from '../feishu/card-v2';
+import { getFeishuWSClient } from '../feishu';
 
 export interface SessionOptions {
   sessionId: string;
@@ -858,12 +860,36 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     smartTimeout.start();
 
+    // Create StreamingMessageController if Card V2 is enabled
+    let streamingController: StreamingMessageController | null = null;
+
+    if (channel === 'feishu' && options.context?.parentMessageId) {
+      try {
+        const feishuClient = getFeishuWSClient()?.getApiClient();
+        if (feishuClient) {
+          streamingController = new StreamingMessageController({
+            client: feishuClient,
+            parentMessageId: options.context.parentMessageId as string,
+            chatId: (options.context.chatId as string) || '',
+            debounceMs: 500,
+          });
+          console.log('[Session] 🚀 Card V2 streaming enabled');
+        }
+      } catch (error) {
+        logger.warn('[Session] Failed to create streaming controller:', error);
+      }
+    }
+
     try {
       // Wrap agent.chat() with activity monitoring
       // CRITICAL: In recovery mode, use the full message from session (userContentString)
       // because options.message might be truncated (recovery.ts passes only first 100 chars)
       const messageForAgent = isRecovery ? userContentString : options.message;
-      const chatPromise = agent.chat(messageForAgent);
+      const chatPromise = agent.chat(messageForAgent, {
+        onContentBlock: (block) => {
+          streamingController?.pushContent(block);
+        },
+      });
 
       // Create a promise that rejects on timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -877,6 +903,16 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
       // Race between chat completion and timeout
       response = await Promise.race([chatPromise, timeoutPromise]);
+
+      // Finish streaming controller
+      if (streamingController) {
+        try {
+          await streamingController.finish();
+          console.log('[Session] ✅ Card V2 streaming completed');
+        } catch (error) {
+          logger.warn('[Session] Failed to finish streaming:', error);
+        }
+      }
 
       // Record final activity
       smartTimeout.recordActivity('progress', 'response completed');
@@ -892,6 +928,15 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+
+      // Finish streaming controller on error
+      if (streamingController) {
+        try {
+          await streamingController.finish();
+        } catch (streamError) {
+          logger.warn('[Session] Failed to finish streaming on error:', streamError);
+        }
+      }
 
       if (timeoutError) {
         // Inactivity timeout

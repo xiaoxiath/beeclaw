@@ -747,6 +747,11 @@ export class Agent {
     onToolResult?: (name: string, result: unknown) => void;
     onStream?: (chunk: string) => void;
     onReflectionTrigger?: (trigger: ReflectionTrigger) => void;
+    /**
+     * Callback for content blocks (for streaming Card V2 messages)
+     * Called when tool use or final text is generated
+     */
+    onContentBlock?: (block: any) => void; // ContentBlock type from types/content-block
   }): Promise<string> {
     this.refreshTime();
 
@@ -897,6 +902,14 @@ export class Agent {
           console.log(`\n[Skill] 🎯 Getting skill: ${params.name}`);
           options?.onToolCall?.(skillGetCall.function.name, params);
 
+          // Generate ContentBlock for skill_get
+          options?.onContentBlock?.({
+            type: 'tool_use',
+            id: skillGetCall.id,
+            name: skillGetCall.function.name,
+            input: params,
+          });
+
           const result = await this.toolExecutor(skillGetCall.function.name, params);
           options?.onToolResult?.(skillGetCall.function.name, result);
 
@@ -982,6 +995,14 @@ export class Agent {
               console.log(`  [Executing] ${call.function.name}(${paramsPreview})`);
 
               options?.onToolCall?.(call.function.name, params);
+
+              // Generate ContentBlock for tool use
+              options?.onContentBlock?.({
+                type: 'tool_use',
+                id: call.id,
+                name: call.function.name,
+                input: params,
+              });
 
               try {
                 if (this.hookRunner) {
@@ -1086,6 +1107,15 @@ export class Agent {
       }
 
       finalContent = extractContent(response);
+
+      // Generate ContentBlock for final text
+      if (finalContent) {
+        options?.onContentBlock?.({
+          type: 'text',
+          text: finalContent,
+        });
+      }
+
       break;
     }
 
@@ -1094,9 +1124,21 @@ export class Agent {
       if (lastAssistantMsg?.content && typeof lastAssistantMsg.content === 'string') {
         finalContent = lastAssistantMsg.content;
         console.warn(`[Agent] Reached max iterations (${this.options.maxToolIterations || 5}), using last assistant message`);
+
+        // Generate ContentBlock for final text from fallback
+        options?.onContentBlock?.({
+          type: 'text',
+          text: finalContent,
+        });
       } else {
         finalContent = '抱歉，处理您的请求时达到了工具调用次数限制。请尝试简化您的问题。';
         console.warn(`[Agent] Reached max iterations with no assistant message to fall back to`);
+
+        // Generate ContentBlock for error message
+        options?.onContentBlock?.({
+          type: 'text',
+          text: finalContent,
+        });
       }
     }
 

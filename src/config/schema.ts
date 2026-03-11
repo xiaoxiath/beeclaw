@@ -151,6 +151,11 @@ export const FeishuConfigSchema = z.object({
   encryptKey: z.string().optional(),
   verificationToken: z.string().optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('error'),
+  /**
+   * Enable Card Schema 2.0 for streaming messages
+   * When true, uses interactive cards with collapsible panels and streaming updates
+   */
+  useCardV2: z.boolean().default(false),
 });
 
 // User configuration schema

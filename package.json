@@ -52,6 +52,7 @@
     "@tanstack/react-router": "1.166.6",
     "@types/bun": "latest",
     "@types/dagre": "0.7.54",
+    "@types/dockerode": "4.0.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/shell-quote": "1.7.5",

@@ -230,6 +230,75 @@ Feishu bot uses WebSocket for real-time messaging:
 - Send messages via `client.sendTextMessage(chatId, 'chat_id', message)`
 - Bot mode requires `LARK_BEECLAW_APPID` and `LARK_BEECLAW_AS` env vars
 
+### Feishu Card V2 (Streaming Messages)
+
+Beeclaw supports Feishu Card Schema 2.0 for enhanced message experience with streaming updates:
+
+**Features:**
+- **Real-time Progress Feedback**: Users see agent reasoning steps as they happen
+- **Collapsible Tool Panels**: Tool calls displayed in expandable/collapsible panels
+- **Rich Markdown Rendering**: Proper code highlighting, tables, and lists
+- **Streaming Updates**: Cards update in real-time as agent processes requests
+
+**Architecture:**
+
+1. **ContentBlock** (`src/types/content-block.ts`)
+   - Unified message block types: `ToolUseBlock`, `TextBlock`, `ImageBlock`
+   - Agent generates ContentBlocks during execution
+
+2. **Card V2 Types** (`src/feishu/card-v2/types/`)
+   - Card Schema 2.0 type definitions
+   - Supports `streaming_mode`, `CollapsiblePanel`, `MarkdownElement`
+
+3. **StreamingMessageController** (`src/feishu/card-v2/streaming-controller.ts`)
+   - Manages streaming message lifecycle
+   - Debounced updates (500ms) to avoid API spam
+   - Handles message withdrawal errors gracefully
+
+4. **MessageCardRenderer** (`src/feishu/card-v2/message-renderer.ts`)
+   - Renders ContentBlocks to Card JSON
+   - Creates collapsible step panels for tool calls
+   - Renders final answer as markdown
+
+5. **ToolIconRegistry** (`src/feishu/card-v2/tool-icon-registry.ts`)
+   - Maps tool names to Feishu standard icons
+   - Generates step descriptions from tool inputs
+   - Pre-registered 20+ core Beeclaw tools
+
+**Usage:**
+
+Enable Card V2 in `beeclaw.json`:
+```json
+{
+  "feishu": {
+    "enabled": true,
+    "appId": "...",
+    "appSecret": "...",
+    "useCardV2": true
+  }
+}
+```
+
+When enabled, the Session manager automatically:
+1. Creates `StreamingMessageController` for Feishu messages
+2. Passes `onContentBlock` callback to `Agent.chat()`
+3. Agent generates ContentBlocks during execution
+4. StreamingController renders and updates cards in real-time
+5. Final card shows collapsed tool panels and formatted answer
+
+**Key Methods:**
+- `FeishuWSClient.replyCard(messageId, card)` - Send initial card reply
+- `FeishuWSClient.patchCard(messageId, card)` - Update existing card (streaming)
+- `StreamingMessageController.pushContent(block)` - Push new content block
+- `StreamingMessageController.finish()` - Complete streaming and collapse panels
+
+**Testing:**
+```bash
+# Run Card V2 tests
+bun test src/feishu/card-v2/__tests__/
+bun test src/types/__tests__/content-block.test.ts
+```
+
 ## Plugin Development
 
 Plugins follow the OpenClaw plugin API:

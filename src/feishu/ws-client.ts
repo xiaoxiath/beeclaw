@@ -1309,12 +1309,15 @@ export class FeishuWSClient {
   /**
    * Reply with interactive card message
    * @param messageId The message ID to reply to
-   * @param card Card configuration
+   * @param card Card configuration (Card Schema 2.0 or legacy)
+   * @param options Optional parameters
+   * @returns The created message ID
    */
   async replyCard(
     messageId: string,
-    card: CardConfig | string
-  ): Promise<void> {
+    card: CardConfig | string,
+    options?: { replyInThread?: boolean }
+  ): Promise<string> {
     if (!this.client) {
       throw new Error('[FeishuWS] Client not initialized');
     }
@@ -1335,10 +1338,50 @@ export class FeishuWSClient {
       // Check if message was withdrawn (error code 230011 or 231003)
       if (response.code === 230011 || response.code === 231003) {
         logger.warn(`[FeishuWS] Message ${messageId} was withdrawn or not found, skipping reply`);
-        return; // Exit gracefully without throwing
+        throw new Error(`Message withdrawn: ${response.code}`);
       }
       console.error('[FeishuWS] Reply card failed:', response.msg);
       throw new Error(`Reply card failed: ${response.msg}`);
+    }
+
+    // Return the message ID for streaming updates
+    return response.data?.message_id || messageId;
+  }
+
+  /**
+   * Update an existing card message using message.patch API
+   * Used for streaming updates in Card Schema 2.0
+   *
+   * @param messageId The message ID to update
+   * @param card Updated card configuration
+   */
+  async patchCard(
+    messageId: string,
+    card: CardConfig | string
+  ): Promise<void> {
+    if (!this.client) {
+      throw new Error('[FeishuWS] Client not initialized');
+    }
+
+    const cardContent = typeof card === 'string' ? card : JSON.stringify(card);
+
+    const response = await this.client.im.v1.message.patch({
+      path: {
+        message_id: messageId,
+      },
+      data: {
+        content: cardContent,
+      },
+    });
+
+    if (response.code !== 0) {
+      // Check if message was withdrawn (error code 230011 or 231003)
+      if (response.code === 230011 || response.code === 231003) {
+        logger.warn(`[FeishuWS] Message ${messageId} was withdrawn or not found, cannot update`);
+        throw new Error(`Message withdrawn: ${response.code}`);
+      }
+      logger.error('[FeishuWS] Patch card failed:', response.msg, 'code:', response.code);
+      throw new Error(`Patch card failed: ${response.msg}`);
     }
   }
 
