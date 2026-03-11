@@ -50,10 +50,10 @@ export function createWebApp(config?: WebConfig) {
   app.route('/api', api);
 
   // Serve React SPA static files
-  app.use('/*', serveStatic({ root: './src/web/client/dist' }));
+  app.use('/*', serveStatic({ root: './dist/web' }));
 
   // SPA fallback - serve index.html for all unmatched routes
-  app.get('*', serveStatic({ path: './src/web/client/dist/index.html' }));
+  app.get('*', serveStatic({ path: './dist/web/index.html' }));
 
   return { app, api };
 }
