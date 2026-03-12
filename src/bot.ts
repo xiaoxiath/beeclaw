@@ -239,17 +239,6 @@ async function main() {
         console.log(`[Daemon] Executing job: ${job.taskType}`);
 
         try {
-          // Import unified handlers
-          const {
-            handleRunSkillJob,
-            handleLlmProactiveChatJob,
-            handleSelfEvolutionJob,
-            handleMemoryCompressJob,
-            handleGoalProgressCheckJob,
-            handleCustomJob,
-            handleSendReminderJob,
-          } = jobHandlers;
-
           switch (job.taskType) {
             case 'send_reminder':
               await handleSendReminderJob(job, { getFeishuClient: getFeishuWSClient });
