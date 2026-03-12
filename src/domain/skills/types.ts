@@ -269,3 +269,110 @@ export const SkillEvolutionConfigSchema = z.object({
 });
 
 export type SkillEvolutionConfig = z.infer<typeof SkillEvolutionConfigSchema>;
+
+// ============================================================================
+// Evaluation Execution Types
+// ============================================================================
+
+// Single eval run result
+export interface EvalRunResult {
+  eval_id: number;
+  eval_name?: string;
+  passed: boolean;
+  output: string;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  feedback: string;
+  expectations_checked?: number;
+  expectations_passed?: number;
+  execution_time_ms?: number;
+}
+
+// Multiple evals run result
+export interface EvalsRunResult {
+  skill_name: string;
+  total_evals: number;
+  passed_count: number;
+  failed_count: number;
+  pass_rate: number;
+  results: EvalRunResult[];
+  overall_grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  timestamp: string;
+}
+
+// ============================================================================
+// Skill Recommendation Types
+// ============================================================================
+
+export interface SkillRecommendation {
+  name: string;
+  description: string;
+  confidence: number;        // 0-1
+  reason: string;            // Why this skill is recommended
+  matched_triggers: string[]; // Which triggers matched
+  matched_tags: string[];     // Which tags matched
+}
+
+export interface SkillRecommendResult {
+  context: string;
+  recommendations: SkillRecommendation[];
+  timestamp: string;
+}
+
+// ============================================================================
+// Performance Monitoring Types
+// ============================================================================
+
+export interface SkillPerformanceMetrics {
+  avg_execution_time_ms: number;
+  p95_execution_time_ms: number;
+  min_execution_time_ms: number;
+  max_execution_time_ms: number;
+  total_executions: number;
+  avg_tool_calls: number;
+  avg_tokens_used: number;
+}
+
+// ============================================================================
+// Failure Analysis Types
+// ============================================================================
+
+export interface FailurePattern {
+  type: string;             // Error type (timeout, parse_error, etc.)
+  count: number;            // How many times this occurred
+  percentage: number;       // Percentage of total failures
+  examples: string[];       // Example error messages
+  suggestion: string;       // How to fix
+}
+
+export interface FailureAnalysisResult {
+  skill_name: string;
+  total_failures: number;
+  total_uses: number;
+  failure_rate: number;
+  patterns: FailurePattern[];
+  common_causes: string[];
+  recommendations: string[];
+  timestamp: string;
+}
+
+// ============================================================================
+// Import/Export Types
+// ============================================================================
+
+export interface SkillExportResult {
+  skill_name: string;
+  export_path: string;
+  size_bytes: number;
+  files_included: string[];
+  checksum: string;
+  timestamp: string;
+}
+
+export interface SkillImportResult {
+  skill_name: string;
+  imported_version: string;
+  files_imported: string[];
+  conflicts_resolved: string[];
+  success: boolean;
+  message: string;
+}

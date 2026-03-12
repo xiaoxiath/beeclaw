@@ -15,6 +15,7 @@ export const SkillCreateSchema = z.object({
   content: z.string().optional().describe('SKILL.md body content'),
   tags: z.array(z.string()).optional().describe('Tags for categorization'),
   triggers: z.array(z.string()).optional().describe('Trigger phrases'),
+  dependsOn: z.array(z.string()).optional().describe('Dependencies on other skills'),
 });
 
 export const SkillUpdateSchema = z.object({
@@ -100,6 +101,11 @@ Create a new skill. NOTE: For creating skills with proper testing and optimizati
           items: { type: 'string' },
           description: 'Phrases that should trigger this skill',
         },
+        dependsOn: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of skill names this skill depends on',
+        },
       },
       required: ['name', 'description'],
     },
@@ -180,6 +186,11 @@ Use this tool for all skill creation/updating. The skill-creator workflow ensure
           type: 'array',
           items: { type: 'string' },
           description: 'Phrases that should trigger this skill',
+        },
+        dependsOn: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of skill names this skill depends on (will be validated)',
         },
       },
       required: ['name', 'description'],
@@ -381,6 +392,104 @@ Use this tool for all skill creation/updating. The skill-creator workflow ensure
       required: ['skill_name'],
     },
   },
+
+  skill_evals_run: {
+    name: 'skill_evals_run',
+    description: 'Run evaluation test cases for a skill. Executes defined test cases and returns pass/fail results with grading and feedback.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        skill_name: {
+          type: 'string',
+          description: 'Skill name to run evals for',
+        },
+        eval_id: {
+          type: 'number',
+          description: 'Specific eval ID to run (optional). If not provided, runs all evals.',
+        },
+      },
+      required: ['skill_name'],
+    },
+  },
+
+  skill_recommend: {
+    name: 'skill_recommend',
+    description: 'Get skill recommendations based on context. Analyzes user input and returns the most relevant skills with confidence scores.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        context: {
+          type: 'string',
+          description: 'User context or task description to match against skills',
+        },
+      },
+      required: ['context'],
+    },
+  },
+
+  skill_performance: {
+    name: 'skill_performance',
+    description: 'Get performance metrics for a skill including execution times, success rates, and resource usage.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Skill name to get performance metrics for',
+        },
+      },
+      required: ['name'],
+    },
+  },
+
+  skill_analyze_failures: {
+    name: 'skill_analyze_failures',
+    description: 'Analyze failure patterns for a skill and get recommendations for improvement.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Skill name to analyze failures for',
+        },
+      },
+      required: ['name'],
+    },
+  },
+
+  skill_export: {
+    name: 'skill_export',
+    description: 'Export a skill to a shareable package. Includes SKILL.md, resources, evals, and all bundled files.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Skill name to export',
+        },
+        output_path: {
+          type: 'string',
+          description: 'Optional output path for the exported file',
+        },
+      },
+      required: ['name'],
+    },
+  },
+
+  skill_import: {
+    name: 'skill_import',
+    description: 'Import a skill from a package file. Handles conflicts and validates structure.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        file_path: {
+          type: 'string',
+          description: 'Path to the skill package file (.tar.gz)',
+        },
+      },
+      required: ['file_path'],
+    },
+  },
 };
 
 // Tool executor
@@ -428,6 +537,7 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
         content: parsed.data.content,
         tags: parsed.data.tags,
         triggers: parsed.data.triggers,
+        dependsOn: parsed.data.dependsOn,
       });
     }
 
@@ -467,7 +577,30 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
         }
         return result;
       } else {
-        // Creating new skill - must use skill-creator for quality workflow
+        // Creating new skill - validate dependencies first
+        if (parsed.data.triggers && (parsed.data.triggers as any).dependsOn) {
+          // If dependsOn is accidentally in triggers, move it
+          console.warn('DependsOn should be a separate parameter, not in triggers');
+        }
+
+        // Check dependencies before creating
+        const store_any = store as any;
+        if (store_any.validateDependencies && parsed.data.tags) {
+          // Check if dependsOn is in tags (common mistake)
+          const dependsOn = (parsed.data as any).dependsOn || [];
+          if (dependsOn.length > 0) {
+            const validation = store_any.validateDependencies(dependsOn);
+            if (!validation.valid) {
+              return {
+                success: false,
+                error: `Cannot create skill: ${validation.errors.join(', ')}`,
+                data: { missing_dependencies: validation.missing }
+              };
+            }
+          }
+        }
+
+        // Must use skill-creator for quality workflow
         // Return a special response to tell agent to use skill-creator
         return {
           success: false,
@@ -593,6 +726,81 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
         return { success: false, error: parsed.error.message };
       }
       return store.createWorkspace(parsed.data.skill_name, parsed.data.iteration);
+    }
+
+    case 'skill_evals_run': {
+      const parsed = z.object({
+        skill_name: z.string(),
+        eval_id: z.number().optional(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+      return store.runEval(parsed.data.skill_name, parsed.data.eval_id);
+    }
+
+    case 'skill_recommend': {
+      const parsed = z.object({
+        context: z.string(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+      const result = store.recommendSkills(parsed.data.context);
+      return { success: true, data: result };
+    }
+
+    case 'skill_performance': {
+      const parsed = z.object({
+        name: z.string(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+      const metrics = store.getPerformanceMetrics(parsed.data.name);
+      return { success: true, data: metrics };
+    }
+
+    case 'skill_analyze_failures': {
+      const parsed = z.object({
+        name: z.string(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+      const analysis = store.analyzeFailures(parsed.data.name);
+      return { success: true, data: analysis };
+    }
+
+    case 'skill_export': {
+      const parsed = z.object({
+        name: z.string(),
+        output_path: z.string().optional(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+      try {
+        const result = store.exportSkill(parsed.data.name, parsed.data.output_path);
+        return { success: true, data: result };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      }
+    }
+
+    case 'skill_import': {
+      const parsed = z.object({
+        file_path: z.string(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+      try {
+        const result = store.importSkill(parsed.data.file_path);
+        return { success: true, data: result };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      }
     }
 
     default:

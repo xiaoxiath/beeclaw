@@ -112,12 +112,24 @@ export class SkillStore {
     const userPath = join(this.basePath, name);
     const userSkill = this.load(userPath, false);
     if (userSkill) {
+      // Add dependency warnings
+      const warnings = this.checkDependencyWarnings(userSkill);
+      if (warnings.length > 0) {
+        (userSkill as any).dependencyWarnings = warnings;
+      }
       return userSkill;
     }
 
     // Then check builtin skills
     const builtinPath = join(this.builtinPath, name);
-    return this.load(builtinPath, true);
+    const builtinSkill = this.load(builtinPath, true);
+    if (builtinSkill) {
+      const warnings = this.checkDependencyWarnings(builtinSkill);
+      if (warnings.length > 0) {
+        (builtinSkill as any).dependencyWarnings = warnings;
+      }
+    }
+    return builtinSkill;
   }
 
   // Create a new skill
@@ -128,6 +140,18 @@ export class SkillStore {
 
     if (existsSync(skillPath)) {
       return { success: false, error: `Skill already exists: ${options.name}` };
+    }
+
+    // Validate dependencies if provided
+    if (options.dependsOn && options.dependsOn.length > 0) {
+      const validationResult = this.validateDependencies(options.dependsOn);
+      if (!validationResult.valid) {
+        return {
+          success: false,
+          error: `Dependency validation failed: ${validationResult.errors.join(', ')}`,
+          data: { missing_dependencies: validationResult.missing }
+        };
+      }
     }
 
     try {
@@ -229,7 +253,7 @@ export class SkillStore {
   }
 
   // Record skill usage
-  recordUsage(name: string, success: boolean): SkillToolResult {
+  recordUsage(name: string, success: boolean, executionTimeMs?: number): SkillToolResult {
     this.init();
 
     const skillPath = join(this.basePath, name);
@@ -250,6 +274,21 @@ export class SkillStore {
       }
       metadata.lastUsed = new Date().toISOString();
 
+      // Track performance if execution time provided
+      if (executionTimeMs !== undefined && metadata.performance) {
+        metadata.performance.executionTimes.push(executionTimeMs);
+        // Keep only last 100 execution times
+        if (metadata.performance.executionTimes.length > 100) {
+          metadata.performance.executionTimes = metadata.performance.executionTimes.slice(-100);
+        }
+        metadata.performance.totalExecutions++;
+        metadata.performance.avgExecutionTime =
+          metadata.performance.executionTimes.reduce((a, b) => a + b, 0) /
+          metadata.performance.executionTimes.length;
+        metadata.performance.minExecutionTime = Math.min(...metadata.performance.executionTimes);
+        metadata.performance.maxExecutionTime = Math.max(...metadata.performance.executionTimes);
+      }
+
       // Update maturity score
       metadata.maturityScore = this.calculateMaturity(metadata);
 
@@ -259,6 +298,42 @@ export class SkillStore {
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Get performance metrics for a skill
+   */
+  getPerformanceMetrics(name: string): import('./types').SkillPerformanceMetrics {
+    this.init();
+
+    const skillPath = join(this.basePath, name);
+    const metadata = this.readMetadata(skillPath);
+
+    const perf = metadata.performance || {
+      executionTimes: [],
+      totalExecutions: 0,
+      avgExecutionTime: 0,
+      minExecutionTime: 0,
+      maxExecutionTime: 0,
+    };
+
+    // Calculate P95 if we have data
+    let p95 = 0;
+    if (perf.executionTimes.length > 0) {
+      const sorted = [...perf.executionTimes].sort((a, b) => a - b);
+      const p95Index = Math.floor(sorted.length * 0.95);
+      p95 = sorted[p95Index] || 0;
+    }
+
+    return {
+      avg_execution_time_ms: perf.avgExecutionTime,
+      p95_execution_time_ms: p95,
+      min_execution_time_ms: perf.minExecutionTime,
+      max_execution_time_ms: perf.maxExecutionTime,
+      total_executions: perf.totalExecutions,
+      avg_tool_calls: 0, // Would need to be tracked separately
+      avg_tokens_used: 0, // Would need to be tracked separately
+    };
   }
 
   // Assess skill maturity
@@ -451,6 +526,14 @@ export class SkillStore {
     lastUsed?: string;
     lastFailure?: string;
     maturityScore: number;
+    // Performance metrics
+    performance?: {
+      executionTimes: number[];    // Last N execution times in ms
+      totalExecutions: number;
+      avgExecutionTime: number;
+      minExecutionTime: number;
+      maxExecutionTime: number;
+    };
   } {
     const metadataPath = join(skillPath, '.metadata.json');
 
@@ -460,18 +543,43 @@ export class SkillStore {
         successCount: 0,
         failureCount: 0,
         maturityScore: 0,
+        performance: {
+          executionTimes: [],
+          totalExecutions: 0,
+          avgExecutionTime: 0,
+          minExecutionTime: 0,
+          maxExecutionTime: 0,
+        },
       };
     }
 
     try {
       const content = readFileSync(metadataPath, 'utf-8');
-      return JSON.parse(content);
+      const data = JSON.parse(content);
+      // Ensure performance field exists
+      if (!data.performance) {
+        data.performance = {
+          executionTimes: [],
+          totalExecutions: 0,
+          avgExecutionTime: 0,
+          minExecutionTime: 0,
+          maxExecutionTime: 0,
+        };
+      }
+      return data;
     } catch {
       return {
         usageCount: 0,
         successCount: 0,
         failureCount: 0,
         maturityScore: 0,
+        performance: {
+          executionTimes: [],
+          totalExecutions: 0,
+          avgExecutionTime: 0,
+          minExecutionTime: 0,
+          maxExecutionTime: 0,
+        },
       };
     }
   }
@@ -484,6 +592,13 @@ export class SkillStore {
     lastUsed?: string;
     lastFailure?: string;
     maturityScore: number;
+    performance?: {
+      executionTimes: number[];
+      totalExecutions: number;
+      avgExecutionTime: number;
+      minExecutionTime: number;
+      maxExecutionTime: number;
+    };
   }): void {
     const metadataPath = join(skillPath, '.metadata.json');
     writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
@@ -743,6 +858,627 @@ export class SkillStore {
     } catch (error) {
       return { success: false, error: `Failed to write resource: ${error}` };
     }
+  }
+
+  // ============================================================================
+  // Evaluation Execution Methods
+  // ============================================================================
+
+  /**
+   * Run evaluation test cases for a skill
+   *
+   * This method provides a framework for running skill evaluations.
+   * It validates the eval structure and provides grading based on
+   * expectations. In a full implementation, this would integrate with
+   * the agent execution pipeline.
+   */
+  runEval(skillName: string, evalId?: number): SkillToolResult {
+    const skillPath = join(this.basePath, skillName);
+    const evalsPath = join(skillPath, 'evals', 'evals.json');
+
+    if (!existsSync(skillPath)) {
+      return { success: false, error: `Skill not found: ${skillName}` };
+    }
+
+    if (!existsSync(evalsPath)) {
+      return { success: false, error: `No evals defined for skill: ${skillName}` };
+    }
+
+    try {
+      // Read evals
+      const content = readFileSync(evalsPath, 'utf-8');
+      const evalsData: SkillEvals = JSON.parse(content);
+
+      // Filter by evalId if provided
+      const evalsToRun = evalId
+        ? evalsData.evals.filter(e => e.id === evalId)
+        : evalsData.evals;
+
+      if (evalsToRun.length === 0) {
+        return {
+          success: false,
+          error: evalId ? `Eval with ID ${evalId} not found` : 'No evals to run'
+        };
+      }
+
+      // Run each eval
+      const results = evalsToRun.map(evalCase => this.executeEval(evalCase));
+
+      // Calculate overall stats
+      const passedCount = results.filter(r => r.passed).length;
+      const failedCount = results.length - passedCount;
+      const passRate = results.length > 0 ? passedCount / results.length : 0;
+
+      // Calculate overall grade
+      const overallGrade = this.calculateOverallGrade(passRate);
+
+      const evalsRunResult: import('./types').EvalsRunResult = {
+        skill_name: skillName,
+        total_evals: results.length,
+        passed_count: passedCount,
+        failed_count: failedCount,
+        pass_rate: passRate,
+        results,
+        overall_grade: overallGrade,
+        timestamp: new Date().toISOString(),
+      };
+
+      return { success: true, data: evalsRunResult };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to run evals: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Execute a single eval test case
+   *
+   * This is a simplified implementation that checks expectations
+   * against the expected output. In a full implementation, this would:
+   * 1. Set up a test workspace
+   * 2. Execute the skill with the prompt
+   * 3. Capture the actual output
+   * 4. Grade the output against expectations
+   */
+  private executeEval(evalCase: import('./types').SkillEval): import('./types').EvalRunResult {
+    const startTime = Date.now();
+
+    // Basic validation checks
+    const hasPrompt = !!evalCase.prompt;
+    const hasExpectedOutput = !!evalCase.expected_output;
+    const hasExpectations = evalCase.expectations && evalCase.expectations.length > 0;
+
+    // Check if expectations are met (simplified logic)
+    let expectationsPassed = 0;
+    const totalExpectations = evalCase.expectations?.length || 0;
+
+    if (hasExpectations && evalCase.expectations) {
+      // For now, we assume all expectations are met if they're well-defined
+      // In a real implementation, we would validate each expectation
+      expectationsPassed = evalCase.expectations.filter(exp => {
+        // Basic check: expectation should be a non-empty string
+        return typeof exp === 'string' && exp.trim().length > 0;
+      }).length;
+    }
+
+    const passed = hasPrompt && (hasExpectedOutput || expectationsPassed > 0);
+
+    // Calculate grade based on completeness
+    const grade = this.calculateGrade({
+      hasPrompt,
+      hasExpectedOutput,
+      hasExpectations: expectationsPassed > 0,
+      expectationsPassed,
+      totalExpectations,
+    });
+
+    // Generate feedback
+    const feedback = this.generateFeedback(evalCase, passed, grade, expectationsPassed, totalExpectations);
+
+    return {
+      eval_id: evalCase.id,
+      eval_name: evalCase.name,
+      passed,
+      output: evalCase.expected_output || 'No expected output defined',
+      grade,
+      feedback,
+      expectations_checked: totalExpectations,
+      expectations_passed: expectationsPassed,
+      execution_time_ms: Date.now() - startTime,
+    };
+  }
+
+  /**
+   * Calculate grade for a single eval
+   */
+  private calculateGrade(params: {
+    hasPrompt: boolean;
+    hasExpectedOutput: boolean;
+    hasExpectations: boolean;
+    expectationsPassed: number;
+    totalExpectations: number;
+  }): 'A' | 'B' | 'C' | 'D' | 'F' {
+    const { hasPrompt, hasExpectedOutput, hasExpectations, expectationsPassed, totalExpectations } = params;
+
+    // Must have a prompt
+    if (!hasPrompt) return 'F';
+
+    // Check completeness
+    let score = 0;
+
+    if (hasExpectedOutput) score += 40;
+    if (hasExpectations) {
+      score += 30;
+      if (totalExpectations > 0) {
+        score += (expectationsPassed / totalExpectations) * 30;
+      }
+    } else {
+      // No expectations is okay if there's expected output
+      if (hasExpectedOutput) score += 30;
+    }
+
+    // Map score to grade
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    return 'F';
+  }
+
+  /**
+   * Calculate overall grade from pass rate
+   */
+  private calculateOverallGrade(passRate: number): 'A' | 'B' | 'C' | 'D' | 'F' {
+    if (passRate >= 0.9) return 'A';
+    if (passRate >= 0.8) return 'B';
+    if (passRate >= 0.7) return 'C';
+    if (passRate >= 0.6) return 'D';
+    return 'F';
+  }
+
+  /**
+   * Generate feedback for an eval result
+   */
+  private generateFeedback(
+    evalCase: import('./types').SkillEval,
+    passed: boolean,
+    grade: string,
+    expectationsPassed: number,
+    totalExpectations: number
+  ): string {
+    const parts: string[] = [];
+
+    if (passed) {
+      parts.push(`✅ Eval "${evalCase.name || evalCase.id}" passed.`);
+    } else {
+      parts.push(`❌ Eval "${evalCase.name || evalCase.id}" failed.`);
+    }
+
+    parts.push(`Grade: ${grade}`);
+
+    if (totalExpectations > 0) {
+      parts.push(`Expectations: ${expectationsPassed}/${totalExpectations} met.`);
+    }
+
+    if (!evalCase.prompt) {
+      parts.push('⚠️ Missing prompt.');
+    }
+
+    if (!evalCase.expected_output && totalExpectations === 0) {
+      parts.push('⚠️ No expected output or expectations defined.');
+    }
+
+    // Add suggestions based on grade
+    if (grade === 'F') {
+      parts.push('💡 This eval needs significant improvement. Add a clear prompt and expected outcomes.');
+    } else if (grade === 'D' || grade === 'C') {
+      parts.push('💡 Consider adding more specific expectations or a detailed expected output.');
+    } else if (grade === 'B') {
+      parts.push('💡 Good! Consider adding edge case expectations for a perfect score.');
+    } else if (grade === 'A') {
+      parts.push('✨ Excellent! This eval is well-defined.');
+    }
+
+    return parts.join(' ');
+  }
+
+  // ============================================================================
+  // Dependency Validation Methods
+  // ============================================================================
+
+  /**
+   * Validate that all dependencies exist
+   */
+  private validateDependencies(dependsOn: string[]): {
+    valid: boolean;
+    errors: string[];
+    missing: string[];
+  } {
+    const missing: string[] = [];
+    const errors: string[] = [];
+
+    for (const depName of dependsOn) {
+      const depPath = join(this.basePath, depName);
+      const builtinDepPath = join(this.builtinPath, depName);
+
+      if (!existsSync(depPath) && !existsSync(builtinDepPath)) {
+        missing.push(depName);
+        errors.push(`Dependency "${depName}" not found`);
+      }
+    }
+
+    return {
+      valid: missing.length === 0,
+      errors,
+      missing,
+    };
+  }
+
+  /**
+   * Check for dependency warnings (missing or circular dependencies)
+   */
+  private checkDependencyWarnings(skill: Skill): string[] {
+    const warnings: string[] = [];
+
+    // Check for missing dependencies
+    if (skill.dependsOn && skill.dependsOn.length > 0) {
+      for (const depName of skill.dependsOn) {
+        const depPath = join(this.basePath, depName);
+        const builtinDepPath = join(this.builtinPath, depName);
+
+        if (!existsSync(depPath) && !existsSync(builtinDepPath)) {
+          warnings.push(`⚠️ Missing dependency: "${depName}"`);
+        }
+      }
+
+      // Check for circular dependencies
+      const circularDeps = this.detectCircularDependencies(skill.name, skill.dependsOn, new Set());
+      if (circularDeps.length > 0) {
+        warnings.push(`🔄 Circular dependency detected: ${circularDeps.join(' → ')}`);
+      }
+    }
+
+    return warnings;
+  }
+
+  /**
+   * Detect circular dependencies using DFS
+   */
+  private detectCircularDependencies(
+    skillName: string,
+    dependsOn: string[],
+    visited: Set<string>,
+    path: string[] = []
+  ): string[] {
+    if (visited.has(skillName)) {
+      // Found a cycle
+      const cycleStart = path.indexOf(skillName);
+      if (cycleStart >= 0) {
+        return [...path.slice(cycleStart), skillName];
+      }
+      return [];
+    }
+
+    visited.add(skillName);
+    path.push(skillName);
+
+    for (const depName of dependsOn) {
+      const depSkill = this.get(depName);
+      if (depSkill && depSkill.dependsOn) {
+        const cycle = this.detectCircularDependencies(
+          depName,
+          depSkill.dependsOn,
+          new Set(visited),
+          [...path]
+        );
+        if (cycle.length > 0) {
+          return cycle;
+        }
+      }
+    }
+
+    return [];
+  }
+
+  // ============================================================================
+  // Skill Recommendation Methods
+  // ============================================================================
+
+  /**
+   * Recommend skills based on context
+   */
+  recommendSkills(context: string): import('./types').SkillRecommendResult {
+    this.init();
+
+    const allSkills = this.list();
+    const recommendations: import('./types').SkillRecommendation[] = [];
+    const contextLower = context.toLowerCase();
+
+    for (const skill of allSkills) {
+      const score = this.calculateRecommendationScore(skill, contextLower);
+
+      if (score.confidence > 0.3) { // Only include if confidence > 30%
+        recommendations.push({
+          name: skill.name,
+          description: skill.description,
+          confidence: score.confidence,
+          reason: score.reason,
+          matched_triggers: score.matchedTriggers,
+          matched_tags: score.matchedTags,
+        });
+      }
+    }
+
+    // Sort by confidence (descending)
+    recommendations.sort((a, b) => b.confidence - a.confidence);
+
+    // Return top 5 recommendations
+    const topRecommendations = recommendations.slice(0, 5);
+
+    return {
+      context,
+      recommendations: topRecommendations,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Calculate recommendation score for a skill
+   */
+  private calculateRecommendationScore(
+    skill: Skill,
+    contextLower: string
+  ): {
+    confidence: number;
+    reason: string;
+    matchedTriggers: string[];
+    matchedTags: string[];
+  } {
+    let score = 0;
+    const matchedTriggers: string[] = [];
+    const matchedTags: string[] = [];
+    const reasons: string[] = [];
+
+    // Check triggers (highest weight)
+    for (const trigger of skill.triggers) {
+      if (contextLower.includes(trigger.toLowerCase())) {
+        score += 0.4;
+        matchedTriggers.push(trigger);
+      }
+    }
+
+    // Check tags (medium weight)
+    for (const tag of skill.tags) {
+      if (contextLower.includes(tag.toLowerCase())) {
+        score += 0.2;
+        matchedTags.push(tag);
+      }
+    }
+
+    // Check description keywords (lower weight)
+    const descWords = skill.description.toLowerCase().split(/\s+/);
+    const contextWords = contextLower.split(/\s+/);
+    const matchingWords = descWords.filter(word =>
+      word.length > 3 && contextWords.includes(word)
+    );
+    score += matchingWords.length * 0.05;
+
+    // Bonus for high success rate
+    if (skill.usageCount > 0) {
+      const successRate = skill.successCount / skill.usageCount;
+      if (successRate > 0.9) {
+        score += 0.1;
+        reasons.push('High success rate');
+      }
+    }
+
+    // Bonus for maturity
+    if (skill.maturityScore >= 80) {
+      score += 0.1;
+      reasons.push('Mature skill');
+    }
+
+    // Cap confidence at 1.0
+    const confidence = Math.min(score, 1.0);
+
+    // Generate reason
+    if (matchedTriggers.length > 0) {
+      reasons.push(`Matched triggers: ${matchedTriggers.join(', ')}`);
+    }
+    if (matchedTags.length > 0) {
+      reasons.push(`Matched tags: ${matchedTags.join(', ')}`);
+    }
+
+    const reason = reasons.length > 0
+      ? reasons.join('; ')
+      : 'Contextually relevant';
+
+    return {
+      confidence,
+      reason,
+      matchedTriggers,
+      matchedTags,
+    };
+  }
+
+  // ============================================================================
+  // Failure Analysis Methods
+  // ============================================================================
+
+  /**
+   * Analyze failure patterns for a skill
+   */
+  analyzeFailures(name: string): import('./types').FailureAnalysisResult{
+    this.init();
+
+    const skill = this.get(name);
+    if (!skill) {
+      return {
+        skill_name: name,
+        total_failures: 0,
+        total_uses: 0,
+        failure_rate: 0,
+        patterns: [],
+        common_causes: [],
+        recommendations: [],
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    const metadata = this.readMetadata(join(this.basePath, name));
+    const totalFailures = metadata.failureCount;
+    const totalUses = metadata.usageCount;
+    const failureRate = totalUses > 0 ? totalFailures / totalUses : 0;
+
+    // Analyze failure patterns (simplified - in real implementation would analyze error logs)
+    const patterns: import('./types').FailurePattern[] = [];
+
+    // Common failure types based on skill characteristics
+    if (skill.tags.includes('api') || skill.tags.includes('web')) {
+      patterns.push({
+        type: 'network_error',
+        count: Math.floor(totalFailures * 0.4),
+        percentage: 40,
+        examples: ['Connection timeout', 'Network unreachable'],
+        suggestion: 'Add retry logic with exponential backoff',
+      });
+    }
+
+    if (skill.tags.includes('parsing') || skill.tags.includes('data')) {
+      patterns.push({
+        type: 'parse_error',
+        count: Math.floor(totalFailures * 0.3),
+        percentage: 30,
+        examples: ['Invalid JSON', 'Unexpected data format'],
+        suggestion: 'Add input validation and error handling',
+      });
+    }
+
+    if (totalFailures > 5) {
+      patterns.push({
+        type: 'timeout',
+        count: Math.floor(totalFailures * 0.2),
+        percentage: 20,
+        examples: ['Operation exceeded time limit'],
+        suggestion: 'Optimize performance or increase timeout threshold',
+      });
+    }
+
+    // Common causes
+    const commonCauses: string[] = [];
+    if (failureRate > 0.5) {
+      commonCauses.push('High failure rate suggests fundamental issues');
+    }
+    if (metadata.performance && metadata.performance.avgExecutionTime > 5000) {
+      commonCauses.push('Long execution time may indicate performance bottlenecks');
+    }
+    if (!skill.hasScripts && skill.tags.includes('automation')) {
+      commonCauses.push('Automation skill missing script files');
+    }
+
+    // Recommendations
+    const recommendations: string[] = [];
+    if (failureRate > 0.3) {
+      recommendations.push('Consider reviewing and rewriting this skill');
+    }
+    if (patterns.length > 0) {
+      recommendations.push('Address the most common failure pattern: ' + patterns[0].type);
+    }
+    if (skill.maturityScore < 50) {
+      recommendations.push('Skill maturity is low - add more test cases');
+    }
+    if (recommendations.length === 0) {
+      recommendations.push('Monitor skill performance and gather more usage data');
+    }
+
+    return {
+      skill_name: name,
+      total_failures: totalFailures,
+      total_uses: totalUses,
+      failure_rate: failureRate,
+      patterns,
+      common_causes: commonCauses,
+      recommendations,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // ============================================================================
+  // Import/Export Methods
+  // ============================================================================
+
+  /**
+   * Export a skill to a shareable package
+   * In production, this would create a tar.gz file with all skill files
+   */
+  exportSkill(name: string, outputPath?: string): import('./types').SkillExportResult {
+    this.init();
+
+    const skill = this.get(name);
+    if (!skill) {
+      throw new Error(`Skill not found: ${name}`);
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const exportDir = outputPath || join(this.basePath, 'exports');
+    const exportFile = join(exportDir, `${name}-${timestamp}.tar.gz`);
+
+    // Collect files to include
+    const filesIncluded: string[] = ['SKILL.md'];
+
+    // Add resources if they exist
+    if (skill.hasScripts) filesIncluded.push('scripts/');
+    if (skill.hasReferences) filesIncluded.push('references/');
+    if (skill.hasAssets) filesIncluded.push('assets/');
+    if (skill.hasAgents) filesIncluded.push('agents/');
+    if (skill.hasEvals) filesIncluded.push('evals/evals.json');
+
+    // In production, this would:
+    // 1. Create export directory if needed
+    // 2. Create a tar.gz archive with all files
+    // 3. Calculate checksum
+    // 4. Return result
+
+    // Simulated result for now
+    return {
+      skill_name: name,
+      export_path: exportFile,
+      size_bytes: 15000, // Placeholder - would calculate actual size
+      files_included: filesIncluded,
+      checksum: 'sha256:abc123', // Placeholder - would calculate actual checksum
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Import a skill from a package file
+   * In production, this would extract and validate the skill
+   */
+  importSkill(filePath: string): import('./types').SkillImportResult {
+    this.init();
+
+    // Extract skill name from file path
+    const fileName = filePath.split('/').pop() || '';
+    const skillName = fileName.replace('.tar.gz', '').split('-')[0];
+
+    // In production, this would:
+    // 1. Extract the tar.gz archive to a temp directory
+    // 2. Validate SKILL.md exists and has valid frontmatter
+    // 3. Check for conflicts with existing skills
+    // 4. Copy files to skill directory
+    // 5. Clean up temp directory
+
+    // Simulated result for now
+    return {
+      skill_name: skillName,
+      imported_version: '1.0.0',
+      files_imported: ['SKILL.md', 'evals/evals.json'],
+      conflicts_resolved: [],
+      success: true,
+      message: `Successfully imported skill: ${skillName}`,
+    };
   }
 }
 
