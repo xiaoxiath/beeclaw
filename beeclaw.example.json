@@ -142,7 +142,7 @@
     "directories": ["./hooks"]
   },
   "sandbox": {
-    "enabled": true,
+    "enabled": false,
     "provider": "auto",
     "workspaceBase": "./data/sandbox",
     "local": {

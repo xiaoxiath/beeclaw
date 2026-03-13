@@ -1,8 +1,15 @@
 /**
  * resilience-integration.ts — 韧性集成示例
  *
- * 展示如何将韧性模块集成到 BeeClaw Agent 中。
- * 这是一个参考实现，展示各个模块如何协同工作。
+ * ⚠️ REFERENCE IMPLEMENTATION - NOT USED IN PRODUCTION
+ *
+ * This file demonstrates how to integrate resilience modules into BeeClaw Agent.
+ * It is for educational purposes only and should not be imported in production code.
+ *
+ * To use resilience features in production:
+ *   1. Copy the patterns from this file
+ *   2. Integrate them into the actual agent code (src/domain/agent/agent.ts)
+ *   3. Remove this file after integration
  *
  * 集成要点：
  *   1. 使用 ResilienceConfig 统一管理所有配置

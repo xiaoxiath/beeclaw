@@ -1,39 +1,22 @@
 /**
  * Test P3 Module Integration
  *
- * Run with: bun test tests/p3-integration.test.ts
+ * This test file validates that the P3 optimization modules
+ * can initialize and work together correctly.
+ *
+ * Run with: bun test tests/integration/p3-integration.test.ts
  */
 
 import { describe, test, expect, beforeAll } from 'bun:test';
 
 describe('P3 Module Integration', () => {
-  test('Config Center should initialize', async () => {
-    const { initializeConfig, config } = await import('../src/utils/config-center');
+  test('Logger should configure', async () => {
+    const { logger } = await import('../../src/infra/observability/logger');
 
-    const result = initializeConfig({
-      envPrefix: 'BEECLAW_TEST',
-      overrides: {
-        agent: {
-          defaultProvider: 'test-provider',
-          defaultModel: 'test-model',
-          locale: 'zh-CN',
-        },
-      },
-    });
-
-    expect(result.errors.length).toBe(0);
-    expect(config.get('agent.defaultProvider')).toBe('test-provider');
-    expect(config.get('agent.defaultModel')).toBe('test-model');
-  });
-
-  test('Observability should configure', async () => {
-    const { Observability, logger } = await import('../src/utils/observability');
-
-    Observability.configure({
+    // Configure logger
+    logger.configure({
       level: 'info',
-      structured: false,
-      tracingEnabled: true,
-      metricsEnabled: true,
+      format: 'pretty',
     });
 
     // Should not throw
@@ -42,33 +25,33 @@ describe('P3 Module Integration', () => {
   });
 
   test('Embedding Provider should create', async () => {
-    const { createEmbeddingProvider, MockEmbeddingProvider } = await import('../src/providers');
+    const { LocalEmbeddingProvider } = await import('../../src/domain/memory/embeddings');
 
-    // Test mock provider
-    const mockProvider = new MockEmbeddingProvider();
-    expect(mockProvider.name).toBe('mock-embedding');
-    expect(mockProvider.dimensions).toBe(128);
+    // Test local provider (no API key required)
+    const localProvider = new LocalEmbeddingProvider();
+    expect(localProvider.id).toBe('local');
+    expect(localProvider.dims).toBe(256);
 
-    const embedding = await mockProvider.embed('test text');
-    expect(embedding.length).toBe(128);
-  });
+    const embedding = await localProvider.embed('test text');
+    expect(embedding.length).toBe(256);
 
-  test('Summary Provider should create', async () => {
-    const { FallbackSummaryProvider } = await import('../src/providers');
-
-    const fallbackProvider = new FallbackSummaryProvider();
-    expect(fallbackProvider.name).toBe('fallback-summary');
-
-    const result = await fallbackProvider.generate('test prompt');
-    expect(result).toContain('Summary generation is disabled');
+    // Test batch embedding
+    const embeddings = await localProvider.embedBatch(['text 1', 'text 2']);
+    expect(embeddings.length).toBe(2);
+    expect(embeddings[0].length).toBe(256);
   });
 
   test('Vector Store should initialize', async () => {
-    const { VectorMemoryStore, setEmbeddingProvider } = await import('../src/memory/vector-store');
-    const { MockEmbeddingProvider } = await import('../src/providers');
+    const { VectorMemoryStore, setEmbeddingProvider } = await import('../../src/domain/memory/vector-store');
+    const { LocalEmbeddingProvider } = await import('../../src/domain/memory/embeddings');
 
-    const mockProvider = new MockEmbeddingProvider();
-    setEmbeddingProvider(mockProvider);
+    const localProvider = new LocalEmbeddingProvider();
+    setEmbeddingProvider({
+      embed: async (text) => localProvider.embed(text),
+      embedBatch: async (texts) => localProvider.embedBatch(texts),
+      dimensions: 256,
+      name: 'local-test',
+    });
 
     const store = new VectorMemoryStore({
       basePath: '/tmp/test-vector-store',
@@ -82,11 +65,17 @@ describe('P3 Module Integration', () => {
   });
 
   test('Summary Engine should initialize', async () => {
-    const { SummaryEngine, setSummaryLLMProvider } = await import('../src/memory/summary-engine');
-    const { FallbackSummaryProvider } = await import('../src/providers');
+    const { SummaryEngine, setSummaryLLMProvider } = await import('../../src/domain/memory/summary-engine');
 
-    const fallbackProvider = new FallbackSummaryProvider();
-    setSummaryLLMProvider(fallbackProvider);
+    // Create a mock LLM provider
+    const mockProvider = {
+      name: 'mock-summary',
+      generate: async (prompt: string) => {
+        return 'Mock summary: The user discussed testing and integration.';
+      },
+    };
+
+    setSummaryLLMProvider(mockProvider);
 
     const engine = new SummaryEngine({
       llmThresholdTokens: 100,
@@ -97,7 +86,7 @@ describe('P3 Module Integration', () => {
   });
 
   test('Lifecycle Manager should initialize', async () => {
-    const { getLifecycleManager } = await import('../src/memory/lifecycle-manager');
+    const { getLifecycleManager } = await import('../../src/domain/memory/lifecycle-manager');
 
     const manager = getLifecycleManager({
       basePath: '/tmp/test-lifecycle',
@@ -108,7 +97,7 @@ describe('P3 Module Integration', () => {
   });
 
   test('Reflection Engine should initialize', async () => {
-    const { getReflectionEngine } = await import('../src/agent/reflection-engine');
+    const { getReflectionEngine } = await import('../../src/domain/agent/reflection-engine');
 
     const engine = getReflectionEngine({
       maxConversations: 100,
@@ -120,7 +109,7 @@ describe('P3 Module Integration', () => {
   });
 
   test('Skill Discovery Engine should initialize', async () => {
-    const { getSkillDiscoveryEngine } = await import('../src/agent/skill-discovery');
+    const { getSkillDiscoveryEngine } = await import('../../src/domain/agent/skill-discovery');
 
     const engine = getSkillDiscoveryEngine({
       minSequenceFrequency: 3,
@@ -129,5 +118,21 @@ describe('P3 Module Integration', () => {
     });
 
     expect(engine).toBeDefined();
+  });
+
+  test('LocalEmbeddingProvider should generate consistent embeddings', async () => {
+    const { LocalEmbeddingProvider, cosineSimilarity } = await import('../../src/domain/memory/embeddings');
+
+    const provider = new LocalEmbeddingProvider();
+
+    // Same text should produce same embedding
+    const embedding1 = await provider.embed('hello world');
+    const embedding2 = await provider.embed('hello world');
+    expect(embedding1).toEqual(embedding2);
+
+    // Similar texts should have high similarity
+    const embedding3 = await provider.embed('hello universe');
+    const similarity = cosineSimilarity(embedding1, embedding3);
+    expect(similarity).toBeGreaterThanOrEqual(0.5); // Should be somewhat similar
   });
 });

@@ -291,6 +291,59 @@ export async function handleGoalProgressCheckJob(): Promise<void> {
 export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
   console.log('[Daemon] Running custom task...');
   console.log('[Daemon] Custom task params:', job.params);
+
+  const action = job.params?.action as string;
+
+  // Handle daily reflection task
+  if (action === 'daily-reflection') {
+    try {
+      const { getReflectionEngine } = await import('../agent/reflection-engine');
+      const engine = getReflectionEngine();
+
+      console.log('[Daemon] Running daily reflection...');
+
+      // Get recent conversations from memory store
+      const { getMemoryStore } = await import('../memory');
+      const store = getMemoryStore();
+      const conversations = store.getByCategory('conversations');
+
+      if (conversations.length === 0) {
+        console.log('[Daemon] No conversations to reflect on');
+        return;
+      }
+
+      // Run reflection
+      const result = await engine.reflect();
+
+      if (result && (result.patterns || result.strategyUpdates)) {
+        console.log('[Daemon] Reflection complete:');
+        console.log(`  - Patterns found: ${result.patterns?.length || 0}`);
+        console.log(`  - Strategy updates: ${result.strategyUpdates?.length || 0}`);
+
+        // Store patterns as facts in memory
+        if (result.patterns && result.patterns.length > 0) {
+          for (const pattern of result.patterns) {
+            store.add({
+              category: 'facts',
+              key: `pattern_${pattern.type}_${Date.now()}`,
+              value: pattern.description,
+              metadata: {
+                frequency: pattern.frequency,
+                examples: pattern.examples,
+                source: 'reflection',
+              },
+            });
+          }
+          console.log(`[Daemon] Stored ${result.patterns.length} patterns as facts`);
+        }
+      }
+    } catch (error) {
+      console.error('[Daemon] Daily reflection failed:', error);
+    }
+    return;
+  }
+
+  console.warn('[Daemon] Unknown custom action:', action);
 }
 
 /**

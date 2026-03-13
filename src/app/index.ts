@@ -28,6 +28,8 @@ import { setSummaryLLMProvider } from '../domain/memory/summary-engine';
 import { getLifecycleManager } from '../domain/memory/lifecycle-manager';
 import { getReflectionEngine } from '../domain/agent/reflection-engine';
 import { getSkillDiscoveryEngine } from '../domain/agent/skill-discovery';
+import { initExtractionManager, getExtractionManager as getExtractionManagerInstance, type ExtractionManager } from '../domain/extraction';
+import { getScheduler } from '../domain/proactive';
 import { SandboxManager } from '../domain/sandbox/manager';
 import { listSessions, sendProactiveMessage } from '../domain/session';
 import { recoverUnansweredSessions } from '../domain/session/recovery';
@@ -58,12 +60,14 @@ let appState: {
   provider: AIProvider | null;
   model: string;
   agent: ReturnType<typeof createAgent> | null;
+  extractionManager: ExtractionManager | null;
 } = {
   initialized: false,
   config: null,
   provider: null,
   model: '',
   agent: null,
+  extractionManager: null,
 };
 
 /**
@@ -412,14 +416,14 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // Initialize lifecycle manager (optional)
   getLifecycleManager({
     basePath: memoryPath,
-    autoCleanupIntervalMs: 0, // Disabled by default
+    autoCleanupIntervalMs: 86400000, // Clean up every 24 hours
   });
 
   // Initialize reflection engine (optional)
   getReflectionEngine({
     maxConversations: 200,
     minPatternFrequency: 3,
-    useLLMReflection: false,
+    useLLMReflection: true, // Enable LLM-based reflection
   });
 
   // Initialize skill discovery engine (optional)
@@ -428,8 +432,49 @@ export async function initApp(options: InitOptions = {}): Promise<{
     minSequenceLength: 2,
     maxSequenceLength: 10,
     intentSimilarityThreshold: 0.8,
-    autoPropose: false,
+    autoPropose: true, // Enable automatic skill proposal
   });
+
+  // Initialize extraction manager (optional)
+  if (config.extraction?.enabled) {
+    try {
+      const extractionManager = initExtractionManager(
+        defaultProvider,
+        model,
+        memoryPath,
+        config.extraction
+      );
+      appState.extractionManager = extractionManager;
+      console.log(`   🧠 Extraction: enabled (interval: ${config.extraction.periodicInterval || 10} rounds)`);
+    } catch (error) {
+      logger.error('[App] Failed to initialize extraction manager', error);
+    }
+  }
+
+  // Initialize daily reflection task (if daemon mode)
+  if (options.daemon || process.env.DAEMON_MODE === 'true') {
+    try {
+      const { getScheduler } = await import('../domain/proactive');
+      const scheduler = getScheduler(join(memoryPath, '../proactive'));
+
+      // Create daily reflection schedule
+      const result = scheduler.createSchedule({
+        name: 'Daily Reflection',
+        description: 'Analyze conversation patterns and suggest improvements daily at 3 AM',
+        cron: '0 3 * * *',
+        taskType: 'custom',
+        taskParams: {
+          action: 'daily-reflection',
+        },
+      });
+
+      if (result.success) {
+        console.log(`   🔍 Daily reflection task created (runs at 3:00 AM)`);
+      }
+    } catch (error) {
+      logger.error('[App] Failed to create reflection schedule', error);
+    }
+  }
 
   appState.initialized = true;
   console.log('   ✅ Beeclaw initialized\n');
@@ -508,6 +553,13 @@ export function getModel(): string {
 }
 
 /**
+ * Get the extraction manager (if enabled)
+ */
+export function getExtractionManager(): ExtractionManager | null {
+  return appState.extractionManager;
+}
+
+/**
  * Get the loaded config
  */
 export function getConfig_(): AppConfig | null {
@@ -582,6 +634,7 @@ export async function resetApp(): Promise<void> {
     provider: null,
     model: '',
     agent: null,
+    extractionManager: null,
   };
 }
 
