@@ -122,7 +122,8 @@ export async function loadPlugins(options: LoadPluginsOptions = {}): Promise<Loa
       const mod = (await jiti.import(entryPath)) as any;
       const pluginDef = mod.default ?? mod;
 
-      // 3e. 创建 API 并注册
+      // 3e. 注册插件根目录并创建 API
+      registry.pluginRootDirs.set(manifest.id, candidate.rootDir);
       const api = createApi(manifest.id);
 
       if (typeof pluginDef === "function") {

@@ -7,6 +7,7 @@
  * - 提供全局单例访问（避免跨模块冲突）
  */
 
+import { resolve, dirname, relative, isAbsolute } from "path";
 import type { PluginHookName, PluginHookHandlerMap } from "../types";
 
 // ============================================================================
@@ -30,6 +31,9 @@ export interface PluginHookRegistration<K extends PluginHookName = PluginHookNam
 export interface PluginRegistry {
   // 插件定义
   plugins: Map<string, any>;
+
+  // 插件根目录（用于路径解析）
+  pluginRootDirs: Map<string, string>;
 
   // 扩展注册表
   tools: Map<string, any>;
@@ -68,6 +72,7 @@ export function getOrCreatePluginRegistry(): RegistryFactory {
   // 创建新的 Registry
   const registry: PluginRegistry = {
     plugins: new Map(),
+    pluginRootDirs: new Map(),  // 存储插件根目录
     tools: new Map(),
     hooks: new Map(),
     typedHooks: new Map(),
@@ -220,8 +225,33 @@ function createPluginApi(
       list.sort((a, b) => b.priority - a.priority);
     },
 
-    resolvePath(input: string): string {
-      return input;  // TODO: 实现相对路径解析
+    resolvePath(inputPath: string): string {
+      // 获取插件根目录
+      const rootDir = registry.pluginRootDirs.get(pluginId);
+
+      if (!rootDir) {
+        // 如果没有注册根目录，返回原始路径
+        return inputPath;
+      }
+
+      // 如果已经是绝对路径，直接返回
+      if (isAbsolute(inputPath)) {
+        return inputPath;
+      }
+
+      // 解析相对路径
+      const resolvedPath = resolve(rootDir, inputPath);
+
+      // 安全检查：确保解析后的路径仍在插件目录内（防止路径遍历攻击）
+      const relativePath = relative(rootDir, resolvedPath);
+      if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
+        console.warn(
+          `[Registry] Plugin "${pluginId}" attempted to access path outside its directory: ${inputPath}`
+        );
+        return inputPath; // 返回原始路径，拒绝访问
+      }
+
+      return resolvedPath;
     },
   };
 }
