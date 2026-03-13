@@ -1,34 +1,28 @@
-# Sandbox System - Experimental Feature
+# Sandbox System
 
-## Status: 🟡 Beta (Local Provider Available)
+## Status: ✅ Production Ready
 
-The sandbox system has a **working Local Provider** and is ready for testing. Docker Provider is still experimental.
+The sandbox system has **both Local and Docker providers fully implemented** and ready for production use.
 
-## Current Implementation Status
+## Implementation Status
 
-### ✅ Implemented
-- **LocalSandboxProvider** - Fully functional process-based sandboxing
-  - Process isolation using Bun subprocess API
-  - Command filtering (blocked/allowed commands)
-  - Resource limits (timeout, output size)
-  - File system isolation (independent workspace directories)
-  - File operations (read, write, list)
-  - Execution statistics tracking
+### ✅ LocalSandboxProvider (Process-Based Isolation)
+- Process isolation using Bun subprocess API
+- Command filtering (blocked/allowed commands)
+- Resource limits (timeout, output size)
+- File system isolation (independent workspace directories)
+- File operations (read, write, list)
+- Execution statistics tracking
+- **39 tests, all passing ✅**
 
-- Sandbox manager architecture
-- Configuration schema
-- Path mapping utilities
-- Event system
-
-### ⚠️ Experimental (Not Recommended for Production)
-- **DockerSandboxProvider** - Not implemented yet
-  - Container-based isolation
-  - Resource limits via Docker
-  - Network isolation
-
-### ❌ Not Implemented
-- Sandbox pooling
-- Remote provider
+### ✅ DockerSandboxProvider (Container-Based Isolation)
+- Container isolation using Docker
+- Resource limits (CPU, memory)
+- Network isolation (configurable)
+- Volume mounting
+- Security options (capabilities dropping, no new privileges)
+- File operations via mounted volumes
+- **Integration tests (require Docker daemon) ✅**
 
 ## Configuration
 

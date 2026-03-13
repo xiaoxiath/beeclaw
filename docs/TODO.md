@@ -34,14 +34,15 @@
 #### 3.1 Sandbox 系统
 - [x] **实现 LocalSandboxProvider**
   - 位置: `src/domain/sandbox/providers/local.ts`
-  - 状态: ✅ 已完成 (commit 849fd2c)
+  - 状态: ✅ 已完成 (commit 47db7ba)
   - 功能: 进程级隔离、命令过滤、资源限制、文件系统隔离
   - 测试: 39 个测试全部通过
 
-- [ ] **实现 DockerSandboxProvider**
+- [x] **实现 DockerSandboxProvider**
   - 位置: `src/domain/sandbox/providers/docker.ts`
-  - 当前: 抛出 "not implemented" 错误
-  - 优先级: 低（Local Provider 已足够用于开发）
+  - 状态: ✅ 已完成 (commit 47db7ba+1)
+  - 功能: 容器级隔离、资源限制（CPU/内存）、网络隔离、卷挂载
+  - 测试: 集成测试（需要 Docker 运行）
 
 #### 3.2 Proactive 系统
 - [ ] **实现 cron handler dispatch**

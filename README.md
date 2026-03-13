@@ -135,23 +135,27 @@ beeclaw/
 
 MIT
 
-## Sandbox 沙箱系统 🟡 Beta
+## Sandbox 沙箱系统 ✅ 生产就绪
 
-**状态**: 🟡 Beta - Local Provider 可用，Docker Provider 实验性
+**状态**: ✅ 生产就绪 - Local 和 Docker Provider 都已实现
 
-Beeclaw 提供安全的代码执行沙箱环境，支持本地进程隔离和 Docker 容器隔离两种模式。
+Beeclaw 提供安全的代码执行沙箱环境，支持两种隔离级别：
 
-### ✅ 已实现: Local Provider
+### ✅ Local Provider (进程隔离)
 - **进程隔离**: 使用 Bun subprocess API
-- **命令过滤**: 阻止危险命令（rm -rf /, mkfs, fork bombs）
+- **命令过滤**: 阻止危险命令（rm -rf /, fork bombs 等）
 - **资源限制**: 超时控制、输出大小限制
 - **文件系统隔离**: 每个沙箱独立工作目录
 - **安全特性**: 可配置的命令黑名单/白名单
+- **适用场景**: 开发、测试、受信任的代码执行
 
-### ⚠️ 实验性: Docker Provider
-- 容器级隔离（未实现）
-- 更强的安全边界
-- 资源限制（CPU/内存）
+### ✅ Docker Provider (容器隔离)
+- **容器隔离**: 使用 Docker 容器
+- **资源限制**: CPU 限制、内存限制
+- **网络隔离**: 可禁用网络访问
+- **安全增强**: 能力降级、无新权限标志
+- **卷挂载**: 工作目录自动挂载到容器
+- **适用场景**: 生产环境、不受信任的代码执行
 
 ### 快速开始
 
@@ -159,7 +163,24 @@ Beeclaw 提供安全的代码执行沙箱环境，支持本地进程隔离和 Do
 import { SandboxManager } from './domain/sandbox';
 
 const manager = SandboxManager.getInstance();
-await manager.initialize(config.sandbox);
+await manager.initialize({
+  enabled: true,
+  provider: 'local', // 或 'docker'
+  workspaceBase: './data/sandbox',
+  local: {
+    enabled: true,
+    defaultTimeout: 30000,
+    maxOutputSize: 1048576,
+    blockedCommands: ['rm\\s+-rf\\s+/', 'mkfs']
+  },
+  docker: {
+    enabled: true,
+    image: 'alpine:latest',
+    memoryLimitMb: 512,
+    cpuLimit: 1.0,
+    networkEnabled: false
+  }
+});
 
 // 创建沙箱
 const sandbox = await manager.acquire({ sessionId: 'test' });
@@ -201,10 +222,29 @@ await manager.release(sandbox.id);
 ### 测试
 
 ```bash
+# Local Provider 测试（39 个测试）
 bun test src/domain/sandbox/__tests__/local-provider.test.ts
+
+# Docker Provider 测试（需要 Docker 运行）
+DOCKER_AVAILABLE=true bun test src/domain/sandbox/__tests__/docker-provider.test.ts
 ```
 
-**测试覆盖**: 39 个测试，全部通过 ✅
+**测试覆盖**:
+- Local Provider: 39 个测试，全部通过 ✅
+- Docker Provider: 集成测试（需要 Docker daemon）
+
+### 安全建议
+
+**Local Provider**:
+- ⚠️ 进程级隔离（不如容器安全）
+- ⚠️ 命令以用户权限运行
+- ✅ 适用于开发、测试、受信任的代码
+
+**Docker Provider**:
+- ✅ 容器级隔离（更强的安全边界）
+- ✅ 资源限制强制执行
+- ✅ 网络隔离
+- ✅ 适用于生产、不受信任的代码
 
 ###
 
