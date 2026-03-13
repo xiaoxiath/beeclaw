@@ -4,8 +4,18 @@
  */
 
 import type { Task } from './types';
+import type { ProactiveJobData } from '../../domain/proactive/types';
 import { sendProactiveMessage, confirmDelivery } from '../../domain/session';
 import { getMessageGateway } from '../gateway-channel';
+import {
+  handleRunSkillJob,
+  handleLlmProactiveChatJob,
+  handleSelfEvolutionJob,
+  handleMemoryCompressJob,
+  handleGoalProgressCheckJob,
+  handleCustomJob,
+  handleSendReminderJob,
+} from '../../domain/proactive/job-handlers';
 
 /**
  * Register all default task handlers
@@ -63,10 +73,56 @@ export function registerDefaultHandlers(): void {
 
     console.log(`[Handler:cron] Executing cron task: ${handlerName}`);
 
-    // TODO: Implement cron handler dispatch based on handlerName
-    // This could call specific functions for memory compression, goal checks, etc.
+    // Build ProactiveJobData from task payload
+    const jobData: ProactiveJobData = {
+      scheduleId: task.id || 'cron-task',
+      taskType: handlerName as any,
+      params: params || {},
+      triggeredAt: new Date().toISOString(),
+      triggeredBy: 'cron',
+    };
 
-    console.log(`[Handler:cron] Cron task completed: ${handlerName}`);
+    // Dispatch to specific job handler based on handlerName
+    try {
+      switch (handlerName) {
+        case 'memory_compress':
+          await handleMemoryCompressJob();
+          break;
+
+        case 'llm_proactive_chat':
+          await handleLlmProactiveChatJob(jobData);
+          break;
+
+        case 'self_evolution':
+          await handleSelfEvolutionJob(jobData);
+          break;
+
+        case 'run_skill':
+          await handleRunSkillJob(jobData);
+          break;
+
+        case 'check_goal_progress':
+          await handleGoalProgressCheckJob();
+          break;
+
+        case 'send_reminder':
+          await handleSendReminderJob(jobData);
+          break;
+
+        case 'custom':
+          await handleCustomJob(jobData);
+          break;
+
+        default:
+          console.warn(`[Handler:cron] Unknown handler: ${handlerName}`);
+          throw new Error(`Unknown cron handler: ${handlerName}`);
+      }
+
+      console.log(`[Handler:cron] ✅ Cron task completed: ${handlerName}`);
+    } catch (error) {
+      console.error(`[Handler:cron] ❌ Cron task failed: ${handlerName}`, error);
+      throw error;
+    }
   });
 
   // Reminder handler - sends reminders to users

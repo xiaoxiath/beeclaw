@@ -20,3 +20,13 @@ export {
   checkPreferenceTriggers,
   type PreferenceExpression,
 } from './preference-learning';
+
+export {
+  recordQuery,
+  detectPatterns,
+  getRecentQueries,
+  clearQueryTracking,
+  getQueryTrackingStats,
+  type QueryRecord,
+  type QueryPattern,
+} from './query-tracking';

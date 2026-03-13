@@ -45,16 +45,18 @@
   - 测试: 集成测试（需要 Docker 运行）
 
 #### 3.2 Proactive 系统
-- [ ] **实现 cron handler dispatch**
-  - 位置: `src/app/dispatcher/handlers.ts:66`
-  - 当前: 注释掉的 TODO
-  - 功能: 基于 handlerName 分发 cron 任务
+- [x] **实现 cron handler dispatch**
+  - 位置: `src/app/dispatcher/handlers.ts`
+  - 状态: ✅ 已完成 (2026-03-13)
+  - 功能: 基于 handlerName 分发 cron 任务到对应的 job handlers
+  - 测试: 10 个测试全部通过
 
 #### 3.3 Evolution 模块
-- [ ] **实现 recordQuery**
-  - 位置: `src/app/routes/proactive.ts`
-  - 当前: 注释掉的 TODO
-  - 功能: 在 evolution 模块中记录查询
+- [x] **实现 recordQuery**
+  - 位置: `src/domain/agent/evolution/query-tracking.ts`
+  - 状态: ✅ 已完成 (2026-03-13)
+  - 功能: 记录用户查询、检测模式、智能建议技能创建
+  - 测试: 35 个测试全部通过
 
 ### 4. 类型改进
 

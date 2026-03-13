@@ -10,7 +10,7 @@ import { evaluatePatterns } from '../../domain/proactive/triggers';
 import { getGoalStore } from '../../domain/agent/goal/store';
 import { initFeishuWSClient, getFeishuWSClient } from '../../adapter/feishu';
 import type { AIProvider, FeishuConfig } from '../../infra/config/schema';
-import { checkReflectionTriggers, checkPreferenceTriggers } from '../../domain/agent/evolution';
+import { checkReflectionTriggers, checkPreferenceTriggers, recordQuery } from '../../domain/agent/evolution';
 import type { TokenStatsConfig } from '../../domain/agent';
 import { MessageDeduplicator } from '../../infra/utils/deduplicator';
 import { GracefulShutdown } from '../../infra/utils/graceful-shutdown';
@@ -369,8 +369,11 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       }
 
       // Record query for pattern detection
-      // TODO: Implement recordQuery in evolution module
-      // recordQuery(messageText);
+      recordQuery(messageText, {
+        channel: 'feishu',
+        userId: event.event.sender?.sender_id?.open_id,
+        sessionId: sessionId,
+      });
     } catch (error) {
       // Non-critical - evolution should not block message processing
       console.log('[Evolution] Analysis failed (non-critical):', error);
