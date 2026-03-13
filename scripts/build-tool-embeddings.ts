@@ -9,9 +9,17 @@
  *   - 为所有工具生成 embeddings
  *   - 保存到 data/tool-embeddings.json
  *   - 加快启动速度
+ *
+ * 配置：
+ *   使用 beeclaw.json 中的 toolSelector.embedding 配置
+ *   如果未配置，会按以下优先级回退：
+ *   1. toolSelector.embedding
+ *   2. memory.search.vector
+ *   3. default provider
+ *   4. local (fallback)
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 // 动态导入，因为这是脚本
@@ -21,7 +29,67 @@ async function main() {
   try {
     // 导入必要的模块
     const { getAllToolsForAI } = await import('../src/domain/agent/tools');
-    const { openai } = await import('../src/adapter/openai');
+    const { createEmbeddingProvider } = await import('../src/domain/memory/embeddings');
+    const { loadConfig } = await import('../src/infra/config');
+
+    // 加载配置
+    const config = await loadConfig();
+
+    // 构建 embedding 配置（与 app/index.ts 中的 buildEmbeddingConfig 逻辑一致）
+    let embeddingConfig: any = null;
+
+    // 1. 优先使用 toolSelector.embedding
+    if (config.toolSelector?.embedding) {
+      console.log('📝 Using toolSelector.embedding config');
+      embeddingConfig = {
+        type: config.toolSelector.embedding.provider || 'auto',
+        apiKey: config.toolSelector.embedding.apiKey,
+        baseUrl: config.toolSelector.embedding.baseUrl,
+        model: config.toolSelector.embedding.model,
+        dims: config.toolSelector.embedding.dims,
+      };
+    }
+    // 2. 回退到 memory.search.vector
+    else if (config.memory?.search?.vector?.enabled !== false) {
+      const vectorConfig = config.memory?.search?.vector;
+      if (vectorConfig && vectorConfig.provider !== 'auto') {
+        console.log('📝 Using memory.search.vector config for embeddings');
+        embeddingConfig = {
+          type: vectorConfig.provider,
+          model: vectorConfig.model,
+          dims: vectorConfig.dims,
+        };
+      }
+    }
+
+    // 3. 回退到默认 AI provider
+    if (!embeddingConfig) {
+      const defaultProvider = config.providers?.find((p: any) => p.default);
+      if (defaultProvider) {
+        console.log(`📝 Using default AI provider (${defaultProvider.type}) for embeddings`);
+        embeddingConfig = {
+          type: defaultProvider.type as any,
+          apiKey: defaultProvider.apiKey,
+          baseUrl: defaultProvider.baseUrl,
+        };
+      }
+    }
+
+    // 4. 最终回退到 local
+    if (!embeddingConfig) {
+      console.log('⚠️  No embedding provider configured, using local fallback');
+      embeddingConfig = { type: 'local' };
+    }
+
+    // 创建 embedding provider
+    const embeddingProvider = createEmbeddingProvider(embeddingConfig);
+    if (!embeddingProvider) {
+      throw new Error('Failed to create embedding provider with config: ' + JSON.stringify(embeddingConfig));
+    }
+
+    console.log(`✅ Embedding provider: ${embeddingProvider.id}`);
+    console.log(`   Model: ${embeddingProvider.model}`);
+    console.log(`   Dimensions: ${embeddingProvider.dims}\n`);
 
     const allTools = getAllToolsForAI();
     console.log(`📊 Found ${allTools.length} tools\n`);
@@ -36,14 +104,11 @@ async function main() {
 
       console.log(`⏳ Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allTools.length / batchSize)}...`);
 
-      const response = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: texts,
-      });
+      const embeddingsBatch = await embeddingProvider.embedBatch(texts);
 
       for (let j = 0; j < batch.length; j++) {
         const tool = batch[j];
-        const embedding = response.data[j].embedding;
+        const embedding = embeddingsBatch[j];
 
         embeddings[tool.function.name] = {
           toolName: tool.function.name,
@@ -53,8 +118,8 @@ async function main() {
         };
       }
 
-      // 避免触发 rate limit
-      if (i + batchSize < allTools.length) {
+      // 避免触发 rate limit（仅对需要 API 调用的 provider）
+      if (i + batchSize < allTools.length && embeddingProvider.id !== 'local') {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }

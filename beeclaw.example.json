@@ -90,6 +90,27 @@
     "notifyOnHighConfidence": true,
     "sensitivePatterns": ["password", "passwd", "secret", "api_key", "token", "private_key", "密钥", "密码"]
   },
+  "toolSelector": {
+    "strategy": "hybrid",
+    "maxTools": 30,
+    "embedding": {
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "apiKey": "${OPENAI_API_KEY}"
+    },
+    "cache": {
+      "enabled": true,
+      "maxSize": 1000,
+      "ttl": 3600000
+    },
+    "rules": {
+      "enabled": true
+    },
+    "semantic": {
+      "enabled": true,
+      "fallbackToCore": true
+    }
+  },
   "mcp": {
     "enabled": true,
     "servers": [

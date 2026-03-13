@@ -1,7 +1,7 @@
 /**
  * Semantic Tool Selector - 语义化工具选择器
  *
- * 使用 OpenAI Embeddings API 计算工具和用户查询的语义相似度
+ * 使用配置的 Embedding Provider 计算工具和用户查询的语义相似度
  *
  * 工作流程：
  * 1. 初始化时为所有工具生成 embedding
@@ -16,7 +16,7 @@
 
 import { getAllToolsForAI } from './tools';
 import { logger } from '../../infra/observability/logger';
-import { getConfig } from '../../infra/config';
+import { getEmbeddingProvider } from '../memory/vector-store';
 import type { OpenAITool, ChatMessage } from './types';
 
 interface ToolEmbedding {
@@ -24,42 +24,6 @@ interface ToolEmbedding {
   embedding: number[];
   description: string;
   examples: string[];
-}
-
-const EMBEDDING_MODEL = 'text-embedding-3-small'; // 便宜且快速
-const EMBEDDING_DIMENSION = 1536;
-
-/**
- * Call OpenAI Embeddings API
- */
-async function createEmbedding(text: string | string[]): Promise<number[][]> {
-  const provider = getProvider();
-
-  if (!provider || provider.type !== 'openai') {
-    throw new Error('OpenAI provider required for embeddings');
-  }
-
-  const input = Array.isArray(text) ? text : [text];
-
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${provider.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input,
-      }),
-    });
-
-  if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`OpenAI Embeddings API error: ${response.status} ${error}`);
-    }
-
-    const data = await response.json();
-    return data.data.map((item: any) => item.embedding);
 }
 
 export class SemanticToolSelector {
@@ -83,6 +47,16 @@ export class SemanticToolSelector {
   }
 
   private async doInitialize(): Promise<void> {
+    const provider = getEmbeddingProvider();
+
+    if (!provider) {
+      throw new Error(
+        'Embedding provider not initialized. ' +
+        'Please configure embedding provider in beeclaw.json under "toolSelector.embedding" or "memory.search.vector". ' +
+        'Example: {"toolSelector": {"embedding": {"provider": "zhipu", "apiKey": "..."}}}'
+      );
+    }
+
     const startTime = Date.now();
     const allTools = getAllToolsForAI();
 
@@ -90,7 +64,20 @@ export class SemanticToolSelector {
 
     // 尝试从缓存加载
     const cachedEmbeddings = await this.loadEmbeddingsFromCache();
-    if (cachedEmbeddings) {
+
+    // 检查缓存文件的维度是否匹配当前 provider
+    if (cachedEmbeddings && cachedEmbeddings.size > 0) {
+      const firstEmbedding = cachedEmbeddings.values().next().value;
+      if (firstEmbedding && firstEmbedding.embedding.length !== provider.dimensions) {
+        logger.warn(
+          `[SemanticSelector] Cache dimension mismatch (cached: ${firstEmbedding.embedding.length}, provider: ${provider.dimensions}). Rebuilding...`
+        );
+        // 清除不兼容的缓存
+        await this.reset();
+        // 重新开始初始化
+        return this.doInitialize();
+      }
+
       this.toolEmbeddings = cachedEmbeddings;
       this.isInitialized = true;
       logger.info(`[SemanticSelector] Loaded ${this.toolEmbeddings.size} embeddings from cache`, {
@@ -100,7 +87,7 @@ export class SemanticToolSelector {
     }
 
     // 批量生成 embeddings
-    const batchSize = 50; // OpenAI API 限制
+    const batchSize = 50; // API 限制
     const batches: OpenAITool[][] = [];
 
     for (let i = 0; i < allTools.length; i += batchSize) {
@@ -112,14 +99,11 @@ export class SemanticToolSelector {
       const texts = batch.map(tool => this.buildSemanticText(tool));
 
       try {
-        const response = await openai.embeddings.create({
-          model: EMBEDDING_MODEL,
-          input: texts,
-        });
+        const embeddings = await provider.embedBatch!(texts);
 
         for (let j = 0; j < batch.length; j++) {
           const tool = batch[j];
-          const embedding = response.data[j].embedding;
+          const embedding = embeddings[j];
 
           this.toolEmbeddings.set(tool.function.name, {
             toolName: tool.function.name,
@@ -305,39 +289,25 @@ export class SemanticToolSelector {
   }
 
  /**
-   * Generate text的 embedding
+   * Generate text embedding using configured provider
    */
   private async generateEmbedding(text: string): Promise<number[]> {
-    const config = getConfig();
-    const provider = config.providers.find((p: any) => p.type === 'openai');
+    const provider = getEmbeddingProvider();
 
     if (!provider) {
-      throw new Error('OpenAI provider not configured. Please add a provider with type "openai" to beeclaw.json config.');
+      throw new Error(
+        'Embedding provider not initialized. ' +
+        'Please configure embedding provider in beeclaw.json under "toolSelector.embedding" or "memory.search.vector". ' +
+        'Example: {"toolSelector": {"embedding": {"provider": "zhipu", "apiKey": "..."}}}'
+      );
     }
 
-    const apiKey = provider.apiKey;
-
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: text,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Embedding API failed: ${response.statusText}`);
+    try {
+      return await provider.embed(text);
+    } catch (error) {
+      logger.error('[SemanticSelector] Embedding generation failed', error);
+      throw error;
     }
-
-    const data = await response.json();
-    return data.data[0].embedding;
-  } catch (error) {
-    logger.error('[SemanticSelector] Failed to generate embedding', error);
-    throw error;
   }
 
   /**

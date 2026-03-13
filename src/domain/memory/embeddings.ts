@@ -243,29 +243,44 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
 // ============================================================================
 
 export function createEmbeddingProvider(config: EmbeddingProviderConfig): EmbeddingProvider | null {
-  switch (config.type) {
+  const type = config.type === 'auto' ? 'openai' : config.type;
+
+  // Validate API key requirement
+  if ((type === 'openai' || type === 'zhipu' || type === 'minimax') && !config.apiKey) {
+    throw new Error(
+      `Embedding provider "${type}" requires apiKey. ` +
+      `Please set apiKey in beeclaw.json or use environment variable. ` +
+      `Example: {"toolSelector": {"embedding": {"provider": "${type}", "apiKey": "\${${type.toUpperCase()}_API_KEY}"}}}`
+    );
+  }
+
+  switch (type) {
     case 'openai':
-      if (!config.apiKey) return null;
       return new OpenAIEmbeddingProvider({
-        apiKey: config.apiKey,
+        apiKey: config.apiKey!,
         model: config.model,
         baseUrl: config.baseUrl,
         dims: config.dims,
       });
 
     case 'zhipu':
-      if (!config.apiKey) return null;
       return new ZhipuEmbeddingProvider({
-        apiKey: config.apiKey,
+        apiKey: config.apiKey!,
         model: config.model,
         dims: config.dims,
       });
 
     case 'minimax':
-      if (!config.apiKey) return null;
+      if (!config.apiKey) {
+        throw new Error(
+          'MiniMax embedding provider requires apiKey and groupId. ' +
+          'Please set these in beeclaw.json. ' +
+          'Example: {"toolSelector": {"embedding": {"provider": "minimax", "apiKey": "${MINIMAX_API_KEY}"}}}'
+        );
+      }
       return new MiniMaxEmbeddingProvider({
-        apiKey: config.apiKey,
-        groupId: '', // 需要额外配置
+        apiKey: config.apiKey!,
+        groupId: '', // 需要额外配置 - TODO: Add groupId to config schema
         model: config.model,
         dims: config.dims,
       });
@@ -273,22 +288,11 @@ export function createEmbeddingProvider(config: EmbeddingProviderConfig): Embedd
     case 'local':
       return new LocalEmbeddingProvider();
 
-    case 'auto':
     default:
-      // 尝试从环境变量自动检测
-      const openaiKey = process.env.OPENAI_API_KEY;
-      const zhipuKey = process.env.ZHIPU_API_KEY;
-
-      if (openaiKey) {
-        return new OpenAIEmbeddingProvider({ apiKey: openaiKey });
-      }
-      if (zhipuKey) {
-        return new ZhipuEmbeddingProvider({ apiKey: zhipuKey });
-      }
-
-      // 回退到本地
-      console.log('[Embeddings] No API key found, using local embedding');
-      return new LocalEmbeddingProvider();
+      throw new Error(
+        `Unsupported embedding provider: ${type}. ` +
+        `Supported providers: openai, zhipu, minimax, local, auto`
+      );
   }
 }
 

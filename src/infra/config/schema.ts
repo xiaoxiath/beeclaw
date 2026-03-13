@@ -25,6 +25,15 @@ export const CorsConfigSchema = z.object({
   credentials: z.boolean().default(true),
 });
 
+// Embedding Provider schema
+export const EmbeddingProviderSchema = z.object({
+  provider: z.enum(['openai', 'zhipu', 'minimax', 'local', 'auto']).default('auto'),
+  apiKey: z.string().optional(),
+  baseUrl: z.string().optional(),
+  model: z.string().optional(),
+  dims: z.number().optional(),
+});
+
 // AI Provider schema
 export const AIProviderSchema = z.object({
   name: z.string(),
@@ -231,6 +240,25 @@ export const ExtractionConfigSchema = z.object({
   ]),
 });
 
+// Tool Selector configuration schema
+export const ToolSelectorConfigSchema = z.object({
+  strategy: z.enum(['all', 'layered', 'hybrid', 'semantic']).default('hybrid'),
+  maxTools: z.number().min(10).max(100).default(30),
+  embedding: EmbeddingProviderSchema.optional(),
+  cache: z.object({
+    enabled: z.boolean().default(true),
+    maxSize: z.number().default(1000),
+    ttl: z.number().default(3600000),
+  }).optional(),
+  rules: z.object({
+    enabled: z.boolean().default(true),
+  }).optional(),
+  semantic: z.object({
+    enabled: z.boolean().default(true),
+    fallbackToCore: z.boolean().default(true),
+  }).optional(),
+});
+
 // MCP Server configuration schema
 export const MCPServerConfigSchema = z.object({
   id: z.string(),
@@ -320,6 +348,7 @@ export const AppConfigSchema = z.object({
   agentDisplay: AgentDisplayConfigSchema.default({}),
   compression: CompressionConfigSchema.default({}),
   extraction: ExtractionConfigSchema.default({}),
+  toolSelector: ToolSelectorConfigSchema.optional(),
   mcp: MCPConfigSchema.default({}),
   hooks: HooksConfigSchema.default({}),
   sandbox: SandboxConfigSchema.default({}),
@@ -331,6 +360,7 @@ export const AppConfigSchema = z.object({
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type CorsConfig = z.infer<typeof CorsConfigSchema>;
+export type EmbeddingProviderConfigType = z.infer<typeof EmbeddingProviderSchema>;
 export type AIProvider = z.infer<typeof AIProviderSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type SessionStorageConfig = z.infer<typeof SessionStorageConfigSchema>;
@@ -350,6 +380,7 @@ export type FinanceConfig = z.infer<typeof FinanceConfigSchema>;
 export type AgentDisplayConfig = z.infer<typeof AgentDisplayConfigSchema>;
 export type CompressionConfig = z.infer<typeof CompressionConfigSchema>;
 export type ExtractionConfigSchemaType = z.infer<typeof ExtractionConfigSchema>;
+export type ToolSelectorConfig = z.infer<typeof ToolSelectorConfigSchema>;
 export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 export type HooksConfig = z.infer<typeof HooksConfigSchema>;

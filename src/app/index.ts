@@ -47,8 +47,9 @@ import { getMessageGateway } from './gateway-channel';
 import { getTaskDispatcher } from './dispatcher';
 
 // Types
-import type { AIProvider, AppConfig } from '../infra/config/schema';
+import type { AIProvider, AppConfig, EmbeddingProviderConfigType } from '../infra/config/schema';
 import type { TokenStatsConfig } from '../domain/agent/context';
+import type { EmbeddingProviderConfig } from '../domain/memory/embeddings';
 
 // Global app state (singleton)
 let appState: {
@@ -64,6 +65,52 @@ let appState: {
   model: '',
   agent: null,
 };
+
+/**
+ * Build Embedding Provider Configuration
+ * Priority: toolSelector.embedding > memory.search.vector > default provider > local fallback
+ */
+function buildEmbeddingConfig(appConfig: AppConfig): EmbeddingProviderConfig | null {
+  // 1. Prefer toolSelector.embedding
+  if (appConfig.toolSelector?.embedding) {
+    logger.info('[App] Using toolSelector.embedding config');
+    return {
+      type: appConfig.toolSelector.embedding.provider || 'auto',
+      apiKey: appConfig.toolSelector.embedding.apiKey,
+      baseUrl: appConfig.toolSelector.embedding.baseUrl,
+      model: appConfig.toolSelector.embedding.model,
+      dims: appConfig.toolSelector.embedding.dims,
+    };
+  }
+
+  // 2. Fallback to memory.search.vector
+  if (appConfig.memory?.search?.vector?.enabled !== false) {
+    const vectorConfig = appConfig.memory?.search?.vector;
+    if (vectorConfig && vectorConfig.provider !== 'auto') {
+      logger.info('[App] Using memory.search.vector config for embeddings');
+      return {
+        type: vectorConfig.provider,
+        model: vectorConfig.model,
+        dims: vectorConfig.dims,
+      };
+    }
+  }
+
+  // 3. Fallback to default AI provider
+  const defaultProvider = appConfig.providers?.find((p: any) => p.default);
+  if (defaultProvider) {
+    logger.info(`[App] Using default AI provider (${defaultProvider.type}) for embeddings`);
+    return {
+      type: defaultProvider.type as any,
+      apiKey: defaultProvider.apiKey,
+      baseUrl: defaultProvider.baseUrl,
+    };
+  }
+
+  // 4. Final fallback to local
+  logger.warn('[App] No embedding provider configured, using local fallback');
+  return { type: 'local' };
+}
 
 /**
  * Get token stats config from unified config
@@ -301,32 +348,65 @@ export async function initApp(options: InitOptions = {}): Promise<{
   });
 
   // 10.6. [P3 Enhancement] Initialize P3 modules
-  // Initialize vector store (optional - requires embedding provider)
-  // Create embedding config from default provider
-  const embeddingConfig = {
-    type: 'auto' as const,
-    apiKey: defaultProvider.apiKey,
-    baseUrl: defaultProvider.baseUrl,
-  };
+  // Initialize embedding provider for tool selector and vector store
+  const embeddingConfig = buildEmbeddingConfig(config);
+  if (embeddingConfig) {
+    try {
+      const embeddingProvider = createEmbeddingProvider(embeddingConfig);
 
-  const embeddingProvider = createEmbeddingProvider(embeddingConfig);
-  if (embeddingProvider) {
-    // Adapt embeddings.ts EmbeddingProvider to vector-store.ts EmbeddingProvider
-    setEmbeddingProvider({
-      embed: (text) => embeddingProvider.embed(text),
-      embedBatch: (texts) => embeddingProvider.embedBatch(texts),
-      dimensions: embeddingProvider.dims,
-      name: embeddingProvider.id,
-    });
+      if (!embeddingProvider) {
+        throw new Error('Failed to create embedding provider with config: ' + JSON.stringify(embeddingConfig));
+      }
 
-    // Initialize vector store with memory path
-    const vectorStore = getVectorStore({
-      basePath: memoryPath,
-      autoPersist: true,
-    });
+      // Adapt embeddings.ts EmbeddingProvider to vector-store.ts EmbeddingProvider
+      setEmbeddingProvider({
+        embed: (text) => embeddingProvider.embed(text),
+        embedBatch: (texts) => embeddingProvider.embedBatch(texts),
+        dimensions: embeddingProvider.dims,
+        name: embeddingProvider.id,
+      });
 
-    // Load existing index if available
-    await vectorStore.load();
+      logger.info(
+        `[App] Embedding provider initialized: ${embeddingProvider.id} ` +
+        `(model: ${embeddingProvider.model}, dims: ${embeddingProvider.dims})`
+      );
+
+      // Initialize vector store with memory path
+      const vectorStore = getVectorStore({
+        basePath: memoryPath,
+        autoPersist: true,
+      });
+
+      // Load existing index if available
+      await vectorStore.load();
+    } catch (error) {
+      logger.error('[App] Failed to initialize embedding provider', error);
+
+      // If semantic matching is enabled, but embedding initialization failed, throw error
+      if (config.toolSelector?.strategy === 'semantic' ||
+          config.toolSelector?.strategy === 'hybrid') {
+        throw new Error(
+          'Embedding provider initialization failed but required for tool selector strategy. ' +
+          'Please check your embedding configuration or switch to "all"/"layered" strategy.'
+        );
+      }
+
+      // Otherwise, use local fallback
+      logger.warn('[App] Falling back to local embedding provider');
+      try {
+        const localProvider = createEmbeddingProvider({ type: 'local' });
+        if (localProvider) {
+          setEmbeddingProvider({
+            embed: (text) => localProvider.embed(text),
+            embedBatch: (texts) => localProvider.embedBatch(texts),
+            dimensions: localProvider.dims,
+            name: localProvider.id,
+          });
+        }
+      } catch (fallbackError) {
+        logger.error('[App] Failed to initialize local fallback', fallbackError);
+      }
+    }
   }
 
   // Initialize lifecycle manager (optional)
