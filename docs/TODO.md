@@ -32,15 +32,16 @@
 ### 3. 未完成的实现
 
 #### 3.1 Sandbox 系统
-- [ ] **实现 LocalSandboxProvider**
+- [x] **实现 LocalSandboxProvider**
   - 位置: `src/domain/sandbox/providers/local.ts`
-  - 当前: 抛出 "not implemented" 错误
-  - 选项: 实现或完全移除
+  - 状态: ✅ 已完成 (commit 849fd2c)
+  - 功能: 进程级隔离、命令过滤、资源限制、文件系统隔离
+  - 测试: 39 个测试全部通过
 
 - [ ] **实现 DockerSandboxProvider**
   - 位置: `src/domain/sandbox/providers/docker.ts`
   - 当前: 抛出 "not implemented" 错误
-  - 依赖: Local Provider 先实现
+  - 优先级: 低（Local Provider 已足够用于开发）
 
 #### 3.2 Proactive 系统
 - [ ] **实现 cron handler dispatch**

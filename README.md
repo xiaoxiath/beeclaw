@@ -135,38 +135,76 @@ beeclaw/
 
 MIT
 
-## Sandbox 沙箱系统 ⚠️ 实验性功能
+## Sandbox 沙箱系统 🟡 Beta
 
-**状态**: 🧪 实验性 - 尚未完全实现
+**状态**: 🟡 Beta - Local Provider 可用，Docker Provider 实验性
 
 Beeclaw 提供安全的代码执行沙箱环境，支持本地进程隔离和 Docker 容器隔离两种模式。
 
-### ⚠️ 重要提示
+### ✅ 已实现: Local Provider
+- **进程隔离**: 使用 Bun subprocess API
+- **命令过滤**: 阻止危险命令（rm -rf /, mkfs, fork bombs）
+- **资源限制**: 超时控制、输出大小限制
+- **文件系统隔离**: 每个沙箱独立工作目录
+- **安全特性**: 可配置的命令黑名单/白名单
 
-**当前状态**:
-- ✅ 架构设计和配置已完成
-- ⚠️ Local Provider 和 Docker Provider **尚未实现**（存根代码）
-- ⚠️ 使用时会抛出错误
+### ⚠️ 实验性: Docker Provider
+- 容器级隔离（未实现）
+- 更强的安全边界
+- 资源限制（CPU/内存）
 
-**建议**: 在配置文件中**禁用沙箱功能**：
+### 快速开始
+
+```typescript
+import { SandboxManager } from './domain/sandbox';
+
+const manager = SandboxManager.getInstance();
+await manager.initialize(config.sandbox);
+
+// 创建沙箱
+const sandbox = await manager.acquire({ sessionId: 'test' });
+
+// 执行命令
+const result = await sandbox.exec('echo "Hello World"');
+
+// 文件操作
+await sandbox.writeFile('test.txt', 'content');
+const content = await sandbox.readFile('test.txt');
+
+// 销毁沙箱
+await manager.release(sandbox.id);
+```
+
+### 配置
 
 ```json
 {
   "sandbox": {
-    "enabled": false
+    "enabled": true,
+    "provider": "local",
+    "workspaceBase": "./data/sandbox",
+    "local": {
+      "enabled": true,
+      "defaultTimeout": 30000,
+      "maxOutputSize": 1048576,
+      "blockedCommands": [
+        "rm\\s+-rf\\s+/",
+        "mkfs",
+        "dd\\s+if=",
+        ":(){ :|:& };:"
+      ]
+    }
   }
 }
 ```
 
-### 计划特性
-- **多种隔离级别**: 本地进程（开发）、Docker 容器（生产）
-- **安全保护**: 命令黑名单、路径遍历检测、资源限制
-- **虚拟路径**: 真实路径映射，防止路径泄露
-- **容器池**: 预热容器，减少冷启动延迟
+### 测试
 
-### 当前状态
+```bash
+bun test src/domain/sandbox/__tests__/local-provider.test.ts
+```
 
-详见 [Sandbox 实验性功能文档](./docs/experimental/sandbox-system.md)
+**测试覆盖**: 39 个测试，全部通过 ✅
 
 ###
 
