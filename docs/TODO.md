@@ -109,28 +109,33 @@
   - 示例: `src/domain/proactive/job-handlers.ts`, `src/app/index.ts`
   - 原因: 违反 CLAUDE.md 最佳实践
   - 好处: 编译时验证、更好的 IDE 支持
+  - **状态**: ⏸️ 部分完成 (2026-03-13) - 已修复 job-handlers.ts，其他文件需要评估是否可以安全修改
 
 #### 6.2 功能完善
-- [ ] **实现 Web adapter connection tracking**
+- [x] **实现 Web adapter connection tracking**
   - 位置: `src/adapter/web/adapter.ts`
   - 当前: `connections: 0` (硬编码)
   - 功能: 跟踪活跃的 WebSocket 连接数
+  - **状态**: ✅ 已完成 (2026-03-13) - 使用 Set 跟踪连接，返回实际数量
 
-- [ ] **实现 Feishu disconnect 方法**
+- [x] **实现 Feishu disconnect 方法**
   - 位置: `src/adapter/feishu/adapter.ts`
   - 当前: 注释掉的 TODO
   - 功能: 正确断开 Feishu WebSocket 连接
+  - **状态**: ✅ 已完成 (2026-03-13) - 调用 client.stop() 断开连接
 
-- [ ] **获取实际的文件修改时间**
+- [x] **获取实际的文件修改时间**
   - 位置: `src/adapter/web/server/routes/memory.ts`
   - 当前: `new Date().toISOString()`
   - 改进: 从文件系统获取实际 mtime
+  - **状态**: ✅ 已完成 (2026-03-13) - 添加 stat() 方法，使用 fs.statSync()
 
 #### 6.3 配置改进
-- [ ] **添加 MiniMax groupId 配置**
+- [x] **添加 MiniMax groupId 配置**
   - 位置: `src/domain/memory/embeddings.ts:283`
   - 当前: 硬编码为空字符串
   - 改进: 添加到配置 schema
+  - **状态**: ✅ 已完成 (2026-03-13) - 添加 groupId 到 EmbeddingProviderSchema
 
 - [ ] **完善 Plugin SDK 映射**
   - 位置: `src/adapter/plugins/loader/index.ts`
@@ -160,8 +165,8 @@
 |------|------|--------|------|
 | 高优先级 | 2 | 2 | 0 |
 | 中优先级 | 10 | 10 | 0 |
-| 低优先级 | 11 | 0 | 11 |
-| **总计** | **23** | **12** | **11** |
+| 低优先级 | 11 | 4 | 7 |
+| **总计** | **23** | **16** | **7** |
 
 ### ✅ 代码清理完成（2026-03-13）
 
