@@ -7,6 +7,7 @@
 
 import type { ContentBlock } from '../../../types/content-block';
 import { renderMessageCard, renderEmptyCard, type Card } from './message-renderer';
+import type { FeishuWSClient } from '../ws-client';
 
 /**
  * StreamingController options
@@ -15,7 +16,7 @@ export interface StreamingControllerOptions {
   /**
    * Feishu API client
    */
-  client: any; // TODO: Type properly
+  client: FeishuWSClient;
 
   /**
    * Parent message ID (to reply to)

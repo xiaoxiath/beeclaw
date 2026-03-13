@@ -5,7 +5,7 @@ import {
   getDateContext,
   clearHolidayCache,
   type HolidayInfo,
-} from '../../holiday';
+} from '../holiday';
 
 const TEST_DATE = new Date('2026-03-01'); // Monday
 const TEST_WEEKEND = new Date('2026-03-07'); // Saturday

@@ -10,8 +10,6 @@
  * - No regex pattern matching needed - LLM understands context naturally
  */
 
-import type { ReflectionTrigger } from './reflection-trigger';
-
 export interface PreferenceExpression {
   type: 'correction' | 'positive' | 'identity' | 'habit' | 'negation';
   category: 'style' | 'format' | 'tech' | 'habits' | 'profile';
@@ -49,7 +47,7 @@ export function getPreferenceLearningContext(_expressions: PreferenceExpression[
  */
 export function checkPreferenceTriggers(
   _userMessage: string,
-  _existingTriggers: ReflectionTrigger[]
+  _existingTriggers: any[]
 ): { hasPreference: boolean; expressions: PreferenceExpression[]; context: string } {
   return { hasPreference: false, expressions: [], context: '' };
 }

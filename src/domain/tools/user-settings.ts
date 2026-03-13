@@ -9,6 +9,7 @@ import { join } from 'path';
 import type { BuiltinToolResult } from './builtin';
 import { getTimezoneFromLocation } from './timezone';
 import { reloadConfig } from '../../infra/config';
+import type { AppConfig } from '../../infra/config/schema';
 
 /**
  * Update user settings tool definition
@@ -63,13 +64,13 @@ export async function executeUpdateUserSettings(params: {
 
     // 2. Update config file
     const configPath = join(process.cwd(), 'beeclaw.json');
-    let config: any = {};
+    let config: Partial<AppConfig>;
 
     try {
       const configContent = readFileSync(configPath, 'utf-8');
-      config = JSON.parse(configContent);
+      config = JSON.parse(configContent) as Partial<AppConfig>;
     } catch (error) {
-      // Config file doesn't exist or is invalid, create new one
+      // Config file doesn't exist or is invalid, create new one with minimal structure
       config = {};
     }
 

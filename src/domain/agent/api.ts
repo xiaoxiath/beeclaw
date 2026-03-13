@@ -1,6 +1,6 @@
 import type { AIProvider } from '../../infra/config/schema';
 import type { AIResponse, ChatMessage, OpenAITool, ToolCall, ToolResult, ToolExecutor } from './types';
-import { retryAICall } from '../../infra/resilience/retry';
+import { getRetryEngine, RETRY_STRATEGIES } from '../../infra/resilience/unified-retry';
 import { logger } from '../../infra/observability/logger';
 
 // Provider-specific configurations
@@ -88,24 +88,34 @@ export async function callAI(options: {
     Object.assign(body, extraBody);
   }
 
-  const response = await retryAICall(async () => {
-    const res = await fetch(`${baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${provider.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+  const engine = getRetryEngine();
+  const retryResult = await engine.execute<Response>(
+    'ai_api_call',
+    async () => {
+      const res = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`AI API error: ${res.status} - ${errorText}`);
-    }
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`AI API error: ${res.status} - ${errorText}`);
+      }
 
-    return res;
-  });
+      return res;
+    },
+    RETRY_STRATEGIES.agent
+  );
 
+  if (!retryResult.success) {
+    throw retryResult.error?.originalError ?? new Error('AI API call failed');
+  }
+
+  const response = retryResult.value!;
   const jsonResponse = await response.json();
 
   // Handle MiniMax reasoning_details - append to content
@@ -161,24 +171,34 @@ export async function* streamAI(options: {
     body.tool_choice = 'auto';
   }
 
-  const response = await retryAICall(async () => {
-    const res = await fetch(`${baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${provider.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+  const engine = getRetryEngine();
+  const retryResult = await engine.execute<Response>(
+    'ai_api_stream',
+    async () => {
+      const res = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`AI API error: ${res.status} - ${errorText}`);
-    }
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`AI API error: ${res.status} - ${errorText}`);
+      }
 
-    return res;
-  });
+      return res;
+    },
+    RETRY_STRATEGIES.agent
+  );
 
+  if (!retryResult.success) {
+    throw retryResult.error?.originalError ?? new Error('AI API stream call failed');
+  }
+
+  const response = retryResult.value!;
   const reader = response.body?.getReader();
   if (!reader) return;
 

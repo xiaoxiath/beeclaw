@@ -5,7 +5,7 @@ import {
   clearWeatherCache,
   fetchWeatherInfo,
   type WeatherInfo,
-} from '../../weather';
+} from '../weather';
 
 describe('Weather Utils', () => {
   beforeEach(() => {

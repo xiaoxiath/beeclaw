@@ -19,7 +19,7 @@ describe('Tool Dependencies', () => {
 
     test('returns sequential config for write tools', () => {
       expect(getToolDependency('memory_write').mode).toBe('sequential');
-      expect(getToolDependency('skill_create').mode).toBe('sequential');
+      expect(getToolDependency('skill_ensure').mode).toBe('sequential');
       expect(getToolDependency('goal_update').mode).toBe('sequential');
     });
 
@@ -36,7 +36,7 @@ describe('Tool Dependencies', () => {
 
     test('returns false for sequential tools', () => {
       expect(isParallelTool('memory_write')).toBe(false);
-      expect(isParallelTool('skill_create')).toBe(false);
+      expect(isParallelTool('skill_ensure')).toBe(false);
     });
   });
 
@@ -48,7 +48,7 @@ describe('Tool Dependencies', () => {
 
     test('returns true for write tools', () => {
       expect(hasSideEffects('memory_write')).toBe(true);
-      expect(hasSideEffects('skill_create')).toBe(true);
+      expect(hasSideEffects('skill_ensure')).toBe(true);
     });
   });
 
@@ -95,21 +95,21 @@ describe('Tool Dependencies', () => {
         { name: 'skill_list' },
         { name: 'goal_get' },
         { name: 'memory_write' },
-        { name: 'skill_create' },
+        { name: 'skill_ensure' },
       ];
       const batches = groupToolCalls(calls);
 
-      // Should be: [memory_read, skill_list, goal_get], [memory_write], [skill_create]
+      // Should be: [memory_read, skill_list, goal_get], [memory_write], [skill_ensure]
       expect(batches).toHaveLength(3);
       expect(batches[0]).toHaveLength(3); // parallel batch
       expect(batches[1]).toHaveLength(1); // memory_write
-      expect(batches[2]).toHaveLength(1); // skill_create
+      expect(batches[2]).toHaveLength(1); // skill_ensure
     });
 
     test('handles all sequential tools', () => {
       const calls = [
         { name: 'memory_write' },
-        { name: 'skill_create' },
+        { name: 'skill_ensure' },
         { name: 'goal_update' },
       ];
       const batches = groupToolCalls(calls);

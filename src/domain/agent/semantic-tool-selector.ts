@@ -170,7 +170,7 @@ export class SemanticToolSelector {
       // Skill
       'skill_list': ['list skills', '列出技能', 'show all skills'],
       'skill_get': ['use skill', '使用技能', 'execute skill', '运行技能'],
-      'skill_create': ['create skill', '创建技能', 'new skill'],
+      'skill_ensure': ['create skill', '创建技能', 'new skill'],
 
       // Goal
       'goal_list': ['list goals', '列出目标', 'my goals'],

@@ -9,20 +9,13 @@ export const SkillGetSchema = z.object({
   name: z.string().describe('Skill name'),
 });
 
-export const SkillCreateSchema = z.object({
+export const SkillEnsureSchema = z.object({
   name: z.string().describe('Skill name (kebab-case)'),
   description: z.string().describe('What the skill does AND when to trigger'),
   content: z.string().optional().describe('SKILL.md body content'),
   tags: z.array(z.string()).optional().describe('Tags for categorization'),
   triggers: z.array(z.string()).optional().describe('Trigger phrases'),
   dependsOn: z.array(z.string()).optional().describe('Dependencies on other skills'),
-});
-
-export const SkillUpdateSchema = z.object({
-  name: z.string().describe('Skill name'),
-  description: z.string().optional().describe('New description'),
-  content: z.string().optional().describe('New SKILL.md body'),
-  tags: z.array(z.string()).optional().describe('New tags'),
 });
 
 export const SkillDeleteSchema = z.object({
@@ -63,80 +56,6 @@ export const skillTools = {
         name: {
           type: 'string',
           description: 'Skill name',
-        },
-      },
-      required: ['name'],
-    },
-  },
-
-  skill_create: {
-    name: 'skill_create',
-    description: `[DEPRECATED] Use skill_ensure instead.
-
-This tool is kept for backward compatibility only. For new code, always use skill_ensure which handles both creating and updating automatically.
-
-Create a new skill. NOTE: For creating skills with proper testing and optimization, use the skill-creator skill (path: skills/skill-creator) which provides a complete workflow including test cases, benchmarking, and iteration. Use skill_create only for quick, simple skill creation when you don't need testing.`,
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: {
-          type: 'string',
-          description: 'Skill name (kebab-case, e.g., "web-scraper")',
-        },
-        description: {
-          type: 'string',
-          description: 'What the skill does AND when to trigger it',
-        },
-        content: {
-          type: 'string',
-          description: 'SKILL.md body content (instructions, examples)',
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Tags for categorization',
-        },
-        triggers: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Phrases that should trigger this skill',
-        },
-        dependsOn: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'List of skill names this skill depends on',
-        },
-      },
-      required: ['name', 'description'],
-    },
-  },
-
-  skill_update: {
-    name: 'skill_update',
-    description: `[DEPRECATED] Use skill_ensure instead.
-
-This tool is kept for backward compatibility only. For new code, always use skill_ensure which handles both creating and updating automatically.
-
-Update an existing skill. NOTE: For substantial improvements, testing, or optimization, use the skill-creator skill instead (path: skills/skill-creator) which provides a complete workflow with evals, benchmarking, and iteration. Use skill_update only for simple, targeted changes like fixing typos or updating descriptions.`,
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: {
-          type: 'string',
-          description: 'Skill name',
-        },
-        description: {
-          type: 'string',
-          description: 'New description',
-        },
-        content: {
-          type: 'string',
-          description: 'New SKILL.md body content',
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'New tags',
         },
       },
       required: ['name'],
@@ -526,36 +445,9 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
       return { success: true, data: skill };
     }
 
-    case 'skill_create': {
-      const parsed = SkillCreateSchema.safeParse(params);
-      if (!parsed.success) {
-        return { success: false, error: parsed.error.message };
-      }
-      return store.create({
-        name: parsed.data.name,
-        description: parsed.data.description,
-        content: parsed.data.content,
-        tags: parsed.data.tags,
-        triggers: parsed.data.triggers,
-        dependsOn: parsed.data.dependsOn,
-      });
-    }
-
-    case 'skill_update': {
-      const parsed = SkillUpdateSchema.safeParse(params);
-      if (!parsed.success) {
-        return { success: false, error: parsed.error.message };
-      }
-      return store.update(parsed.data.name, {
-        description: parsed.data.description,
-        content: parsed.data.content,
-        tags: parsed.data.tags,
-      });
-    }
-
     case 'skill_ensure': {
       // Smart create or update - check if skill exists first
-      const parsed = SkillCreateSchema.safeParse(params);
+      const parsed = SkillEnsureSchema.safeParse(params);
       if (!parsed.success) {
         return { success: false, error: parsed.error.message };
       }

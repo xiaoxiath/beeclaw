@@ -152,10 +152,10 @@ export function getSkillTools(): OpenAITool[] {
 
 export const TOOL_CATEGORIES = {
   memory: ['memory_ls', 'memory_grep', 'memory_read', 'memory_write', 'memory_record'],
-  skill: ['skill_list', 'skill_get', 'skill_create', 'skill_update', 'skill_delete', 'skill_search', 'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set', 'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create'],
+  skill: ['skill_list', 'skill_get', 'skill_ensure', 'skill_delete', 'skill_search', 'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set', 'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create'],
   goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],
   proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once', 'notification_send', 'notification_list', 'notification_mark_read', 'notification_delete', 'notification_history', 'notification_stats'],
-  builtin: [...builtinToolNames],
+  get builtin() { return [...builtinToolNames]; },
   sandbox: ['sandbox_exec', 'sandbox_write_file', 'sandbox_read_file', 'sandbox_list_files', 'sandbox_status'],
   persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],
   feishu: [

@@ -192,19 +192,11 @@ export class ToolIconRegistry {
       label: () => 'Listing available skills',
     });
 
-    this.register('skill_create', {
+    this.register('skill_ensure', {
       iconToken: IconToken.Edit,
       label: (input) => {
         const name = input?.name || 'skill';
-        return `Creating skill: ${name}`;
-      },
-    });
-
-    this.register('skill_update', {
-      iconToken: IconToken.Edit,
-      label: (input) => {
-        const name = input?.name || 'skill';
-        return `Updating skill: ${name}`;
+        return `Creating/updating skill: ${name}`;
       },
     });
 

@@ -18,14 +18,15 @@
   - 缺少: 主提取器功能测试
   - **状态**: ✅ 已完成 (commit 849fd2c) - 新增 128 个测试
 
-- [ ] **为工具模块添加测试**
+- [x] **为工具模块添加测试**
   - 位置: `src/domain/tools/`
   - 缺少测试的关键文件:
-    - `builtin.ts`
-    - `holiday.ts`
-    - `weather.ts`
-    - `timezone.ts`
-    - `user-settings.ts`
+    - `builtin.ts` - ✅ 已有测试（修复了导入问题，删除了废弃的 Task 测试）
+    - `holiday.ts` - ✅ 已有测试（修复了导入路径）
+    - `weather.ts` - ✅ 已有测试（修复了导入路径）
+    - `timezone.ts` - ✅ 新增增强测试（20 个新测试）
+    - `user-settings.ts` - ✅ 新增完整测试（24 个新测试）
+  - **状态**: ✅ 已完成 (2026-03-13) - 总共 159 个测试通过
 
 ## 🟡 中优先级
 
@@ -72,21 +73,23 @@
 
 ### 5. 代码重构
 
-- [ ] **移除已废弃的代码**
+- [x] **移除已废弃的代码**
   - 位置: `src/infra/resilience/retry.ts`
   - 问题: 多个 @deprecated 函数
   - 建议: 迁移到 unified-retry 后删除
+  - **状态**: ✅ 已完成 (2026-03-13) - 删除 654 行代码，迁移到 unified-retry
 
-- [ ] **移除已废弃的工具**
+- [x] **移除已废弃的工具**
   - 位置: `src/domain/skills/tools.ts`
   - 工具: `skill_create`, `skill_update`
   - 状态: 已被 `skill_ensure` 取代
-  - 计划: 在下个主版本中移除
+  - **状态**: ✅ 已完成 (2026-03-13) - 删除 80+ 行代码，更新 16 个文件
 
-- [ ] **清理 evolution 模块中的废弃代码**
+- [x] **清理 evolution 模块中的废弃代码**
   - 位置: `src/domain/agent/evolution/reflection-trigger.ts`
   - 问题: 多个 @deprecated 函数
   - 建议: 评估使用情况后移除
+  - **状态**: ✅ 已完成 (2026-03-13) - 移除 `checkReflectionTriggers` 和 `ReflectionTrigger` 类型，保留统计功能
 
 ## 🟢 低优先级
 
@@ -145,12 +148,52 @@
 
 ## 📊 统计
 
-| 类别 | 数量 |
-|------|------|
-| 高优先级 | 2 |
-| 中优先级 | 10 |
-| 低优先级 | 11 |
-| **总计** | **23** |
+| 类别 | 数量 | 已完成 | 待办 |
+|------|------|--------|------|
+| 高优先级 | 2 | 2 | 0 |
+| 中优先级 | 10 | 8 | 2 |
+| 低优先级 | 11 | 0 | 11 |
+| **总计** | **23** | **10** | **13** |
+
+### ✅ 代码清理完成（2026-03-13）
+
+**Retry 系统清理**:
+- ✅ 删除 `src/infra/resilience/retry.ts` (130 行)
+- ✅ 删除 `src/infra/resilience/__tests__/retry.test.ts` (524 行)
+- ✅ 迁移到 `unified-retry.ts`
+- ✅ 更新 `src/domain/agent/api.ts`
+
+**Skill 工具清理**:
+- ✅ 删除 `skill_create` 和 `skill_update` 工具定义 (80+ 行)
+- ✅ 删除测试代码 (134 行)
+- ✅ 迁移到 `skill_ensure`
+- ✅ 更新 16 个文件的引用
+
+**Evolution 清理**:
+- ✅ 删除 `checkReflectionTriggers()` 函数和测试 (41 行)
+- ✅ 删除 `ReflectionTrigger` 类型导出
+- ✅ 保留统计功能（`recordSkillFailure`, `getReflectionStats`）
+- ✅ 移除 `proactive.ts` 中的调用
+
+**总代码减少**: 909 行删除，154 行新增，净减少 **755 行** 🎉
+
+### ✅ 测试覆盖改进（2026-03-13）
+
+**新增测试文件**:
+1. `timezone.enhanced.test.ts` - 20 个测试（全面覆盖时区解析）
+2. `user-settings.test.ts` - 24 个测试（用户设置功能）
+
+**修复的测试**:
+1. `builtin.test.ts` - 删除废弃的 Task 工具测试，修复导入
+2. `holiday.test.ts` - 修复导入路径
+3. `weather.test.ts` - 修复导入路径
+4. `timezone.test.ts` - 修复导入路径
+
+**修复的问题**:
+1. 修复 `tools.ts` 中的循环依赖（使用 getter 函数）
+2. 删除所有 Task 相关工具的测试引用
+
+**结果**: 工具模块测试从 115 个增加到 159 个，全部通过 ✅
 
 ## 🎯 建议优先级
 

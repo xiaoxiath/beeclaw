@@ -254,7 +254,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_list tool', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'test',
       description: 'Test skill',
     });
@@ -265,7 +265,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_get tool', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'get-test',
       description: 'Test',
       content: 'Skill content',
@@ -276,8 +276,8 @@ describe('Skill Tools', () => {
     expect((result.data as any).name).toBe('get-test');
   });
 
-  test('skill_create tool', () => {
-    const result = executeSkillTool('skill_create', {
+  test('skill_ensure tool', () => {
+    const result = executeSkillTool('skill_ensure', {
       name: 'new-skill',
       description: 'A new skill',
       content: '# New Skill\n\nInstructions here.',
@@ -288,13 +288,13 @@ describe('Skill Tools', () => {
     expect((result.data as any).name).toBe('new-skill');
   });
 
-  test('skill_update tool', () => {
-    executeSkillTool('skill_create', {
+  test('skill_ensure tool', () => {
+    executeSkillTool('skill_ensure', {
       name: 'update-me',
       description: 'Original',
     });
 
-    const result = executeSkillTool('skill_update', {
+    const result = executeSkillTool('skill_ensure', {
       name: 'update-me',
       description: 'Updated description',
     });
@@ -304,7 +304,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_delete tool', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'delete-me',
       description: 'To delete',
     });
@@ -314,7 +314,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_search tool', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'web-fetcher',
       description: 'Fetch web pages',
     });
@@ -326,7 +326,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_record tool', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'record-test',
       description: 'Test',
     });
@@ -341,7 +341,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_maturity tool', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'maturity-test',
       description: 'Test',
     });
@@ -381,7 +381,7 @@ describe('Skill Evals Run', () => {
   });
 
   test('skill_evals_run returns error when no evals defined', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'skill-no-evals',
       description: 'Test skill without evals',
     });
@@ -393,7 +393,7 @@ describe('Skill Evals Run', () => {
 
   test('skill_evals_run runs all evals successfully', () => {
     // Create skill
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'test-skill',
       description: 'Test skill',
     });
@@ -428,7 +428,7 @@ describe('Skill Evals Run', () => {
   });
 
   test('skill_evals_run runs specific eval by ID', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'test-skill-2',
       description: 'Test',
     });
@@ -452,7 +452,7 @@ describe('Skill Evals Run', () => {
   });
 
   test('skill_evals_run returns error for non-existent eval ID', () => {
-    executeSkillTool('skill_create', {
+    executeSkillTool('skill_ensure', {
       name: 'test-skill-3',
       description: 'Test',
     });
@@ -650,7 +650,7 @@ describe('P2 Features', () => {
     });
 
     test('skill_recommend tool', () => {
-      executeSkillTool('skill_create', {
+      executeSkillTool('skill_ensure', {
         name: 'test-skill',
         description: 'Test skill',
         triggers: ['test trigger'],
@@ -686,7 +686,7 @@ describe('P2 Features', () => {
     });
 
     test('skill_performance tool', () => {
-      executeSkillTool('skill_create', {
+      executeSkillTool('skill_ensure', {
         name: 'perf-tool-test',
         description: 'Test',
       });
@@ -725,7 +725,7 @@ describe('P2 Features', () => {
     });
 
     test('skill_analyze_failures tool', () => {
-      executeSkillTool('skill_create', {
+      executeSkillTool('skill_ensure', {
         name: 'analyze-test',
         description: 'Test',
       });
@@ -757,7 +757,7 @@ describe('P2 Features', () => {
     });
 
     test('skill_export tool', () => {
-      executeSkillTool('skill_create', {
+      executeSkillTool('skill_ensure', {
         name: 'export-tool-test',
         description: 'Test',
       });

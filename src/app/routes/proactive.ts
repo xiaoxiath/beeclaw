@@ -10,7 +10,7 @@ import { evaluatePatterns } from '../../domain/proactive/triggers';
 import { getGoalStore } from '../../domain/agent/goal/store';
 import { initFeishuWSClient, getFeishuWSClient } from '../../adapter/feishu';
 import type { AIProvider, FeishuConfig } from '../../infra/config/schema';
-import { checkReflectionTriggers, checkPreferenceTriggers, recordQuery } from '../../domain/agent/evolution';
+import { checkPreferenceTriggers, recordQuery } from '../../domain/agent/evolution';
 import type { TokenStatsConfig } from '../../domain/agent';
 import { MessageDeduplicator } from '../../infra/utils/deduplicator';
 import { GracefulShutdown } from '../../infra/utils/graceful-shutdown';
@@ -353,16 +353,8 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       }
     }
 
-    // Self-evolution: Analyze message for reflection triggers
+    // Self-evolution: Check for preference expressions
     try {
-      const result = checkReflectionTriggers(messageText, {});
-      if (result.shouldReflect && result.trigger) {
-        console.log(`[Evolution] Detected trigger: ${result.trigger.type} (${result.trigger.severity})`);
-        // Store trigger for later reflection (could trigger skill improvement)
-        // In a full implementation, this would queue a reflection task
-      }
-
-      // Check for preference expressions
       const preferenceTrigger = checkPreferenceTriggers(messageText, []);
       if (preferenceTrigger && preferenceTrigger.hasPreference) {
         console.log(`[Evolution] Detected preference:`, preferenceTrigger.expressions);

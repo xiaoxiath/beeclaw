@@ -153,7 +153,7 @@ main().catch(console.error);
  * ✅ 选中 26 个工具:
  *   - skill_list
  *   - skill_get
- *   - skill_create
+ *   - skill_ensure
  *   - memory_ls
  *   - memory_read
  *   ...

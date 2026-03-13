@@ -11,7 +11,6 @@ import {
   checkConsecutiveFailures,
   clearReflectionTracking,
   getReflectionStats,
-  checkReflectionTriggers,
 } from '../reflection-trigger';
 
 /**
@@ -146,15 +145,6 @@ describe('Reflection Statistics (for maturity tracking)', () => {
       const stats = getReflectionStats();
       expect(stats.recentFailures).toBe(0);
       expect(stats.failureDetails).toHaveLength(0);
-    });
-  });
-
-  describe('Deprecated checkReflectionTriggers', () => {
-    test('always returns false (LLM handles detection)', () => {
-      const result = checkReflectionTriggers('不对，不是这样', {});
-      expect(result.shouldReflect).toBe(false);
-      expect(result.trigger).toBeNull();
-      expect(result.context).toBe('');
     });
   });
 });

@@ -1,12 +1,10 @@
 /**
- * Evolution Statistics System
- *
- * [P2 FIX 4.6] Cleaned up deprecated dead code.
+ * Skill Failure Statistics System
  *
  * Records skill usage statistics for maturity tracking.
- * Trigger detection is handled by LLM through System Prompt.
+ * Provides data for LLM-driven reflection decisions.
  *
- * @experimental
+ * @module evolution/reflection-trigger
  */
 
 // Track recent skill failures for statistics
@@ -21,6 +19,9 @@ const REFLECTION_CONFIG = {
 /**
  * Record a skill failure for statistics.
  * Called by skill_record tool when success=false.
+ *
+ * @param skillName - Name of the failed skill
+ * @param context - Failure context/description
  */
 export function recordSkillFailure(skillName: string, context: string): void {
   recentFailures.push({
@@ -38,6 +39,10 @@ export function recordSkillFailure(skillName: string, context: string): void {
 
 /**
  * Check consecutive skill failures (for maturity assessment).
+ * Used by skill_maturity tool to assess skill quality.
+ *
+ * @param skillName - Name of the skill to check
+ * @returns Number of recent failures for this skill
  */
 export function checkConsecutiveFailures(skillName: string): number {
   const recentSkillFailures = recentFailures.filter(
@@ -56,6 +61,9 @@ export function clearReflectionTracking(): void {
 
 /**
  * Get current tracking stats (for debugging and maturity assessment).
+ * Provides data for skill_maturity tool and LLM decision making.
+ *
+ * @returns Statistics about recent failures
  */
 export function getReflectionStats(): {
   recentFailures: number;
@@ -75,30 +83,4 @@ export function getReflectionStats(): {
     recentFailures: recentFailures.length,
     failureDetails,
   };
-}
-
-/**
- * @deprecated Kept for backward compatibility only.
- * LLM now handles trigger detection through System Prompt.
- * Will be removed in a future major version.
- */
-export interface ReflectionTrigger {
-  type: 'skill_failure' | 'user_correction' | 'repetitive_pattern' | 'workaround_detected';
-  severity: 'low' | 'medium' | 'high';
-  context: string;
-  suggestedAction: string;
-  skillName?: string;
-}
-
-/**
- * @deprecated No-op stub. LLM handles detection now.
- */
-export function checkReflectionTriggers(
-  _userMessage: string,
-  _context: {
-    skillJustFailed?: string;
-    recentSkillUsage?: Array<{ name: string; success: boolean }>;
-  }
-): { shouldReflect: boolean; trigger: ReflectionTrigger | null; context: string } {
-  return { shouldReflect: false, trigger: null, context: '' };
 }

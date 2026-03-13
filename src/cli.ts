@@ -423,15 +423,15 @@ async function testSkillTools(): Promise<void> {
   const tools = getSkillToolsForAI();
   console.log('Available tools:', tools.map(t => t.name).join(', '));
 
-  // Test create
-  console.log('\n--- Testing skill_create ---');
-  let result = executeSkillTool('skill_create', {
+  // Test ensure (create)
+  console.log('\n--- Testing skill_ensure (create) ---');
+  let result = executeSkillTool('skill_ensure', {
     name: 'test-skill',
     description: 'A test skill for CLI testing',
     content: '# Test Skill\n\nThis is a test skill.',
     tags: ['test'],
   });
-  console.log(result.success ? `Created: ${(result.data as any).name}` : result.error);
+  console.log(result.success ? `Created/Updated: ${(result.data as any).name || 'test-skill'}` : result.error);
 
   // Test list
   console.log('\n--- Testing skill_list ---');
@@ -662,7 +662,7 @@ async function handleSkillCommand(input: string): Promise<boolean> {
         console.log('Usage: /skill create <name> <description>');
         break;
       }
-      const result = executeSkillTool('skill_create', { name, description });
+      const result = executeSkillTool('skill_ensure', { name, description });
       console.log(result.success ? `✅ Created skill: ${name}` : `Error: ${result.error}`);
       break;
     }

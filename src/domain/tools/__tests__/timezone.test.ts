@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { getTimezoneFromLocation, resolveUserTimezone, resolveUserLocation, clearTimezoneCache } from '../../timezone';
+import { getTimezoneFromLocation, resolveUserTimezone, resolveUserLocation, clearTimezoneCache } from '../timezone';
 
 describe('Timezone Utilities', () => {
   beforeEach(() => {

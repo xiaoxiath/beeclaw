@@ -18,7 +18,7 @@ import { executeBuiltinTool, isBuiltinTool } from '../tools';
 import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
-import { recordSkillFailure, type ReflectionTrigger } from './evolution';
+import { recordSkillFailure } from './evolution';
 import {
   executeCalendarTool,
   executeDocxTool,
@@ -63,7 +63,7 @@ function safeJsonParse<T>(jsonString: string, fallback: T): T {
 export { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext };
 export { getMemoryTools, getSkillTools, getToolsByCategory, TOOL_CATEGORIES } from './tools';
 export { getBuiltinToolsForAI, executeBuiltinTool, isBuiltinTool, builtinToolNames } from '../tools';
-export { recordSkillFailure, type ReflectionTrigger } from './evolution';
+export { recordSkillFailure } from './evolution';
 export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
 export { stripMessageMetadata } from './types';
 export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
@@ -789,7 +789,6 @@ export class Agent {
     onToolCall?: (name: string, params: Record<string, unknown>) => void;
     onToolResult?: (name: string, result: unknown) => void;
     onStream?: (chunk: string) => void;
-    onReflectionTrigger?: (trigger: ReflectionTrigger) => void;
     /**
      * Callback for content blocks (for streaming Card V2 messages)
      * Called when tool use or final text is generated

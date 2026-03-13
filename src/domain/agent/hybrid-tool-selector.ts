@@ -167,8 +167,7 @@ export class HybridToolSelector {
     rules.set('skill', [
       'skill_list',
       'skill_get',
-      'skill_create',
-      'skill_update',
+      'skill_ensure',
       'skill_delete',
       'skill_search',
       'skill_record',

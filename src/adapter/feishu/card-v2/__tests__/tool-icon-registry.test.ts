@@ -44,8 +44,7 @@ describe('ToolIconRegistry', () => {
     test('should have skill tools registered', () => {
       expect(registry.has('skill_get')).toBe(true);
       expect(registry.has('skill_list')).toBe(true);
-      expect(registry.has('skill_create')).toBe(true);
-      expect(registry.has('skill_update')).toBe(true);
+      expect(registry.has('skill_ensure')).toBe(true);
     });
 
     test('should have task tools registered', () => {

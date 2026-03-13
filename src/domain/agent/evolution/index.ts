@@ -1,16 +1,14 @@
 /**
  * Evolution Module
  *
- * Self-improvement capabilities including reflection triggers and skill evolution
+ * Self-improvement capabilities including skill evolution and preference learning
  */
 
 export {
   recordSkillFailure,
   checkConsecutiveFailures,
-  checkReflectionTriggers,
   clearReflectionTracking,
   getReflectionStats,
-  type ReflectionTrigger,
 } from './reflection-trigger';
 
 export {
