@@ -45,6 +45,7 @@ import {
 } from './context';
 import { hybridCompress, type CompressionResult } from './compressor';
 import { groupToolCalls, getGroupingStats, isParallelTool } from './tool-dependencies';
+import { getHybridToolSelector } from './hybrid-tool-selector';
 
 /**
  * Safely parse JSON with fallback
@@ -307,6 +308,7 @@ export class Agent {
     };
   }> = [];
   private loopDetector: LoopDetector = createLoopDetector();
+  private toolSelector = getHybridToolSelector();
 
   constructor(options: AgentOptions & {
     contextConfig?: Partial<ContextConfig>;
@@ -515,6 +517,46 @@ export class Agent {
     };
   }> {
     return this.lastToolCalls;
+  }
+
+  /**
+   * Select tools using hybrid selector
+   * Intelligently selects relevant tools based on user message and context
+   */
+  private async selectToolsWithHybrid(
+    userMessage: string | MultimodalContent[],
+    recentMessages: ChatMessage[],
+    maxTools: number = 30
+  ): Promise<OpenAITool[]> {
+    // Extract text from user message
+    const messageText = typeof userMessage === 'string'
+      ? userMessage
+      : Array.isArray(userMessage)
+        ? userMessage
+            .filter((c: any) => c.type === 'text')
+            .map((c: any) => c.text)
+            .join(' ')
+        : '';
+
+    try {
+      const selectedTools = await this.toolSelector.selectTools(
+        messageText,
+        recentMessages,
+        maxTools
+      );
+
+      const allToolsCount = getAllToolsForAI().length;
+      logger.info('[Agent] Hybrid tool selection', {
+        selected: selectedTools.length,
+        total: allToolsCount,
+        reduction: `${Math.round((1 - selectedTools.length / allToolsCount) * 100)}%`,
+      });
+
+      return selectedTools;
+    } catch (error) {
+      logger.error('[Agent] Tool selection failed, falling back to all tools', error);
+      return getAllToolsForAI();
+    }
   }
 
   /**
@@ -792,7 +834,11 @@ export class Agent {
       }
     }
 
-    const tools = options?.tools || this.options.tools || getAllToolsForAI();
+    // [Hybrid Tool Selector] Intelligently select tools based on user message and context
+    const tools = options?.tools || this.options.tools || await this.selectToolsWithHybrid(
+      userMessage,
+      this.messages.slice(-5) // Recent 5 messages for context
+    );
 
     let iterations = 0;
     let finalContent = '';
