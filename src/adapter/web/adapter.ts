@@ -15,6 +15,7 @@ export class WebAdapter implements EntryAdapter {
   private context: EntryContext | null = null;
   private server: any = null;
   private startTime: number = 0;
+  private activeConnections: Set<any> = new Set();
 
   async initialize(context: EntryContext): Promise<void> {
     this.context = context;
@@ -42,6 +43,16 @@ export class WebAdapter implements EntryAdapter {
         hostname: host,
         fetch: app.fetch,
         idleTimeout: 255, // SSE streaming support
+        websocket: {
+            open: (ws) => {
+              this.activeConnections.add(ws);
+              logger.debug(`[WebAdapter] WebSocket connected, total: ${this.activeConnections.size}`);
+            },
+            close: (ws) => {
+              this.activeConnections.delete(ws);
+              logger.debug(`[WebAdapter] WebSocket disconnected, total: ${this.activeConnections.size}`);
+            },
+          },
       });
 
       this.startTime = Date.now();
@@ -76,7 +87,7 @@ export class WebAdapter implements EntryAdapter {
     return {
       running: this.server !== null,
       uptime: this.server ? Date.now() - this.startTime : 0,
-      connections: 0, // TODO: implement connection tracking
+      connections: this.activeConnections.size,
       metadata: {
         port: this.context?.config.web?.port || 3000,
         host: this.context?.config.web?.host || '0.0.0.0',

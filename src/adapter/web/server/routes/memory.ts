@@ -147,12 +147,19 @@ export default new Hono()
         // It's a file, return content
         const category = memoryPath.split('/')[0] || 'other';
 
+        // Get actual file modification time
+        let updatedAt = new Date().toISOString();
+        const statResult = store.stat(memoryPath);
+        if (statResult.success) {
+          updatedAt = statResult.mtime.toISOString();
+        }
+
         const entry = {
           path: memoryPath,
           category,
           content: result.data,
           type: 'file' as const,
-          updatedAt: new Date().toISOString(), // TODO: get actual file mtime
+          updatedAt,
         };
 
         console.log('[Memory API] File entry retrieved:', memoryPath);

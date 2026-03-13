@@ -375,6 +375,26 @@ export class MemoryStore {
     }
   }
 
+  // Get file metadata (mtime, size, etc.)
+  stat(path: string): { success: true; mtime: Date; size: number } | { success: false; error: string } {
+    try {
+      const fullPath = this.resolvePath(path);
+
+      if (!existsSync(fullPath)) {
+        return { success: false, error: `File not found: ${path}` };
+      }
+
+      const stats = statSync(fullPath);
+      return {
+        success: true,
+        mtime: stats.mtime,
+        size: stats.size,
+      };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
   /**
    * Write to file with concurrency safety.
    *

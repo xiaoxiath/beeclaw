@@ -275,12 +275,12 @@ export function createEmbeddingProvider(config: EmbeddingProviderConfig): Embedd
         throw new Error(
           'MiniMax embedding provider requires apiKey and groupId. ' +
           'Please set these in beeclaw.json. ' +
-          'Example: {"toolSelector": {"embedding": {"provider": "minimax", "apiKey": "${MINIMAX_API_KEY}"}}}'
+          'Example: {"memory": {"search": {"vector": {"provider": "minimax", "apiKey": "${MINIMAX_API_KEY}", "groupId": "${MINIMAX_GROUP_ID}"}}}}'
         );
       }
       return new MiniMaxEmbeddingProvider({
         apiKey: config.apiKey!,
-        groupId: '', // 需要额外配置 - TODO: Add groupId to config schema
+        groupId: config.groupId || '', // Use groupId from config or empty string
         model: config.model,
         dims: config.dims,
       });

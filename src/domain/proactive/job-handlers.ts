@@ -9,6 +9,7 @@ import type { ProactiveJobData } from './types';
 import { logger } from '../../infra/observability/logger';
 import { getCompressionEngine } from '../memory/compression';
 import { getMemoryStore } from '../memory';
+import { getReflectionEngine } from '../agent/reflection-engine';
 import { getConfig } from '../../infra/config';
 import { sendProactiveMessage } from '../session';
 import { getSkillStore } from '../skills/store';
@@ -297,13 +298,11 @@ export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
   // Handle daily reflection task
   if (action === 'daily-reflection') {
     try {
-      const { getReflectionEngine } = await import('../agent/reflection-engine');
       const engine = getReflectionEngine();
 
       console.log('[Daemon] Running daily reflection...');
 
       // Get recent conversations from memory store
-      const { getMemoryStore } = await import('../memory');
       const store = getMemoryStore();
       const conversations = store.getByCategory('conversations');
 

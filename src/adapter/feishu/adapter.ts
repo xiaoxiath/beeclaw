@@ -61,8 +61,7 @@ export class FeishuAdapter implements EntryAdapter {
         // 断开飞书连接
         const client = getFeishuWSClient();
         if (client) {
-          // TODO: implement disconnect method in client
-          // await client.disconnect();
+          client.stop();
         }
 
         this.running = false;

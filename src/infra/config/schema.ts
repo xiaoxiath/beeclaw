@@ -29,6 +29,7 @@ export const CorsConfigSchema = z.object({
 export const EmbeddingProviderSchema = z.object({
   provider: z.enum(['openai', 'zhipu', 'minimax', 'local', 'auto']).default('auto'),
   apiKey: z.string().optional(),
+  groupId: z.string().optional(), // MiniMax group ID
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   dims: z.number().optional(),
