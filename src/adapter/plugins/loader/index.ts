@@ -55,9 +55,10 @@ function createConfiguredJiti() {
 
     // SDK 别名映射
     alias: {
-      "openclaw/plugin-sdk": join(baseDir, "plugins", "sdk-shim", "index.ts"),
-      "openclaw/plugin-sdk/core": join(baseDir, "plugins", "sdk-shim", "core.ts"),
-      // TODO: 添加更多 SDK 模块映射
+      "openclaw/plugin-sdk": join(baseDir, "adapter", "plugins", "sdk-shim", "index.ts"),
+      "openclaw/plugin-sdk/types": join(baseDir, "adapter", "plugins", "types.ts"),
+      "openclaw/plugin-sdk/runtime": join(baseDir, "adapter", "plugins", "runtime-shim", "index.ts"),
+      "openclaw/plugin-sdk/hooks": join(baseDir, "adapter", "plugins", "hooks", "index.ts"),
     },
   });
 }
