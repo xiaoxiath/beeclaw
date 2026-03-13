@@ -21,6 +21,13 @@
     "dist",
     "node_modules",
     "*.test.ts",
-    "**/__tests__/**"
+    "**/__tests__/**",
+    "data/**",
+    "docs/**",
+    "examples/**",
+    "plugins/**",
+    "scripts/**",
+    "skills/**",
+    "tmp/**"
   ]
 }
