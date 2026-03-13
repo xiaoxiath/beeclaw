@@ -62,12 +62,14 @@ async function main() {
     // 设置优雅关闭
     const shutdown = new GracefulShutdown();
 
-    shutdown.on('shutdown', async () => {
-      console.log('\n\n🛑 Shutting down Web server...');
-      await adapterRegistry.stopAll();
+    shutdown.register({
+      name: 'Stop all adapters',
+      priority: 20,
+      fn: async () => {
+        console.log('\n\n🛑 Shutting down Web server...');
+        await adapterRegistry.stopAll();
+      },
     });
-
-    shutdown.setupSignalHandlers();
 
     // Keep process alive
     await new Promise(() => {}); // Never resolve

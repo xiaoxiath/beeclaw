@@ -339,7 +339,6 @@ export class SemanticToolSelector {
     logger.error('[SemanticSelector] Failed to generate embedding', error);
     throw error;
   }
-}
 
   /**
    * 余弦相似度计算
