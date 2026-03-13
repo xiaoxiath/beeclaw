@@ -40,7 +40,6 @@ import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
 import { FeishuChannel } from '../adapter/feishu/channel';
-import { createWebApp } from '../adapter/web/server';
 
 // App layer
 import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
@@ -355,24 +354,10 @@ export async function initApp(options: InitOptions = {}): Promise<{
   appState.initialized = true;
   console.log('   ✅ Beeclaw initialized\n');
 
-  // 11.5. Start web server if enabled
-  if (config.web?.enabled) {
-    const { app } = createWebApp(config.web);
+  // 11.5. Web server is now started by WebAdapter (not here)
+  // See: src/adapter/web/adapter.ts and src/entries/web.ts
 
-    const port = config.web.port || 3000;
-    const host = config.web.host || '0.0.0.0';
-
-    Bun.serve({
-      port,
-      hostname: host,
-      fetch: app.fetch,
-      idleTimeout: 255, // Set idle timeout to 255 seconds (max allowed by Bun) for SSE streaming
-    });
-
-    console.log(`   🌐 Web UI: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
-  }
-
-  // 11. Session recovery (delayed execution)
+  // 11.6. Session recovery (delayed execution)
   if (options.enableRecovery !== false && process.env.ENABLE_RECOVERY !== 'false') {
     const recoveryConfig = config.recovery || {
       enabled: true,
