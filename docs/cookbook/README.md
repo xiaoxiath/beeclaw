@@ -1,6 +1,6 @@
 # Beeclaw 实战案例库
 
-> 端到端的实战指南，从场景到解决方案
+> 通过对话让 Beeclaw 帮你完成真实任务
 
 ## 📚 案例分类
 
@@ -10,10 +10,9 @@
 
 | 案例 | 难度 | 时间 | 学习重点 |
 |------|------|------|---------|
-| [创建第一个技能](./basic/first-skill.md) | ⭐ | 15分钟 | 技能系统、YAML frontmatter |
-| [记忆管理工作流](./basic/memory-workflow.md) | ⭐ | 20分钟 | 记忆系统、facts/knowledge 分层 |
-| [深度研究任务](./basic/research-task.md) | ⭐⭐ | 25分钟 | 网络工具、研究报告生成 |
-| [多模型切换策略](./basic/model-switching.md) | ⭐ | 10分钟 | Provider 配置、模型选择 |
+| [创建第一个技能](./basic/first-skill.md) | ⭐ | 5分钟 | 通过对话创建技能 |
+| [记忆管理工作流](./basic/memory-workflow.md) | ⭐ | 10分钟 | 通过对话管理记忆 |
+| [深度研究任务](./basic/research-task.md) | ⭐⭐ | 15分钟 | 让 Beeclaw 帮你研究主题 |
 
 ### 🚀 进阶案例（Advanced）
 
@@ -21,10 +20,9 @@
 
 | 案例 | 难度 | 时间 | 学习重点 |
 |------|------|------|---------|
-| [子代理编排](./advanced/subagent-orchestration.md) | ⭐⭐⭐ | 40分钟 | 子代理系统、DAG 任务编排 |
-| [插件开发全流程](./advanced/plugin-development.md) | ⭐⭐⭐ | 60分钟 | 插件系统、Hook 机制 |
-| [主动调度系统](./advanced/proactive-scheduling.md) | ⭐⭐ | 30分钟 | 定时任务、主动通知 |
-| [目标跟踪系统](./advanced/goal-tracking.md) | ⭐⭐ | 25分钟 | 目标管理、进度追踪 |
+| [子代理编排](./advanced/subagent-orchestration.md) | ⭐⭐⭐ | 20分钟 | 让 Beeclaw 并行处理任务 |
+| [插件开发全流程](./advanced/plugin-development.md) | ⭐⭐⭐ | 30分钟 | 开发 Beeclaw 扩展（开发者） |
+| [主动调度系统](./advanced/proactive-scheduling.md) | ⭐⭐ | 15分钟 | 让 Beeclaw 定时执行任务 |
 
 ### 🔗 集成案例（Integration）
 
@@ -32,10 +30,7 @@
 
 | 案例 | 难度 | 时间 | 学习重点 |
 |------|------|------|---------|
-| [飞书 Bot 部署全流程](./integration/feishu-bot-deploy.md) | ⭐⭐ | 45分钟 | 飞书集成、WebSocket、Card V2 |
-| [Web UI 搭建](./integration/web-ui-setup.md) | ⭐⭐ | 35分钟 | Web UI、React、Hono |
-| [多 Provider 配置](./integration/multi-provider-config.md) | ⭐⭐ | 20分钟 | 多模型切换、负载均衡 |
-| [PM2 生产部署](./integration/pm2-production.md) | ⭐⭐⭐ | 50分钟 | PM2、进程守护、日志管理 |
+| [飞书 Bot 部署全流程](./integration/feishu-bot-deploy.md) | ⭐⭐ | 30分钟 | 在飞书中使用 Beeclaw |
 
 ---
 
@@ -48,31 +43,31 @@
 创建第一个技能 → 记忆管理工作流 → 深度研究任务
 ```
 
-**预期成果**：1小时内掌握核心功能
+**预期成果**：30分钟内掌握核心功能
 
 ### 场景 2：我想自动化日常任务
 
 推荐路径：
 ```
-记忆管理工作流 → 主动调度系统 → 目标跟踪系统
+记忆管理工作流 → 主动调度系统 → 创建技能
 ```
 
-**预期成果**：学会定时任务和自动化
+**预期成果**：学会让 Beeclaw 自动工作
 
 ### 场景 3：我要在团队中使用
 
 推荐路径：
 ```
-飞书 Bot 部署全流程 → 多 Provider 配置 → PM2 生产部署
+飞书 Bot 部署 → 子代理编排 → 主动调度系统
 ```
 
-**预期成果**：完整的生产级部署
+**预期成果**：完整的生产级使用
 
-### 场景 4：我想二次开发
+### 场景 4：我是开发者
 
 推荐路径：
 ```
-插件开发全流程 → 子代理编排 → Web UI 搭建
+理解基础功能 → 插件开发 → 子代理编排
 ```
 
 **预期成果**：掌握扩展开发能力
@@ -85,29 +80,21 @@
 
 ### 1. 场景描述
 - 真实使用场景
-- 问题背景
-- 预期效果
+- 你想解决的问题
 
-### 2. 前置条件
-- 需要的知识
-- 需要的工具
-- 需要的配置
+### 2. 目标
+- 通过对话让 Beeclaw 完成什么
 
-### 3. 实施步骤
-- 分步骤指导
-- 代码示例
-- 配置示例
-- 预期输出
+### 3. 对话步骤
+- 示例对话
+- Beeclaw 的响应
+- 预期结果
 
-### 4. 验证测试
-- 功能验证
-- 边界测试
-- 常见问题
+### 4. 验证
+- 如何验证成功
 
-### 5. 进阶拓展
-- 优化建议
-- 扩展功能
-- 相关案例
+### 5. 常见问题
+- 疑难解答
 
 ---
 
