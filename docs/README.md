@@ -2,6 +2,23 @@
 
 > 一个可进化的 AI 助手，支持 CLI 和飞书 Bot
 
+**文档版本**: v2.1.0
+**适用代码版本**: >= v1.3.0
+**最后更新**: 2026-03-14
+
+> 📌 本文档与代码版本同步更新，查看 [版本历史](./CHANGELOG.md)
+
+---
+
+## 🎯 选择你的路径
+
+| 你的角色 | 推荐起点 |
+|---------|---------|
+| **初次使用者** | [5分钟快速开始](./getting-started.md) · [学习路径](./learning-paths.md) |
+| **运维工程师** | [PM2 部署指南](./operations/deployment.md) |
+| **开发者** | [开发指南](../CLAUDE.md) · [插件开发](./guide/plugin-system.md) |
+| **飞书 Bot 用户** | [飞书集成](./guide/feishu-integration.md) |
+
 ---
 
 ## 🚀 快速开始
@@ -10,6 +27,8 @@
 |------|------|
 | [快速开始](./getting-started.md) | 安装、配置、5 分钟上手 |
 | [配置指南](./configuration.md) | 环境变量、配置文件、用户设置 |
+| [学习路径](./learning-paths.md) | 从新手到专家的系统化学习指南 |
+| [实战案例库](./cookbook/) | 10+ 个端到端实战案例 |
 
 ---
 
@@ -48,7 +67,19 @@
 | 文档 | 说明 |
 |------|------|
 | [CLI 参考](./references/cli.md) | 命令行界面和斜杠命令 |
-| [工具参考](./references/tools.md) | 所有内置工具的参数和示例 |
+| [工具参考](./references/tools.md) | 所有内置工具的参数和示例（40+ 工具） |
+
+---
+
+## 🔧 故障排查
+
+| 文档 | 说明 |
+|------|------|
+| [故障排查手册](./troubleshooting/) | 系统化的问题诊断和解决方案 |
+| [启动问题](./troubleshooting/startup-issues.md) | API Key、依赖、端口问题 |
+| [记忆系统问题](./troubleshooting/memory-issues.md) | 索引、搜索、权限问题 |
+| [飞书集成问题](./troubleshooting/feishu-issues.md) | 连接、消息、权限问题 |
+| [性能问题](./troubleshooting/performance-issues.md) | 延迟、内存、Token 问题 |
 
 ---
 
@@ -155,7 +186,13 @@ PM2 部署 → 会话恢复 → 性能优化 → 日志指南
 
 ---
 
-## 📝 文档维护指南
+## 📝 文档维护
+
+| 文档 | 说明 |
+|------|------|
+| [文档变更日志](./CHANGELOG.md) | 所有文档变更记录 |
+| [文档风格指南](./STYLE_GUIDE.md) | 写作规范和格式标准 |
+| [改造完成报告](./DOCUMENTATION-REFACTOR-REPORT.md) | v2.1.0 改造详情 |
 
 ### 文档分类标准
 
@@ -168,6 +205,8 @@ PM2 部署 → 会话恢复 → 性能优化 → 日志指南
 - **future/**: 未来规划（未实现功能）
 - **projects/**: 独立项目文档
 - **archive/**: 历史归档
+- **cookbook/**: 实战案例库
+- **troubleshooting/**: 故障排查手册
 
 ### 命名规范
 
@@ -186,5 +225,5 @@ PM2 部署 → 会话恢复 → 性能优化 → 日志指南
 
 ---
 
-**最后更新**: 2026-03-12
-**文档版本**: v2.0
+**最后更新**: 2026-03-14
+**文档版本**: v2.1.0

@@ -1,0 +1,129 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-14",
+  "language": "zh-CN → en-US",
+  "terms": {
+    "core": {
+      "Agent": {
+        "zh": "代理",
+        "en": "Agent",
+        "note": "AI 智能体，保留英文"
+      },
+      "Subagent": {
+        "zh": "子代理",
+        "en": "Subagent",
+        "note": "独立执行的 Agent 实例"
+      },
+      "Memory System": {
+        "zh": "记忆系统",
+        "en": "Memory System",
+        "note": "文件系统 + 索引的知识存储"
+      },
+      "Skill": {
+        "zh": "技能",
+        "en": "Skill",
+        "note": "可复用的提示词模块"
+      },
+      "Tool": {
+        "zh": "工具",
+        "en": "Tool",
+        "note": "AI 可调用的函数"
+      },
+      "Context": {
+        "zh": "上下文",
+        "en": "Context",
+        "note": "AI 对话的上下文信息"
+      },
+      "Prompt": {
+        "zh": "提示词",
+        "en": "Prompt",
+        "note": "输入给 AI 的文本"
+      },
+      "Provider": {
+        "zh": "提供者",
+        "en": "Provider",
+        "note": "AI 模型提供商"
+      }
+    },
+    "architecture": {
+      "Unified Session Architecture": {
+        "zh": "统一会话架构",
+        "en": "Unified Session Architecture"
+      },
+      "Resilience Design": {
+        "zh": "弹性设计",
+        "en": "Resilience Design"
+      },
+      "Context Management": {
+        "zh": "上下文管理",
+        "en": "Context Management"
+      },
+      "Circuit Breaker": {
+        "zh": "熔断器",
+        "en": "Circuit Breaker"
+      },
+      "Daemon": {
+        "zh": "守护进程",
+        "en": "Daemon"
+      }
+    },
+    "filesystem": {
+      "Facts": {
+        "zh": "事实",
+        "en": "Facts",
+        "note": "动态数据（日/周级更新）"
+      },
+      "Knowledge": {
+        "zh": "知识",
+        "en": "Knowledge",
+        "note": "稳定信息（月/年级更新）"
+      },
+      "Index": {
+        "zh": "索引",
+        "en": "Index"
+      },
+      "Compression": {
+        "zh": "压缩",
+        "en": "Compression"
+      }
+    },
+    "tools": {
+      "memory_search": {
+        "zh": "memory_search",
+        "en": "memory_search",
+        "note": "不翻译，保留 API 名称"
+      },
+      "web_search": {
+        "zh": "web_search",
+        "en": "web_search"
+      },
+      "deep_research": {
+        "zh": "deep_research",
+        "en": "deep_research"
+      },
+      "skill_execute": {
+        "zh": "skill_execute",
+        "en": "skill_execute"
+      },
+      "spawn_subagent": {
+        "zh": "spawn_subagent",
+        "en": "spawn_subagent"
+      }
+    },
+    "integration": {
+      "Feishu Bot": {
+        "zh": "飞书机器人",
+        "en": "Feishu Bot"
+      },
+      "Card V2": {
+        "zh": "Card V2",
+        "en": "Card V2",
+        "note": "飞书卡片格式，保留版本号"
+      },
+      "WebSocket": {
+        "zh": "WebSocket",
+        "en": "WebSocket"
+      }
+    }
+  }
+}
