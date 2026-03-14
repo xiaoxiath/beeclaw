@@ -6,6 +6,64 @@
 
 ---
 
+## [v2.1.2] - 2026-03-14 (Cookbook 修复)
+
+### 🐛 重大修复
+
+**问题**: Cookbook 案例从开发者视角编写，要求用户手动创建文件和配置
+
+**修复**: 全部 7 个案例重写为对话式指南
+- ✅ 用户现在通过对话与 Beeclaw 交互，而非手动配置
+- ✅ Beeclaw 自动处理文件创建、配置和执行
+- ✅ 强调 AI 助手价值：Beeclaw 为你工作
+
+### 🔄 变更文档
+
+#### Cookbook 案例改造
+
+**基础案例**:
+- `cookbook/basic/first-skill.md` - 15→5 分钟，对话式技能创建
+- `cookbook/basic/memory-workflow.md` - 20→10 分钟，对话式记忆管理
+- `cookbook/basic/research-task.md` - 25→15 分钟，对话式研究任务
+
+**进阶案例**:
+- `cookbook/advanced/subagent-orchestration.md` - 40→20 分钟，对话式并行任务
+- `cookbook/advanced/proactive-scheduling.md` - 30→15 分钟，对话式调度
+- `cookbook/advanced/plugin-development.md` - 拆分为用户视角（10分钟）和开发者视角（60分钟）
+
+**集成案例**:
+- `cookbook/integration/feishu-bot-deploy.md` - 45→30 分钟，对话式部署指南
+
+### ✨ 改进要点
+
+**改造前** (错误):
+```markdown
+### 步骤 2：创建技能文件
+mkdir -p skills/productivity
+nano skills/productivity/WEEKLY-REPORT.md
+```
+
+**改造后** (正确):
+```markdown
+### 步骤 1：与 Beeclaw 对话创建技能
+
+用户: 帮我创建一个周报生成技能
+
+Beeclaw 会:
+1. ✅ 理解你的需求
+2. ✅ 自动创建技能文件
+3. ✅ 设计技能内容
+4. ✅ 保存到技能库
+```
+
+### 📊 统计
+
+**完成度**: 7/7 案例修复（100%）
+**平均时间缩减**: 50%
+**用户反馈**: "用户不需要做这些配置，技能不都应该是 Beeclaw 创建吗？"
+
+---
+
 ## [v2.1.1] - 2026-03-14 (P1-P2 完成)
 
 ### 🎉 重大更新
