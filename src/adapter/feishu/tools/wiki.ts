@@ -158,17 +158,27 @@ export async function createPage(
   }
 ): Promise<FeishuWikiNode> {
   try {
+    // Build request data - only include optional fields if they have values
+    const data: any = {
+      title: options.title,
+      obj_type: options.objType || 'docx',
+    };
+
+    // Only add parent_node_token if specified
+    if (options.parentNodeId) {
+      data.parent_node_token = options.parentNodeId;
+    }
+
+    // Only add obj_token if specified (for adding existing documents)
+    if (options.objToken) {
+      data.obj_token = options.objToken;
+    }
+
     const response = await client.wiki.spaceNode.create({
       path: {
         space_id: spaceId,
       },
-      params: {},
-      data: {
-        title: options.title,
-        parent_node_token: options.parentNodeId,
-        obj_type: options.objType || 'docx',
-        obj_token: options.objToken,
-      },
+      data,
     });
 
     if (response.code !== 0) {

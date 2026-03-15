@@ -234,12 +234,19 @@ export async function createDocument(
   url: string;
 }> {
   try {
+    // Build request data - only include folder_token if specified
+    const data: any = {
+      title: title,
+    };
+
+    // Only add folder_token if specified
+    if (options?.folderToken) {
+      data.folder_token = options.folderToken;
+    }
+
     // Create document using docx API
     const response = await client.docx.document.create({
-      data: {
-        title: title,
-        folder_token: options?.folderToken,
-      },
+      data,
     });
 
     if (response.code !== 0) {
