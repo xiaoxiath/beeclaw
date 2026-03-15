@@ -711,21 +711,57 @@ export async function executeDriveTool(
     };
   }
 
-  // Get user access token using smart auth
+  // Get user access token using smart auth manager
   let userAccessToken: string;
   try {
-    const { getOrRefreshUserToken } = await import('../silent-auth');
-    const authResult = await getOrRefreshUserToken(client, userContext.openId);
+    const { createSmartAuthManager } = await import('../smart-auth');
+    const { getConfig_ } = await import('../../../app');
+    const config = getConfig_();
 
-    if (!authResult.success || !authResult.token) {
+    if (!config?.feishu?.appId) {
       return {
         success: false,
-        error: 'Authorization required to access your drive files. Please authorize the bot to continue.',
+        error: 'Feishu configuration not found.',
+      };
+    }
+
+    const authManager = createSmartAuthManager(client, {
+      appId: config.feishu.appId,
+      redirectUri: `${config.feishu.oauthRedirectUri || 'http://localhost:3000'}/api/feishu/oauth/callback`,
+    });
+
+    // Try to authorize user (will attempt silent auth first, then fall back to card auth)
+    const authResult = await authManager.authorize(
+      userContext.openId,
+      name,
+      userContext.chatId
+    );
+
+    if (!authResult.authorized) {
+      // Authorization required - send auth card to user if in Feishu context
+      if (authResult.authCard && userContext.chatId && userContext.messageId) {
+        try {
+          // Import sendMarkdownCard to send auth card
+          const { sendMarkdownCard } = await import('../send');
+          await sendMarkdownCard(
+            client,
+            userContext.messageId,
+            authResult.authCard
+          );
+          logger.info(`✅ Sent auth card to user ${userContext.openId}`);
+        } catch (error) {
+          logger.error('Failed to send auth card:', error);
+        }
+      }
+
+      return {
+        success: false,
+        error: '需要授权才能访问你的云盘文件。我已经发送了授权卡片给你，请点击授权按钮完成授权后重试。',
         requiresAuth: true,
       };
     }
 
-    userAccessToken = authResult.token.accessToken;
+    userAccessToken = authResult.accessToken!;
     logger.info(`✅ User ${userContext.openId} authorized for drive operation: ${name}`);
   } catch (error) {
     logger.error('Failed to get user authorization:', error);
