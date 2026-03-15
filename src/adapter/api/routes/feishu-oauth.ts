@@ -75,13 +75,13 @@ app.get('/callback', async (c) => {
     `, 400);
   }
 
-  // 4. 获取飞书客户端
-  const wsClient = getFeishuWSClient();
-  if (!wsClient) {
-    return c.html('<h1>❌ 系统错误：客户端未初始化</h1>', 500);
-  }
-
-  const client = wsClient.getApiClient();
+  // 4. 创建临时 SDK 客户端（工具使用 CLI runner）
+  const { default: Lark } = await import('@larksuiteoapi/node-sdk');
+  const appConfig = loadConfig();
+  const client = new Lark.Client({
+    appId: appConfig.feishu.appId!,
+    appSecret: appConfig.feishu.appSecret!,
+  });
 
   try {
     // 5. 用 code 换取 access_token
@@ -223,12 +223,13 @@ app.get('/status', async (c) => {
     return c.json({ error: 'Missing openId' }, 400);
   }
 
-  const wsClient = getFeishuWSClient();
-  if (!wsClient) {
-    return c.json({ error: 'Client not initialized' }, 500);
-  }
-
-  const client = wsClient.getApiClient();
+  // Create temporary SDK client for OAuth operations
+  const { default: Lark } = await import('@larksuiteoapi/node-sdk');
+  const appConfig = loadConfig();
+  const client = new Lark.Client({
+    appId: appConfig.feishu.appId!,
+    appSecret: appConfig.feishu.appSecret!,
+  });
 
   const { getUserToken } = await import('../../adapter/feishu/oauth');
   const token = await getUserToken(client, openId);

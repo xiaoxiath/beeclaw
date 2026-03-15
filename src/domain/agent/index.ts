@@ -19,14 +19,7 @@ import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { recordSkillFailure } from './evolution';
-import {
-  executeCalendarTool,
-  executeDocxTool,
-  executeDriveTool,
-  executeBitableTool,
-  executeWikiTool,
-  getFeishuWSClient,
-} from '../../adapter/feishu';
+import { getFeishuWSClient, getFeishuCLIRunner } from '../../adapter/feishu';
 import {
   estimateMessageTokens,
   estimateTotalTokens,
@@ -200,58 +193,16 @@ This ensures skills are in the correct location and follow quality standards.`,
       return executeBuiltinTool(name, params);
     }
 
-    // Feishu tools
+    // Feishu tools - now handled by feishu-cli-toolkit skill
+    // All feishu_* tools are delegated to the skill for complete functionality
     if (name.startsWith('feishu_')) {
-      const wsClient = getFeishuWSClient();
-      if (!wsClient) {
-        return {
-          success: false,
-          error: 'Feishu client not initialized. Make sure the bot is connected to Feishu.',
-        };
-      }
-
-      const client = wsClient.getApiClient();
-      if (!client) {
-        return {
-          success: false,
-          error: 'Feishu API client not available.',
-        };
-      }
-
-      try {
-        let result: Record<string, unknown>;
-        if (name.startsWith('feishu_calendar_')) {
-          result = await executeCalendarTool(client, name, params);
-        } else if (name.startsWith('feishu_docx_')) {
-          result = await executeDocxTool(client, name, params);
-        } else if (name.startsWith('feishu_drive_')) {
-          result = await executeDriveTool(client, name, params, userContext);
-        } else if (name.startsWith('feishu_bitable_')) {
-          result = await executeBitableTool(client, name, params);
-        } else if (name.startsWith('feishu_wiki_')) {
-          result = await executeWikiTool(client, name, params);
-        } else {
-          return {
-            success: false,
-            error: `Unknown Feishu tool: ${name}`,
-          };
-        }
-
-        if (typeof result.success === 'boolean') {
-          return result as { success: boolean; data?: unknown; error?: string };
-        }
-
-        return {
-          success: true,
-          data: result,
-        };
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        return {
-          success: false,
-          error: `Feishu tool execution failed: ${errorMsg}`,
-        };
-      }
+      return {
+        success: false,
+        error: `Feishu tool "${name}" has been migrated to feishu-cli-toolkit skill. ` +
+              `Please use the skill directly by describing what you want to do. ` +
+              `Example: "创建一个日程" or "列出我的云空间文件"`,
+        hint: 'See /skills/skills/feishu-cli-toolkit/SKILL.md for available commands',
+      };
     }
 
     // MCP tools (format: mcp_{serverId}_{toolName})

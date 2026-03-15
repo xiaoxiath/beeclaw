@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "feishu-cli-toolkit": {
+      "source": "riba2534/feishu-cli",
+      "sourceType": "github",
+      "computedHash": "314b6acb4fefd009bc902db156954fb2f7ece25c4fe90d14b1903ee2afcf7d54"
+    }
+  }
+}

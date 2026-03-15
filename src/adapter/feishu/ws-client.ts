@@ -389,7 +389,7 @@ export interface CardConfig {
  */
 export class FeishuWSClient {
   private config: FeishuWSConfig;
-  private client: Lark.Client | null = null;
+  private client: any = null; // SDK client for message sending only (tools use CLI runner)
   private wsClient: Lark.WSClient | null = null;
   private isConnected: boolean = false;
 
@@ -479,13 +479,6 @@ export class FeishuWSClient {
    */
   get lastActiveUserId(): string | null {
     return this._lastActiveUserId;
-  }
-
-  /**
-   * Get the Lark API client
-   */
-  getApiClient(): Lark.Client | null {
-    return this.client;
   }
 
   /**
@@ -647,7 +640,7 @@ export class FeishuWSClient {
       appSecret: this.config.appSecret,
     };
 
-    // Create API client for sending messages
+    // Create SDK client for message sending (tools use CLI runner)
     this.client = new Lark.Client(baseConfig);
 
     // Create event dispatcher

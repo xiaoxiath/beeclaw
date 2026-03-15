@@ -4,7 +4,6 @@
  * 无感知获取 user_access_token
  */
 
-import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import { cache } from '../../infra/cache';
 
@@ -73,60 +72,70 @@ export async function silentAuth(
       }
     }
 
-    // 2. 调用飞书静默授权 API
-    const response = await client.authen.v1.accessToken.create({
-      data: {
-        grant_type: 'silent_auth',
-        silent_auth: {
-          open_id: openId,
-        },
-      },
-    });
+    // 2. 检查是否有 refresh_token，尝试刷新
+    const cachedRefreshToken = cache.get<string>(`feishu:user:refresh:${openId}`);
 
-    // 3. 处理响应
-    if (response.code !== 0) {
-      const errorMap: Record<number, { reason: SilentAuthResult['reason']; message: string }> = {
-        10003: { reason: 'USER_NOT_LOGGED_IN', message: '用户未登录' },
-        10014: { reason: 'NOT_IN_FEISHU', message: '不在飞书环境内' },
-        10015: { reason: 'PERMISSION_DENIED', message: '权限不足' },
-      };
+    if (cachedRefreshToken) {
+      logger.info(`🔄 Attempting to refresh token for ${openId}`);
 
-      const errorInfo = errorMap[response.code] || {
-        reason: 'UNKNOWN' as const,
-        message: response.msg || '未知错误',
-      };
+      try {
+        const response = await client.authen.v1.accessToken.create({
+          data: {
+            grant_type: 'refresh_token',
+            refresh_token: cachedRefreshToken,
+          },
+        });
 
-      logger.warn(`❌ Silent auth failed for ${openId}: ${errorInfo.message} (code: ${response.code})`);
+        if (response.code === 0) {
+          const data = response.data!;
+          const token = {
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token,
+            expiresIn: data.expires_in,
+            expiresAt: Date.now() + data.expires_in * 1000,
+            scope: data.scope,
+          };
 
-      return {
-        success: false,
-        error: errorInfo.message,
-        reason: errorInfo.reason,
-      };
+          // 缓存新 token
+          cache.set(
+            `feishu:user:token:${openId}`,
+            JSON.stringify(token),
+            data.expires_in
+          );
+
+          // 缓存新的 refresh_token
+          cache.set(
+            `feishu:user:refresh:${openId}`,
+            data.refresh_token,
+            30 * 24 * 3600 // 30天
+          );
+
+          logger.info(`✅ Token refreshed for ${openId}`);
+
+          return {
+            success: true,
+            token,
+          };
+        } else {
+          logger.warn(`Token refresh failed: ${response.msg}`);
+          // 刷新失败，清除缓存
+          cache.delete(`feishu:user:refresh:${openId}`);
+          cache.delete(`feishu:user:token:${openId}`);
+        }
+      } catch (error) {
+        logger.error('Token refresh exception:', error);
+        cache.delete(`feishu:user:refresh:${openId}`);
+        cache.delete(`feishu:user:token:${openId}`);
+      }
     }
 
-    // 4. 成功获取 token
-    const data = response.data!;
-    const token = {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresIn: data.expires_in,
-      expiresAt: Date.now() + data.expires_in * 1000,
-      scope: data.scope,
-    };
-
-    // 5. 缓存 token
-    cache.set(
-      `feishu:user:token:${openId}`,
-      JSON.stringify(token),
-      data.expires_in
-    );
-
-    logger.info(`✅ Silent auth succeeded for ${openId}, expires in ${data.expires_in}s`);
+    // 3. 没有 refresh_token 或刷新失败，需要用户授权
+    logger.info(`⚠️ No valid token for ${openId}, authorization required`);
 
     return {
-      success: true,
-      token,
+      success: false,
+      error: '需要用户授权',
+      reason: 'USER_NOT_LOGGED_IN',
     };
 
   } catch (error: any) {

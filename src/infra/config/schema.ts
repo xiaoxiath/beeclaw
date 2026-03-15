@@ -156,10 +156,23 @@ export const LoggingConfigSchema = z.object({
 // Feishu configuration schema
 export const FeishuConfigSchema = z.object({
   enabled: z.boolean().default(false),
+
+  // SDK Configuration (for backward compatibility)
   appId: z.string().optional(),
   appSecret: z.string().optional(),
   encryptKey: z.string().optional(),
   verificationToken: z.string().optional(),
+
+  // CLI Configuration (new)
+  mode: z.enum(['sdk', 'cli', 'hybrid']).default('sdk'),
+  cliPath: z.string().default('feishu'),  // Default to PATH lookup
+  cliTimeout: z.number().default(30000),   // 30 seconds
+  cliRetries: z.number().default(2),
+
+  // Per-tool mode override
+  toolMode: z.record(z.enum(['sdk', 'cli'])).optional(),
+
+  // Existing fields
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('error'),
   /**
    * Enable Card Schema 2.0 for streaming messages

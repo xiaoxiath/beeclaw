@@ -315,20 +315,29 @@ export class TaskDispatcher {
    * Release expired locks
    */
   private async releaseExpiredLocks(): Promise<void> {
-    const db = getDataConnection();
-    const now = new Date();
-    const timeoutDate = new Date(now.getTime() - this.config.lockTimeoutMs);
+    try {
+      const db = getDataConnection();
+      const now = new Date();
+      const timeoutDate = new Date(now.getTime() - this.config.lockTimeoutMs);
 
-    await db.update(tasksTable)
-      .set({
-        lockedBy: null,
-        lockedAt: null,
-      })
-      .where(and(
-        lt(tasksTable.lockedAt, timeoutDate),
-        isNull(tasksTable.lockedBy) === false
-      ))
-      .run();
+      await db.update(tasksTable)
+        .set({
+          lockedBy: null,
+          lockedAt: null,
+        })
+        .where(and(
+          lt(tasksTable.lockedAt, timeoutDate),
+          isNull(tasksTable.lockedBy) === false
+        ))
+        .run();
+    } catch (error) {
+      // Database lock is acceptable - we'll try again next poll
+      if (error instanceof Error && error.message?.includes('locked')) {
+        console.warn('[Dispatcher] Database locked while releasing expired locks, will retry next poll');
+      } else {
+        console.error('[Dispatcher] Error releasing expired locks:', error);
+      }
+    }
   }
 
   /**

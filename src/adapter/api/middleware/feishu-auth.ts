@@ -123,8 +123,13 @@ export async function feishuUserAuthMiddleware(c: Context, next: Next) {
     });
   }
 
-  const client = wsClient.getApiClient();
+  // Create temporary SDK client for OAuth operations (tools use CLI runner)
+  const { default: Lark } = await import('@larksuiteoapi/node-sdk');
   const config = loadConfig();
+  const client = new Lark.Client({
+    appId: config.feishu.appId!,
+    appSecret: config.feishu.appSecret!,
+  });
 
   try {
     // 检查用户是否已授权
@@ -218,15 +223,18 @@ export function getUserAccessToken(c: Context): string | undefined {
 
 /**
  * 创建用户授权的 API Client
+ * DEPRECATED: Tools now use CLI runner. This function creates a temporary SDK client for legacy use cases.
  */
-export function createUserAuthorizedApiClient(c: Context): any {
-  const wsClient = getFeishuWSClient();
-  if (!wsClient) {
-    throw new Error('Feishu client not initialized');
-  }
-
-  const client = wsClient.getApiClient();
+export async function createUserAuthorizedApiClient(c: Context): Promise<any> {
   const userAccessToken = getUserAccessToken(c);
+
+  // Create temporary SDK client
+  const { default: Lark } = await import('@larksuiteoapi/node-sdk');
+  const config = loadConfig();
+  const client = new Lark.Client({
+    appId: config.feishu.appId!,
+    appSecret: config.feishu.appSecret!,
+  });
 
   if (!userAccessToken) {
     // 如果没有用户 token，使用默认的应用授权

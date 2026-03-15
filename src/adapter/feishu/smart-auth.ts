@@ -4,7 +4,6 @@
  * 混合授权策略：静默授权优先，降级到卡片授权
  */
 
-import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import {
   silentAuth,

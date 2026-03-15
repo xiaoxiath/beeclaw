@@ -25,13 +25,7 @@ import { getGoalStore } from './goal/store';
 import { getDateContext } from '../tools/holiday';
 import { getWeatherContext } from '../tools/weather';
 import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
-import {
-  calendarToolDefinitions,
-  docxToolDefinitions,
-  driveToolDefinitions,
-  bitableToolDefinitions,
-  wikiToolDefinitions,
-} from '../../adapter/feishu';
+// Feishu tools are now handled by feishu-cli-toolkit skill
 import { getMCPManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
 import { logger } from '../../infra/observability/logger';
@@ -91,13 +85,8 @@ export function getAllTools(): OpenAITool[] {
   const builtinTools = getBuiltinToolsForAI();
   const personaTools = getPersonaToolsForAI();
 
-  const feishuTools = [
-    ...Object.values(calendarToolDefinitions),
-    ...Object.values(docxToolDefinitions),
-    ...Object.values(driveToolDefinitions),
-    ...Object.values(bitableToolDefinitions),
-    ...Object.values(wikiToolDefinitions),
-  ];
+  // Feishu tools are now handled by feishu-cli-toolkit skill
+  // const feishuTools = [];
 
   let mcpTools: OpenAITool[] = [];
   try {
@@ -129,7 +118,7 @@ export function getAllTools(): OpenAITool[] {
     ...proactiveTools.map(toOpenAITool),
     ...builtinTools.map(toOpenAITool),
     ...personaTools,
-    ...feishuTools.map(toOpenAITool),
+    // Feishu tools removed - now handled by feishu-cli-toolkit skill
     ...mcpTools,
     ...pluginTools,
     ...getSandboxToolsForAI(),

@@ -4,7 +4,6 @@
  * 飞书用户授权管理
  */
 
-import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import { cache } from '../../infra/cache';
 

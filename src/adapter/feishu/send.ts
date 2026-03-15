@@ -4,7 +4,6 @@
  * Handles sending various types of messages to Feishu
  */
 
-import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 
 const logger = getLogger('feishu:send');

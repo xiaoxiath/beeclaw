@@ -39,7 +39,7 @@ import { createEmbeddingProvider } from '../domain/memory/embeddings';
 import { initializeMCP, getMCPManager, shutdownMCP } from '../adapter/mcp';
 import { getHookRunner, resetHookRunner } from '../adapter/plugins/hooks';
 import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
-import { getFeishuWSClient } from '../adapter/feishu';
+import { getFeishuWSClient, initFeishuCLIRunner } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
 import { FeishuChannel } from '../adapter/feishu/channel';
 
@@ -189,6 +189,27 @@ export async function initApp(options: InitOptions = {}): Promise<{
     try {
       gateway.registerChannel(new FeishuChannel());
       console.log('   📨 Feishu channel registered');
+
+      // Initialize Feishu CLI runner for tool operations
+      const appId = config.feishu?.appId || process.env.LARK_BEECLAW_APPID || process.env.FEISHU_APP_ID;
+      const appSecret = config.feishu?.appSecret || process.env.LARK_BEECLAW_AS || process.env.FEISHU_APP_SECRET;
+
+      if (appId && appSecret) {
+        initFeishuCLIRunner({
+          cliPath: config.feishu?.cliPath || 'feishu',
+          env: {
+            FEISHU_APP_ID: appId,
+            FEISHU_APP_SECRET: appSecret,
+          },
+          timeout: config.feishu?.cliTimeout || 30000,
+          retries: config.feishu?.cliRetries || 2,
+        });
+        console.log('   🔧 Feishu CLI runner initialized');
+      } else {
+        console.log('   ⚠️  Feishu CLI runner not initialized (missing appId/appSecret)');
+        console.log('      Set LARK_BEECLAW_APPID and LARK_BEECLAW_AS environment variables');
+        console.log('      Or add appId and appSecret to beeclaw.json feishu config');
+      }
     } catch (error) {
       logger.warn('[App] Failed to register Feishu channel:', error);
     }

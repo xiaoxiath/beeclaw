@@ -4,7 +4,6 @@
  * Build interactive card messages for Feishu
  */
 
-import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import { sendCardMessage } from './send';
 

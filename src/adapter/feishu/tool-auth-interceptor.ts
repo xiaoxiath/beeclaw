@@ -4,7 +4,6 @@
  * 工具执行拦截器 - 自动处理用户授权
  */
 
-import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import {
   createSmartAuthManager,

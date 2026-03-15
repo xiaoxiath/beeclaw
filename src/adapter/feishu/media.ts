@@ -4,7 +4,6 @@
  * Handles uploading and downloading images and files
  */
 
-import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import { extname } from 'path';
 import { readFile } from 'fs/promises';
