@@ -8,6 +8,8 @@ import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../../infra/observability/logger';
 import { z } from 'zod';
 import { readFile } from 'fs/promises';
+import { createToolAuthInterceptor, wrapToolWithAuth, type ToolExecutionContext } from '../tool-auth-interceptor';
+import type { UserContext } from '../../../domain/agent/types';
 
 const logger = getLogger('feishu:drive');
 
@@ -39,7 +41,8 @@ export async function listFiles(
     pageToken?: string;
     orderBy?: 'EditedTime' | 'CreatedTime';
     orderDirection?: 'ASC' | 'DESC';
-  }
+  },
+  userAccessToken?: string
 ): Promise<{
   files: FeishuFile[];
   pageToken?: string;
@@ -54,6 +57,11 @@ export async function listFiles(
         order_by: options?.orderBy || 'EditedTime',
         direction: options?.orderDirection || 'DESC',
       },
+      ...(userAccessToken && {
+        headers: {
+          Authorization: `Bearer ${userAccessToken}`,
+        },
+      }),
     });
 
     if (response.code !== 0) {
@@ -691,8 +699,45 @@ export const driveToolDefinitions = {
 export async function executeDriveTool(
   client: Client,
   name: string,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  userContext?: UserContext
 ): Promise<Record<string, unknown>> {
+  // Drive tools require user authorization
+  // Check if user context is available
+  if (!userContext?.openId) {
+    return {
+      success: false,
+      error: 'Drive operations require user authorization. Please use this feature in Feishu chat.',
+    };
+  }
+
+  // Get user access token using smart auth
+  let userAccessToken: string;
+  try {
+    const { getOrRefreshUserToken } = await import('../silent-auth');
+    const authResult = await getOrRefreshUserToken(client, userContext.openId);
+
+    if (!authResult.success || !authResult.token) {
+      return {
+        success: false,
+        error: 'Authorization required to access your drive files. Please authorize the bot to continue.',
+        requiresAuth: true,
+      };
+    }
+
+    userAccessToken = authResult.token.accessToken;
+    logger.info(`✅ User ${userContext.openId} authorized for drive operation: ${name}`);
+  } catch (error) {
+    logger.error('Failed to get user authorization:', error);
+    return {
+      success: false,
+      error: 'Failed to authorize user. Please try again.',
+    };
+  }
+
+  // Create user-authorized client
+  const userClient = client;
+
   try {
     switch (name) {
       case 'feishu_drive_list': {
@@ -709,13 +754,13 @@ export async function executeDriveTool(
         // Handle 'root' token
         let folderToken = parsed.data.folderToken;
         if (folderToken === 'root') {
-          folderToken = await getRootFolderToken(client);
+          folderToken = await getRootFolderToken(userClient);
         }
 
-        const result = await listFiles(client, folderToken, {
+        const result = await listFiles(userClient, folderToken, {
           pageSize: parsed.data.pageSize,
           orderBy: parsed.data.orderBy,
-        });
+        }, userAccessToken);
         return {
           success: true,
           data: {

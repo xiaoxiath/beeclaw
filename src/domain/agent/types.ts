@@ -46,6 +46,14 @@ export interface ImageContent {
 
 export type MultimodalContent = TextContent | ImageContent;
 
+// User context for tool execution (especially for Feishu user authorization)
+export interface UserContext {
+  openId?: string;      // Feishu user open ID
+  chatId?: string;      // Feishu chat ID
+  messageId?: string;   // Feishu message ID
+  userId?: string;      // Generic user ID
+}
+
 // Chat message types
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -107,7 +115,7 @@ export interface AIResponse {
 }
 
 // Tool executor type
-export type ToolExecutor = (name: string, params: Record<string, unknown>) => Promise<{
+export type ToolExecutor = (name: string, params: Record<string, unknown>, userContext?: UserContext) => Promise<{
   success: boolean;
   data?: unknown;
   error?: string;

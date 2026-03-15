@@ -113,6 +113,9 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     const messageId = client.extractMessageId(data);
     const messageText = client.parseMessageContent(data);
 
+    // Extract openId explicitly for user authorization
+    const openId = data.sender?.sender_id?.open_id || userId;
+
     // Log raw event for debugging
     console.log(`[FeishuWS:${process.pid}] 📨 Raw event: messageId=${messageId}, chatId=${chatId}, sender_type=${data.sender?.sender_type}, message_type=${data.message?.message_type}`);
 
@@ -240,6 +243,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       channel: 'feishu',
       sessionId,
       context: {
+        openId,
         chatId,
         messageId,
         parentMessageId: messageId, // Required for Card V2 streaming
@@ -363,7 +367,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       // Record query for pattern detection
       recordQuery(messageText, {
         channel: 'feishu',
-        userId: event.event.sender?.sender_id?.open_id,
+        userId: openId,
         sessionId: sessionId,
       });
     } catch (error) {

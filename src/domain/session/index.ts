@@ -625,6 +625,8 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     // Set deep analysis context for tools that need it
     const chatId = (options.context?.chatId as string) || '';
+    const messageId = (options.context?.messageId as string) || '';
+    const openId = (options.context?.openId as string) || options.userId || '';
     const messageString = typeof options.message === 'string'
       ? options.message
       : '[Multimodal message]';
@@ -907,10 +909,20 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       // CRITICAL: In recovery mode, use the full message from session (userContentString)
       // because options.message might be truncated (recovery.ts passes only first 100 chars)
       const messageForAgent = isRecovery ? userContentString : options.message;
+
+      // Build user context for tool execution
+      const userContextForTools = {
+        openId,
+        chatId,
+        messageId,
+        userId: options.userId,
+      };
+
       const chatPromise = agent.chat(messageForAgent, {
         onContentBlock: (block) => {
           streamingController?.pushContent(block);
         },
+        userContext: userContextForTools,
       });
 
       // Create a promise that rejects on timeout

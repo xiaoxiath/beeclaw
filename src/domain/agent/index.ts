@@ -76,7 +76,7 @@ export function createDefaultToolExecutor(): ToolExecutor {
   cbRegistry.registerToolConfig('web_search', CIRCUIT_BREAKER_PRESETS.mcp_tool);
   cbRegistry.registerToolConfig('deep_research', { failureThreshold: 2, cooldownMs: 120_000 });
 
-  return async (name: string, params: Record<string, unknown>) => {
+  return async (name: string, params: Record<string, unknown>, userContext?: UserContext) => {
     // Determine if this tool needs circuit breaker protection
     const needsCircuitBreaker = (
       name.startsWith('feishu_') ||
@@ -90,7 +90,7 @@ export function createDefaultToolExecutor(): ToolExecutor {
     if (needsCircuitBreaker) {
       try {
         return await cbRegistry.execute(name, async () => {
-          return await _executeToolInner(name, params);
+          return await _executeToolInner(name, params, userContext);
         });
       } catch (error) {
         if (error instanceof CircuitOpenError) {
@@ -109,12 +109,12 @@ export function createDefaultToolExecutor(): ToolExecutor {
     }
 
     // Non-protected tools: execute directly
-    return _executeToolInner(name, params);
+    return _executeToolInner(name, params, userContext);
   };  // end of createDefaultToolExecutor return
 }
 
 // Inner tool execution logic (separated for circuit breaker wrapping)
-async function _executeToolInner(name: string, params: Record<string, unknown>): Promise<{ success: boolean; data?: unknown; error?: string }> {
+async function _executeToolInner(name: string, params: Record<string, unknown>, userContext?: UserContext): Promise<{ success: boolean; data?: unknown; error?: string }> {
     // Plugin tools (highest priority)
     try {
       const registry = getPluginRegistry();
@@ -225,7 +225,7 @@ This ensures skills are in the correct location and follow quality standards.`,
         } else if (name.startsWith('feishu_docx_')) {
           result = await executeDocxTool(client, name, params);
         } else if (name.startsWith('feishu_drive_')) {
-          result = await executeDriveTool(client, name, params);
+          result = await executeDriveTool(client, name, params, userContext);
         } else if (name.startsWith('feishu_bitable_')) {
           result = await executeBitableTool(client, name, params);
         } else if (name.startsWith('feishu_wiki_')) {
@@ -309,6 +309,7 @@ export class Agent {
   }> = [];
   private loopDetector: LoopDetector = createLoopDetector();
   private toolSelector = getHybridToolSelector();
+  private currentUserContext?: UserContext;  // User context for tool execution
 
   constructor(options: AgentOptions & {
     contextConfig?: Partial<ContextConfig>;
@@ -794,12 +795,19 @@ export class Agent {
      * Called when tool use or final text is generated
      */
     onContentBlock?: (block: any) => void; // ContentBlock type from types/content-block
+    /**
+     * User context for tool execution (e.g., Feishu openId, chatId)
+     */
+    userContext?: UserContext;
   }): Promise<string> {
     this.refreshTime();
 
     if (this.autoRefreshMemory) {
       this.refreshMemory();
     }
+
+    // Store user context for tool execution
+    this.currentUserContext = options?.userContext;
 
     const tokensBefore = this.estimatedTokens;
     this.lastSkillFailed = undefined;
@@ -959,7 +967,7 @@ export class Agent {
             input: params,
           });
 
-          const result = await this.toolExecutor(skillGetCall.function.name, params);
+          const result = await this.toolExecutor(skillGetCall.function.name, params, this.currentUserContext);
           options?.onToolResult?.(skillGetCall.function.name, result);
 
           const skillName = params.name as string;
@@ -1082,7 +1090,7 @@ export class Agent {
               // 记录工具调用
               this.loopDetector.recordToolCall(call.function.name, params, iterations);
               
-              const result = await this.toolExecutor(call.function.name, params);
+              const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
                 const toolElapsed = Date.now() - toolStartTime;
 
                 if (this.hookRunner) {
@@ -1420,7 +1428,7 @@ export class Agent {
             }
           }
 
-          const result = await this.toolExecutor(call.function.name, params);
+          const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
 
           yield { type: 'tool_result', name: call.function.name, result };
 
