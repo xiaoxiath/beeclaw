@@ -219,6 +219,93 @@ export async function createFolder(
 }
 
 /**
+ * Create a new Feishu document (docx)
+ */
+export async function createDocument(
+  client: Client,
+  title: string,
+  options?: {
+    folderToken?: string;
+    content?: string;
+  }
+): Promise<{
+  documentId: string;
+  title: string;
+  url: string;
+}> {
+  try {
+    // Create document using docx API
+    const response = await client.docx.document.create({
+      data: {
+        title: title,
+        folder_token: options?.folderToken,
+      },
+    });
+
+    if (response.code !== 0) {
+      throw new Error(`Failed to create document: ${response.msg}`);
+    }
+
+    const documentId = response.data?.document?.document_id;
+    const documentTitle = response.data?.document?.title || title;
+
+    // If initial content provided, add it to the document
+    if (options?.content && documentId) {
+      try {
+        // Get the root block (page block) of the document
+        const rootBlock = await client.docx.documentBlock.get({
+          path: {
+            document_id: documentId,
+            block_id: documentId,
+          },
+        });
+
+        if (rootBlock.code === 0 && rootBlock.data?.block) {
+          // Add text content to the document
+          await client.docx.documentBlockChildren.patch({
+            path: {
+              document_id: documentId,
+              block_id: documentId,
+            },
+            params: {
+              document_revision_id: -1,
+            },
+            data: {
+              index: 0,
+              insert_horizontal: false,
+              children: [{
+                type: 2, // text block type
+                text: {
+                  elements: [{
+                    text_run: {
+                      content: options.content,
+                    },
+                  }],
+                },
+              }],
+            },
+          });
+        }
+      } catch (contentError) {
+        // Non-fatal: document created but content addition failed
+        logger.warn('Failed to add initial content to document:', contentError);
+      }
+    }
+
+    logger.info(`✅ Created document: ${documentTitle} (${documentId})`);
+
+    return {
+      documentId,
+      title: documentTitle,
+      url: `https://feishu.cn/docx/${documentId}`,
+    };
+  } catch (error) {
+    logger.error('Failed to create document:', error);
+    throw error;
+  }
+}
+
+/**
  * Move file to another folder
  */
 export async function moveFile(
@@ -581,6 +668,29 @@ export const driveToolDefinitions = {
     },
   },
 
+  feishu_drive_create_document: {
+    name: 'feishu_drive_create_document',
+    description: 'Create a new Feishu document (docx) in cloud drive',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Document title',
+        },
+        folderToken: {
+          type: 'string',
+          description: 'Folder token where to create the document (optional, creates in root if not specified)',
+        },
+        content: {
+          type: 'string',
+          description: 'Initial content for the document (optional)',
+        },
+      },
+      required: ['title'],
+    },
+  },
+
   feishu_drive_move: {
     name: 'feishu_drive_move',
     description: 'Move file to another folder',
@@ -825,6 +935,33 @@ export async function executeDriveTool(
           parsed.data.name
         );
         return { success: true, data: file };
+      }
+
+      case 'feishu_drive_create_document': {
+        const parsed = z.object({
+          title: z.string(),
+          folderToken: z.string().optional(),
+          content: z.string().optional(),
+        }).safeParse(params);
+
+        if (!parsed.success) {
+          return { success: false, error: parsed.error.message };
+        }
+
+        // If folderToken is 'root', get actual root token
+        let folderToken = parsed.data.folderToken;
+        if (folderToken === 'root') {
+          folderToken = await getRootFolderToken(client);
+        }
+
+        const doc = await createDocument(client, parsed.data.title, {
+          folderToken,
+          content: parsed.data.content,
+        });
+        return {
+          success: true,
+          data: doc,
+        };
       }
 
       case 'feishu_drive_move': {
