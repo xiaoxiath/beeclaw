@@ -525,13 +525,13 @@ async function readResponseBuffer(data: unknown): Promise<Buffer> {
 export const driveToolDefinitions = {
   feishu_drive_list: {
     name: 'feishu_drive_list',
-    description: 'List files in a folder (use "root" for root folder)',
+    description: 'List files in a folder. Note: For app permissions, you need a specific folder token (not "root"). Get folder token from Feishu Drive URL or use "列出我的云盘" to browse interactively.',
     parameters: {
       type: 'object' as const,
       properties: {
         folderToken: {
           type: 'string',
-          description: 'Folder token (use "root" for root folder)',
+          description: 'Folder token (e.g., "fldcnXXXXXXXXXXXX"). For root, use specific folder token from your Feishu Drive URL. Example: From URL https://feishu.cn/drive/folder/fldcnABC123, use "fldcnABC123"',
         },
         pageSize: {
           type: 'number',
@@ -761,13 +761,29 @@ export async function executeDriveTool(
           return { success: false, error: parsed.error.message };
         }
 
-        // Handle 'root' token
-        let folderToken = parsed.data.folderToken;
-        if (folderToken === 'root') {
-          folderToken = await getRootFolderToken(client);
+        // Check if user is trying to use "root" keyword
+        if (parsed.data.folderToken.toLowerCase() === 'root') {
+          return {
+            success: false,
+            error: '❌ 无法访问云盘根目录\n\n' +
+              '**应用权限限制**：应用无法直接访问您的"我的云盘"根目录\n\n' +
+              '**解决方案**：\n' +
+              '1. **获取文件夹token**：\n' +
+              '   - 在飞书云盘中打开要访问的文件夹\n' +
+              '   - 从浏览器地址栏复制文件夹token\n' +
+              '   - URL格式：`https://feishu.cn/drive/folder/fldcnXXXXXXXXX`\n' +
+              '   - 其中的 `fldcnXXXXXXXXX` 就是 folderToken\n\n' +
+              '2. **使用具体token**：\n' +
+              '   ```
+"列出文件夹 fldcnXXXXXXXXX 的文件"\n' +
+              '   ```\n\n' +
+              '3. **或使用用户授权**：\n' +
+              '   - 个人云盘需要用户授权才能访问\n' +
+              '   - 我可以帮您设置用户授权流程',
+          };
         }
 
-        const result = await listFiles(client, folderToken, {
+        const result = await listFiles(client, parsed.data.folderToken, {
           pageSize: parsed.data.pageSize,
           orderBy: parsed.data.orderBy,
         });
