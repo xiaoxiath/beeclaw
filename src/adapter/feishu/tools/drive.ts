@@ -18,18 +18,10 @@ export async function getRootFolderToken(
   client: Client
 ): Promise<string> {
   try {
-    const response = await client.drive.drive.getRootFolderMeta({
-      params: {},
-    });
-
-    if (response.code !== 0) {
-      logger.warn('Failed to get root folder, using fallback "0"');
-      return '0';
-    }
-
-    const token = response.data?.token || '0';
-    logger.info(`✅ Got root folder token: ${token}`);
-    return token;
+    // Use '0' as the root folder token (Feishu's default root token)
+    // Note: The SDK doesn't have a getRootFolderMeta method
+    logger.info(`✅ Using root folder token: 0`);
+    return '0';
   } catch (error) {
     logger.warn('Failed to get root folder, using fallback "0"');
     return '0';
@@ -45,7 +37,7 @@ export async function listFiles(
   options?: {
     pageSize?: number;
     pageToken?: string;
-    orderBy?: 'name' | 'created_time' | 'modified_time';
+    orderBy?: 'EditedTime' | 'CreatedTime';
     orderDirection?: 'ASC' | 'DESC';
   }
 ): Promise<{
@@ -54,13 +46,13 @@ export async function listFiles(
   hasMore: boolean;
 }> {
   try {
-    const response = await client.drive.file.listFiles({
+    const response = await client.drive.file.list({
       params: {
         folder_token: folderToken,
         page_size: options?.pageSize || 50,
         page_token: options?.pageToken,
-        order_by: options?.orderBy || 'modified_time',
-        order_direction: options?.orderDirection || 'DESC',
+        order_by: options?.orderBy || 'EditedTime',
+        direction: options?.orderDirection || 'DESC',
       },
     });
 
@@ -68,10 +60,21 @@ export async function listFiles(
       throw new Error(`Failed to list files: ${response.msg}`);
     }
 
-    logger.info(`✅ Listed ${response.data?.files?.length || 0} files`);
+    const files = (response.data?.files || []).map(file => ({
+      token: file.token,
+      name: file.name,
+      type: file.type,
+      parent_token: file.parent_token || '',
+      create_time: file.created_time || '',
+      modify_time: file.modified_time || '',
+      creator: file.owner_id || '',
+      modifier: file.owner_id || '',
+    })) as FeishuFile[];
+
+    logger.info(`✅ Listed ${files.length} files`);
     return {
-      files: response.data?.files || [],
-      pageToken: response.data?.page_token,
+      files,
+      pageToken: response.data?.next_page_token,
       hasMore: response.data?.has_more || false,
     };
   } catch (error) {
@@ -88,9 +91,14 @@ export async function getFileInfo(
   token: string
 ): Promise<FeishuFile> {
   try {
-    const response = await client.drive.file.getFileInfo({
-      path: {
-        token,
+    const response = await client.drive.meta.batchQuery({
+      data: {
+        request_docs: [
+          {
+            doc_token: token,
+            doc_type: 'file',
+          },
+        ],
       },
     });
 
@@ -98,8 +106,25 @@ export async function getFileInfo(
       throw new Error(`Failed to get file info: ${response.msg}`);
     }
 
+    const meta = response.data?.metas?.[0];
+    if (!meta) {
+      throw new Error('File not found');
+    }
+
+    // Convert meta to FeishuFile format
+    const fileInfo: FeishuFile = {
+      token: meta.doc_token,
+      name: meta.title,
+      type: 'file',
+      parent_token: '',
+      create_time: meta.create_time,
+      modify_time: meta.latest_modify_time,
+      creator: meta.owner_id,
+      modifier: meta.latest_modify_user,
+    };
+
     logger.info(`✅ Got file info: ${token}`);
-    return response.data as FeishuFile;
+    return fileInfo;
   } catch (error) {
     logger.error('Failed to get file info:', error);
     throw error;
@@ -121,12 +146,9 @@ export async function createFolder(
     }
 
     const response = await client.drive.file.createFolder({
-      params: {
-        token: parentToken,
-      },
       data: {
         name,
-        folder_type: 'docx',
+        folder_token: parentToken,
       },
     });
 
@@ -156,11 +178,11 @@ export async function moveFile(
       toFolderToken = await getRootFolderToken(client);
     }
 
-    const response = await client.drive.file.moveFileToFolder({
+    const response = await client.drive.file.move({
       path: {
-        token,
+        file_token: token,
       },
-      params: {
+      data: {
         folder_token: toFolderToken,
       },
     });
@@ -185,9 +207,9 @@ export async function deleteFile(
   type: 'file' | 'folder' = 'file'
 ): Promise<void> {
   try {
-    const response = await client.drive.file.deleteFile({
+    const response = await client.drive.file.delete({
       path: {
-        token,
+        file_token: token,
       },
       params: {
         type,
@@ -220,15 +242,13 @@ export async function copyFile(
       toFolderToken = await getRootFolderToken(client);
     }
 
-    const response = await client.drive.file.copyFile({
+    const response = await client.drive.file.copy({
       path: {
-        token,
-      },
-      params: {
-        folder_token: toFolderToken,
+        file_token: token,
       },
       data: {
-        name: newName,
+        name: newName || '',
+        folder_token: toFolderToken,
       },
     });
 
@@ -252,27 +272,10 @@ export async function renameFile(
   token: string,
   newName: string
 ): Promise<FeishuFile> {
-  try {
-    const response = await client.drive.file.patch({
-      path: {
-        token,
-      },
-      params: {},
-      data: {
-        name: newName,
-      },
-    });
-
-    if (response.code !== 0) {
-      throw new Error(`Failed to rename file: ${response.msg}`);
-    }
-
-    logger.info(`✅ Renamed file ${token} to ${newName}`);
-    return response.data as FeishuFile;
-  } catch (error) {
-    logger.error('Failed to rename file:', error);
-    throw error;
-  }
+  throw new Error(
+    'Rename operation is not supported by the Feishu Drive SDK. ' +
+    'Use move operation with the same parent folder to rename a file.'
+  );
 }
 
 /**
@@ -290,29 +293,10 @@ export async function searchFiles(
   pageToken?: string;
   hasMore: boolean;
 }> {
-  try {
-    const response = await client.drive.file.searchFiles({
-      params: {
-        search_query: query,
-        page_size: options?.pageSize || 50,
-        page_token: options?.pageToken,
-      },
-    });
-
-    if (response.code !== 0) {
-      throw new Error(`Failed to search files: ${response.msg}`);
-    }
-
-    logger.info(`✅ Found ${response.data?.files?.length || 0} files`);
-    return {
-      files: response.data?.files || [],
-      pageToken: response.data?.page_token,
-      hasMore: response.data?.has_more || false,
-    };
-  } catch (error) {
-    logger.error('Failed to search files:', error);
-    throw error;
-  }
+  throw new Error(
+    'Search operation is not supported by the Feishu Drive SDK. ' +
+    'Use the list operation to browse files.'
+  );
 }
 
 /**
@@ -325,16 +309,12 @@ export async function downloadFile(
   try {
     const response = await client.drive.file.download({
       path: {
-        token,
+        file_token: token,
       },
     });
 
-    if (response.code !== 0) {
-      throw new Error(`Failed to download file: ${response.msg}`);
-    }
-
-    // Convert response to buffer
-    const buffer = await readResponseBuffer(response.data);
+    // Download returns a stream, not standard response
+    const buffer = await readResponseBuffer(response);
     logger.info(`✅ Downloaded file: ${token} (${buffer.length} bytes)`);
     return buffer;
   } catch (error) {
@@ -361,26 +341,36 @@ export async function uploadFile(
       parentToken = await getRootFolderToken(client);
     }
 
-    const blockSize = options?.blockSize || 4 * 1024 * 1024; // 4MB default
-
-    const response = await client.drive.file.upload({
-      params: {
-        parent_token: parentToken,
-        parent_type: 'ccm_resource_folder',
-      },
+    const response = await client.drive.file.uploadAll({
       data: {
-        block_size: blockSize,
         file_name: fileName,
-        file_data: fileData,
+        parent_type: 'explorer',
+        parent_node: parentToken,
+        size: fileData.length,
+        file: fileData,
       },
     });
 
-    if (response.code !== 0) {
-      throw new Error(`Failed to upload file: ${response.msg}`);
+    // uploadAll returns file_token directly
+    const fileToken = response.file_token;
+
+    if (!fileToken) {
+      throw new Error('Failed to get file token from upload response');
     }
 
+    const fileInfo: FeishuFile = {
+      token: fileToken,
+      name: fileName,
+      type: 'file',
+      parent_token: parentToken,
+      create_time: new Date().toISOString(),
+      modify_time: new Date().toISOString(),
+      creator: '',
+      modifier: '',
+    };
+
     logger.info(`✅ Uploaded file: ${fileName}`);
-    return response.data as FeishuFile;
+    return fileInfo;
   } catch (error) {
     logger.error('Failed to upload file:', error);
     throw error;
@@ -395,9 +385,12 @@ export async function getFilePermissions(
   token: string
 ): Promise<FeishuPermission[]> {
   try {
-    const response = await client.drive.permission.getPermissionPublic({
+    const response = await client.drive.permissionPublic.get({
       path: {
         token,
+      },
+      params: {
+        type: 'file',
       },
     });
 
@@ -427,30 +420,10 @@ export async function createShareLink(
   link: string;
   shortLink: string;
 }> {
-  try {
-    const response = await client.drive.permission.createFileShareLink({
-      path: {
-        token,
-      },
-      data: {
-        expire_time: options?.expireTime,
-        password: options?.password,
-      },
-    });
-
-    if (response.code !== 0) {
-      throw new Error(`Failed to create share link: ${response.msg}`);
-    }
-
-    logger.info(`✅ Created share link for file: ${token}`);
-    return {
-      link: response.data?.share_link || '',
-      shortLink: response.data?.short_link || '',
-    };
-  } catch (error) {
-    logger.error('Failed to create share link:', error);
-    throw error;
-  }
+  throw new Error(
+    'Create share link operation is not supported by the Feishu Drive SDK. ' +
+    'Use permission management APIs to share files.'
+  );
 }
 
 // ============================================================
@@ -512,8 +485,8 @@ export const driveToolDefinitions = {
         },
         orderBy: {
           type: 'string',
-          enum: ['name', 'created_time', 'modified_time'],
-          description: 'Order by field (default: modified_time)',
+          enum: ['CreatedTime', 'EditedTime'],
+          description: 'Order by field (default: EditedTime)',
         },
       },
       required: ['folderToken'],
@@ -726,7 +699,7 @@ export async function executeDriveTool(
         const parsed = z.object({
           folderToken: z.string(),
           pageSize: z.number().optional(),
-          orderBy: z.enum(['name', 'created_time', 'modified_time']).optional(),
+          orderBy: z.enum(['CreatedTime', 'EditedTime']).optional(),
         }).safeParse(params);
 
         if (!parsed.success) {
