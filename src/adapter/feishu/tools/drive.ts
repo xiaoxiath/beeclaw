@@ -774,8 +774,8 @@ export async function executeDriveTool(
               '   - URL格式：`https://feishu.cn/drive/folder/fldcnXXXXXXXXX`\n' +
               '   - 其中的 `fldcnXXXXXXXXX` 就是 folderToken\n\n' +
               '2. **使用具体token**：\n' +
-              '   ```
-"列出文件夹 fldcnXXXXXXXXX 的文件"\n' +
+              '   ```\n' +
+              '   "列出文件夹 fldcnXXXXXXXXX 的文件"\n' +
               '   ```\n\n' +
               '3. **或使用用户授权**：\n' +
               '   - 个人云盘需要用户授权才能访问\n' +
