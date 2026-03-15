@@ -259,40 +259,31 @@ export async function createDocument(
     // If initial content provided, add it to the document
     if (options?.content && documentId) {
       try {
-        // Get the root block (page block) of the document
-        const rootBlock = await client.docx.documentBlock.get({
+        // Add text content to the document using create method
+        await client.docx.documentBlockChildren.create({
           path: {
             document_id: documentId,
             block_id: documentId,
           },
+          params: {
+            document_revision_id: -1,
+          },
+          data: {
+            index: 0,
+            children: [{
+              block_type: 2, // text block type
+              text: {
+                elements: [{
+                  text_run: {
+                    content: options.content,
+                  },
+                }],
+              },
+            }],
+          },
         });
 
-        if (rootBlock.code === 0 && rootBlock.data?.block) {
-          // Add text content to the document
-          await client.docx.documentBlockChildren.patch({
-            path: {
-              document_id: documentId,
-              block_id: documentId,
-            },
-            params: {
-              document_revision_id: -1,
-            },
-            data: {
-              index: 0,
-              insert_horizontal: false,
-              children: [{
-                type: 2, // text block type
-                text: {
-                  elements: [{
-                    text_run: {
-                      content: options.content,
-                    },
-                  }],
-                },
-              }],
-            },
-          });
-        }
+        logger.info(`✅ Added initial content to document`);
       } catch (contentError) {
         // Non-fatal: document created but content addition failed
         logger.warn('Failed to add initial content to document:', contentError);

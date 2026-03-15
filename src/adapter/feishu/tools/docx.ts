@@ -232,7 +232,7 @@ export async function batchCreateBlocks(
     const chunk = blocks.slice(i, i + BATCH_SIZE);
     const startIndex = (options?.index ?? -1) + i;
 
-    const response = await client.docx.documentBlockChildren.patch({
+    const response = await client.docx.documentBlockChildren.create({
       path: {
         document_id: documentId,
         block_id: parentId,
@@ -242,9 +242,8 @@ export async function batchCreateBlocks(
       },
       data: {
         index: startIndex,
-        insert_horizontal: false,
         children: chunk.map(b => ({
-          type: b.type,
+          block_type: b.type,
           text: b.text,
         })),
       },
