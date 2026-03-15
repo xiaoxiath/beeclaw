@@ -8,8 +8,6 @@ import type { Client } from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../../infra/observability/logger';
 import { z } from 'zod';
 import { readFile } from 'fs/promises';
-import { createToolAuthInterceptor, wrapToolWithAuth, type ToolExecutionContext } from '../tool-auth-interceptor';
-import type { UserContext } from '../../../domain/agent/types';
 
 const logger = getLogger('feishu:drive');
 
@@ -41,8 +39,7 @@ export async function listFiles(
     pageToken?: string;
     orderBy?: 'EditedTime' | 'CreatedTime';
     orderDirection?: 'ASC' | 'DESC';
-  },
-  userAccessToken?: string
+  }
 ): Promise<{
   files: FeishuFile[];
   pageToken?: string;
@@ -57,11 +54,6 @@ export async function listFiles(
         order_by: options?.orderBy || 'EditedTime',
         direction: options?.orderDirection || 'DESC',
       },
-      ...(userAccessToken && {
-        headers: {
-          Authorization: `Bearer ${userAccessToken}`,
-        },
-      }),
     });
 
     if (response.code !== 0) {
@@ -700,80 +692,8 @@ export async function executeDriveTool(
   client: Client,
   name: string,
   params: Record<string, unknown>,
-  userContext?: UserContext
+  userContext?: unknown // Keep parameter for compatibility but don't use it
 ): Promise<Record<string, unknown>> {
-  // Drive tools require user authorization
-  // Check if user context is available
-  if (!userContext?.openId) {
-    return {
-      success: false,
-      error: 'Drive operations require user authorization. Please use this feature in Feishu chat.',
-    };
-  }
-
-  // Get user access token using smart auth manager
-  let userAccessToken: string;
-  try {
-    const { createSmartAuthManager } = await import('../smart-auth');
-    const { getConfig_ } = await import('../../../app');
-    const config = getConfig_();
-
-    if (!config?.feishu?.appId) {
-      return {
-        success: false,
-        error: 'Feishu configuration not found.',
-      };
-    }
-
-    const authManager = createSmartAuthManager(client, {
-      appId: config.feishu.appId,
-      redirectUri: `${config.feishu.oauthRedirectUri || 'http://localhost:3000'}/api/feishu/oauth/callback`,
-    });
-
-    // Try to authorize user (will attempt silent auth first, then fall back to card auth)
-    const authResult = await authManager.authorize(
-      userContext.openId,
-      name,
-      userContext.chatId
-    );
-
-    if (!authResult.authorized) {
-      // Authorization required - send auth card to user if in Feishu context
-      if (authResult.authCard && userContext.chatId && userContext.messageId) {
-        try {
-          // Import sendMarkdownCard to send auth card
-          const { sendMarkdownCard } = await import('../send');
-          await sendMarkdownCard(
-            client,
-            userContext.messageId,
-            authResult.authCard
-          );
-          logger.info(`✅ Sent auth card to user ${userContext.openId}`);
-        } catch (error) {
-          logger.error('Failed to send auth card:', error);
-        }
-      }
-
-      return {
-        success: false,
-        error: '需要授权才能访问你的云盘文件。我已经发送了授权卡片给你，请点击授权按钮完成授权后重试。',
-        requiresAuth: true,
-      };
-    }
-
-    userAccessToken = authResult.accessToken!;
-    logger.info(`✅ User ${userContext.openId} authorized for drive operation: ${name}`);
-  } catch (error) {
-    logger.error('Failed to get user authorization:', error);
-    return {
-      success: false,
-      error: 'Failed to authorize user. Please try again.',
-    };
-  }
-
-  // Create user-authorized client
-  const userClient = client;
-
   try {
     switch (name) {
       case 'feishu_drive_list': {
@@ -790,13 +710,13 @@ export async function executeDriveTool(
         // Handle 'root' token
         let folderToken = parsed.data.folderToken;
         if (folderToken === 'root') {
-          folderToken = await getRootFolderToken(userClient);
+          folderToken = await getRootFolderToken(client);
         }
 
-        const result = await listFiles(userClient, folderToken, {
+        const result = await listFiles(client, folderToken, {
           pageSize: parsed.data.pageSize,
           orderBy: parsed.data.orderBy,
-        }, userAccessToken);
+        });
         return {
           success: true,
           data: {
