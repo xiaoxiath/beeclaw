@@ -12,19 +12,73 @@ import { readFile } from 'fs/promises';
 const logger = getLogger('feishu:drive');
 
 /**
- * Get root folder token
+ * List available drives for the application
+ *
+ * With tenant_access_token (app permissions), you can list drives/spaces
+ * that the application has access to, then use their root_folder_token
+ */
+async function listAccessibleDrives(client: Client): Promise<any[]> {
+  try {
+    // Use the drive v1 API to list drives
+    // Note: This endpoint might not be available in all SDK versions
+    // so we'll make a direct HTTP call
+    const response = await fetch('https://open.feishu.cn/open-apis/drive/v1/drives', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${(client as any).tokenManager?.tenantAccessToken || ''}`,
+      },
+    });
+
+    if (!response.ok) {
+      logger.warn(`Drive list API returned ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json();
+    return data.data?.drives || [];
+  } catch (error) {
+    logger.debug('Failed to list drives (this is expected for some app configurations):', error);
+    return [];
+  }
+}
+
+/**
+ * Get root folder token - for "root" keyword, try to get first available drive's root
+ *
+ * Note: With tenant_access_token (app permissions), you cannot access users' personal "My Drive" root.
+ * You can only access:
+ * - Folders shared with the application
+ * - Shared drives/spaces
+ * - Specific folders with explicit permissions
+ *
+ * For accessing user's personal drive files, user authorization (user_access_token) is required.
  */
 export async function getRootFolderToken(
   client: Client
 ): Promise<string> {
   try {
-    // Use '0' as the root folder token (Feishu's default root token)
-    // Note: The SDK doesn't have a getRootFolderMeta method
-    logger.info(`✅ Using root folder token: 0`);
-    return '0';
+    // Try to get the list of accessible drives
+    const drives = await listAccessibleDrives(client);
+
+    if (drives.length > 0 && drives[0].root_folder_token) {
+      const rootToken = drives[0].root_folder_token;
+      logger.info(`✅ Using root folder token from drive: ${drives[0].name || rootToken}`);
+      return rootToken;
+    }
+
+    // If no drives found, provide helpful message and return empty
+    // The listFiles will fail with a clear API error
+    logger.warn('⚠️  No accessible drives found for application');
+    logger.warn('For app permissions, you need:');
+    logger.warn('  1. Folder permissions configured in Feishu admin console');
+    logger.warn('  2. Or use a specific folder token instead of "root"');
+    logger.warn('For personal drive access, user authorization is required');
+
+    // Return empty string - this will cause the API to return a clear error
+    return '';
   } catch (error) {
-    logger.warn('Failed to get root folder, using fallback "0"');
-    return '0';
+    logger.error('Failed to get root folder token:', error);
+    return '';
   }
 }
 
