@@ -21,39 +21,10 @@ export type {
   UrlVerificationEvent,
 } from './types';
 
-// CLI Runner (feishu-cli mode)
-export {
-  FeishuCLIRunner,
-  initFeishuCLIRunner,
-  getFeishuCLIRunner,
-  resetFeishuCLIRunner,
-  FeishuCLIError,
-} from './cli-runner';
+// Feishu tools are now handled by feishu-cli-toolkit skill
+// All tool operations are delegated to the skill for complete functionality
+// See: /skills/skills/feishu-cli-toolkit/SKILL.md
 
-export type {
-  FeishuCLIConfig,
-  CLIExecutionOptions,
-  CLIResult,
-} from './cli-runner';
-
-// CLI Response Types (simplified)
-export {
-  cliFileToFeishuFile,
-  cliSpaceToFeishuSpace,
-  cliNodeToFeishuNode,
-  cliCalendarToFeishuCalendar,
-  cliEventToFeishuEvent,
-} from './cli-types';
-
-export type {
-  CLIFileResponse,
-  CLIWikiSpacesResponse,
-  CLIWikiNodesResponse,
-  CLICalendarListResponse,
-  CLIEventListResponse,
-} from './cli-types';
-
-// WebSocket Client (Long connection mode)
 export {
   FeishuWSClient,
   initFeishuWSClient,

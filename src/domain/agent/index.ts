@@ -19,7 +19,7 @@ import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { recordSkillFailure } from './evolution';
-import { getFeishuWSClient, getFeishuCLIRunner } from '../../adapter/feishu';
+import { getFeishuWSClient } from '../../adapter/feishu';
 import {
   estimateMessageTokens,
   estimateTotalTokens,
