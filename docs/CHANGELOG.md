@@ -6,6 +6,99 @@
 
 ---
 
+## [v2.1.3] - 2026-03-15 (飞书工具修复)
+
+### 🐛 Bug 修复
+
+**问题**: Drive 工具参数传递错误导致 API 调用失败
+
+**症状**:
+```
+[Executing] feishu_drive_list({"folderToken":"root"})
+[Completed] feishu_drive_list (1ms): {"success":false,"error":"folder_token is not defined"}
+```
+
+**修复**:
+- ✅ 修复 `src/adapter/feishu/tools/drive.ts` 第 59 行参数传递
+- ✅ 从 `{ folder_token }` 简写改为显式 `{ folder_token: folderToken }`
+- ✅ 确保驼峰命名参数正确转换为下划线命名 API 参数
+
+**影响范围**:
+- ✅ `feishu_drive_list` - 列出文件夹内容（已修复）
+- ✅ 其他 drive 工具不受影响
+
+**详细文档**: [Bug 修复报告](./bugfix/drive-parameter-fix-2026-03-15.md)
+
+### 📚 文档更新
+
+**新增文档**:
+1. ✅ **飞书工具配置指南** - `docs/feishu-tools-setup.md`
+   - 完整的权限配置清单
+   - 快速配置链接
+   - 常见错误排查
+
+2. ✅ **飞书权限错误快速修复** - `docs/feishu-permissions-quickfix.md`
+   - 30 秒快速修复指南
+   - 权限速查表
+   - 一键申请链接
+
+3. ✅ **飞书权限详细排查** - `docs/troubleshooting/feishu-permissions-error.md`
+   - 错误码 99991672 详细诊断
+   - 分步解决方案
+   - 调试技巧
+
+4. ✅ **飞书工具架构设计** - `docs/design/feishu-tools-architecture.md`
+   - 分层架构（内置工具 vs Skill 工具）
+   - 性能对比分析
+   - 扩展性设计
+
+**新增工具**:
+1. ✅ **权限检查脚本** - `scripts/check-feishu-permissions.ts`
+   - 列出所有必需权限
+   - 提供快速配置链接
+
+2. ✅ **权限测试脚本** - `scripts/test-feishu-permissions.ts`
+   - 测试每个工具的权限配置
+   - 自动诊断权限问题
+
+3. ✅ **参数修复验证** - `scripts/test-drive-param-fix.ts`
+   - 验证 drive 工具参数修复
+   - 单元测试无需 API 连接
+
+### 🔧 配置更新
+
+**beeclaw.example.json**:
+```json
+{
+  "feishu": {
+    "enabled": true,
+    "appId": "${LARK_BEECLAW_APPID}",
+    "appSecret": "${LARK_BEECLAW_AS}",
+    "encryptKey": "${LARK_BEECLAW_ENCRYPT_KEY}",
+    "verificationToken": "${LARK_BEECLAW_VERIFICATION_TOKEN}",
+    "logLevel": "error",
+    "useCardV2": true
+  }
+}
+```
+
+**新增 skill**:
+- ✅ `skills/feishu-extended/SKILL.md` - 飞书扩展工具（知识库、权限、审批等低频功能）
+
+### 📊 统计
+
+**文档变更**:
+- 新增文档: 5 个
+- 更新文档: 3 个
+- 新增脚本: 4 个
+
+**代码修复**:
+- Bug 修复: 1 个（drive 参数传递）
+- 受影响文件: 1 个（`drive.ts`）
+- 修复行数: 1 行（第 59 行）
+
+---
+
 ## [v2.1.2] - 2026-03-14 (Cookbook 修复)
 
 ### 🐛 重大修复

@@ -29,7 +29,8 @@
 | WebSocket 连接失败 | `Connection timeout` | [查看详情](./feishu-issues.md#websocket-连接失败) |
 | 消息发送失败 | `Failed to send message` | [查看详情](./feishu-issues.md#消息发送失败) |
 | Card V2 渲染错误 | 卡片显示异常 | [查看详情](./feishu-issues.md#card-v2-渲染错误) |
-| 权限不足 | `Permission denied` | [查看详情](./feishu-issues.md#权限不足) |
+| **权限不足** | **错误码 99991672** | **[🔧 快速修复](./feishu-permissions-error.md)** ⭐ |
+| 工具调用失败 | `Request failed` | [查看详情](./feishu-issues.md#工具调用失败) |
 
 ### ⚡ 性能问题
 

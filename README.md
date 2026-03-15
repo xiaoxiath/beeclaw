@@ -66,7 +66,7 @@ bun run bot        # 飞书 Bot 模式
 | **初次使用者** | [5 分钟快速开始](./docs/getting-started.md) |
 | **运维工程师** | [PM2 部署指南](./docs/operations/deployment.md) |
 | **开发者** | [开发指南](./CLAUDE.md) |
-| **飞书 Bot 用户** | [飞书集成](./docs/guide/feishu-integration.md) |
+| **飞书 Bot 用户** | [飞书集成](./docs/guide/feishu-integration.md) · [飞书工具配置](./docs/feishu-tools-setup.md) |
 
 ## 🏗️ 架构概览
 

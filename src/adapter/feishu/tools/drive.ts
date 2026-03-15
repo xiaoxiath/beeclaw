@@ -56,7 +56,7 @@ export async function listFiles(
   try {
     const response = await client.drive.file.listFiles({
       params: {
-        folder_token,
+        folder_token: folderToken,
         page_size: options?.pageSize || 50,
         page_token: options?.pageToken,
         order_by: options?.orderBy || 'modified_time',

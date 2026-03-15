@@ -63,6 +63,15 @@
     "level": "info",
     "format": "pretty"
   },
+  "feishu": {
+    "enabled": true,
+    "appId": "${LARK_BEECLAW_APPID}",
+    "appSecret": "${LARK_BEECLAW_AS}",
+    "encryptKey": "${LARK_BEECLAW_ENCRYPT_KEY}",
+    "verificationToken": "${LARK_BEECLAW_VERIFICATION_TOKEN}",
+    "logLevel": "error",
+    "useCardV2": true
+  },
   "user": {
     "location": "北京",
     "locale": "zh-CN"
