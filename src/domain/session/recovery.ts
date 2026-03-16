@@ -46,6 +46,10 @@ export interface UnansweredSession {
   existingResponse?: string;
   /** Current recovery attempt count */
   recoveryAttempts: number;
+  /** [AUDIT FIX M-07] Whether original message was multimodal */
+  wasMultimodal?: boolean;
+  /** [AUDIT FIX M-07] Vision description from two-stage processing */
+  visionDescription?: string;
 }
 
 export interface RecoveryResult {
@@ -185,6 +189,10 @@ export async function detectUnansweredSessions(
     // BUG #2 FIX: Detect if this is a delivery-only recovery
     const isPendingDeliveryOnly = session.pendingDelivery === true;
 
+    // [AUDIT FIX M-07] Capture multimodal metadata for recovery
+    const lastMsgMeta = (lastMessage as any)._meta;
+    const wasMultimodal = lastMsgMeta?.originalType === 'multimodal';
+
     unanswered.push({
       session,
       lastMessageAge: age,
@@ -192,6 +200,8 @@ export async function detectUnansweredSessions(
       pendingDeliveryOnly: isPendingDeliveryOnly,
       existingResponse: isPendingDeliveryOnly ? session.lastAiResponse : undefined,
       recoveryAttempts: attempts,
+      wasMultimodal,
+      visionDescription: wasMultimodal ? lastMsgMeta?.visionDescription : undefined,
     });
   }
 
@@ -269,7 +279,16 @@ export async function recoverUnansweredSessions(
           responseToSend = existingResponse;
         } else {
           // BUG #2 FIX: Phase 2 - Full reprocessing
-          console.log(`[Recovery] Phase 2: Reprocessing message...`);
+          // [AUDIT FIX M-07] Multimodal-aware recovery
+          let recoveryMessage: string;
+          if (item.wasMultimodal && item.visionDescription) {
+            // Reconstruct context from vision description instead of raw text
+            recoveryMessage = `[恢复上下文 - 原始消息包含图片] 图片描述：${item.visionDescription}\n用户消息：${lastMessageContent}`;
+            console.log('[Recovery] Phase 2: Reprocessing multimodal message with vision context...');
+          } else {
+            recoveryMessage = lastMessageContent;
+            console.log('[Recovery] Phase 2: Reprocessing text message...');
+          }
 
           // Send proactive message to reprocess
           let proactiveResult: { success: boolean; response?: string; error?: string } | undefined;
@@ -279,7 +298,7 @@ export async function recoverUnansweredSessions(
               sessionId: session.id,
               userId: session.userId,
               channel,
-              message: lastMessageContent, // BUG #4 FIX: Full content
+              message: recoveryMessage, // [AUDIT FIX M-07] Use multimodal-aware message
               context: {
                 chatId: session.metadata?.chatId,
                 isRecovery: true,  // Mark as recovery

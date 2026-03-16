@@ -3,6 +3,11 @@
  *
  * Unified task execution logic for proactive jobs
  * Used by both bot.ts (Feishu mode) and daemon.ts (default handler)
+ *
+ * [AUDIT FIX M-02, M-06, M-10] Major improvements:
+ * - Proactive tasks now inherit user conversation context via associatedSessionId
+ * - Default blockedTools prevent unsafe operations in unattended mode
+ * - Task results are injected back into user sessions for bidirectional context
  */
 
 import type { ProactiveJobData } from './types';
@@ -11,9 +16,11 @@ import { getCompressionEngine } from '../memory/compression';
 import { getMemoryStore } from '../memory';
 import { getReflectionEngine } from '../agent/reflection-engine';
 import { getConfig } from '../../infra/config';
-import { sendProactiveMessage } from '../session';
+import { sendProactiveMessage, injectProactiveResult, getRecentSessionHistory } from '../session';
+import type { SessionMessage } from '../session';
 import { getSkillStore } from '../skills/store';
 import { pushNotification } from './pusher';
+import { PROACTIVE_DEFAULT_BLOCKED_TOOLS } from '../agent/types';
 
 /**
  * Get default push target from config
@@ -51,7 +58,50 @@ function getPushTarget(
 }
 
 /**
+ * [AUDIT FIX M-02] Build conversation history context from associated session.
+ *
+ * Loads recent messages from the user's active session and formats them
+ * as context for the proactive task, enabling context-aware responses.
+ */
+function buildConversationHistoryContext(
+  associatedSessionId: string | undefined,
+  maxMessages: number = 10
+): string {
+  if (!associatedSessionId) return '';
+
+  try {
+    const history: SessionMessage[] = getRecentSessionHistory(associatedSessionId, maxMessages);
+    if (history.length === 0) return '';
+
+    const formatted = history.map(m => {
+      const role = m.role === 'user' ? '用户' : m.role === 'assistant' ? '助手' : '系统';
+      // Truncate very long messages to avoid bloating the prompt
+      const content = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
+      return `${role}: ${content}`;
+    }).join('\n');
+
+    return `\n\n## 用户最近对话上下文\n${formatted}\n`;
+  } catch (error) {
+    logger.debug('Failed to load conversation history for proactive task:', error);
+    return '';
+  }
+}
+
+/**
+ * [AUDIT FIX M-06] Get blocked tools list for proactive tasks.
+ * Merges default blocked tools with any custom ones from job params.
+ */
+function getProactiveBlockedTools(jobParams?: Record<string, unknown>): string[] {
+  const customBlocked = (jobParams?.blockedTools as string[]) || [];
+  // Merge defaults with custom, deduplicate
+  return [...new Set([...PROACTIVE_DEFAULT_BLOCKED_TOOLS, ...customBlocked])];
+}
+
+/**
  * Execute a skill with parameters
+ *
+ * [AUDIT FIX M-10] Now loads conversation history from associatedSessionId
+ * and passes blockedTools to prevent unsafe operations.
  */
 export async function handleRunSkillJob(
   job: ProactiveJobData,
@@ -83,6 +133,9 @@ export async function handleRunSkillJob(
       return;
     }
 
+    // [AUDIT FIX M-02] Load conversation history from associated session
+    const historyContext = buildConversationHistoryContext(job.associatedSessionId);
+
     // Build prompt to execute the skill
     const skillPrompt = `请执行技能 "${skillName}"。
 
@@ -94,7 +147,7 @@ ${skill.content || '(无详细内容)'}
 
 参数：
 ${JSON.stringify(skillParams, null, 2)}
-
+${historyContext}
 请根据技能说明和参数执行相应操作。`;
 
     // Get Feishu client for channel info
@@ -103,17 +156,29 @@ ${JSON.stringify(skillParams, null, 2)}
 
     console.log(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
 
-    // Execute through the agent
+    // [AUDIT FIX M-06] Execute through the agent with blocked tools
     const result = await sendProactiveMessage({
       message: skillPrompt,
       userId,
       channel,
-      sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
+      sessionId: job.associatedSessionId || (chatId ? `feishu-${chatId}-${userId}` : undefined),
+      context: { source: 'proactive', jobType: job.taskType },
+      agentOptions: {
+        blockedTools: getProactiveBlockedTools(job.params),
+      },
     });
 
     if (result.success && result.response) {
       console.log(`[Daemon] ✅ Skill ${skillName} executed successfully`);
       console.log(`[Daemon] Response: ${result.response.substring(0, 200)}...`);
+
+      // [AUDIT FIX M-02] Inject result back into user's active session
+      if (job.associatedSessionId) {
+        injectProactiveResult(job.associatedSessionId, {
+          source: `技能执行: ${skillName}`,
+          content: result.response.substring(0, 1000),  // Limit injection size
+        });
+      }
 
       // Push to Feishu if we have chatId
       if (channel === 'feishu' && chatId && client) {
@@ -138,6 +203,11 @@ ${JSON.stringify(skillParams, null, 2)}
 
 /**
  * Handle LLM proactive chat
+ *
+ * [AUDIT FIX M-02, M-06, M-09] Major improvements:
+ * - Loads conversation history from associatedSessionId
+ * - Passes blockedTools for safety
+ * - Injects results back into user session
  */
 export async function handleLlmProactiveChatJob(
   job: ProactiveJobData,
@@ -163,6 +233,10 @@ export async function handleLlmProactiveChatJob(
       logger.debug('Memory store not initialized:', error);
     }
 
+    // [AUDIT FIX M-02] Load conversation history from associated session
+    const historyContext = buildConversationHistoryContext(job.associatedSessionId);
+    context += historyContext;
+
     // 构建提示
     const prompt = job.params?.prompt as string ||
       '现在是定时主动沟通时间。根据用户上下文，发起一个简短、有意义的问候或提醒。保持友好和个性化。';
@@ -177,16 +251,28 @@ export async function handleLlmProactiveChatJob(
 
     console.log(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
 
-    // 调用 LLM 生成内容
+    // [AUDIT FIX M-06] 调用 LLM 生成内容 with blocked tools
     const result = await sendProactiveMessage({
       message: fullPrompt,
       userId,
       channel,
-      sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
+      sessionId: job.associatedSessionId || (chatId ? `feishu-${chatId}-${userId}` : undefined),
+      context: { source: 'proactive', jobType: job.taskType },
+      agentOptions: {
+        blockedTools: getProactiveBlockedTools(job.params),
+      },
     });
 
     if (result.success && result.response) {
       console.log(`[Daemon] LLM generated: ${result.response.substring(0, 100)}...`);
+
+      // [AUDIT FIX M-02] Inject result back into user's active session
+      if (job.associatedSessionId) {
+        injectProactiveResult(job.associatedSessionId, {
+          source: '定时主动沟通',
+          content: result.response.substring(0, 1000),
+        });
+      }
 
       // 推送到飞书（需要 chatId)
       if (chatId && client) {
@@ -366,6 +452,14 @@ export async function handleSendReminderJob(
         { title: '⏰ 提醒' }
       );
       console.log(`[Daemon] 📤 Reminder sent to chat: ${chatId}`);
+
+      // [AUDIT FIX M-02] Inject reminder into user's session if associated
+      if (job.associatedSessionId) {
+        injectProactiveResult(job.associatedSessionId, {
+          source: '定时提醒',
+          content: job.params.message as string,
+        });
+      }
     }
   } else {
     // Fallback to notification

@@ -54,6 +54,15 @@ export interface SessionMessage {
       arguments: string;
     };
   }>;
+  /** [AUDIT FIX M-03] Metadata for multimodal and source tracking */
+  _meta?: {
+    /** Original content type before text conversion */
+    originalType?: 'text' | 'multimodal';
+    /** Vision model description (from two-stage processing) */
+    visionDescription?: string;
+    /** Message source for context-aware processing */
+    source?: 'user' | 'proactive' | 'recovery' | 'system';
+  };
 }
 
 export interface Session {
@@ -83,6 +92,10 @@ export interface ProactiveMessageOptions {
   message: string | MultimodalContent[];  // Support both text and multimodal
   context?: Record<string, unknown>;
   sessionId?: string;
+  /** [AUDIT FIX M-06] Override agent options (e.g., blockedTools for proactive tasks) */
+  agentOptions?: {
+    blockedTools?: string[];
+  };
 }
 
 export interface ProactiveMessageResult {
@@ -524,10 +537,11 @@ async function compressMessages(
     .map(m => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
     .join('\n');
 
-  // Create a summarization agent (always use text model for summarization)
+  // Create a summarization agent
+  // [AUDIT FIX] Use configured model instead of hardcoded 'glm-5'
   const agent = createAgent({
     provider: agentConfig.provider,
-    model: 'glm-5',  // Use text model for summarization (faster and cheaper)
+    model: agentConfig.model,
     systemPrompt: '你是一个对话摘要助手。请用简洁的中文总结以下对话的关键信息，包括：讨论的主题、用户的需求、重要的结论或决定。控制在100字以内。',
     loadCoreMemory: false,
   });
@@ -724,6 +738,13 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       systemPrompt += `\n\n## 历史对话摘要\n${session.summary}`;
     }
 
+    // [AUDIT FIX M-05] Consume lastMessageSource for context-aware behavior
+    if (session.lastMessageSource === 'proactive') {
+      systemPrompt += '\n\n注意：上一条消息来自定时主动任务的执行结果。如果用户提问与之相关，请引用该信息。';
+    } else if (session.lastMessageSource === 'recovery') {
+      systemPrompt += '\n\n注意：此回复为崩溃恢复后的重新处理，请确保回复完整准确。';
+    }
+
     try {
       const memoryStore = getMemoryStore();
       const coreContext = memoryStore.getCoreContext();
@@ -754,7 +775,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       logger.debug('Memory store not initialized:', error);
     }
 
-    // Smart model selection: Two-stage processing for images
+    // [AUDIT FIX M-03] Configurable two-stage vision processing
+    // Replaces hardcoded model names with VisionConfig
+    const { DEFAULT_VISION_CONFIG } = await import('../agent/types');
+    const visionConfig = { ...DEFAULT_VISION_CONFIG, ...(agentConfig as any).visionConfig };
+
     let selectedModel = agentConfig.model;
     let selectedProvider = agentConfig.provider;
     let imageDescription: string | undefined;
@@ -766,41 +791,60 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     if (hasMultimodalContent) {
       // ========================================
       // STAGE 1: Pure vision recognition (no tools, no skill context)
-      // This prevents vision model from auto-triggering skills
+      // [AUDIT FIX M-03] Now uses configurable model and prompt
       // ========================================
-      console.log('[Session] 🖼️ Stage 1: Pure vision recognition (no tools)');
+      console.log(`[Session] 🖼️ Stage 1: Vision recognition using ${visionConfig.visionModel}`);
       
-      const visionAgent = createAgent({
-        provider: selectedProvider,
-        model: 'GLM-4.6V',
-        systemPrompt: '请识别并详细描述这张图片的内容。如果是食物，列出所有可见的食材和菜品名称。如果是其他内容（代码截图、文档、风景等），也请详细描述。',
-        tools: undefined,  // No tools for vision-only task!
-        loadCoreMemory: false,
-      });
+      let retries = 0;
+      while (retries <= visionConfig.maxRetries) {
+        try {
+          const visionAgent = createAgent({
+            provider: selectedProvider,
+            model: visionConfig.visionModel,
+            systemPrompt: visionConfig.visionSystemPrompt,
+            tools: undefined,  // No tools for vision-only task!
+            loadCoreMemory: false,
+          });
 
-      imageDescription = await visionAgent.chat(options.message);
-      console.log('[Session] 📝 Vision result:', imageDescription?.substring(0, 100));
+          imageDescription = await visionAgent.chat(options.message);
+          console.log('[Session] 📝 Vision result:', imageDescription?.substring(0, 100));
+          break; // Success
+        } catch (error) {
+          retries++;
+          console.error(`[Session] Vision model attempt ${retries} failed:`, error instanceof Error ? error.message : error);
+          if (retries > visionConfig.maxRetries) {
+            // [AUDIT FIX M-03] Structured fallback on vision failure
+            if (visionConfig.fallbackOnError === 'placeholder') {
+              imageDescription = '[图片识别失败 - 视觉模型不可用]';
+            } else if (visionConfig.fallbackOnError === 'description') {
+              imageDescription = '[图片] 无法识别内容，请用文字描述图片中的内容。';
+            }
+            console.error('[Session] Vision processing exhausted retries, using fallback');
+          }
+        }
+      }
 
       // Save original multimodal message for later storage
       originalMultimodalMessage = options.message;
       
       // ========================================
       // STAGE 2: Intent detection with text model
-      // Text model decides whether to call skills based on image description
+      // [AUDIT FIX M-03] Uses configurable text model
       // ========================================
-      selectedModel = 'glm-5';
+      selectedModel = visionConfig.textModel;
       options.message = imageDescription || '[图片识别失败]';
-      console.log('[Session] 🧠 Stage 2: Intent detection with text model');
+      console.log(`[Session] 🧠 Stage 2: Intent detection with ${selectedModel}`);
     } else {
-      // Text-only message
-      selectedModel = 'glm-5';
-      console.log('[Session] 📝 Using text model (glm-5) for text message');
+      // Text-only message — use configured model
+      selectedModel = visionConfig.textModel;
+      console.log(`[Session] 📝 Using text model (${selectedModel}) for text message`);
     }
 
     // Check if this is a recovery - don't duplicate the user message
     const isRecovery = options.context?.isRecovery === true;
 
     // Create agent (loadCoreMemory: false because we already built the system prompt above)
+    // [AUDIT FIX M-06] Pass blockedTools from proactive task options
     const agent = createAgent({
       provider: selectedProvider,
       model: selectedModel,
@@ -809,16 +853,25 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       loadCoreMemory: false,
       autoRefreshMemory: true,
       tokenStatsConfig: agentConfig.tokenStatsConfig,
-    });
+      ...(options.agentOptions?.blockedTools ? { blockedTools: options.agentOptions.blockedTools } : {}),
+    } as any);
 
     // Replay conversation history
     // NOTE: Skip the last user message since it was just saved and will be added by agent.chat()
+    // [AUDIT FIX M-03] Preserve multimodal semantic markers during replay
     for (let i = 0; i < session.messages.length - 1; i++) {
       const msg = session.messages[i];
-      // For multimodal messages, replay the text description (not the base64)
-      // This preserves context about what was discussed
       if (msg.role === 'user') {
-        agent.addMessage({ role: 'user', content: msg.content });
+        // [AUDIT FIX M-03] If original was multimodal with vision description, add semantic marker
+        if (msg._meta?.originalType === 'multimodal' && msg._meta.visionDescription) {
+          agent.addMessage({
+            role: 'user',
+            content: `[用户发送了图片，以下是图片内容描述] ${msg._meta.visionDescription}` +
+              (msg.content.includes('[图片]') ? '' : `\n用户附言: ${msg.content}`),
+          });
+        } else {
+          agent.addMessage({ role: 'user', content: msg.content });
+        }
       } else if (msg.role === 'assistant') {
         agent.addMessage({ role: 'assistant', content: msg.content });
       }
@@ -859,9 +912,18 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         role: 'user',
         content: userContentString,
         timestamp: new Date().toISOString(),
+        // [AUDIT FIX M-03] Preserve multimodal metadata for future replay
+        _meta: originalMultimodalMessage ? {
+          originalType: 'multimodal',
+          visionDescription: imageDescription,
+          source: (options.context?.source as 'user' | 'proactive' | 'recovery' | 'system') || 'user',
+        } : {
+          originalType: 'text',
+          source: (options.context?.source as 'user' | 'proactive' | 'recovery' | 'system') || 'user',
+        },
       });
       session.pendingRecovery = true;  // Mark for recovery
-      session.lastMessageSource = isRecovery ? 'recovery' : (options.context?.source as string || 'user');
+      session.lastMessageSource = (options.context?.source as string || 'user');
       session.updatedAt = new Date().toISOString();
       saveSession(session);
 
@@ -1309,3 +1371,52 @@ export function saveAllSessions(): void {
 
 // Export recovery module
 export * from './recovery';
+
+/**
+ * [AUDIT FIX M-02] Inject proactive task result into a user's active session.
+ *
+ * This enables bidirectional context flow between scheduled tasks and user conversations.
+ * When a proactive task completes, its result can be injected into the user's session
+ * so the user can reference it in subsequent interactions.
+ */
+export function injectProactiveResult(
+  targetSessionId: string,
+  result: { source: string; content: string; timestamp?: number }
+): boolean {
+  const session = sessions.get(targetSessionId);
+  if (!session) {
+    console.warn(`[Session] Cannot inject proactive result: session ${targetSessionId} not found`);
+    return false;
+  }
+
+  const ts = result.timestamp ? new Date(result.timestamp).toISOString() : new Date().toISOString();
+
+  session.messages.push({
+    role: 'system',
+    content: `[定时任务结果 - ${result.source}]\n${result.content}`,
+    timestamp: ts,
+    _meta: {
+      source: 'proactive',
+    },
+  });
+
+  session.updatedAt = ts;
+  saveSession(session);
+
+  console.log(`[Session] 📥 Proactive result injected into session ${targetSessionId} from ${result.source}`);
+  return true;
+}
+
+/**
+ * [AUDIT FIX M-02] Load recent conversation history for a session.
+ * Used by proactive task handlers to inherit user context.
+ */
+export function getRecentSessionHistory(
+  sessionId: string,
+  maxMessages: number = 10
+): SessionMessage[] {
+  const session = sessions.get(sessionId) || loadSession(sessionId);
+  if (!session || session.messages.length === 0) return [];
+
+  return session.messages.slice(-maxMessages);
+}

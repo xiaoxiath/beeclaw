@@ -159,13 +159,22 @@ export const CreateScheduleOptionsSchema = z.object({
 export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptionsSchema>;
 
 // Proactive job data for queue
+// [AUDIT FIX M-02, M-11] associatedSessionId is now actively used for:
+//   1. Loading user conversation history into proactive task context
+//   2. Injecting task results back into user sessions
+//   3. Enabling bidirectional context flow between tasks and conversations
 export const ProactiveJobDataSchema = z.object({
   scheduleId: z.string(),
   taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
   params: z.record(z.unknown()).optional().default({}),
   triggeredAt: z.string(),
   triggeredBy: z.enum(['cron', 'pattern', 'manual']),
-  /** Associated user session ID for context injection */
+  /**
+   * [AUDIT FIX M-02/M-11] Associated user session ID for bidirectional context flow.
+   * When set, the job handler will:
+   *   - Load recent conversation history from this session as context
+   *   - Inject the task execution result back into this session
+   */
   associatedSessionId: z.string().optional(),
   /** Source tag for message tracking */
   source: z.literal('proactive').optional().default('proactive'),

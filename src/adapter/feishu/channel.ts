@@ -1,6 +1,9 @@
 /**
  * Feishu Channel - Feishu/Lark messaging integration
  * RFC-01: MessageChannel implementation
+ *
+ * [AUDIT FIX M-09] Improved contentToString to preserve image URL references
+ * instead of simply replacing all images with '[图片]' placeholder.
  */
 
 import type {
@@ -119,6 +122,10 @@ export class FeishuChannel implements MessageChannel {
 
   /**
    * Convert MessageContent to string for Feishu
+   *
+   * [AUDIT FIX M-09] Improved image handling:
+   * - URL-based images now include the URL reference for traceability
+   * - Base64 images still show '[图片]' since the URL is not useful for text
    */
   private contentToString(content: MessageContent): string {
     if (typeof content === 'string') {
@@ -131,7 +138,17 @@ export class FeishuChannel implements MessageChannel {
       if (part.type === 'text' && part.text) {
         parts.push(part.text);
       } else if (part.type === 'image_url') {
-        parts.push('[图片]');
+        // [AUDIT FIX M-09] Preserve URL reference when available
+        const url = typeof part.image_url === 'string'
+          ? part.image_url
+          : part.image_url?.url;
+
+        if (url && url.startsWith('http')) {
+          parts.push(`[图片: ${url}]`);
+        } else {
+          // Base64 or unknown format — just indicate an image was present
+          parts.push('[图片]');
+        }
       }
     }
     return parts.join('\n');

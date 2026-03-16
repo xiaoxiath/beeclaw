@@ -1,14 +1,29 @@
 import { existsSync, mkdirSync } from 'fs';
 import { appendFile, readFile, writeFile, readdir, unlink } from 'fs/promises';
 import { join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * [AUDIT FIX M-04 (F-04)] Upgraded Message interface to support multimodal metadata.
+ *
+ * Previous version only supported `content: string`, causing multimodal context loss
+ * during persistence. Now includes `_meta` field for tracking original content type
+ * and vision descriptions.
+ */
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   name?: string;
   tool_call_id?: string;
   timestamp?: string;
+  /** [AUDIT FIX M-03/M-04] Multimodal and source tracking metadata */
+  _meta?: {
+    /** Original content type before text conversion */
+    originalType?: 'text' | 'multimodal';
+    /** Vision model description (from two-stage processing) */
+    visionDescription?: string;
+    /** Message source for context-aware processing */
+    source?: 'user' | 'proactive' | 'recovery' | 'system';
+  };
 }
 
 export interface Session {

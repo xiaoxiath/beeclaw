@@ -136,6 +136,56 @@ export type ToolExecutor = (name: string, params: Record<string, unknown>, userC
   error?: string;
 }>;
 
+// ============================================
+// [AUDIT FIX M-03] Vision model configuration
+// ============================================
+
+/**
+ * Configuration for two-stage multimodal (vision) processing.
+ * Replaces hardcoded model names and system prompts.
+ */
+export interface VisionConfig {
+  /** Vision model for Stage 1 image recognition (default: 'GLM-4.6V') */
+  visionModel: string;
+  /** Text model for Stage 2 intent/skill processing (default: 'glm-5') */
+  textModel: string;
+  /** System prompt for vision recognition (configurable) */
+  visionSystemPrompt: string;
+  /** Behaviour when vision model fails */
+  fallbackOnError: 'description' | 'placeholder' | 'retry';
+  /** Max retries for vision model (default: 1) */
+  maxRetries: number;
+}
+
+/**
+ * Default vision configuration
+ */
+export const DEFAULT_VISION_CONFIG: VisionConfig = {
+  visionModel: 'GLM-4.6V',
+  textModel: 'glm-5',
+  visionSystemPrompt:
+    '请识别并详细描述这张图片的内容。包括：主要物体、文字、场景、颜色等关键信息。' +
+    '如果是食物，列出所有可见的食材和菜品名称。' +
+    '如果是代码截图或文档，提取其中的文字内容。' +
+    '如果是其他内容（风景、人物、图表等），也请详细描述。',
+  fallbackOnError: 'placeholder',
+  maxRetries: 1,
+};
+
+// ============================================
+// [AUDIT FIX M-06] Default blocked tools for proactive tasks
+// ============================================
+
+/**
+ * Tools that should be blocked by default when executing proactive/scheduled tasks
+ * to prevent unintended side effects in unattended scenarios.
+ */
+export const PROACTIVE_DEFAULT_BLOCKED_TOOLS: string[] = [
+  'schedule_create',          // Prevent self-replication
+  'schedule_update',          // Prevent schedule mutation loops
+  'send_reminder',            // Prevent recursive reminders
+];
+
 // Agent options
 export interface AgentOptions {
   provider: AIProvider;

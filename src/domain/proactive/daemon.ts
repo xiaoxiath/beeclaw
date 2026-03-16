@@ -239,13 +239,24 @@ export class Daemon {
 
     console.log(`[Daemon] Executing schedule: ${schedule.name}`);
 
+    // [AUDIT FIX M-02/M-11] Derive associatedSessionId from params or from chatId+userId pattern
+    const explicitSessionId = schedule.task.params?.associatedSessionId as string;
+    const derivedSessionId = (() => {
+      if (explicitSessionId) return explicitSessionId;
+      // Try to derive from chatId + userId (matches the pattern used in session/index.ts)
+      const chatId = schedule.task.params?.chatId as string;
+      const userId = schedule.task.params?.userId as string;
+      if (chatId && userId) return \`feishu-\${chatId}-\${userId}\`;
+      return undefined;
+    })();
+
     const job: ProactiveJobData = {
       scheduleId: schedule.id,
       taskType: schedule.task.type,
       params: schedule.task.params,
       triggeredAt: new Date().toISOString(),
       triggeredBy: 'cron',
-      associatedSessionId: (schedule.task.params?.associatedSessionId as string) || undefined,
+      associatedSessionId: derivedSessionId,
       source: 'proactive' as const,
     };
 

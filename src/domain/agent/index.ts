@@ -783,7 +783,49 @@ export class Agent {
   }
 
   // Chat with the agent
-  async chat(userMessage: string | MultimodalContent[], options?: {
+  /**
+   * [AUDIT FIX M-04] Coordinated context compression.
+   *
+   * Three-tier strategy based on token usage ratio:
+   * - >90% (critical): LLM summarize first, then rule-trim remainder
+   * - >70% (preventive): LLM summarize only
+   * - >50% (routine): Rule-trim only
+   * - <=50%: No action
+   *
+   * This prevents the race condition where rule-trim runs before LLM summarize,
+   * causing trimmed messages to be neither summarized nor retained.
+   */
+  private async manageContextCompression(): Promise<void> {
+    if (this.messages.length <= 10) return;
+
+    const usage = this.estimatedTokens / this.contextConfig.maxTokens;
+
+    if (usage > 0.9) {
+      // Critical: LLM summarize first, then trim remainder
+      console.log(`[Agent] Context at ${Math.round(usage * 100)}% — critical compression (LLM + trim)`);
+      try {
+        await this.compressContextWithLLM();
+      } catch (error) {
+        console.warn('[Agent] LLM compression failed in critical mode');
+      }
+      this.trimContextIfNeeded();
+    } else if (usage > 0.7) {
+      // Preventive: LLM summarize only
+      console.log(`[Agent] Context at ${Math.round(usage * 100)}% — preventive LLM compression`);
+      try {
+        await this.compressContextWithLLM();
+      } catch (error) {
+        console.warn('[Agent] LLM compression failed, falling back to trim');
+        this.trimContextIfNeeded();
+      }
+    } else if (usage > 0.5) {
+      // Routine: lightweight rule-based trim only
+      this.trimContextIfNeeded();
+    }
+    // <= 50%: no action needed
+  }
+
+    async chat(userMessage: string | MultimodalContent[], options?: {
     tools?: OpenAITool[];
     onToolCall?: (name: string, params: Record<string, unknown>) => void;
     onToolResult?: (name: string, result: unknown) => void;
@@ -812,8 +854,6 @@ export class Agent {
     this.usedSkillsInTurn.clear();
     this.loopDetector.reset(); // Reset loop detector for new turn
     this.lastToolCalls = []; // Clear tool calls from previous turn
-    this.loopDetector.reset(); // Reset loop detector for new turn
-    this.loopDetector.reset(); // Reset loop detector for new turn
 
     if (this.hookRunner) {
       await this.hookRunner.runMessageReceived({
@@ -828,16 +868,9 @@ export class Agent {
     });
     this.estimatedTokens += estimateMessageTokens({ role: 'user', content: userMessage });
 
-    const compressionThreshold = this.contextConfig.maxTokens * 0.8;
-    if (this.estimatedTokens > compressionThreshold && this.messages.length > 10) {
-      console.log(`[Agent] Context at ${Math.round(this.estimatedTokens / 1000)}k tokens, triggering LLM compression...`);
-      try {
-        await this.compressContextWithLLM();
-      } catch (error) {
-        console.warn('[Agent] LLM compression failed, using rule-based fallback');
-        this.trimContextIfNeeded();
-      }
-    }
+    // [AUDIT FIX M-04] Coordinated context compression strategy
+    // Prevents race between rule-based trimming and LLM summarization
+    await this.manageContextCompression();
 
     // [Hybrid Tool Selector] Intelligently select tools based on user message and context
     const tools = options?.tools || this.options.tools || await this.selectToolsWithHybrid(
@@ -1435,46 +1468,93 @@ export class Agent {
    * conversations using chatStream() would grow unbounded until exceeding the
    * model's context window.
    */
-  async *chatStream(userMessage: string, options?: {
+  async *chatStream(userMessage: string | MultimodalContent[], options?: {
     tools?: OpenAITool[];
+    userContext?: UserContext;
   }): AsyncGenerator<
     | { type: 'content'; content: string }
     | { type: 'tool_call'; name: string; params: Record<string, unknown> }
     | { type: 'tool_result'; name: string; result: unknown }
   > {
-    // [P0 FIX] Refresh time context — was missing from chatStream
+    // [AUDIT FIX M-01] chatStream now mirrors chat() capabilities
     this.refreshTime();
 
-    // [P0 FIX] Auto-refresh memory if enabled — was missing from chatStream
     if (this.autoRefreshMemory) {
       this.refreshMemory();
     }
 
-    // Reset skill tracking for this turn
+    // Store user context for tool execution
+    this.currentUserContext = options?.userContext;
+
+    // [AUDIT FIX M-01] Use shared turn preparation (same as chat())
+    this.lastSkillFailed = undefined;
     this.usedSkillsInTurn.clear();
-    this.loopDetector.reset(); // Reset loop detector for new turn
+    this.loopDetector.reset();
+    this.lastToolCalls = [];
+
+    // [AUDIT FIX M-01] Run hook for message received
+    if (this.hookRunner) {
+      await this.hookRunner.runMessageReceived({
+        content: userMessage,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // Add user message with token tracking
     this.messages.push({
       role: 'user',
       content: userMessage,
     });
-    // [P0 FIX] Track token usage — was missing from chatStream
     this.estimatedTokens += estimateMessageTokens({ role: 'user', content: userMessage });
 
-    // [P0 FIX] Proactive LLM compression when context is getting full
-    const compressionThreshold = this.contextConfig.maxTokens * 0.8;
-    if (this.estimatedTokens > compressionThreshold && this.messages.length > 10) {
-      console.log(`[Agent.chatStream] Context at ${Math.round(this.estimatedTokens / 1000)}k tokens, triggering LLM compression...`);
-      try {
-        await this.compressContextWithLLM();
-      } catch (error) {
-        console.warn('[Agent.chatStream] LLM compression failed, using rule-based fallback');
-        this.trimContextIfNeeded();
+    // [AUDIT FIX M-04] Coordinated context compression strategy
+    await this.manageContextCompression();
+
+    // [AUDIT FIX M-01] Hybrid tool selection (same as chat())
+    const tools = options?.tools || this.options.tools || await this.selectToolsWithHybrid(
+      userMessage,
+      this.messages.slice(-5)
+    );
+
+    // [AUDIT FIX M-01] Skill enforcement matching (same as chat())
+    if (this.skillEnforcement) {
+      const messageText = typeof userMessage === 'string'
+        ? userMessage
+        : Array.isArray(userMessage)
+          ? userMessage.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' ')
+          : '';
+
+      if (messageText) {
+        const skillMatch = this.skillEnforcement.matchSkillsForQuery(messageText);
+        if (skillMatch.matched) {
+          this.messages.push({
+            role: 'system',
+            content: skillMatch.directive,
+          });
+          this.estimatedTokens += estimateMessageTokens({
+            role: 'system',
+            content: skillMatch.directive,
+          });
+          logger.info(`[SkillEnforcement.chatStream] Injected directive for ${skillMatch.skills.length} matching skill(s)`);
+        }
       }
     }
 
-    const tools = options?.tools || this.options.tools || getAllToolsForAI();
+    // [AUDIT FIX M-01] Health monitor integration (same as chat())
+    if (this.healthMonitor?.hasIssues()) {
+      const healthCtx = this.healthMonitor.buildHealthContext();
+      if (healthCtx) {
+        this.messages.push({
+          role: 'system',
+          content: healthCtx,
+        });
+        this.estimatedTokens += estimateMessageTokens({
+          role: 'system',
+          content: healthCtx,
+        });
+        logger.info('[Agent.chatStream] Injected data source health warning into context');
+      }
+    }
 
     let iterations = 0;
     let finalContent = '';
