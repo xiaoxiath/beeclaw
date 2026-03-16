@@ -120,12 +120,6 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     // Log raw event for debugging
     console.log(`[FeishuWS:${process.pid}] 📨 Raw event: messageId=${messageId}, chatId=${chatId}, sender_type=${data.sender?.sender_type}, message_type=${data.message?.message_type}`);
 
-    // Early deduplication check (before queueing)
-    if (deduplicator.isDuplicate(messageId)) {
-      console.log(`[FeishuWS:${process.pid}] Duplicate message ${messageId}, skipping`);
-      return;
-    }
-
     // Ignore messages from bot itself (early check)
     if (data.sender?.sender_type === 'app') {
       console.log(`[FeishuWS:${process.pid}] Ignoring message from bot itself`);
