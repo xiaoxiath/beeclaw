@@ -46,11 +46,12 @@ export function bootstrapHealthCheck(): {
   // Register all circuit breakers from the registry
   try {
     const cbRegistry = getCircuitBreakerRegistry();
-    const allBreakers = cbRegistry.getAll();
-    for (const [name, breaker] of Object.entries(allBreakers)) {
+    const allStats = cbRegistry.getAllStats();
+    for (const name of Object.keys(allStats)) {
+      const breaker = cbRegistry.getBreaker(name);
       healthChecker.registerCircuitBreaker(name, breaker);
     }
-    logger.info(`[Bootstrap] Registered ${Object.keys(allBreakers).length} circuit breakers for health monitoring`);
+    logger.info(`[Bootstrap] Registered ${Object.keys(allStats).length} circuit breakers for health monitoring`);
   } catch (err) {
     logger.warn('[Bootstrap] Could not register circuit breakers:', err);
   }
