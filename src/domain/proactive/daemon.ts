@@ -246,7 +246,7 @@ export class Daemon {
       // Try to derive from chatId + userId (matches the pattern used in session/index.ts)
       const chatId = schedule.task.params?.chatId as string;
       const userId = schedule.task.params?.userId as string;
-      if (chatId && userId) return \`feishu-\${chatId}-\${userId}\`;
+      if (chatId && userId) return `feishu-${chatId}-${userId}`;
       return undefined;
     })();
 
