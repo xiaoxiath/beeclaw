@@ -165,6 +165,10 @@ export const ProactiveJobDataSchema = z.object({
   params: z.record(z.unknown()).optional().default({}),
   triggeredAt: z.string(),
   triggeredBy: z.enum(['cron', 'pattern', 'manual']),
+  /** Associated user session ID for context injection */
+  associatedSessionId: z.string().optional(),
+  /** Source tag for message tracking */
+  source: z.literal('proactive').optional().default('proactive'),
 });
 
 export type ProactiveJobData = z.infer<typeof ProactiveJobDataSchema>;

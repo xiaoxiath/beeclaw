@@ -174,6 +174,38 @@ export function createImageBlock(
 }
 
 /**
+ * [AUDIT FIX M-2] Structured vision analysis result for two-stage multimodal processing.
+ * Stage 1 (Vision model) produces this, Stage 2 (Text model) consumes it.
+ */
+export interface VisionAnalysisResult {
+  /** Index of the image in the original multimodal message */
+  imageIndex: number;
+  /** Reference identifier for the image */
+  imageRef: string;
+  /** Natural language description from the vision model */
+  description: string;
+  /** Detected elements (e.g., food items, UI elements, text segments) */
+  detectedElements: string[];
+  /** Confidence score from the vision model (0-1) */
+  confidence: number;
+}
+
+/**
+ * Estimate token cost of an image block based on its source type and data size.
+ * Used for context budget calculations.
+ */
+export function estimateImageTokens(image: ImageBlock): number {
+  if (image.source.type === 'base64') {
+    const dataLen = image.source.data.length;
+    if (dataLen > 100_000) return 1600; // High-res
+    if (dataLen > 10_000) return 800;   // Medium-res
+    return 300;                          // Low-res / thumbnail
+  }
+  // URL-referenced images: assume medium complexity
+  return 800;
+}
+
+/**
  * Validate ContentBlock array
  */
 export function validateContentBlocks(blocks: unknown[]): ContentBlock[] {

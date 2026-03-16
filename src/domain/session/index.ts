@@ -71,6 +71,10 @@ export interface Session {
   recoveryAttempts?: number; // Number of recovery attempts for the current pending message
   lastRecoveryAt?: string; // Timestamp of the last recovery attempt
   lastAiResponse?: string; // Cached AI response for re-delivery
+  /** Source of the last user message (user, proactive, recovery, system) */
+  lastMessageSource?: string;
+  /** Consecutive recovery failure count for exponential backoff */
+  consecutiveRecoveryFailures?: number;
 }
 
 export interface ProactiveMessageOptions {
@@ -200,11 +204,54 @@ export function confirmDelivery(sessionId: string): void {
     session.pendingDelivery = false;
     session.recoveryAttempts = 0;
     session.lastRecoveryAt = undefined;
+    session.consecutiveRecoveryFailures = 0;
     session.responseDelivered = true;
     session.updatedAt = new Date().toISOString();
     saveSession(session);
     console.log(`[Session] Delivery confirmed for session ${sessionId}`);
   }
+}
+
+/**
+ * Calculate exponential backoff delay for recovery attempts.
+ * Returns delay in ms, or -1 if max attempts exceeded.
+ * 
+ * Backoff schedule: 1s, 4s, 16s, 64s, 256s (5 attempts max)
+ */
+export function calculateRecoveryBackoff(sessionId: string): number {
+  const session = sessions.get(sessionId);
+  if (!session) return -1;
+  
+  const failures = session.consecutiveRecoveryFailures || 0;
+  const MAX_FAILURES = 5;
+  
+  if (failures >= MAX_FAILURES) {
+    console.warn(`[Session] Recovery permanently failed for ${sessionId} after ${failures} attempts`);
+    return -1;
+  }
+  
+  session.consecutiveRecoveryFailures = failures + 1;
+  session.lastRecoveryAt = new Date().toISOString();
+  session.updatedAt = new Date().toISOString();
+  saveSession(session);
+  
+  const delayMs = 1000 * Math.pow(4, failures); // 1s, 4s, 16s, 64s, 256s
+  console.log(`[Session] Recovery backoff for ${sessionId}: attempt ${failures + 1}/${MAX_FAILURES}, delay ${delayMs}ms`);
+  return delayMs;
+}
+
+/**
+ * Get a summary of recent session messages for proactive task context injection.
+ * Returns a formatted string with the last N messages.
+ */
+export function getSessionSummary(sessionId: string, maxMessages: number = 5): string {
+  const session = sessions.get(sessionId) || loadSession(sessionId);
+  if (!session || session.messages.length === 0) return '';
+  
+  const recent = session.messages.slice(-maxMessages);
+  return recent
+    .map(m => `[${m.role}] ${m.content.substring(0, 200)}${m.content.length > 200 ? '...' : ''}`)
+    .join('\n');
 }
 
 /**
@@ -795,6 +842,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         timestamp: new Date().toISOString(),
       });
       session.pendingRecovery = true;  // Mark for recovery
+      session.lastMessageSource = isRecovery ? 'recovery' : (options.context?.source as string || 'user');
       session.updatedAt = new Date().toISOString();
       saveSession(session);
 

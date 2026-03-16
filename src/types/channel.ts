@@ -106,4 +106,14 @@ export interface MessageChannel {
    * Health check - verify channel is operational
    */
   healthCheck(): Promise<boolean>;
+
+  /**
+   * [AUDIT FIX M-1] Send multimodal content (text + images).
+   * Optional — channels that don't support images should implement
+   * a text-only fallback in the gateway layer.
+   */
+  sendMultimodal?(
+    content: MessageContent,
+    options?: PostMessageOptions
+  ): Promise<MessageResult>;
 }

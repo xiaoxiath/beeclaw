@@ -12,6 +12,7 @@ import { pushNotification } from '../../../domain/proactive/pusher';
 import { getFeishuWSClient } from '../../../adapter/feishu';
 import { sendProactiveMessage } from '../../../domain/session';
 import { getMemoryStore } from '../../../domain/memory';
+import { getSessionSummary } from '../../../domain/session';
 
 export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<unknown> {
   const { scheduleId, taskType, params, triggeredAt, triggeredBy } = job.data;
@@ -262,9 +263,30 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
     console.log(`[Worker:proactive] Calling LLM with prompt length: ${fullPrompt.length}`);
 
     // Add system instruction to prevent recursive task creation
-    const systemHint = `\n\n---\n[系统指令] 这是一个定时任务的执行。请直接生成要推送的内容，不要调用任何工具（如 schedule_once、notification_send 等）。直接返回给用户的内容即可。`;
+    // [AUDIT FIX P-2] Stronger anti-recursion: explicit blocked tool list instead of text hint
+    const PROACTIVE_BLOCKED_TOOLS = [
+      'schedule_once', 'notification_send', 'proactive_create_schedule',
+      'proactive_update_schedule', 'proactive_delete_schedule',
+      'notification_create', 'notification_push',
+    ];
+    const systemHint = `\n\n---\n[系统指令] 这是一个定时任务的执行。请直接生成要推送的内容。\n严禁调用以下工具: ${PROACTIVE_BLOCKED_TOOLS.join(', ')}。\n如果你尝试调用这些工具，系统会自动拦截并报错。直接返回给用户的内容即可。`;
 
-    const finalPrompt = fullPrompt + systemHint;
+    // [AUDIT FIX P-3] Inject associated session context if available
+    let sessionContext = '';
+    const associatedSessionId = params?.associatedSessionId as string | undefined;
+    if (associatedSessionId) {
+      try {
+        const summary = getSessionSummary(associatedSessionId, 5);
+        if (summary) {
+          sessionContext = `\n\n<session-context>\n用户最近的对话记录:\n${summary}\n</session-context>\n`;
+          console.log(`[Worker:proactive] Injected session context from ${associatedSessionId} (${summary.length} chars)`);
+        }
+      } catch (error) {
+        console.warn(`[Worker:proactive] Failed to load session context for ${associatedSessionId}:`, error);
+      }
+    }
+
+    const finalPrompt = fullPrompt + sessionContext + systemHint;
 
     // Call LLM
     const result = await sendProactiveMessage({

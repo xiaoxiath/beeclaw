@@ -54,6 +54,21 @@ export interface UserContext {
   userId?: string;      // Generic user ID
 }
 
+/**
+ * Message source tracking — identifies the origin of each message
+ * in the conversation history for context-aware processing.
+ */
+export type MessageSource = 'user' | 'proactive' | 'recovery' | 'system';
+
+/**
+ * Execution context passed to tool handlers when source tracking is needed.
+ */
+export interface ToolExecContext {
+  source: MessageSource;
+  sourceTaskId?: string;
+  sessionId?: string;
+}
+
 // Chat message types
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -132,6 +147,8 @@ export interface AgentOptions {
   tools?: OpenAITool[];
   toolExecutor?: ToolExecutor;
   maxToolIterations?: number;
+  /** Tools that should be blocked from execution (e.g., scheduling tools in proactive context) */
+  blockedTools?: string[];
   compressionConfig?: Partial<CompressionConfig>;  // Context compression config
 }
 

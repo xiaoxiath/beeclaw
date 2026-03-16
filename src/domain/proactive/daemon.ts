@@ -245,6 +245,8 @@ export class Daemon {
       params: schedule.task.params,
       triggeredAt: new Date().toISOString(),
       triggeredBy: 'cron',
+      associatedSessionId: (schedule.task.params?.associatedSessionId as string) || undefined,
+      source: 'proactive' as const,
     };
 
     try {

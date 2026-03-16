@@ -134,6 +134,56 @@ export class MultiChannelMessageGateway {
   getRegisteredChannels(): ChannelType[] {
     return Array.from(this.channels.keys());
   }
+
+  /**
+   * [AUDIT FIX M-1] Post multimodal content with automatic text fallback.
+   * If the target channel doesn't implement sendMultimodal, extracts text
+   * content and falls back to postMessage.
+   */
+  async postMultimodal(
+    channelType: ChannelType,
+    content: MessageContent,
+    options?: PostMessageOptions
+  ): Promise<MessageResult> {
+    const channel = this.channels.get(channelType);
+    if (!channel) {
+      return {
+        messageId: '',
+        success: false,
+        error: `Channel not found: ${channelType}`,
+      };
+    }
+
+    // Try multimodal first
+    if (channel.sendMultimodal) {
+      try {
+        return await channel.sendMultimodal(content, options);
+      } catch (error) {
+        console.warn(`[Gateway] Multimodal send failed for ${channelType}, falling back to text:`, error);
+      }
+    }
+
+    // Fallback: extract text from multimodal content
+    let textContent: MessageContent;
+    if (typeof content === 'string') {
+      textContent = content;
+    } else if (Array.isArray(content)) {
+      // Extract text parts and describe images
+      const parts: string[] = [];
+      for (const part of content) {
+        if (part.type === 'text' && part.text) {
+          parts.push(part.text);
+        } else if (part.type === 'image_url' && part.image_url?.url) {
+          parts.push(`[Image: ${part.image_url.url.substring(0, 50)}...]`);
+        }
+      }
+      textContent = parts.join('\n');
+    } else {
+      textContent = String(content);
+    }
+
+    return channel.postMessage(textContent, options);
+  }
 }
 
 // Singleton instance
