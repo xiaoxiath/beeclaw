@@ -51,7 +51,12 @@ import {
 type ToolDefinition = {
   name: string;
   description: string;
-  parameters: {
+  parameters?: {
+    type: string;
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+  input_schema?: {
     type: string;
     properties: Record<string, unknown>;
     required?: string[];
@@ -59,6 +64,13 @@ type ToolDefinition = {
 };
 
 function toOpenAITool(tool: ToolDefinition): OpenAITool {
+  // Support both 'parameters' and 'input_schema' formats
+  const schema = tool.parameters || tool.input_schema || {
+    type: 'object',
+    properties: {},
+    required: [],
+  };
+
   return {
     type: 'function' as const,
     function: {
@@ -66,8 +78,8 @@ function toOpenAITool(tool: ToolDefinition): OpenAITool {
       description: tool.description,
       parameters: {
         type: 'object',
-        properties: tool.parameters.properties,
-        required: tool.parameters.required || [],
+        properties: schema.properties,
+        required: schema.required || [],
       },
     },
   };
