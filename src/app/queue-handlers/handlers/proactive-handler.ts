@@ -271,12 +271,13 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
     ];
     const systemHint = `\n\n---\n[系统指令] 这是一个定时任务的执行。请直接生成要推送的内容。\n严禁调用以下工具: ${PROACTIVE_BLOCKED_TOOLS.join(', ')}。\n如果你尝试调用这些工具，系统会自动拦截并报错。直接返回给用户的内容即可。`;
 
-    // [AUDIT FIX P-3] Inject associated session context if available
+    // [AUDIT FIX P-3] Inject associated session context if available (with permission check)
     let sessionContext = '';
     const associatedSessionId = params?.associatedSessionId as string | undefined;
     if (associatedSessionId) {
       try {
-        const summary = getSessionSummary(associatedSessionId, 5);
+        // Pass userId for permission check - only allow access to user's own sessions
+        const summary = getSessionSummary(associatedSessionId, 5, userId);
         if (summary) {
           sessionContext = `\n\n<session-context>\n用户最近的对话记录:\n${summary}\n</session-context>\n`;
           console.log(`[Worker:proactive] Injected session context from ${associatedSessionId} (${summary.length} chars)`);

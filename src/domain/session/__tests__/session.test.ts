@@ -7,6 +7,9 @@ import {
   deleteSession,
   getSessionStats,
   registerChannelHandler,
+  calculateRecoveryBackoff,
+  getSessionSummary,
+  confirmDelivery,
   type Session,
 } from '../index';
 
@@ -233,6 +236,134 @@ describe('Session Manager', () => {
 
     test.skip('broadcastToChannel sends to all sessions', async () => {
       // Would require initSessionManager with valid provider
+    });
+  });
+
+  // [AUDIT FIX P-3] Tests for new session recovery and context functions
+  describe('calculateRecoveryBackoff', () => {
+    test('returns exponential backoff delays', async () => {
+      const session = getOrCreateSession({ sessionId: 'backoff-test', channel: 'cli' });
+
+      // Reset any previous failures
+      confirmDelivery('backoff-test');
+
+      // First attempt: 1s (4^0 = 1)
+      const delay1 = calculateRecoveryBackoff('backoff-test');
+      expect(delay1).toBe(1000);
+
+      // Second attempt: 4s (4^1 = 4)
+      const delay2 = calculateRecoveryBackoff('backoff-test');
+      expect(delay2).toBe(4000);
+
+      // Third attempt: 16s (4^2 = 16)
+      const delay3 = calculateRecoveryBackoff('backoff-test');
+      expect(delay3).toBe(16000);
+
+      // Fourth attempt: 64s (4^3 = 64)
+      const delay4 = calculateRecoveryBackoff('backoff-test');
+      expect(delay4).toBe(64000);
+
+      // Fifth attempt: 256s (4^4 = 256)
+      const delay5 = calculateRecoveryBackoff('backoff-test');
+      expect(delay5).toBe(256000);
+
+      // Sixth attempt: should return -1 (max exceeded)
+      const delay6 = calculateRecoveryBackoff('backoff-test');
+      expect(delay6).toBe(-1);
+    });
+
+    test('resets backoff on confirmDelivery', async () => {
+      const session = getOrCreateSession({ sessionId: 'backoff-reset-test', channel: 'cli' });
+
+      // Trigger some failures
+      calculateRecoveryBackoff('backoff-reset-test');
+      calculateRecoveryBackoff('backoff-reset-test');
+
+      // Confirm delivery
+      confirmDelivery('backoff-reset-test');
+
+      // Next attempt should start from 1s again
+      const delay = calculateRecoveryBackoff('backoff-reset-test');
+      expect(delay).toBe(1000);
+    });
+
+    test('returns -1 for non-existent session', () => {
+      const delay = calculateRecoveryBackoff('non-existent-session');
+      expect(delay).toBe(-1);
+    });
+  });
+
+  describe('getSessionSummary', () => {
+    test('returns empty string for non-existent session', () => {
+      const summary = getSessionSummary('non-existent-session');
+      expect(summary).toBe('');
+    });
+
+    test('returns empty string for session with no messages', () => {
+      const session = getOrCreateSession({ sessionId: 'empty-session', channel: 'cli' });
+      const summary = getSessionSummary('empty-session');
+      expect(summary).toBe('');
+    });
+
+    test('returns formatted recent messages', async () => {
+      const session = getOrCreateSession({ sessionId: 'summary-test', channel: 'cli' });
+
+      // Add some messages directly to session
+      const updatedSession = getSession('summary-test');
+      if (updatedSession) {
+        updatedSession.messages = [
+          { role: 'user', content: 'First message', timestamp: new Date().toISOString() },
+          { role: 'assistant', content: 'Second message', timestamp: new Date().toISOString() },
+          { role: 'user', content: 'Third message', timestamp: new Date().toISOString() },
+        ];
+      }
+
+      const summary = getSessionSummary('summary-test', 3);
+      expect(summary).toContain('[user] First message');
+      expect(summary).toContain('[assistant] Second message');
+      expect(summary).toContain('[user] Third message');
+    });
+
+    test('limits to maxMessages parameter', async () => {
+      const session = getOrCreateSession({ sessionId: 'summary-limit-test', channel: 'cli' });
+
+      // Add 10 messages
+      const updatedSession = getSession('summary-limit-test');
+      if (updatedSession) {
+        for (let i = 0; i < 10; i++) {
+          updatedSession.messages.push({
+            role: 'user',
+            content: `Message ${i}`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      const summary = getSessionSummary('summary-limit-test', 5);
+      const lines = summary.split('\n');
+
+      // Should only include last 5 messages
+      expect(lines.length).toBe(5);
+      expect(summary).toContain('Message 5');
+      expect(summary).toContain('Message 9');
+      expect(summary).not.toContain('Message 0');
+      expect(summary).not.toContain('Message 4');
+    });
+
+    test('truncates long messages to 200 characters', async () => {
+      const session = getOrCreateSession({ sessionId: 'truncate-test', channel: 'cli' });
+
+      const longContent = 'A'.repeat(300);
+      const updatedSession = getSession('truncate-test');
+      if (updatedSession) {
+        updatedSession.messages = [
+          { role: 'user', content: longContent, timestamp: new Date().toISOString() },
+        ];
+      }
+
+      const summary = getSessionSummary('truncate-test', 1);
+      expect(summary.length).toBeLessThan(250); // [user] prefix + 200 chars + '...'
+      expect(summary).toContain('...');
     });
   });
 });

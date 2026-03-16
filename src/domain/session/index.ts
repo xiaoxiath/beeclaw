@@ -243,11 +243,29 @@ export function calculateRecoveryBackoff(sessionId: string): number {
 /**
  * Get a summary of recent session messages for proactive task context injection.
  * Returns a formatted string with the last N messages.
+ *
+ * @param sessionId - The session ID to retrieve
+ * @param maxMessages - Maximum number of recent messages to include (default: 5)
+ * @param requesterId - Optional user ID for permission check. If provided, must match session.userId
+ * @returns Formatted summary string, or empty string if no access or no messages
  */
-export function getSessionSummary(sessionId: string, maxMessages: number = 5): string {
+export function getSessionSummary(
+  sessionId: string,
+  maxMessages: number = 5,
+  requesterId?: string
+): string {
   const session = sessions.get(sessionId) || loadSession(sessionId);
   if (!session || session.messages.length === 0) return '';
-  
+
+  // [AUDIT FIX P-3] Permission check: verify requester has access to this session
+  if (requesterId && session.userId && requesterId !== session.userId) {
+    console.warn(
+      `[Session] Access denied: user ${requesterId} cannot access session ${sessionId} ` +
+      `(owner: ${session.userId})`
+    );
+    return '';
+  }
+
   const recent = session.messages.slice(-maxMessages);
   return recent
     .map(m => `[${m.role}] ${m.content.substring(0, 200)}${m.content.length > 200 ? '...' : ''}`)

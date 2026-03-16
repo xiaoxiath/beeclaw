@@ -262,6 +262,14 @@ export class Agent {
   private toolSelector = getHybridToolSelector();
   private currentUserContext?: UserContext;  // User context for tool execution
 
+  /**
+   * Check if a tool is blocked from execution in the current context.
+   * Used to prevent recursive tool calls in proactive tasks.
+   */
+  private isToolBlocked(toolName: string): boolean {
+    return this.options.blockedTools?.includes(toolName) ?? false;
+  }
+
   constructor(options: AgentOptions & {
     contextConfig?: Partial<ContextConfig>;
     tokenStatsConfig?: Partial<TokenStatsConfig>;
@@ -918,55 +926,63 @@ export class Agent {
             input: params,
           });
 
-          const result = await this.toolExecutor(skillGetCall.function.name, params, this.currentUserContext);
-          options?.onToolResult?.(skillGetCall.function.name, result);
+          // [AUDIT FIX P-2] Check if tool is blocked
+          if (this.isToolBlocked(skillGetCall.function.name)) {
+            const blockedMsg = `Tool "${skillGetCall.function.name}" is blocked in this context.`;
+            console.warn(`[Agent] ${blockedMsg}`);
+            const blockedResult = { success: false, error: blockedMsg, blocked: true };
+            options?.onToolResult?.(skillGetCall.function.name, blockedResult);
+          } else {
+            const result = await this.toolExecutor(skillGetCall.function.name, params, this.currentUserContext);
+            options?.onToolResult?.(skillGetCall.function.name, result);
 
-          const skillName = params.name as string;
-          if (skillName) {
-            this.usedSkillsInTurn.add(skillName);
-            console.log(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
-          }
+            const skillName = params.name as string;
+            if (skillName) {
+              this.usedSkillsInTurn.add(skillName);
+              console.log(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
+            }
 
-          this.estimatedTokens -= estimateMessageTokens({
-            role: 'assistant',
-            content: assistantMessage.content || '',
-            tool_calls: assistantMessage.tool_calls,
-          });
+            this.estimatedTokens -= estimateMessageTokens({
+              role: 'assistant',
+              content: assistantMessage.content || '',
+              tool_calls: assistantMessage.tool_calls,
+            });
 
-          this.messages.pop();
+            this.messages.pop();
 
-          this.messages.push({
-            role: 'assistant',
-            content: assistantMessage.content || '',
-            tool_calls: [skillGetCall],
-          });
+            this.messages.push({
+              role: 'assistant',
+              content: assistantMessage.content || '',
+              tool_calls: [skillGetCall],
+            });
 
-          this.estimatedTokens += estimateMessageTokens({
-            role: 'assistant',
-            content: assistantMessage.content || '',
-            tool_calls: [skillGetCall],
-          });
+            this.estimatedTokens += estimateMessageTokens({
+              role: 'assistant',
+              content: assistantMessage.content || '',
+              tool_calls: [skillGetCall],
+            });
 
-          let skillResultToSave = result;
-          if (this.hookRunner) {
-            skillResultToSave = this.hookRunner.runToolResultPersist({
-              toolName: skillGetCall.function.name,
-              result,
-              toolCallId: skillGetCall.id,
-              timestamp: new Date().toISOString(),
+            let skillResultToSave = result;
+            if (this.hookRunner) {
+              skillResultToSave = this.hookRunner.runToolResultPersist({
+                toolName: skillGetCall.function.name,
+                result,
+                toolCallId: skillGetCall.id,
+                timestamp: new Date().toISOString(),
+              });
+            }
+
+            this.messages.push({
+              role: 'tool',
+              content: JSON.stringify(skillResultToSave),
+              tool_call_id: skillGetCall.id,
+            });
+            this.estimatedTokens += estimateMessageTokens({
+              role: 'tool',
+              content: JSON.stringify(skillResultToSave),
+              tool_call_id: skillGetCall.id,
             });
           }
-
-          this.messages.push({
-            role: 'tool',
-            content: JSON.stringify(skillResultToSave),
-            tool_call_id: skillGetCall.id,
-          });
-          this.estimatedTokens += estimateMessageTokens({
-            role: 'tool',
-            content: JSON.stringify(skillResultToSave),
-            tool_call_id: skillGetCall.id,
-          });
 
           continue;
         }
@@ -1040,7 +1056,17 @@ export class Agent {
               
               // 记录工具调用
               this.loopDetector.recordToolCall(call.function.name, params, iterations);
-              
+
+              // [AUDIT FIX P-2] Check if tool is blocked in current context
+              if (this.isToolBlocked(call.function.name)) {
+                const blockedMsg = `Tool "${call.function.name}" is blocked in this context. ` +
+                  `This operation is not allowed in proactive/scheduled tasks to prevent recursion.`;
+                console.warn(`[Agent] ${blockedMsg}`);
+                const blockedResult = { success: false, error: blockedMsg, blocked: true };
+                options?.onToolResult?.(call.function.name, blockedResult);
+                return { call, result: blockedResult, error: blockedMsg };
+              }
+
               const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
                 const toolElapsed = Date.now() - toolStartTime;
 
@@ -1377,6 +1403,24 @@ export class Agent {
             if (skillName) {
               this.usedSkillsInTurn.add(skillName);
             }
+          }
+
+          // [AUDIT FIX P-2] Check if tool is blocked in current context
+          if (this.isToolBlocked(call.function.name)) {
+            const blockedMsg = `Tool "${call.function.name}" is blocked in this context. ` +
+              `This operation is not allowed in proactive/scheduled tasks to prevent recursion.`;
+            console.warn(`[Agent] ${blockedMsg}`);
+            const blockedResult = { success: false, error: blockedMsg, blocked: true };
+            yield { type: 'tool_result', name: call.function.name, result: blockedResult };
+
+            const toolMsg: ChatMessage = {
+              role: 'tool',
+              content: JSON.stringify(blockedResult),
+              tool_call_id: call.id,
+            };
+            this.messages.push(toolMsg);
+            this.estimatedTokens += estimateMessageTokens(toolMsg);
+            continue;
           }
 
           const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
