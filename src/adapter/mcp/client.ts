@@ -467,6 +467,110 @@ export class MCPClientManager {
       toolName: match[2],
     };
   }
+
+  /**
+   * [V2 FIX] Ping a specific MCP server to check if it's responsive.
+   * Attempts to call listTools() which is a lightweight operation.
+   *
+   * @param serverId - The MCP server ID to ping
+   * @param timeoutMs - Maximum time to wait for response (default: 5000ms)
+   * @returns Ping result with latency and tool count
+   */
+  async pingServer(
+    serverId: string,
+    timeoutMs: number = 5000,
+  ): Promise<{ ok: boolean; latencyMs: number; toolCount: number; error?: string }> {
+    const entry = this.connections.get(serverId);
+    if (!entry) {
+      return { ok: false, latencyMs: 0, toolCount: 0, error: `Server "${serverId}" not found` };
+    }
+    if (!entry.connected) {
+      return { ok: false, latencyMs: 0, toolCount: 0, error: `Server "${serverId}" is not connected` };
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // Use a timeout wrapper
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Ping timeout after ${timeoutMs}ms`)), timeoutMs)
+      );
+
+      const pingPromise = entry.client.listTools();
+      const result = await Promise.race([pingPromise, timeoutPromise]);
+
+      const latencyMs = Date.now() - startTime;
+      const toolCount = (result as any)?.tools?.length ?? entry.tools.length;
+
+      return { ok: true, latencyMs, toolCount };
+    } catch (error) {
+      const latencyMs = Date.now() - startTime;
+      const msg = error instanceof Error ? error.message : String(error);
+      return { ok: false, latencyMs, toolCount: 0, error: msg };
+    }
+  }
+
+  /**
+   * [V2 FIX] Ping all connected MCP servers.
+   */
+  async pingAllServers(
+    timeoutMs: number = 5000,
+  ): Promise<Record<string, { ok: boolean; latencyMs: number; toolCount: number; error?: string }>> {
+    const results: Record<string, { ok: boolean; latencyMs: number; toolCount: number; error?: string }> = {};
+    const ids = Array.from(this.connections.keys());
+
+    const pingResults = await Promise.allSettled(
+      ids.map(id => this.pingServer(id, timeoutMs))
+    );
+
+    for (let i = 0; i < ids.length; i++) {
+      const result = pingResults[i];
+      if (result.status === 'fulfilled') {
+        results[ids[i]] = result.value;
+      } else {
+        results[ids[i]] = {
+          ok: false,
+          latencyMs: 0,
+          toolCount: 0,
+          error: result.reason?.message || 'Unknown error',
+        };
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * [V2 FIX] Get comprehensive health status for all servers.
+   * Combines connection status, circuit breaker state, and ping results.
+   */
+  async getHealthStatus(
+    pingTimeoutMs: number = 5000,
+  ): Promise<Record<string, {
+    connected: boolean;
+    toolCount: number;
+    circuitState: string;
+    pingOk: boolean;
+    pingLatencyMs: number;
+    error?: string;
+  }>> {
+    const status = this.getStatus(); // existing method
+    const pingResults = await this.pingAllServers(pingTimeoutMs);
+
+    const combined: Record<string, any> = {};
+    for (const s of status) {
+      combined[s.id] = {
+        connected: s.connected,
+        toolCount: s.tools,
+        circuitState: 'UNKNOWN', // Will be populated by health checker
+        pingOk: pingResults[s.id]?.ok ?? false,
+        pingLatencyMs: pingResults[s.id]?.latencyMs ?? 0,
+        error: pingResults[s.id]?.error,
+      };
+    }
+
+    return combined;
+  }
 }
 
 // ============================================================================

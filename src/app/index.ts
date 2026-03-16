@@ -47,6 +47,7 @@ import { FeishuChannel } from '../adapter/feishu/channel';
 import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
 import { getMessageGateway } from './gateway-channel';
 import { getTaskDispatcher } from './dispatcher';
+import { bootstrapHealthCheck, shutdownHealthCheck } from './bootstrap-health';
 
 // Types
 import type { AIProvider, AppConfig, EmbeddingProviderConfigType } from '../infra/config/schema';
@@ -325,6 +326,10 @@ export async function initApp(options: InitOptions = {}): Promise<{
   const resolvedLocation = resolveUserLocation();
   const resolvedTimezone = resolveUserTimezone();
   console.log(`   📍 Location: ${resolvedLocation} | Timezone: ${resolvedTimezone}`);
+
+  // 9.11. [V2 FIX] Bootstrap health check system
+  bootstrapHealthCheck();
+  console.log(`   🏥 Health Check: Initialized and monitoring data sources`);
 
   // 10. Create agent (singleton)
   const agent = createAgent({

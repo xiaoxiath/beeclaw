@@ -39,6 +39,9 @@ import {
 import { hybridCompress, type CompressionResult } from './compressor';
 import { groupToolCalls, getGroupingStats, isParallelTool } from './tool-dependencies';
 import { getHybridToolSelector } from './hybrid-tool-selector';
+import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
+import { getHealthChecker } from '../tools';
+import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
 
 /**
  * Safely parse JSON with fallback
@@ -261,6 +264,8 @@ export class Agent {
   private loopDetector: LoopDetector = createLoopDetector();
   private toolSelector = getHybridToolSelector();
   private currentUserContext?: UserContext;  // User context for tool execution
+  private skillEnforcement?: SkillEnforcementEngine;
+  private healthMonitor?: PeriodicHealthMonitor;
 
   /**
    * Check if a tool is blocked from execution in the current context.
@@ -329,6 +334,37 @@ export class Agent {
         content: options.systemPrompt,
       });
       this.estimatedTokens = estimateMessageTokens({ role: 'system', content: options.systemPrompt });
+    }
+
+    // [V2 FIX] Initialize skill enforcement engine
+    try {
+      const skillStore = getSkillStore();
+      if (skillStore) {
+        this.skillEnforcement = new SkillEnforcementEngine(
+          {
+            matchThreshold: 0.3,
+            maxRecommendations: 3,
+            injectDirectives: true,
+            validateOutput: true,
+          },
+          logger,
+        );
+      }
+    } catch (err) {
+      logger.debug('[Agent] SkillEnforcement not available:', err);
+    }
+
+    // [V2 FIX] Initialize periodic health monitor
+    try {
+      const checker = getHealthChecker();
+      if (checker) {
+        this.healthMonitor = new PeriodicHealthMonitor(checker, {
+          intervalMs: 5 * 60 * 1000,
+          autoStart: true,
+        }, logger);
+      }
+    } catch (err) {
+      logger.debug('[Agent] PeriodicHealthMonitor not available:', err);
     }
 
     // Trigger before_agent_start hook (async, fire-and-forget)
@@ -545,6 +581,9 @@ export class Agent {
       this.messages = [];
       this.estimatedTokens = 0;
     }
+
+    // [V2 FIX] Clear skill enforcement traces
+    this.skillEnforcement?.clearTraces();
   }
 
   // Add message to history with token tracking
@@ -809,6 +848,48 @@ export class Agent {
     let iterations = 0;
     let finalContent = '';
     let totalCompletionTokens = 0;
+
+    // [V2 FIX] Pre-turn: Skill enforcement matching
+    let skillMatch: SkillMatchResult | undefined;
+    if (this.skillEnforcement) {
+      const messageText = typeof userMessage === 'string'
+        ? userMessage
+        : Array.isArray(userMessage)
+          ? userMessage.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' ')
+          : '';
+
+      if (messageText) {
+        skillMatch = this.skillEnforcement.matchSkillsForQuery(messageText);
+        if (skillMatch.matched) {
+          // Inject skill enforcement directive as a system-level hint
+          this.messages.push({
+            role: 'system',
+            content: skillMatch.directive,
+          });
+          this.estimatedTokens += estimateMessageTokens({
+            role: 'system',
+            content: skillMatch.directive,
+          });
+          logger.info(`[SkillEnforcement] Injected directive for ${skillMatch.skills.length} matching skill(s)`);
+        }
+      }
+    }
+
+    // [V2 FIX] Pre-turn: Inject health context if issues detected
+    if (this.healthMonitor?.hasIssues()) {
+      const healthCtx = this.healthMonitor.buildHealthContext();
+      if (healthCtx) {
+        this.messages.push({
+          role: 'system',
+          content: healthCtx,
+        });
+        this.estimatedTokens += estimateMessageTokens({
+          role: 'system',
+          content: healthCtx,
+        });
+        logger.info('[Agent] Injected data source health warning into context');
+      }
+    }
 
     // [P2 FIX 4.2] Global token budget guard for tool loop
     const maxTokensPerTurn = (this.options as any).maxTokensPerTurn
@@ -1195,6 +1276,66 @@ export class Agent {
           type: 'text',
           text: finalContent,
         });
+      }
+    }
+
+    // [V2 FIX] Post-turn: Validate output completeness
+    if (this.skillEnforcement && skillMatch?.matched && finalContent) {
+      const issues = this.skillEnforcement.validateOutputCompleteness(
+        finalContent,
+        skillMatch.skills,
+      );
+
+      if (issues.length > 0) {
+        console.warn(`[SkillEnforcement] Output validation found ${issues.length} issue(s):`);
+        issues.forEach(i => console.warn(`  - ${i}`));
+
+        // If we have iterations budget left, attempt one retry
+        if (iterations < (this.options.maxToolIterations || 5) - 1) {
+          const retryPrompt = this.skillEnforcement.buildRetryPrompt(issues);
+          this.messages.push({
+            role: 'user',
+            content: retryPrompt,
+          });
+          this.estimatedTokens += estimateMessageTokens({ role: 'user', content: retryPrompt });
+
+          console.log('[SkillEnforcement] Requesting more complete output...');
+
+          // One more LLM call for completeness
+          try {
+            const retryResponse = await callAI({
+              provider: this.options.provider,
+              model: this.options.model,
+              messages: this.getMessagesForAPI(),
+              tools,
+              temperature: this.options.temperature,
+              topP: this.options.topP,
+              maxTokens: this.options.maxTokens,
+            });
+
+            const retryContent = extractContent(retryResponse);
+            if (retryContent && retryContent.length > finalContent.length) {
+              finalContent = retryContent;
+              this.messages.push({
+                role: 'assistant',
+                content: retryContent,
+              });
+              this.estimatedTokens += estimateMessageTokens({
+                role: 'assistant',
+                content: retryContent,
+              });
+              console.log(`[SkillEnforcement] Retry produced longer output (${retryContent.length} > ${finalContent.length} chars)`);
+
+              // Update content block for streaming
+              options?.onContentBlock?.({
+                type: 'text',
+                text: retryContent,
+              });
+            }
+          } catch (err) {
+            console.warn('[SkillEnforcement] Retry failed:', err);
+          }
+        }
       }
     }
 

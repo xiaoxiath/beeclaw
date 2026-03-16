@@ -86,6 +86,23 @@ import {
   sandboxToolNames,
   executeSandboxTool,
 } from '../sandbox/tools';
+import {
+  datasourceHealthCheckTool,
+  processDatasourceHealthCheck,
+  DataSourceHealthChecker,
+} from './datasource-health';
+
+// Module-level health checker instance (initialized via setupHealthChecker)
+let _healthChecker: DataSourceHealthChecker | null = null;
+
+export function setupHealthChecker(checker: DataSourceHealthChecker): void {
+  _healthChecker = checker;
+}
+
+export function getHealthChecker(): DataSourceHealthChecker | null {
+  return _healthChecker;
+}
+
 export type BuiltinToolResult = MemoryToolResult;
 
 /**
@@ -2287,6 +2304,7 @@ export const builtinTools = {
   sandbox_read_file: sandboxTools.sandbox_read_file,
   sandbox_list_files: sandboxTools.sandbox_list_files,
   sandbox_status: sandboxTools.sandbox_status,
+  datasource_health_check: datasourceHealthCheckTool,
 };
 
 export const builtinToolNames = Object.keys(builtinTools);
@@ -2376,6 +2394,17 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
     case 'sandbox_list_files':
     case 'sandbox_status':
       return executeSandboxTool(name, params);
+    case 'datasource_health_check':
+      if (!_healthChecker) {
+        return { success: false, error: 'Health checker not initialized. Call setupHealthChecker() during app bootstrap.' };
+      }
+      try {
+        const result = await processDatasourceHealthCheck(params, _healthChecker, logger);
+        return { success: true, result };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: `Health check failed: ${msg}` };
+      }
     default:
       return { success: false, error: `Unknown builtin tool: ${name}` };
   }
