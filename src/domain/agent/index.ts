@@ -42,6 +42,7 @@ import { getHybridToolSelector } from './hybrid-tool-selector';
 import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
 import { getHealthChecker } from '../tools';
 import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
+import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 
 /**
  * Safely parse JSON with fallback
@@ -354,14 +355,13 @@ export class Agent {
       logger.debug('[Agent] SkillEnforcement not available:', err);
     }
 
-    // [V2 FIX] Initialize periodic health monitor
+    // [V2 FIX] Get periodic health monitor instance (initialized in bootstrap-health.ts)
+    // NOTE: Health monitor is now initialized in bootstrap-health.ts during app startup
+    // to avoid creating multiple instances. We only get the existing instance here.
     try {
-      const checker = getHealthChecker();
-      if (checker) {
-        this.healthMonitor = new PeriodicHealthMonitor(checker, {
-          intervalMs: 5 * 60 * 1000,
-          autoStart: true,
-        }, logger);
+      const monitor = getHealthMonitorInstance();
+      if (monitor) {
+        this.healthMonitor = monitor;
       }
     } catch (err) {
       logger.debug('[Agent] PeriodicHealthMonitor not available:', err);

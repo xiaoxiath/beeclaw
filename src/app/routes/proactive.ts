@@ -15,6 +15,7 @@ import type { TokenStatsConfig } from '../../domain/agent';
 import { MessageDeduplicator } from '../../infra/utils/deduplicator';
 import { GracefulShutdown } from '../../infra/utils/graceful-shutdown';
 import { getMessageGateway } from '../gateway-channel';
+import { SessionMessageQueue } from '../../infra/resilience/session-lock';
 
 // BUG #6 FIX: Replace Set<string> with LRU+TTL deduplicator
 const deduplicator = new MessageDeduplicator({
@@ -24,9 +25,6 @@ const deduplicator = new MessageDeduplicator({
 
 // Reference to shutdown manager
 const shutdownManager = GracefulShutdown.getInstance({ installSignalHandlers: false });
-
-// Track last processed message time per chat to filter old messages
-const lastProcessedTimePerChat = new Map<string, number>();
 
 // Bot start time - only process messages sent after this time
 const botStartTime = Date.now();
@@ -101,6 +99,9 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
   });
 
   // Register message handler
+  // FIX: Process messages per chatId sequentially to avoid message ordering issues
+  const messageQueue = SessionMessageQueue.getInstance();
+
   wsClient.onMessage(async (data) => {
     const client = getFeishuWSClient();
     if (!client) {
@@ -119,55 +120,13 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     // Log raw event for debugging
     console.log(`[FeishuWS:${process.pid}] 📨 Raw event: messageId=${messageId}, chatId=${chatId}, sender_type=${data.sender?.sender_type}, message_type=${data.message?.message_type}`);
 
-    // Check if message contains image
-    const isImageMessage = data.message?.message_type === 'image';
-    let imageBase64: string | null = null;
-
-    if (isImageMessage) {
-      console.log(`[FeishuWS:${process.pid}] 📷 Image message detected`);
-
-      try {
-        // Extract image key and download
-        const content = JSON.parse(data.message.content);
-        const imageKey = content.image_key;
-
-        if (imageKey) {
-          console.log(`[FeishuWS:${process.pid}] Downloading image: ${imageKey}`);
-
-          // Download image from user message using "Get Message Resources" API
-          // API: GET /open-apis/im/v1/messages/:message_id/resources/:file_key?type=image
-          // Note: This is different from downloading bot-uploaded images
-          const imageResponse = await fetch(
-            `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${imageKey}?type=image`,
-            {
-              method: 'GET',  // Use GET, not POST
-              headers: {
-                'Authorization': `Bearer ${await getTenantAccessToken()}`,
-              },
-            }
-          );
-
-          if (imageResponse.ok) {
-            const arrayBuffer = await imageResponse.arrayBuffer();
-            imageBase64 = Buffer.from(arrayBuffer).toString('base64');
-            console.log(`[FeishuWS:${process.pid}] ✅ Image downloaded (${Math.round(imageBase64.length / 1024)}KB)`);
-          } else {
-            const errorText = await imageResponse.text();
-            console.error(`[FeishuWS:${process.pid}] ❌ Failed to download image: ${imageResponse.status} - ${errorText}`);
-          }
-        }
-      } catch (error) {
-        console.error(`[FeishuWS:${process.pid}] ❌ Error processing image:`, error);
-      }
-    }
-
-    // Ignore empty messages (unless it's an image message)
-    if ((!messageText || messageText.trim().length === 0) && !imageBase64) {
-      console.log(`[FeishuWS:${process.pid}] Ignoring empty message`);
+    // Early deduplication check (before queueing)
+    if (deduplicator.isDuplicate(messageId)) {
+      console.log(`[FeishuWS:${process.pid}] Duplicate message ${messageId}, skipping`);
       return;
     }
 
-    // Ignore messages from bot itself
+    // Ignore messages from bot itself (early check)
     if (data.sender?.sender_type === 'app') {
       console.log(`[FeishuWS:${process.pid}] Ignoring message from bot itself`);
       return;
@@ -185,195 +144,240 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       return;
     }
 
-    // Check if this message is older than the last processed message in this chat
-    const lastTime = lastProcessedTimePerChat.get(chatId) || 0;
-    if (messageTime < lastTime) {
-      console.log(`[FeishuWS:${process.pid}] Ignoring old message in chat (${messageTime} < ${lastTime}): ${messageText.substring(0, 20)}...`);
-      return;
-    }
+    // Check if message contains image
+    const isImageMessage = data.message?.message_type === 'image';
 
-    // Deduplicate messages (Feishu may send duplicate events)
-    if (deduplicator.isDuplicate(messageId)) {
-      console.log(`[FeishuWS:${process.pid}] Duplicate message ${messageId}, skipping`);
-      return;
-    }
+    // FIX: Use per-chatId queue to ensure sequential processing within the same chat
+    // This prevents message ordering issues in both private chats and group chats
+    await messageQueue.enqueue(`chat-${chatId}`, async () => {
+      // All message processing happens inside this queue to ensure ordering
 
-    // Update last processed time for this chat
-    lastProcessedTimePerChat.set(chatId, messageTime);
+      // Double-check deduplication (in case message was processed while waiting in queue)
+      if (deduplicator.isDuplicate(messageId)) {
+        console.log(`[FeishuWS:${process.pid}] Duplicate message ${messageId} (second check), skipping`);
+        return;
+      }
 
-    console.log(`[FeishuWS:${process.pid}] Message from ${userId} in chat ${chatId}: ${messageText.substring(0, 50)}...`);
+      // Process image message if needed
+      let imageBase64: string | null = null;
+      if (isImageMessage) {
+        console.log(`[FeishuWS:${process.pid}] 📷 Image message detected`);
 
-    // Send immediate feedback to acknowledge receipt
-    // Add reaction emoji for instant feedback
-    const reactions = ['Typing', 'Get', 'LGTM', 'Coffee', 'Status_PrivateMessage', 'OK'];
-    const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
-    try {
-      await client.addReaction(messageId, randomReaction);
-    } catch (error) {
-      console.log(`[FeishuWS:${process.pid}] Failed to add reaction (non-critical):`, error);
-    }
+        try {
+          // Extract image key and download
+          const content = JSON.parse(data.message.content);
+          const imageKey = content.image_key;
 
-    // Create consistent session ID for conversation continuity
-    const sessionId = `feishu-${chatId}-${userId}`;
+          if (imageKey) {
+            console.log(`[FeishuWS:${process.pid}] Downloading image: ${imageKey}`);
 
-    // Build multimodal message content (image + text)
-    let messageContent: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
-    if (imageBase64) {
-      // Image message - build multimodal content
-      const dataUrl = `data:image/jpeg;base64,${imageBase64}`;
-      const textPrompt = (messageText && !messageText.includes('{') && messageText.trim().length > 0)
-        ? messageText
-        : '请识别并分析这张图片';
+            // Download image from user message using "Get Message Resources" API
+            // API: GET /open-apis/im/v1/messages/:message_id/resources/:file_key?type=image
+            // Note: This is different from downloading bot-uploaded images
+            const imageResponse = await fetch(
+              `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${imageKey}?type=image`,
+              {
+                method: 'GET',  // Use GET, not POST
+                headers: {
+                  'Authorization': `Bearer ${await getTenantAccessToken()}`,
+                },
+              }
+            );
 
-      messageContent = [
-        { type: 'image_url', image_url: { url: dataUrl } },
-        { type: 'text', text: textPrompt }
-      ];
-      console.log(`[FeishuWS:${process.pid}] 📷 Built multimodal message with image (${Math.round(imageBase64.length / 1024)}KB) and text: "${textPrompt.substring(0, 50)}..."`);
-    } else {
-      // Text-only message
-      messageContent = messageText;
-    }
-
-    // Process message through session manager
-    console.log(`[FeishuWS:${process.pid}] Processing message with session ${sessionId}...`);
-    const result = await sendProactiveMessage({
-      message: messageContent,
-      userId,
-      channel: 'feishu',
-      sessionId,
-      context: {
-        openId,
-        chatId,
-        messageId,
-        parentMessageId: messageId, // Required for Card V2 streaming
-      },
-    });
-
-    // Log result for debugging
-    if (!result.success) {
-      console.error(`[FeishuWS:${process.pid}] ❌ Failed to process message: ${result.error || 'Unknown error'}`);
-      // Send error notification to user via Gateway
-      try {
-        const gateway = getMessageGateway();
-        await gateway.replyMessage('feishu', {
-          sessionId,
-          userId,
-          chatId,
-          parentMessageId: messageId,
-        }, `处理消息时出错：${result.error || '未知错误'}。请稍后重试。`);
-      } catch (replyError) {
-        // Check if error is due to withdrawn message
-        const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
-        if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
-          console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn, error reply skipped`);
-        } else {
-          console.error(`[FeishuWS:${process.pid}] Failed to send error reply:`, replyError);
+            if (imageResponse.ok) {
+              const arrayBuffer = await imageResponse.arrayBuffer();
+              imageBase64 = Buffer.from(arrayBuffer).toString('base64');
+              console.log(`[FeishuWS:${process.pid}] ✅ Image downloaded (${Math.round(imageBase64.length / 1024)}KB)`);
+            } else {
+              const errorText = await imageResponse.text();
+              console.error(`[FeishuWS:${process.pid}] ❌ Failed to download image: ${imageResponse.status} - ${errorText}`);
+            }
+          }
+        } catch (error) {
+          console.error(`[FeishuWS:${process.pid}] ❌ Error processing image:`, error);
         }
       }
-      return;
-    }
 
-    if (!result.response) {
-      console.error(`[FeishuWS:${process.pid}] ❌ Empty response from agent`);
+      // Ignore empty messages (unless it's an image message)
+      if ((!messageText || messageText.trim().length === 0) && !imageBase64) {
+        console.log(`[FeishuWS:${process.pid}] Ignoring empty message`);
+        return;
+      }
+
+      console.log(`[FeishuWS:${process.pid}] Message from ${userId} in chat ${chatId}: ${messageText.substring(0, 50)}...`);
+
+      // Send immediate feedback to acknowledge receipt
+      // Add reaction emoji for instant feedback
+      const reactions = ['Typing', 'Get', 'LGTM', 'Coffee', 'Status_PrivateMessage', 'OK'];
+      const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
       try {
-        const gateway = getMessageGateway();
-        await gateway.replyMessage('feishu', {
-          sessionId,
-          userId,
-          chatId,
-          parentMessageId: messageId,
-        }, '收到消息，但无法生成回复。请稍后重试。');
-      } catch (replyError) {
-        // Check if error is due to withdrawn message
-        const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
-        if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
-          console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn, error reply skipped`);
-        } else {
-          console.error(`[FeishuWS:${process.pid}] Failed to send empty response reply:`, replyError);
-        }
-      }
-      return;
-    }
-
-    // Reply to the message directly via Gateway
-    // NOTE: If Card V2 was used, skip sending text message (Card V2 already sent via StreamingMessageController)
-    if (result.usedCardV2) {
-      console.log(`[FeishuWS:${process.pid}] ✅ Card V2 already sent, skipping text reply`);
-
-      // Mark response as delivered
-      if (result.sessionId) {
-        confirmDelivery(result.sessionId);
+        await client.addReaction(messageId, randomReaction);
+      } catch (error) {
+        console.log(`[FeishuWS:${process.pid}] Failed to add reaction (non-critical):`, error);
       }
 
-      return; // Exit early - Card V2 message already sent
-    }
+      // Create consistent session ID for conversation continuity
+      const sessionId = `feishu-${chatId}-${userId}`;
 
-    try {
-      console.log(`[FeishuWS:${process.pid}] Replying to message ${messageId} (${result.response.length} chars)...`);
+      // Build multimodal message content (image + text)
+      let messageContent: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+      if (imageBase64) {
+        // Image message - build multimodal content
+        const dataUrl = `data:image/jpeg;base64,${imageBase64}`;
+        const textPrompt = (messageText && !messageText.includes('{') && messageText.trim().length > 0)
+          ? messageText
+          : '请识别并分析这张图片';
 
-      // Send reply via Gateway (always send new message - can't update text messages in Feishu)
-      const gateway = getMessageGateway();
-      const replyResult = await gateway.replyMessage('feishu', {
-        sessionId,
+        messageContent = [
+          { type: 'image_url', image_url: { url: dataUrl } },
+          { type: 'text', text: textPrompt }
+        ];
+        console.log(`[FeishuWS:${process.pid}] 📷 Built multimodal message with image (${Math.round(imageBase64.length / 1024)}KB) and text: "${textPrompt.substring(0, 50)}..."`);
+      } else {
+        // Text-only message
+        messageContent = messageText;
+      }
+
+      // Process message through session manager
+      console.log(`[FeishuWS:${process.pid}] Processing message with session ${sessionId}...`);
+      const result = await sendProactiveMessage({
+        message: messageContent,
         userId,
-        chatId,
-        parentMessageId: messageId,
-      }, result.response);
-
-      if (!replyResult.success) {
-        throw new Error(replyResult.error || 'Reply failed');
-      }
-
-      console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully via Gateway`);
-
-      // Mark response as delivered (for tracking purposes)
-      // BUG #2 FIX: Use confirmDelivery() instead of separate markResponseDelivered()
-      if (result.sessionId) {
-        confirmDelivery(result.sessionId);
-      }
-    } catch (error) {
-      // Check if error is due to withdrawn message
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
-        console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn by user, reply skipped`);
-        return; // Exit gracefully - no need to retry or send error message
-      }
-
-      console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
-      // BUG #2 FIX: Do NOT confirm delivery - leave pendingRecovery=true so recovery can retry
-      console.warn(`[FeishuWS:${process.pid}] Message ${messageId} will be retried on recovery (delivery failed)`);
-      // Try fallback with simple text via direct client (fallback to old behavior)
-      try {
-        // Strip markdown for fallback
-        const plainText = result.response
-          .replace(/\*\*/g, '')
-          .replace(/`/g, '')
-          .replace(/\n/g, '\n');
-        await client.replyText(messageId, plainText);
-        console.log(`[FeishuWS:${process.pid}] ✅ Fallback reply sent via direct client`);
-      } catch (fallbackError) {
-        console.error(`[FeishuWS:${process.pid}] ❌ Fallback reply also failed:`, fallbackError);
-      }
-    }
-
-    // Self-evolution: Check for preference expressions
-    try {
-      const preferenceTrigger = checkPreferenceTriggers(messageText, []);
-      if (preferenceTrigger && preferenceTrigger.hasPreference) {
-        console.log(`[Evolution] Detected preference:`, preferenceTrigger.expressions);
-      }
-
-      // Record query for pattern detection
-      recordQuery(messageText, {
         channel: 'feishu',
-        userId: openId,
-        sessionId: sessionId,
+        sessionId,
+        context: {
+          openId,
+          chatId,
+          messageId,
+          parentMessageId: messageId, // Required for Card V2 streaming
+        },
       });
-    } catch (error) {
-      // Non-critical - evolution should not block message processing
-      console.log('[Evolution] Analysis failed (non-critical):', error);
-    }
+
+      // Log result for debugging
+      if (!result.success) {
+        console.error(`[FeishuWS:${process.pid}] ❌ Failed to process message: ${result.error || 'Unknown error'}`);
+        // Send error notification to user via Gateway
+        try {
+          const gateway = getMessageGateway();
+          await gateway.replyMessage('feishu', {
+            sessionId,
+            userId,
+            chatId,
+            parentMessageId: messageId,
+          }, `处理消息时出错：${result.error || '未知错误'}。请稍后重试。`);
+        } catch (replyError) {
+          // Check if error is due to withdrawn message
+          const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
+          if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
+            console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn, error reply skipped`);
+          } else {
+            console.error(`[FeishuWS:${process.pid}] Failed to send error reply:`, replyError);
+          }
+        }
+        return;
+      }
+
+      if (!result.response) {
+        console.error(`[FeishuWS:${process.pid}] ❌ Empty response from agent`);
+        try {
+          const gateway = getMessageGateway();
+          await gateway.replyMessage('feishu', {
+            sessionId,
+            userId,
+            chatId,
+            parentMessageId: messageId,
+          }, '收到消息，但无法生成回复。请稍后重试。');
+        } catch (replyError) {
+          // Check if error is due to withdrawn message
+          const errorMsg = replyError instanceof Error ? replyError.message : String(replyError);
+          if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
+            console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn, error reply skipped`);
+          } else {
+            console.error(`[FeishuWS:${process.pid}] Failed to send empty response reply:`, replyError);
+          }
+        }
+        return;
+      }
+
+      // Reply to the message directly via Gateway
+      // NOTE: If Card V2 was used, skip sending text message (Card V2 already sent via StreamingMessageController)
+      if (result.usedCardV2) {
+        console.log(`[FeishuWS:${process.pid}] ✅ Card V2 already sent, skipping text reply`);
+
+        // Mark response as delivered
+        if (result.sessionId) {
+          confirmDelivery(result.sessionId);
+        }
+
+        return; // Exit early - Card V2 message already sent
+      }
+
+      try {
+        console.log(`[FeishuWS:${process.pid}] Replying to message ${messageId} (${result.response.length} chars)...`);
+
+        // Send reply via Gateway (always send new message - can't update text messages in Feishu)
+        const gateway = getMessageGateway();
+        const replyResult = await gateway.replyMessage('feishu', {
+          sessionId,
+          userId,
+          chatId,
+          parentMessageId: messageId,
+        }, result.response);
+
+        if (!replyResult.success) {
+          throw new Error(replyResult.error || 'Reply failed');
+        }
+
+        console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully via Gateway`);
+
+        // Mark response as delivered (for tracking purposes)
+        // BUG #2 FIX: Use confirmDelivery() instead of separate markResponseDelivered()
+        if (result.sessionId) {
+          confirmDelivery(result.sessionId);
+        }
+      } catch (error) {
+        // Check if error is due to withdrawn message
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes('230011') || errorMsg.includes('231003') || errorMsg.includes('withdrawn')) {
+          console.log(`[FeishuWS:${process.pid}] ⚠️  Message ${messageId} was withdrawn by user, reply skipped`);
+          return; // Exit gracefully - no need to retry or send error message
+        }
+
+        console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
+        // BUG #2 FIX: Do NOT confirm delivery - leave pendingRecovery=true so recovery can retry
+        console.warn(`[FeishuWS:${process.pid}] Message ${messageId} will be retried on recovery (delivery failed)`);
+        // Try fallback with simple text via direct client (fallback to old behavior)
+        try {
+          // Strip markdown for fallback
+          const plainText = result.response
+            .replace(/\*\*/g, '')
+            .replace(/`/g, '')
+            .replace(/\n/g, '\n');
+          await client.replyText(messageId, plainText);
+          console.log(`[FeishuWS:${process.pid}] ✅ Fallback reply sent via direct client`);
+        } catch (fallbackError) {
+          console.error(`[FeishuWS:${process.pid}] ❌ Fallback reply also failed:`, fallbackError);
+        }
+      }
+
+      // Self-evolution: Check for preference expressions
+      try {
+        const preferenceTrigger = checkPreferenceTriggers(messageText, []);
+        if (preferenceTrigger && preferenceTrigger.hasPreference) {
+          console.log(`[Evolution] Detected preference:`, preferenceTrigger.expressions);
+        }
+
+        // Record query for pattern detection
+        recordQuery(messageText, {
+          channel: 'feishu',
+          userId: openId,
+          sessionId: sessionId,
+        });
+      } catch (error) {
+        // Non-critical - evolution should not block message processing
+        console.log('[Evolution] Analysis failed (non-critical):', error);
+      }
+    }); // End of messageQueue.enqueue
   });
 
   // Start WebSocket connection

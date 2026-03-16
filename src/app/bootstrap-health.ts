@@ -116,7 +116,7 @@ export function bootstrapHealthCheck(): {
   const healthMonitor = new PeriodicHealthMonitor(
     healthChecker,
     {
-      intervalMs: 5 * 60 * 1000, // Check every 5 minutes
+      intervalMs: 60 * 60 * 1000, // Check every 15 minutes (reduced from 5 minutes)
       autoStart: true,
       onHealthChange: (prev, current) => {
         if (!current.overallHealthy) {

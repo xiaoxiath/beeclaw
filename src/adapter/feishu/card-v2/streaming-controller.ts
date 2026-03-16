@@ -193,7 +193,11 @@ export class StreamingMessageController {
    */
   private async sendUpdate(isFinal: boolean): Promise<void> {
     if (!this.state.messageId) {
-      console.warn('Cannot update: no message ID');
+      // This can happen if:
+      // 1. Initial message failed to send
+      // 2. Update was scheduled before initialization completed
+      // 3. Message was withdrawn before update
+      console.debug('[StreamingController] Skipping update: no message ID (initialization may still be in progress or failed)');
       return;
     }
 

@@ -180,7 +180,13 @@ export class DataSourceHealthChecker {
     };
 
     this.lastResult = result;
-    this.logger?.info?.(`[HealthCheck] Completed: ${summary}`);
+
+    // Only log at INFO level if there are issues, otherwise use DEBUG
+    if (result.overallHealthy) {
+      this.logger?.debug?.(`[HealthCheck] Completed: ${summary}`);
+    } else {
+      this.logger?.info?.(`[HealthCheck] Completed: ${summary}`);
+    }
 
     return result;
   }
