@@ -7,6 +7,7 @@
 
 import type { ContentBlock, ToolUseBlock, TextBlock } from '../../../types/content-block';
 import { toolIconRegistry } from './tool-icon-registry';
+import { renderHITLContentBlock } from './hitl-renderer';
 import {
   createCard,
   createStreamingConfig,
@@ -50,9 +51,12 @@ export function renderMessageCard(
 ): Card {
   const { streaming = false, summary } = options || {};
 
-  // Separate steps (thinking + tool use) from final answer (text)
+  // Separate blocks by type
   const steps = blocks.filter(
     (block) => block.type === 'thinking' || block.type === 'tool_use'
+  );
+  const hitlBlocks = blocks.filter(
+    (block) => block.type === 'confirmation_request' || block.type === 'user_input_request'
   );
   const finalAnswer = blocks.find((block) => block.type === 'text') as TextBlock | undefined;
   const images = blocks.filter((block) => block.type === 'image');
@@ -60,14 +64,23 @@ export function renderMessageCard(
   // Build card elements
   const elements: any[] = [];
 
+  // Add HITL blocks first (if any)
+  hitlBlocks.forEach((block) => {
+    const hitlElements = renderHITLContentBlock(block);
+    if (hitlElements && hitlElements.length > 0) {
+      elements.push(...hitlElements);
+      elements.push(createHrElement());
+    }
+  });
+
   // Add steps panel if there are any steps
   if (steps.length > 0) {
     const stepsPanel = renderStepsPanel(steps, { streaming, summary });
     elements.push(stepsPanel);
   }
 
-  // Add divider if there are both steps and final answer
-  if (steps.length > 0 && (finalAnswer || images.length > 0)) {
+  // Add divider if there are both steps/HITL and final answer
+  if ((steps.length > 0 || hitlBlocks.length > 0) && (finalAnswer || images.length > 0)) {
     elements.push(createHrElement());
   }
 

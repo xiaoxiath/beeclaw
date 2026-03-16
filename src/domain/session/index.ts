@@ -34,6 +34,7 @@ import { StreamingMessageController } from '../../adapter/feishu/card-v2';
 import { getFeishuWSClient } from '../../adapter/feishu';
 import { getConfig_ } from '../../app';
 import { SmartTimeout } from '../../infra/resilience/smart-timeout';
+import { handleHITLResponse } from './hitl-manager';
 
 export interface SessionOptions {
   sessionId: string;
@@ -878,8 +879,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     }
 
     // ========================================
-    // CRITICAL: Save user message BEFORE processing
-    // This ensures recovery system can detect unanswered messages if bot restarts
+    // CRITICAL: Prepare user message content
     // ========================================
     let userContentString: string;
 
@@ -903,6 +903,20 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       userContentString = userText || '[Multimodal message]';
     } else {
       userContentString = 'unknown';
+    }
+
+    // ========================================
+    // CRITICAL: Check for HITL recovery BEFORE processing new message
+    // ========================================
+    const hitlResult = await handleHITLResponse(sessionId, userContentString);
+
+    if (hitlResult !== null) {
+      console.log('[Session] 🔄 HITL response detected, resuming conversation');
+      return {
+        success: true,
+        response: hitlResult,
+        usedCardV2: session.metadata?.usedCardV2 || false,
+      };
     }
 
     // Save user message immediately (before AI processing)

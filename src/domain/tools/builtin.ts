@@ -70,6 +70,10 @@ import {
   updateUserSettingsTool,
   executeUpdateUserSettings,
 } from './user-settings';
+import {
+  askUserQuestionTool,
+  executeAskUserQuestion,
+} from './user-interaction';
 import { createDeepResearchHandler, type ResearchDepth } from '../search/research/deep-research-v2';
 import { callAI } from '../agent/api';
 import { getProvider, getModel } from '../../app';
@@ -2305,17 +2309,14 @@ export const builtinTools = {
   sandbox_list_files: sandboxTools.sandbox_list_files,
   sandbox_status: sandboxTools.sandbox_status,
   datasource_health_check: datasourceHealthCheckTool,
+  ask_user_question: askUserQuestionTool,
 };
 
 export const builtinToolNames = Object.keys(builtinTools);
 
 // Get all builtin tools in OpenAI format
 export function getBuiltinToolsForAI() {
-  return Object.values(builtinTools).map(tool => ({
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.parameters,
-  }));
+  return Object.values(builtinTools);
 }
 
 // Execute a builtin tool
@@ -2387,6 +2388,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeRequestDeepAnalysis(params);
     case 'update_user_settings':
       return executeUpdateUserSettings(params);
+    case 'ask_user_question':
+      return executeAskUserQuestion(params);
     // Sandbox tools
     case 'sandbox_exec':
     case 'sandbox_write_file':

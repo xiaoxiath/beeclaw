@@ -71,6 +71,38 @@ export const ImageBlockSchema = z.object({
 export type ImageBlock = z.infer<typeof ImageBlockSchema>;
 
 // ============================================
+// Confirmation Request Block - HITL tool confirmation
+// ============================================
+
+export const ConfirmationRequestBlockSchema = z.object({
+  type: z.literal('confirmation_request'),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  params: z.record(z.unknown()),
+  riskLevel: z.enum(['low', 'medium', 'high', 'critical']),
+  timeoutMs: z.number().optional(),
+  expiresAt: z.number().optional(),
+  message: z.string(),
+});
+
+export type ConfirmationRequestBlock = z.infer<typeof ConfirmationRequestBlockSchema>;
+
+// ============================================
+// User Input Request Block - HITL information gathering
+// ============================================
+
+export const UserInputRequestBlockSchema = z.object({
+  type: z.literal('user_input_request'),
+  question: z.string(),
+  options: z.array(z.string()).optional(),
+  context: z.string().optional(),
+  inputType: z.enum(['text', 'choice', 'confirmation', 'multi_choice']).optional(),
+  timestamp: z.number().optional(),
+});
+
+export type UserInputRequestBlock = z.infer<typeof UserInputRequestBlockSchema>;
+
+// ============================================
 // ContentBlock Union Type
 // ============================================
 
@@ -80,6 +112,8 @@ export const ContentBlockSchema = z.discriminatedUnion('type', [
   ToolResultBlockSchema,
   TextBlockSchema,
   ImageBlockSchema,
+  ConfirmationRequestBlockSchema,
+  UserInputRequestBlockSchema,
 ]);
 
 export type ContentBlock = z.infer<typeof ContentBlockSchema>;
@@ -121,6 +155,20 @@ export function isTextBlock(block: ContentBlock): block is TextBlock {
  */
 export function isImageBlock(block: ContentBlock): block is ImageBlock {
   return block.type === 'image';
+}
+
+/**
+ * Type guard for ConfirmationRequestBlock
+ */
+export function isConfirmationRequestBlock(block: ContentBlock): block is ConfirmationRequestBlock {
+  return block.type === 'confirmation_request';
+}
+
+/**
+ * Type guard for UserInputRequestBlock
+ */
+export function isUserInputRequestBlock(block: ContentBlock): block is UserInputRequestBlock {
+  return block.type === 'user_input_request';
 }
 
 /**
@@ -171,6 +219,64 @@ export function createImageBlock(
     type: 'image',
     source: { type: sourceType, mediaType, data },
   });
+}
+
+/**
+ * Create a ConfirmationRequestBlock for HITL tool confirmation
+ */
+export function createConfirmationRequestBlock(
+  toolCallId: string,
+  toolName: string,
+  params: Record<string, unknown>,
+  riskLevel: 'low' | 'medium' | 'high' | 'critical',
+  message: string,
+  timeoutMs?: number
+): ConfirmationRequestBlock {
+  const block: ConfirmationRequestBlock = {
+    type: 'confirmation_request',
+    toolCallId,
+    toolName,
+    params,
+    riskLevel,
+    message,
+  };
+
+  if (timeoutMs !== undefined) {
+    block.timeoutMs = timeoutMs;
+    block.expiresAt = Date.now() + timeoutMs;
+  }
+
+  return ConfirmationRequestBlockSchema.parse(block);
+}
+
+/**
+ * Create a UserInputRequestBlock for HITL information gathering
+ */
+export function createUserInputRequestBlock(
+  question: string,
+  options?: string[],
+  context?: string,
+  inputType?: 'text' | 'choice' | 'confirmation' | 'multi_choice'
+): UserInputRequestBlock {
+  const block: UserInputRequestBlock = {
+    type: 'user_input_request',
+    question,
+    timestamp: Date.now(),
+  };
+
+  if (options !== undefined) {
+    block.options = options;
+  }
+
+  if (context !== undefined) {
+    block.context = context;
+  }
+
+  if (inputType !== undefined) {
+    block.inputType = inputType;
+  }
+
+  return UserInputRequestBlockSchema.parse(block);
 }
 
 /**

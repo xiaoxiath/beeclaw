@@ -1184,6 +1184,87 @@ export class Agent {
               const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
                 const toolElapsed = Date.now() - toolStartTime;
 
+                // [HITL] Check if tool result needs user confirmation or input
+                if (result.needsConfirmation) {
+                  console.log(`[HITL] Tool ${call.function.name} requires user confirmation`);
+
+                  // Generate ConfirmationRequest ContentBlock
+                  options?.onContentBlock?.({
+                    type: 'confirmation_request',
+                    toolCallId: call.id,
+                    toolName: call.function.name,
+                    params,
+                    riskLevel: result.riskLevel || 'high',
+                    timeoutMs: result.timeoutMs,
+                    expiresAt: result.timeoutMs ? Date.now() + result.timeoutMs : undefined,
+                    message: result.confirmationMessage || `Tool "${call.function.name}" requires confirmation`,
+                  });
+
+                  // Inject system message to guide agent
+                  this.messages.push({
+                    role: 'system',
+                    content: `⚠️ TOOL CONFIRMATION REQUIRED\n\n${result.confirmationMessage || `Tool "${call.function.name}" requires user confirmation (${result.riskLevel || 'high'} risk).`}\n\n` +
+                             `Please ask the user for approval before proceeding. ` +
+                             `If approved, respond with "APPROVED: ${call.function.name}". ` +
+                             `If denied, respond with "DENIED: ${call.function.name}" and try an alternative approach.`,
+                  });
+
+                  // Add tool result to indicate waiting
+                  this.messages.push({
+                    role: 'tool',
+                    content: JSON.stringify({
+                      success: false,
+                      error: 'Tool execution blocked pending user confirmation. Ask the user for approval before proceeding.',
+                      needsConfirmation: true,
+                      toolName: call.function.name,
+                    }),
+                    tool_call_id: call.id,
+                  });
+
+                  // Return early to let agent handle confirmation
+                  return { call, result: { ...result, _hitlHandled: true }, error: null };
+                }
+
+                // [HITL] Check if tool needs user input
+                if (result.needsUserInput) {
+                  console.log(`[HITL] Tool ${call.function.name} requires user input`);
+
+                  // Generate UserInputRequest ContentBlock
+                  options?.onContentBlock?.({
+                    type: 'user_input_request',
+                    question: result.question,
+                    options: result.options,
+                    context: result.context,
+                    inputType: result.inputType || 'text',
+                    timestamp: Date.now(),
+                  });
+
+                  // Inject system message to guide agent
+                  this.messages.push({
+                    role: 'system',
+                    content: `USER INPUT REQUIRED\n\n` +
+                             `Question: ${result.question}\n` +
+                             (result.options ? `Options: ${result.options.join(', ')}\n` : '') +
+                             (result.context ? `Context: ${result.context}\n` : '') +
+                             `\nPlease ask the user for this information and wait for their response.`,
+                  });
+
+                  // Add tool result to indicate waiting
+                  this.messages.push({
+                    role: 'tool',
+                    content: JSON.stringify({
+                      success: false,
+                      error: 'Waiting for user input. Ask the user for the required information.',
+                      needsUserInput: true,
+                      question: result.question,
+                    }),
+                    tool_call_id: call.id,
+                  });
+
+                  // Return early to let agent handle user input
+                  return { call, result: { ...result, _hitlHandled: true }, error: null };
+                }
+
                 if (this.hookRunner) {
                   await this.hookRunner.runAfterToolCall({
                     toolName: call.function.name,
