@@ -1230,26 +1230,63 @@ export class FeishuWSClient {
    * Add a reaction to a message
    * @param messageId The message ID to react to
    * @param emojiType The emoji type (e.g., "SMILE", "THUMBSUP", "HEART", "OK")
+   * @returns The reaction ID if successful, null otherwise
    */
-  async addReaction(messageId: string, emojiType: string): Promise<void> {
+  async addReaction(messageId: string, emojiType: string): Promise<string | null> {
     if (!this.client) {
       throw new Error('[FeishuWS] Client not initialized');
     }
 
-    const response = await this.client.im.v1.messageReaction.create({
-      path: {
-        message_id: messageId,
-      },
-      data: {
-        reaction_type: {
-          emoji_type: emojiType,
+    try {
+      const response = await this.client.im.v1.messageReaction.create({
+        path: {
+          message_id: messageId,
         },
-      },
-    });
+        data: {
+          reaction_type: {
+            emoji_type: emojiType,
+          },
+        },
+      });
 
-    if (response.code !== 0) {
-      console.error('[FeishuWS] Add reaction failed:', response.msg);
-      // Don't throw - reaction failure is not critical
+      if (response.code !== 0) {
+        console.error('[FeishuWS] Add reaction failed:', response.msg);
+        return null;
+      }
+
+      // Return the reaction ID for later deletion
+      return response.data?.reaction?.reaction_id || null;
+    } catch (error) {
+      console.error('[FeishuWS] Add reaction error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Delete a reaction from a message
+   * @param messageId The message ID
+   * @param reactionId The reaction ID to delete
+   */
+  async deleteReaction(messageId: string, reactionId: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('[FeishuWS] Client not initialized');
+    }
+
+    try {
+      const response = await this.client.im.v1.messageReaction.delete({
+        path: {
+          message_id: messageId,
+          reaction_id: reactionId,
+        },
+      });
+
+      if (response.code !== 0) {
+        console.error('[FeishuWS] Delete reaction failed:', response.msg);
+        // Don't throw - reaction deletion failure is not critical
+      }
+    } catch (error) {
+      console.error('[FeishuWS] Delete reaction error:', error);
+      // Don't throw - reaction deletion failure is not critical
     }
   }
 

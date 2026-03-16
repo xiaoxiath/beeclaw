@@ -210,8 +210,9 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       // Add reaction emoji for instant feedback
       const reactions = ['Typing', 'Get', 'LGTM', 'Coffee', 'Status_PrivateMessage', 'OK'];
       const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+      let reactionId: string | null = null;
       try {
-        await client.addReaction(messageId, randomReaction);
+        reactionId = await client.addReaction(messageId, randomReaction);
       } catch (error) {
         console.log(`[FeishuWS:${process.pid}] Failed to add reaction (non-critical):`, error);
       }
@@ -304,6 +305,15 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       if (result.usedCardV2) {
         console.log(`[FeishuWS:${process.pid}] ✅ Card V2 already sent, skipping text reply`);
 
+        // Remove the reaction since reply is complete
+        if (reactionId) {
+          try {
+            await client.deleteReaction(messageId, reactionId);
+          } catch (error) {
+            console.log(`[FeishuWS:${process.pid}] Failed to remove reaction (non-critical):`, error);
+          }
+        }
+
         // Mark response as delivered
         if (result.sessionId) {
           confirmDelivery(result.sessionId);
@@ -329,6 +339,15 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
         }
 
         console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully via Gateway`);
+
+        // Remove the reaction since reply is complete
+        if (reactionId) {
+          try {
+            await client.deleteReaction(messageId, reactionId);
+          } catch (error) {
+            console.log(`[FeishuWS:${process.pid}] Failed to remove reaction (non-critical):`, error);
+          }
+        }
 
         // Mark response as delivered (for tracking purposes)
         // BUG #2 FIX: Use confirmDelivery() instead of separate markResponseDelivered()
