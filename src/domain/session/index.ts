@@ -202,6 +202,7 @@ export function confirmDelivery(sessionId: string): void {
   if (session) {
     session.pendingRecovery = false;
     session.pendingDelivery = false;
+    session.lastAiResponse = undefined; // CRITICAL: Clear cached response after successful delivery
     session.recoveryAttempts = 0;
     session.lastRecoveryAt = undefined;
     session.consecutiveRecoveryFailures = 0;
@@ -1093,19 +1094,26 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       toolCalls: lastToolCalls.length > 0 ? lastToolCalls : undefined,
     });
 
-    // CRITICAL FIX: Clear pendingRecovery flag immediately after AI responds
+    // CRITICAL FIX #1: Set pendingDelivery BEFORE attempting delivery
+    // This ensures that if the bot crashes or delivery fails, the response is cached
+    // and can be re-delivered on next recovery without reprocessing
+    session.pendingDelivery = true;
+    session.lastAiResponse = assistantContentString;
+    console.log('[Session] ✓ AI responded, set pendingDelivery=true for safe recovery');
+
+    // CRITICAL FIX #2: Clear pendingRecovery flag immediately after AI responds
     // This prevents recovery from reprocessing already-answered messages
     // (Previously this was only cleared after Feishu delivery, which caused race conditions)
     if (session.pendingRecovery) {
       session.pendingRecovery = false;
-      console.log('[Session] ✓ AI responded, cleared pendingRecovery flag');
+      console.log('[Session] ✓ Cleared pendingRecovery flag');
     }
 
     // NOTE: responseDelivered flag is for tracking Feishu delivery status
     // It's set separately after successful Feishu send (see routes/proactive.ts)
     session.updatedAt = new Date().toISOString();
 
-    // Save session to disk
+    // Save session to disk (with pendingDelivery=true)
     saveSession(session);
 
     // Trigger knowledge extraction (background)
