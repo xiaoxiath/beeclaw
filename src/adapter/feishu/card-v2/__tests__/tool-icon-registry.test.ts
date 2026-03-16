@@ -25,7 +25,7 @@ describe('ToolIconRegistry', () => {
     test('should have Read tool registered', () => {
       expect(registry.has('Read')).toBe(true);
       const iconToken = registry.getIconToken('Read');
-      expect(iconToken).toBe(IconToken.File);
+      expect(iconToken).toBe(IconToken.Folder);
     });
 
     test('should have Write tool registered', () => {

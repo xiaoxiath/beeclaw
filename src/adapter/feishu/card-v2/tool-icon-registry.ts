@@ -100,7 +100,7 @@ export class ToolIconRegistry {
 
     // File Operations
     this.register('Read', {
-      iconToken: IconToken.File,
+      iconToken: IconToken.Folder,
       label: (input) => {
         const path = input?.file_path || input?.path || 'file';
         return `Reading ${path}`;
@@ -150,7 +150,7 @@ export class ToolIconRegistry {
     });
 
     this.register('memory_read', {
-      iconToken: IconToken.File,
+      iconToken: IconToken.Folder,
       label: (input) => {
         const id = input?.id || 'memory';
         return `Reading memory ${id}`;
@@ -223,7 +223,7 @@ export class ToolIconRegistry {
     });
 
     this.register('TaskGet', {
-      iconToken: IconToken.File,
+      iconToken: IconToken.Folder,
       label: (input) => {
         const taskId = input?.taskId || 'task';
         return `Getting task ${taskId}`;
@@ -293,7 +293,7 @@ export class ToolIconRegistry {
 
     // Git Operations
     this.register('git_status', {
-      iconToken: IconToken.File,
+      iconToken: IconToken.Folder,
       label: () => 'Checking git status',
     });
 

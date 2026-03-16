@@ -66,6 +66,7 @@ export const TextColor = {
 /**
  * Common standard icon tokens
  * Reference: https://open.feishu.cn/document/client-docs/bot-v3/card-v2/icon
+ * NOTE: Only use icon tokens that exist in the official Feishu icon library
  */
 export const IconToken = {
   // Actions
@@ -88,7 +89,6 @@ export const IconToken = {
 
   // Data
   Database: 'database_outlined',
-  File: 'file_outlined',
   Folder: 'folder_outlined',
 
   // Communication

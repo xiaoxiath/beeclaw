@@ -59,7 +59,7 @@ describe('MessageCardRenderer', () => {
       const card = renderMessageCard(blocks, { summary: 'Custom summary' });
 
       const panel = card.body.elements[0] as any;
-      expect(panel.header.text.content).toBe('Custom summary');
+      expect(panel.header.title.content).toBe('Custom summary');
     });
 
     test('should handle multiple tool calls', () => {
@@ -136,7 +136,7 @@ describe('MessageCardRenderer', () => {
       const steps = [createToolUseBlock('call_1', 'Bash', { command: 'test' })];
       const panel = renderStepsPanel(steps, { summary: 'Custom' });
 
-      expect(panel.header.text.content).toBe('Custom');
+      expect(panel.header.title.content).toBe('Custom');
     });
 
     test('should show step count in default summary', () => {
@@ -146,7 +146,7 @@ describe('MessageCardRenderer', () => {
       ];
       const panel = renderStepsPanel(steps);
 
-      expect(panel.header.text.content).toContain('2 steps');
+      expect(panel.header.title.content).toContain('2 steps');
     });
   });
 
