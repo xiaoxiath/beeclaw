@@ -160,7 +160,9 @@ export class FinanceOrchestrator {
         return result;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.warn(`[Finance] ${source} failed: ${errorMsg}`);
+        // Log as info since fallback is expected and working as designed
+        // Common errors: socket closed, timeout, rate limit - all handled by fallback chain
+        console.log(`[Finance] ${source} unavailable (${errorMsg}), trying next source...`);
         errors.push(error instanceof Error ? error : new Error(errorMsg));
       }
     }
