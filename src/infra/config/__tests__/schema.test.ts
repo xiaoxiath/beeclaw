@@ -75,7 +75,7 @@ describe('CorsConfigSchema', () => {
   test('applies default values', () => {
     const result = CorsConfigSchema.parse({});
     expect(result.enabled).toBe(true);
-    expect(result.origins).toEqual(['*']);
+    expect(result.origins).toEqual(['localhost']);
     expect(result.methods).toEqual(['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
     expect(result.maxAge).toBe(86400);
     expect(result.credentials).toBe(true);
@@ -112,7 +112,8 @@ describe('AIProviderSchema', () => {
       apiKey: 'key',
     });
     expect(result.type).toBe('openai');
-    expect(result.models).toEqual([]);
+    // models is now optional and can be array or object
+    expect(result.models).toBeUndefined();
     expect(result.default).toBe(false);
   });
 

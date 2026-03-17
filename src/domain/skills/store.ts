@@ -14,16 +14,25 @@ import type {
   BenchmarkResult,
 } from './types';
 import { SkillFrontmatterSchema } from './types';
+import { LLMSkillMatcher, type LLMMatchConfig } from './llm-matcher';
 
 export class SkillStore {
   private basePath: string;          // User skills path
   private builtinPath: string;       // Built-in skills path
   private initialized: boolean = false;
+  private llmMatcher: LLMSkillMatcher | null = null;
 
   constructor(basePath: string, builtinPath?: string) {
     this.basePath = basePath;
     // Default builtin path is skills/ at project root
     this.builtinPath = builtinPath || join(process.cwd(), 'skills');
+  }
+
+  /**
+   * 设置 LLM 匹配器
+   */
+  setLLMMatcher(matcher: LLMSkillMatcher): void {
+    this.llmMatcher = matcher;
   }
 
   // Initialize skills directory
@@ -1187,7 +1196,7 @@ export class SkillStore {
   // ============================================================================
 
   /**
-   * Recommend skills based on context
+   * Recommend skills based on context (sync version, keyword-based only)
    */
   recommendSkills(context: string): import('./types').SkillRecommendResult {
     this.init();
@@ -1220,6 +1229,95 @@ export class SkillStore {
     return {
       context,
       recommendations: topRecommendations,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Recommend skills with LLM semantic matching (async version)
+   * 混合策略：关键词过滤 + LLM 精确匹配
+   */
+  async recommendSkillsWithLLM(
+    context: string,
+    options?: {
+      maxCandidates?: number;
+      topK?: number;
+      skipLLM?: boolean;
+    }
+  ): Promise<import('./types').SkillRecommendResult> {
+    this.init();
+
+    const maxCandidates = options?.maxCandidates ?? 15;
+    const topK = options?.topK ?? 5;
+
+    // Step 1: 关键词快速过滤（宽松条件）
+    const allSkills = this.list();
+    const keywordCandidates: Array<{ skill: Skill; score: number }> = [];
+    const contextLower = context.toLowerCase();
+
+    for (const skill of allSkills) {
+      // 使用更宽松的评分（阈值 0.1）
+      const score = this.calculateRecommendationScore(skill, contextLower);
+      if (score.confidence > 0.1) {
+        keywordCandidates.push({ skill, score: score.confidence });
+      }
+    }
+
+    // 按分数排序，取 top N 候选
+    keywordCandidates.sort((a, b) => b.score - a.score);
+    const candidates = keywordCandidates.slice(0, maxCandidates).map(c => c.skill);
+
+    // Step 2: 如果启用 LLM 且有匹配器，进行语义匹配
+    if (!options?.skipLLM && this.llmMatcher && candidates.length > 0) {
+      try {
+        const llmMatches = await this.llmMatcher.match(context, candidates);
+
+        if (llmMatches.length > 0) {
+          // 将 LLM 结果转换为推荐格式
+          const recommendations: import('./types').SkillRecommendation[] = llmMatches.map(match => {
+            const skill = candidates.find(s => s.name === match.skill);
+            if (!skill) return null;
+
+            return {
+              name: skill.name,
+              description: skill.description,
+              confidence: match.confidence,
+              reason: match.reason,
+              matched_triggers: skill.triggers.slice(0, 3),
+              matched_tags: skill.tags.slice(0, 3),
+            };
+          }).filter((r): r is NonNullable<typeof r> => r !== null);
+
+          return {
+            context,
+            recommendations,
+            timestamp: new Date().toISOString(),
+          };
+        }
+      } catch (error) {
+        console.error('[SkillStore] LLM matching failed, falling back to keyword matching:', error);
+        // 降级：继续使用关键词匹配
+      }
+    }
+
+    // Step 3: 降级到关键词匹配（如果没有 LLM 或 LLM 失败）
+    const recommendations: import('./types').SkillRecommendation[] = candidates
+      .slice(0, topK)
+      .map(skill => {
+        const score = this.calculateRecommendationScore(skill, contextLower);
+        return {
+          name: skill.name,
+          description: skill.description,
+          confidence: score.confidence,
+          reason: score.reason,
+          matched_triggers: score.matchedTriggers,
+          matched_tags: score.matchedTags,
+        };
+      });
+
+    return {
+      context,
+      recommendations,
       timestamp: new Date().toISOString(),
     };
   }

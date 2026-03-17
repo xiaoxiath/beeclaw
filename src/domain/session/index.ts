@@ -166,6 +166,24 @@ export function initSessionManager(config: {
   tokenStatsConfig?: Partial<TokenStatsConfig>;
   extractionConfig?: Partial<ExtractionConfigSchemaType>;
   memoryDir?: string;
+  visionConfig?: {
+    visionModel?: string;
+    textModel?: string;
+    visionSystemPrompt?: string;
+    fallbackOnError?: 'description' | 'placeholder' | 'retry';
+    maxRetries?: number;
+  };
+  /** Resolved model parameters from three-layer configuration */
+  params?: {
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+    top_k?: number;
+    do_sample?: boolean;
+    stream?: boolean;
+    thinking?: { type: 'enabled' | 'disabled' };
+    [key: string]: any;
+  };
 }): void {
   agentConfig = config;
 
@@ -540,11 +558,13 @@ async function compressMessages(
 
   // Create a summarization agent
   // [AUDIT FIX] Use configured model instead of hardcoded 'glm-5'
+  // Use resolved params from agentConfig
   const agent = createAgent({
     provider: agentConfig.provider,
     model: agentConfig.model,
     systemPrompt: '你是一个对话摘要助手。请用简洁的中文总结以下对话的关键信息，包括：讨论的主题、用户的需求、重要的结论或决定。控制在100字以内。',
     loadCoreMemory: false,
+    params: (agentConfig as any).params,
   });
 
   try {
@@ -854,6 +874,8 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       loadCoreMemory: false,
       autoRefreshMemory: true,
       tokenStatsConfig: agentConfig.tokenStatsConfig,
+      // Pass resolved params from three-layer configuration
+      params: (agentConfig as any).params,
       ...(options.agentOptions?.blockedTools ? { blockedTools: options.agentOptions.blockedTools } : {}),
     } as any);
 

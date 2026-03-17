@@ -28,6 +28,7 @@ export const CorsConfigSchema = z.object({
 // Embedding Provider schema
 export const EmbeddingProviderSchema = z.object({
   provider: z.enum(['openai', 'zhipu', 'minimax', 'local', 'auto']).default('auto'),
+  role: z.string().optional(),  // New: role reference
   apiKey: z.string().optional(),
   groupId: z.string().optional(), // MiniMax group ID
   baseUrl: z.string().optional(),
@@ -35,30 +36,79 @@ export const EmbeddingProviderSchema = z.object({
   dims: z.number().optional(),
 });
 
-// AI Provider schema
+// Model parameters schema
+export const ModelParamsSchema = z.object({
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().min(1).optional(),
+  top_p: z.number().min(0).max(1).optional(),
+  top_k: z.number().min(0).optional(),
+  do_sample: z.boolean().optional(),
+  stream: z.boolean().optional(),
+  thinking: z.object({
+    type: z.enum(['enabled', 'disabled'])
+  }).optional(),
+}).passthrough(); // Allow additional parameters
+
+// Model definition schema (Layer 1: Model metadata and default params)
+export const ModelDefinitionSchema = z.object({
+  displayName: z.string().optional(),
+  contextWindow: z.number().optional(),
+  maxTokens: z.number().optional(),
+  capabilities: z.array(z.string()).optional(),
+  defaultParams: ModelParamsSchema.optional(),
+});
+
+// Role definition schema (v6: roles are global, explicitly specify provider)
+export const RoleDefinitionSchema = z.object({
+  provider: z.string(),  // v6: explicit provider reference
+  model: z.string(),
+  params: ModelParamsSchema.optional(),
+});
+
+// AI Provider schema (v6: roles moved to top level)
 export const AIProviderSchema = z.object({
   name: z.string(),
   type: z.enum(['openai', 'anthropic', 'zhipu', 'minimax', 'custom']).default('openai'),
   apiKey: z.string(),
   baseUrl: z.string().optional(),
-  models: z.array(z.string()).default([]),
   default: z.boolean().default(false),
+
+  // Model definitions
+  models: z.record(z.string(), ModelDefinitionSchema),
+
   // Provider-specific options
   options: z.record(z.unknown()).optional(),
 });
 
-// Agent schema
+// Vision (multimodal) configuration schema
+export const VisionConfigSchema = z.object({
+  /** Vision model for image recognition (default: 'GLM-4.6V') */
+  visionModel: z.string().default('GLM-4.6V'),
+  /** Text model for processing vision results (default: 'glm-5') */
+  textModel: z.string().default('glm-5'),
+  /** System prompt for vision recognition */
+  visionSystemPrompt: z.string().default(
+    '请识别并详细描述这张图片的内容。包括：主要物体、文字、场景、颜色等关键信息。' +
+    '如果是食物，列出所有可见的食材和菜品名称。' +
+    '如果是代码截图或文档，提取其中的文字内容。' +
+    '如果是其他内容（风景、人物、图表等），也请详细描述。'
+  ),
+  /** Behavior when vision model fails */
+  fallbackOnError: z.enum(['description', 'placeholder', 'retry']).default('placeholder'),
+  /** Max retries for vision model */
+  maxRetries: z.number().min(0).max(3).default(1),
+});
+
+// Agent schema (v6: single agent instead of array)
 export const AgentConfigSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+  name: z.string().optional(),
   description: z.string().optional(),
-  provider: z.string(),
-  model: z.string(),
+  role: z.string(),              // Reference to global roles
+  visionRole: z.string().optional(), // Vision role reference
+  params: ModelParamsSchema.optional(), // Agent-level params override
   systemPrompt: z.string().optional(),
-  temperature: z.number().min(0).max(2).optional(),
-  topP: z.number().min(0).max(1).optional(),
-  maxTokens: z.number().optional(),
   tools: z.array(z.string()).default([]),
+  blockedTools: z.array(z.string()).optional(),
 });
 
 // Session storage schema
@@ -226,12 +276,13 @@ export const AgentDisplayConfigSchema = z.object({
   tokenStatsFormat: z.enum(['inline', 'block']).default('inline'),
 });
 
-// Context compression configuration schema
+// Context compression configuration schema (v6)
 export const CompressionConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  model: z.string().default('glm-4.7-flash'),  // LLM for compression
-  threshold: z.number().min(0.5).max(0.95).default(0.8),  // Trigger at 80% context
-  keepRecent: z.number().min(2).max(20).default(8),  // Keep recent messages
+  role: z.string().default('fast'),  // v6: role reference with default
+  params: ModelParamsSchema.optional(), // Params override
+  threshold: z.number().min(0.5).max(0.95).default(0.8),
+  keepRecent: z.number().min(2).max(20).default(8),
   maxSummaryTokens: z.number().min(200).max(2000).default(1000),
   strategy: z.enum(['llm', 'rule', 'hybrid']).default('hybrid'),
 });
@@ -324,6 +375,22 @@ export const RecoveryConfigSchema = z.object({
   startupDelay: z.number().default(10000),
 });
 
+// LLM Tier Configuration Schema (v4)
+export const LLMTierConfigSchema = z.object({
+  role: z.string(),              // Reference to provider.roles
+  params: ModelParamsSchema.optional(), // Layer 3 params override
+  timeout: z.number().optional(),
+  retries: z.number().optional(),
+});
+
+// LLM Router Configuration Schema (v4)
+export const LLMRouterConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  tiers: z.record(z.string(), LLMTierConfigSchema),
+  fallbackEnabled: z.boolean().default(true),
+  costTracking: z.boolean().default(true),
+});
+
 // Web UI configuration schema
 export const WebConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -339,13 +406,24 @@ export const WebConfigSchema = z.object({
   }).default({}),
 });
 
-// Main configuration schema
+// Main configuration schema (v6)
 export const AppConfigSchema = z.object({
   server: ServerConfigSchema.default({}),
   auth: AuthConfigSchema.default({}),
   cors: CorsConfigSchema.default({}),
+
+  // v6: Provider definitions
   providers: z.array(AIProviderSchema).default([]),
+
+  // v6: Global roles (flat structure)
+  roles: z.record(z.string(), RoleDefinitionSchema).default({}),
+
+  // v6: Single agent instead of array
+  agent: AgentConfigSchema.optional(),
+
+  // Legacy support: agents array (deprecated in v6)
   agents: z.array(AgentConfigSchema).default([]),
+
   sessionStorage: SessionStorageConfigSchema.default({}),
   memory: MemoryConfigSchema.default({}),
   skills: SkillsConfigSchema.default({}),
@@ -368,6 +446,7 @@ export const AppConfigSchema = z.object({
   sandbox: SandboxConfigSchema.default({}),
   recovery: RecoveryConfigSchema.optional(),
   web: WebConfigSchema.default({}),
+  llmRouter: LLMRouterConfigSchema.optional(),
 });
 
 // Type exports
@@ -375,6 +454,9 @@ export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type CorsConfig = z.infer<typeof CorsConfigSchema>;
 export type EmbeddingProviderConfigType = z.infer<typeof EmbeddingProviderSchema>;
+export type ModelParams = z.infer<typeof ModelParamsSchema>;
+export type ModelDefinition = z.infer<typeof ModelDefinitionSchema>;
+export type RoleDefinition = z.infer<typeof RoleDefinitionSchema>;
 export type AIProvider = z.infer<typeof AIProviderSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type SessionStorageConfig = z.infer<typeof SessionStorageConfigSchema>;
@@ -401,4 +483,7 @@ export type HooksConfig = z.infer<typeof HooksConfigSchema>;
 export type RecoveryConfig = z.infer<typeof RecoveryConfigSchema>;
 export type WebConfig = z.infer<typeof WebConfigSchema>;
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+export type LLMTierConfig = z.infer<typeof LLMTierConfigSchema>;
+export type LLMTiersConfig = z.infer<typeof LLMTiersConfigSchema>;
+export type LLMRouterConfig = z.infer<typeof LLMRouterConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

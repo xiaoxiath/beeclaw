@@ -34,6 +34,10 @@ import { SandboxManager } from '../domain/sandbox/manager';
 import { listSessions, sendProactiveMessage } from '../domain/session';
 import { recoverUnansweredSessions } from '../domain/session/recovery';
 import { createEmbeddingProvider } from '../domain/memory/embeddings';
+import { TieredLLMRouter, LLMTask } from '../infra/ai/tiered-router';
+import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
+import { getSkillStore } from '../domain/skills';
+import { callAI } from '../domain/agent/api';
 
 // Adapter layer
 import { initializeMCP, getMCPManager, shutdownMCP } from '../adapter/mcp';
@@ -78,23 +82,88 @@ let appState: {
 function buildEmbeddingConfig(appConfig: AppConfig): EmbeddingProviderConfig | null {
   // 1. Prefer toolSelector.embedding
   if (appConfig.toolSelector?.embedding) {
+    const embeddingConfig = appConfig.toolSelector.embedding;
+
+    // v6: Support role reference
+    if (embeddingConfig.role) {
+      const roleDef = appConfig.roles?.[embeddingConfig.role];
+      if (!roleDef) {
+        logger.warn(`[App] Embedding role "${embeddingConfig.role}" not found`);
+        return null;
+      }
+
+      const provider = appConfig.providers?.find((p: any) => p.name === roleDef.provider);
+      if (!provider) {
+        logger.warn(`[App] Provider "${roleDef.provider}" for embedding role not found`);
+        return null;
+      }
+
+      logger.info(`[App] Using toolSelector.embedding with role: ${embeddingConfig.role} (provider: ${provider.name})`);
+      return {
+        type: provider.type,
+        apiKey: provider.apiKey,
+        baseUrl: provider.baseUrl,
+        model: roleDef.model,
+        dims: embeddingConfig.dims,
+      };
+    }
+
+    // Legacy: If provider is specified but apiKey is not, try to get from providers
+    if (embeddingConfig.provider && embeddingConfig.provider !== 'auto' && !embeddingConfig.apiKey) {
+      const provider = appConfig.providers?.find((p: any) =>
+        p.name === embeddingConfig.provider || p.type === embeddingConfig.provider
+      );
+
+      if (provider) {
+        logger.info(`[App] Using toolSelector.embedding with apiKey from provider: ${provider.name}`);
+        return {
+          type: embeddingConfig.provider,
+          apiKey: provider.apiKey,
+          baseUrl: embeddingConfig.baseUrl || provider.baseUrl,
+          model: embeddingConfig.model,
+          dims: embeddingConfig.dims,
+        };
+      }
+    }
+
     logger.info('[App] Using toolSelector.embedding config');
     return {
-      type: appConfig.toolSelector.embedding.provider || 'auto',
-      apiKey: appConfig.toolSelector.embedding.apiKey,
-      baseUrl: appConfig.toolSelector.embedding.baseUrl,
-      model: appConfig.toolSelector.embedding.model,
-      dims: appConfig.toolSelector.embedding.dims,
+      type: embeddingConfig.provider || 'auto',
+      apiKey: embeddingConfig.apiKey,
+      baseUrl: embeddingConfig.baseUrl,
+      model: embeddingConfig.model,
+      dims: embeddingConfig.dims,
     };
   }
 
   // 2. Fallback to memory.search.vector
   if (appConfig.memory?.search?.vector?.enabled !== false) {
     const vectorConfig = appConfig.memory?.search?.vector;
+
+    // If provider is specified but apiKey is not, try to get from providers
+    if (vectorConfig?.provider && vectorConfig.provider !== 'auto' && !vectorConfig.apiKey) {
+      const provider = appConfig.providers?.find((p: any) =>
+        p.name === vectorConfig.provider || p.type === vectorConfig.provider
+      );
+
+      if (provider) {
+        logger.info(`[App] Using memory.search.vector with apiKey from provider: ${provider.name}`);
+        return {
+          type: vectorConfig.provider,
+          apiKey: provider.apiKey,
+          baseUrl: provider.baseUrl,
+          model: vectorConfig.model,
+          dims: vectorConfig.dims,
+        };
+      }
+    }
+
     if (vectorConfig && vectorConfig.provider !== 'auto') {
       logger.info('[App] Using memory.search.vector config for embeddings');
       return {
         type: vectorConfig.provider,
+        apiKey: vectorConfig.apiKey,
+        baseUrl: vectorConfig.baseUrl,
         model: vectorConfig.model,
         dims: vectorConfig.dims,
       };
@@ -233,28 +302,47 @@ export async function initApp(options: InitOptions = {}): Promise<{
     }
   }
 
-  // 5. Get default provider
-  const defaultProvider = config.providers.find(p => p.default);
-  if (!defaultProvider) {
-    throw new Error('No default AI provider configured');
+  // 5. Get agent config (v6: single agent)
+  const agentConfig = config.agent || config.agents?.[0];  // Fallback to legacy agents array
+  if (!agentConfig) {
+    throw new Error('No agent configured');
   }
-  appState.provider = defaultProvider;
 
-  // 6. Get model
-  const agentConfig = config.agents[0];
-  const model = agentConfig?.model || defaultProvider.models[0] || 'glm-4';
+  // 6. Resolve role reference to get provider and model (v6)
+  const roleName = agentConfig.role;
+  const roleDef = config.roles[roleName];
+  if (!roleDef) {
+    throw new Error(`Role "${roleName}" not found in configuration`);
+  }
+
+  const defaultProvider = config.providers.find(p => p.name === roleDef.provider);
+  if (!defaultProvider) {
+    throw new Error(`Provider "${roleDef.provider}" not found`);
+  }
+
+  const model = roleDef.model;
+  appState.provider = defaultProvider;
   appState.model = model;
 
   console.log(`   🤖 Provider: ${defaultProvider.name} (${defaultProvider.type})`);
   console.log(`   🎯 Model: ${model}`);
 
+  // Merge role params with agent params (agent overrides role)
+  const resolvedParams = { ...roleDef.params, ...agentConfig.params };
+  if (resolvedParams && Object.keys(resolvedParams).length > 0) {
+    console.log(`   ⚙️  Resolved params:`, resolvedParams);
+  }
+
   // 7. Initialize SessionManager for unified session management
   initSessionManager({
     provider: defaultProvider,
     model,
-    systemPrompt: agentConfig?.systemPrompt || SYSTEM_PROMPTS.default,
+    systemPrompt: agentConfig.systemPrompt || SYSTEM_PROMPTS.default,
     useTools: true,
     tokenStatsConfig: getTokenStatsConfig(),
+    visionRole: agentConfig.visionRole,  // v6: vision role reference
+    // Pass resolved params from role + agent configuration
+    params: resolvedParams,
   });
 
   // 8. Load all persisted sessions
@@ -330,6 +418,61 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 9.11. [V2 FIX] Bootstrap health check system
   bootstrapHealthCheck();
   console.log(`   🏥 Health Check: Initialized and monitoring data sources`);
+
+  // 9.12. Initialize Tiered LLM Router
+  if (config.llmRouter?.enabled !== false) {
+    try {
+      // Create tiered router
+      const router = new TieredLLMRouter({
+        provider: defaultProvider,
+        modelPreferences: config.llmRouter?.tiers ? {
+          fast: config.llmRouter.tiers.fast?.models?.[0],
+          standard: config.llmRouter.tiers.standard?.models?.[0],
+          advanced: config.llmRouter.tiers.advanced?.models?.[0],
+        } : undefined,
+        fallbackEnabled: config.llmRouter?.fallbackEnabled ?? true,
+        costTracking: config.llmRouter?.costTracking ?? true,
+      });
+
+      // Create LLM skill matcher
+      const llmMatcher = createLLMSkillMatcher({
+        provider: {
+          chat: async (messages, options) => {
+            // Use standard tier for skill matching
+            const model = router.selectModelForTier('standard');
+
+            const response = await callAI({
+              provider: defaultProvider,
+              model,
+              messages,
+              temperature: 0.3,
+              maxTokens: 500,
+            });
+
+            return response.choices[0]?.message?.content || '';
+          },
+        },
+      });
+
+      // Set matcher in skill store
+      const skillStore = getSkillStore();
+      skillStore.setLLMMatcher(llmMatcher);
+
+      // Log configuration
+      const fastModel = router.selectModelForTier('fast');
+      const standardModel = router.selectModelForTier('standard');
+      const advancedModel = router.selectModelForTier('advanced');
+
+      console.log(`   🎚️  LLM Router: Tiered system enabled`);
+      console.log(`      FAST: ${fastModel} | STANDARD: ${standardModel} | ADVANCED: ${advancedModel}`);
+      console.log(`      Skill matching: LLM-enhanced matching enabled`);
+    } catch (error) {
+      logger.warn('[App] Failed to initialize LLM Router, falling back to default:', error);
+      console.log(`   ⚠️  LLM Router: Using default model for all tasks`);
+    }
+  } else {
+    console.log(`   ℹ️  LLM Router: Disabled (using default model for all tasks)`);
+  }
 
   // 10. Create agent (singleton)
   const agent = createAgent({

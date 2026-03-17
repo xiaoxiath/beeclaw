@@ -1,49 +1,100 @@
 {
-  "server": {
-    "port": 3000,
-    "host": "0.0.0.0"
-  },
-  "auth": {
-    "enabled": false,
-    "tokens": [],
-    "password": null
-  },
-  "cors": {
-    "enabled": true,
-    "origins": ["localhost"],
-    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    "allowHeaders": ["Content-Type", "Authorization"],
-    "exposeHeaders": [],
-    "maxAge": 86400,
-    "credentials": true
-  },
+  "$schema": "./beeclaw.schema.json",
+  "$comment": "Beeclaw v6 - 完整配置示例",
+
   "providers": [
     {
-      "name": "openai",
-      "type": "openai",
-      "apiKey": "${OPENAI_API_KEY}",
-      "baseUrl": "https://api.openai.com/v1",
-      "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-      "default": true
+      "name": "zhipu",
+      "type": "zhipu",
+      "apiKey": "${ZHIPU_API_KEY}",
+      "default": true,
+
+      "models": {
+        "glm-5": { "contextWindow": 131072, "maxTokens": 131072 },
+        "glm-4.7-flashx": { "contextWindow": 131072, "maxTokens": 131072 },
+        "glm-4.6v": { "contextWindow": 32768, "maxTokens": 32768 },
+        "embedding-3": {}
+      }
     }
   ],
-  "agents": [
-    {
-      "id": "default",
-      "name": "Default Assistant",
-      "description": "A helpful AI assistant with memory capabilities",
-      "provider": "openai",
-      "model": "gpt-4o-mini",
-      "systemPrompt": "You are a helpful AI assistant. You have access to memory tools to remember information about the user and recall past conversations.",
-      "temperature": 0.7,
-      "maxTokens": 4096,
-      "tools": ["memory_ls", "memory_grep", "memory_read", "memory_write", "memory_record"]
+
+  "roles": {
+    "chat": {
+      "provider": "zhipu",
+      "model": "glm-5",
+      "params": { "temperature": 0.7, "max_tokens": 65536 }
+    },
+    "fast": {
+      "provider": "zhipu",
+      "model": "glm-4.7-flashx",
+      "params": { "temperature": 0.3, "max_tokens": 65536 }
+    },
+    "vision": {
+      "provider": "zhipu",
+      "model": "glm-4.6v",
+      "params": { "temperature": 0.5, "max_tokens": 16384 }
+    },
+    "embedding": {
+      "provider": "zhipu",
+      "model": "embedding-3"
     }
-  ],
-  "sessionStorage": {
-    "type": "jsonl",
-    "path": "./data/sessions"
   },
+
+  "llmRouter": {
+    "enabled": true,
+    "tiers": {
+      "fast": {
+        "role": "fast",
+        "params": { "max_tokens": 8192 }
+      },
+      "standard": { "role": "chat" }
+    },
+    "fallbackEnabled": true,
+    "costTracking": true
+  },
+
+  "agent": {
+    "role": "chat",
+    "visionRole": "vision",
+    "name": "Beeclaw Assistant",
+    "systemPrompt": "You are a helpful AI assistant with memory capabilities."
+  },
+
+  "toolSelector": {
+    "embedding": { "role": "embedding" },
+    "strategy": "hybrid",
+    "maxTools": 30
+  },
+
+  "compression": {
+    "role": "fast",
+    "enabled": true,
+    "threshold": 0.8,
+    "keepRecent": 8,
+    "maxSummaryTokens": 1000,
+    "strategy": "hybrid"
+  },
+
+  "feishu": {
+    "enabled": true,
+    "appId": "${LARK_BEECLAW_APPID}",
+    "appSecret": "${LARK_BEECLAW_AS}",
+    "useCardV2": true,
+    "logLevel": "error"
+  },
+
+  "user": {
+    "location": "北京海淀",
+    "timezone": "Asia/Shanghai",
+    "locale": "zh-CN"
+  },
+
+  "weather": {
+    "apiHost": "devapi.qweather.com",
+    "apiKey": "${QWEATHER_API_KEY}",
+    "defaultLocation": "北京海淀"
+  },
+
   "memory": {
     "type": "filesystem",
     "path": "./data/memory",
@@ -57,69 +108,7 @@
       "decisions": "forever"
     }
   },
-  "channels": {},
-  "tools": {},
-  "logging": {
-    "level": "info",
-    "format": "pretty"
-  },
-  "feishu": {
-    "enabled": true,
-    "appId": "${LARK_BEECLAW_APPID}",
-    "appSecret": "${LARK_BEECLAW_AS}",
-    "encryptKey": "${LARK_BEECLAW_ENCRYPT_KEY}",
-    "verificationToken": "${LARK_BEECLAW_VERIFICATION_TOKEN}",
-    "logLevel": "error",
-    "useCardV2": true
-  },
-  "user": {
-    "location": "北京",
-    "locale": "zh-CN"
-  },
-  "weather": {
-    "apiHost": "devapi.qweather.com",
-    "apiKey": "${QWEATHER_API_KEY}",
-    "defaultLocation": "北京"
-  },
-  "compression": {
-    "enabled": true,
-    "model": "glm-4.7-flash",
-    "threshold": 0.8,
-    "keepRecent": 8,
-    "maxSummaryTokens": 1000,
-    "strategy": "hybrid"
-  },
-  "extraction": {
-    "enabled": true,
-    "triggerPhrases": [],
-    "periodicInterval": 10,
-    "confidenceThreshold": 0.9,
-    "lowConfidenceThreshold": 0.7,
-    "maxExtractionsPerRun": 20,
-    "notifyOnHighConfidence": true,
-    "sensitivePatterns": ["password", "passwd", "secret", "api_key", "token", "private_key", "密钥", "密码"]
-  },
-  "toolSelector": {
-    "strategy": "hybrid",
-    "maxTools": 30,
-    "embedding": {
-      "provider": "openai",
-      "model": "text-embedding-3-small",
-      "apiKey": "${OPENAI_API_KEY}"
-    },
-    "cache": {
-      "enabled": true,
-      "maxSize": 1000,
-      "ttl": 3600000
-    },
-    "rules": {
-      "enabled": true
-    },
-    "semantic": {
-      "enabled": true,
-      "fallbackToCore": true
-    }
-  },
+
   "mcp": {
     "enabled": true,
     "servers": [
@@ -130,73 +119,25 @@
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data/workspace"],
         "enabled": true
-      },
-      {
-        "id": "github",
-        "name": "GitHub",
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-github"],
-        "env": {
-          "GITHUB_TOKEN": "${GITHUB_TOKEN}"
-        },
-        "tools": {
-          "include": ["search_repositories", "get_file_contents", "create_issue", "list_issues"]
-        }
       }
     ]
   },
+
   "hooks": {
     "enabled": true,
     "directories": ["./hooks"]
   },
-  "sandbox": {
-    "enabled": false,
-    "provider": "auto",
-    "workspaceBase": "./data/sandbox",
-    "local": {
-      "enabled": true,
-      "defaultTimeout": 30000,
-      "maxOutputSize": 1048576,
-      "blockedCommands": [
-        "rm\\s+-rf\\s+/",
-        "mkfs",
-        "dd\\s+if=",
-        ":(){ :|:& };:",
-        "chmod\\s+-R\\s+777\\s+/",
-        "shutdown",
-        "reboot",
-        "halt",
-        "init\\s+0"
-      ]
-    },
-    "docker": {
-      "enabled": false,
-      "image": "beeclaw-sandbox:latest",
-      "memoryLimitMb": 512,
-      "cpuLimit": 1,
-      "networkEnabled": false,
-      "defaultTimeout": 60000
-    },
-    "pool": {
-      "enabled": false,
-      "minIdle": 1,
-      "maxTotal": 5
-    }
+
+  "logging": {
+    "level": "info",
+    "format": "pretty"
   },
+
   "web": {
-    "enabled": true,
+    "enabled": false,
     "port": 3000,
-    "host": "0.0.0.0",
     "auth": {
-      "level": "token",
-      "token": "${WEB_AUTH_TOKEN}",
-      "basicUsers": [
-        {
-          "username": "admin",
-          "password": "${WEB_ADMIN_PASSWORD}"
-        }
-      ]
+      "level": "none"
     }
   }
 }

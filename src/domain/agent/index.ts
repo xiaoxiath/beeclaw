@@ -1797,6 +1797,17 @@ export function createAgent(options: {
   autoRefreshMemory?: boolean;
   contextConfig?: Partial<ContextConfig>;
   tokenStatsConfig?: Partial<TokenStatsConfig>;
+  /** Resolved model parameters from three-layer configuration */
+  params?: {
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+    top_k?: number;
+    do_sample?: boolean;
+    stream?: boolean;
+    thinking?: { type: 'enabled' | 'disabled' };
+    [key: string]: any;
+  };
 }): Agent {
   let systemPrompt = options.systemPrompt || SYSTEM_PROMPTS.default;
 
@@ -1830,6 +1841,14 @@ export function createAgent(options: {
       logger.debug('Memory store not initialized, use base prompt:', error);
     }
   }
+
+  // Merge params with legacy options (params take precedence)
+  const mergedOptions = {
+    ...options,
+    temperature: options.params?.temperature ?? options.temperature,
+    topP: options.params?.top_p ?? options.topP,
+    maxTokens: options.params?.max_tokens ?? options.maxTokens,
+  };
 
   return new Agent({
     ...options,

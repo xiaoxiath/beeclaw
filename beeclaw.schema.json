@@ -1,0 +1,328 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://beeclaw.dev/schema/config.json",
+  "title": "Beeclaw Configuration",
+  "description": "Beeclaw v6 Configuration Schema",
+  "type": "object",
+
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "$comment": {
+      "type": "string",
+      "description": "Configuration comment"
+    },
+
+    "providers": {
+      "type": "array",
+      "description": "AI providers configuration",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "apiKey"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Provider identifier"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["openai", "anthropic", "zhipu", "minimax", "deepseek", "custom"],
+            "description": "Provider type"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "API key (supports ${ENV_VAR} syntax)"
+          },
+          "baseUrl": {
+            "type": "string",
+            "description": "Custom API base URL"
+          },
+          "default": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this is the default provider"
+          },
+          "models": {
+            "type": "object",
+            "description": "Model definitions",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "contextWindow": {
+                  "type": "integer",
+                  "description": "Maximum context window size"
+                },
+                "maxTokens": {
+                  "type": "integer",
+                  "description": "Maximum output tokens"
+                },
+                "displayName": {
+                  "type": "string",
+                  "description": "Display name for UI"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "roles": {
+      "type": "object",
+      "description": "Model role definitions (reusable configurations)",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["provider", "model"],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "Reference to provider name"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model name"
+          },
+          "params": {
+            "type": "object",
+            "description": "Model parameters",
+            "properties": {
+              "temperature": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "max_tokens": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "top_p": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "top_k": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "do_sample": {
+                "type": "boolean"
+              },
+              "stream": {
+                "type": "boolean"
+              },
+              "thinking": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["enabled", "disabled"]
+                  }
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+
+    "llmRouter": {
+      "type": "object",
+      "description": "LLM Router configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "tiers": {
+          "type": "object",
+          "description": "Router tier definitions",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["role"],
+            "properties": {
+              "role": {
+                "type": "string",
+                "description": "Reference to role name"
+              },
+              "params": {
+                "type": "object",
+                "description": "Override parameters"
+              }
+            }
+          }
+        },
+        "fallbackEnabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "costTracking": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+
+    "agent": {
+      "type": "object",
+      "description": "Agent configuration",
+      "required": ["role"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "Reference to role name"
+        },
+        "visionRole": {
+          "type": "string",
+          "description": "Reference to vision role name"
+        },
+        "systemPrompt": {
+          "type": "string",
+          "description": "System prompt"
+        },
+        "name": {
+          "type": "string",
+          "description": "Agent name"
+        }
+      }
+    },
+
+    "toolSelector": {
+      "type": "object",
+      "description": "Tool selector configuration",
+      "properties": {
+        "embedding": {
+          "type": "object",
+          "required": ["role"],
+          "properties": {
+            "role": {
+              "type": "string",
+              "description": "Reference to embedding role"
+            }
+          }
+        }
+      }
+    },
+
+    "compression": {
+      "type": "object",
+      "description": "Context compression configuration",
+      "required": ["role"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "Reference to role for compression"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 0.95,
+          "default": 0.8
+        }
+      }
+    },
+
+    "feishu": {
+      "type": "object",
+      "description": "Feishu bot configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "useCardV2": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use Card V2 for streaming messages"
+        }
+      }
+    },
+
+    "web": {
+      "type": "object",
+      "description": "Web UI configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "port": {
+          "type": "integer",
+          "default": 3000
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": ["none", "token", "basic"],
+              "default": "none"
+            },
+            "token": {
+              "type": "string",
+              "description": "Bearer token (supports ${ENV_VAR})"
+            },
+            "basicUsers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "user": {
+      "type": "object",
+      "description": "User configuration",
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "User location (city name)"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "User timezone (e.g., Asia/Shanghai)"
+        }
+      }
+    },
+
+    "weather": {
+      "type": "object",
+      "description": "Weather configuration",
+      "properties": {
+        "defaultLocation": {
+          "type": "string"
+        }
+      }
+    },
+
+    "logging": {
+      "type": "object",
+      "description": "Logging configuration",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "info"
+        }
+      }
+    }
+  },
+
+  "required": ["providers", "roles", "agent"],
+
+  "additionalProperties": true
+}

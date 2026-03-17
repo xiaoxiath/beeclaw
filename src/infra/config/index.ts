@@ -1,7 +1,10 @@
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { AppConfigSchema, type AppConfig, type WeatherConfig, type SearchConfig, type FinanceConfig, type AgentDisplayConfig } from './schema';
+import { AppConfigSchema, type AppConfig, type WeatherConfig, type SearchConfig, type FinanceConfig, type AgentDisplayConfig, type AgentConfig, type LLMTierConfig, type LLMTiersConfig, type CompressionConfig } from './schema';
+import { DEFAULT_CONFIG, mergeWithDefaults } from './defaults';
+import { ProviderResolver } from './provider-resolver';
+import { ParamsMerger } from './params-merger';
 import { logger } from '../observability/logger';
 
 const CONFIG_FILES = ['beeclaw.json', 'beeclaw.yaml', 'beeclaw.yml'];
@@ -138,16 +141,22 @@ function deepMerge<T extends Record<string, unknown>>(
 let cachedConfig: AppConfig | null = null;
 
 export async function loadConfig(basePath: string = process.cwd()): Promise<AppConfig> {
-  // Load from different sources with priority: env > file > defaults
+  // Load from different sources
   const fileConfig = await loadFileConfig(basePath);
   const envConfig = loadEnvConfig();
 
-  // Merge configs
-  let rawConfig: Record<string, unknown> = {};
+  // Start with default configuration
+  let rawConfig: Record<string, unknown> = { ...DEFAULT_CONFIG };
+
+  // Merge file config (user config overrides defaults)
   if (fileConfig) {
     rawConfig = deepMerge(rawConfig, fileConfig);
   }
-  rawConfig = deepMerge(rawConfig, envConfig);
+
+  // Merge env config (env has highest priority)
+  if (Object.keys(envConfig).length > 0) {
+    rawConfig = deepMerge(rawConfig, envConfig);
+  }
 
   // Validate and parse with Zod
   const result = AppConfigSchema.safeParse(rawConfig);
@@ -159,10 +168,189 @@ export async function loadConfig(basePath: string = process.cwd()): Promise<AppC
 
   const config = result.success ? result.data : AppConfigSchema.parse({});
 
-  cachedConfig = config;
-  logger.info('Configuration loaded successfully');
+  // Resolve all role references and params
+  const resolvedConfig = resolveConfig(config);
+
+  cachedConfig = resolvedConfig;
+
+  // Log configuration summary
+  const configSources: string[] = [];
+  if (fileConfig) configSources.push('file');
+  if (Object.keys(envConfig).length > 0) configSources.push('env');
+  configSources.push('defaults');
+
+  logger.info(`Configuration loaded (sources: ${configSources.join(' > ')})`);
 
   return config;
+}
+
+/**
+ * Resolve all role references in configuration
+ * Transform Layer 1-2-3 configuration into final resolved config
+ */
+function resolveConfig(rawConfig: AppConfig): AppConfig {
+  // Skip if no providers configured
+  if (!rawConfig.providers || rawConfig.providers.length === 0) {
+    return rawConfig;
+  }
+
+  // Create resolver with global roles (v6)
+  logger.info(`[Config] Creating resolver with ${Object.keys(rawConfig.roles || {}).length} roles:`, Object.keys(rawConfig.roles || {}));
+  const resolver = new ProviderResolver(rawConfig.providers, rawConfig.roles);
+
+  // Resolve agent (v6: single agent, not array)
+  const resolvedAgent = rawConfig.agent;
+  if (resolvedAgent?.role) {
+    try {
+      const roleDef = resolver.getRole(resolvedAgent.role);
+      if (!roleDef) {
+        throw new Error(`Role "${resolvedAgent.role}" not found`);
+      }
+
+      const provider = resolver.getProvider(roleDef.provider);
+      if (!provider) {
+        throw new Error(`Provider "${roleDef.provider}" not found`);
+      }
+
+      // Merge role params with agent params
+      const resolvedParams = ParamsMerger.mergeParams(
+        roleDef.params,
+        resolvedAgent.params
+      );
+
+      resolvedAgent.provider = provider.name;
+      resolvedAgent.model = roleDef.model;
+      (resolvedAgent as any)._resolvedParams = resolvedParams;
+    } catch (error) {
+      logger.error(`Failed to resolve agent role "${resolvedAgent.role}":`, error);
+      if (error instanceof Error) {
+        logger.error(`  Error details: ${error.message}`);
+        logger.error(`  Stack:`, error.stack);
+      }
+    }
+  }
+
+  // Legacy: Resolve agents array (backward compatibility)
+  const resolvedAgents = rawConfig.agents.map(agent => {
+    try {
+      // New way: use role
+      if (agent.role) {
+        const roleDef = resolver.getRole(agent.role);
+        if (!roleDef) {
+          throw new Error(`Role "${agent.role}" not found`);
+        }
+
+        const provider = resolver.getProvider(roleDef.provider);
+        if (!provider) {
+          throw new Error(`Provider "${roleDef.provider}" not found`);
+        }
+
+        const resolvedParams = ParamsMerger.mergeParams(
+          roleDef.params,
+          agent.params
+        );
+
+        return {
+          ...agent,
+          provider: provider.name,
+          model: roleDef.model,
+          _resolvedParams: resolvedParams,
+        };
+      }
+
+      // Backward compatibility: use model directly
+      return agent;
+    } catch (error) {
+      logger.error(`Failed to resolve agent "${agent.id}":`, error);
+      return agent;
+    }
+  });
+
+  // Resolve LLM Router tiers (v6)
+  let resolvedLLMRouter = rawConfig.llmRouter;
+  if (rawConfig.llmRouter?.enabled && rawConfig.llmRouter.tiers) {
+    const resolvedTiers: LLMTiersConfig = {};
+
+    for (const [tierName, tier] of Object.entries(rawConfig.llmRouter.tiers)) {
+      try {
+        if (tier.role) {
+          const roleDef = resolver.getRole(tier.role);
+          if (!roleDef) {
+            throw new Error(`Role "${tier.role}" not found`);
+          }
+
+          const provider = resolver.getProvider(roleDef.provider);
+          if (!provider) {
+            throw new Error(`Provider "${roleDef.provider}" not found`);
+          }
+
+          // Merge role params with tier params
+          const resolvedParams = ParamsMerger.mergeParams(
+            roleDef.params,
+            tier.params
+          );
+
+          resolvedTiers[tierName as keyof LLMTiersConfig] = {
+            ...tier,
+            provider: provider.name,
+            models: [roleDef.model],
+            maxTokens: resolvedParams.max_tokens || tier.maxTokens,
+            temperature: resolvedParams.temperature || tier.temperature,
+            _resolvedParams: resolvedParams,
+          };
+        }
+      } catch (error) {
+        logger.error(`Failed to resolve LLM tier "${tierName}":`, error);
+        if (error instanceof Error) {
+          logger.error(`  Error details: ${error.message}`);
+        }
+        resolvedTiers[tierName as keyof LLMTiersConfig] = tier;
+      }
+    }
+
+    resolvedLLMRouter = {
+      ...rawConfig.llmRouter,
+      tiers: resolvedTiers,
+    };
+  }
+
+  // Resolve compression (v6)
+  let resolvedCompression = rawConfig.compression;
+  if (rawConfig.compression?.enabled && rawConfig.compression.role) {
+    try {
+      const roleDef = resolver.getRole(rawConfig.compression.role);
+      if (!roleDef) {
+        throw new Error(`Role "${rawConfig.compression.role}" not found`);
+      }
+
+      const provider = resolver.getProvider(roleDef.provider);
+      if (!provider) {
+        throw new Error(`Provider "${roleDef.provider}" not found`);
+      }
+
+      // Merge role params with compression params
+      const resolvedParams = ParamsMerger.mergeParams(
+        roleDef.params,
+        rawConfig.compression.params
+      );
+
+      resolvedCompression = {
+        ...rawConfig.compression,
+        provider: provider.name,
+        model: roleDef.model,
+        _resolvedParams: resolvedParams,
+      };
+    } catch (error) {
+      logger.error('Failed to resolve compression config:', error);
+    }
+  }
+
+  return {
+    ...rawConfig,
+    agents: resolvedAgents,
+    llmRouter: resolvedLLMRouter,
+    compression: resolvedCompression,
+  };
 }
 
 export function getConfig(): AppConfig {

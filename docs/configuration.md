@@ -1,5 +1,8 @@
 # Beeclaw 配置指南
 
+> **最新版本**: v6
+> **配置文档**: [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md)
+
 本文档涵盖 Beeclaw 的所有配置方式，包括环境变量、配置文件和用户偏好设置。
 
 ---
@@ -8,28 +11,70 @@
 
 ```bash
 # 1. 复制配置模板
-cp .env.example .env
+cp beeclaw.example.json beeclaw.json
 
-# 2. 编辑 .env，填入 API Key
-echo 'ZHIPU_API_KEY=your_key_here' >> .env
+# 2. 设置环境变量
+export ZHIPU_API_KEY=your_key_here
 
 # 3. 启动
 bun run cli
 ```
 
----
-
-## 配置方式
-
-| 方式 | 难度 | 灵活性 | 推荐场景 |
-|------|------|--------|----------|
-| 环境变量 | ⭐ | 中等 | 快速测试、单一 Provider |
-| 配置文件 | ⭐⭐ | 高 | 多 Provider、多 Agent |
-| 混合使用 | ⭐⭐⭐ | 最高 | 生产环境 |
+**→ [完整配置示例](../beeclaw.example.json)** · **[v6 配置详解](./CONFIGURATION-FINAL.md)**
 
 ---
 
-## 方式 1：环境变量
+## v6 配置系统
+
+Beeclaw v6 采用简化的配置结构：
+
+```
+providers  → 提供 API 访问和模型信息
+roles      → 定义模型使用场景（可复用）
+llmRouter  → 自动路由优化（可选）
+agent      → 用户实体（单个）
+```
+
+### 最小配置
+
+```json
+{
+  "providers": [{
+    "name": "zhipu",
+    "type": "zhipu",
+    "apiKey": "${ZHIPU_API_KEY}",
+    "default": true,
+    "models": {
+      "glm-5": { "contextWindow": 131072, "maxTokens": 131072 }
+    }
+  }],
+
+  "roles": {
+    "chat": {
+      "provider": "zhipu",
+      "model": "glm-5",
+      "params": { "temperature": 0.7, "max_tokens": 65536 }
+    }
+  },
+
+  "agent": { "role": "chat" }
+}
+```
+
+### 核心概念
+
+| 层级 | 概念 | 职责 | 必需？ |
+|------|------|------|--------|
+| **0** | providers | API 访问 | ✅ 必需 |
+| **1** | roles | 模型配置 | ✅ 必需 |
+| **2** | llmRouter | 路由优化 | ⚪ 可选 |
+| **3** | agent | 用户实体 | ✅ 必需 |
+
+**→ [详细配置说明](./CONFIGURATION-FINAL.md)** · **[概念说明](./CONFIGURATION-CONCEPTS.md)**
+
+---
+
+## 环境变量
 
 ### AI Provider
 
@@ -59,37 +104,89 @@ LARK_BEECLAW_AS="your-app-secret"
 ### 可选配置
 
 ```bash
-# 模型选择
-BEECLAW_MODEL=glm-4                  # 默认模型
-BEECLAW_TEMPERATURE=0.7              # 温度参数
-
 # 网络搜索
 TAVILY_API_KEY=your_key_here         # Tavily 搜索
 SERPER_API_KEY=your_key_here         # Serper 搜索
 JINA_API_KEY=your_key_here           # Jina AI 网页抓取
 
-# 数据目录
-BEECLAW_DATA_DIR=./data              # 数据存储位置
+# 天气服务
+QWEATHER_API_KEY=your_key_here       # 和风天气
+
+# Web UI 认证
+WEB_AUTH_TOKEN=your_token_here       # Bearer token
+WEB_ADMIN_PASSWORD=admin_password    # Basic auth
 ```
 
 ---
 
-## 方式 2：配置文件
+## 配置文件
 
-### 文件结构
+### 文件位置
 
+- `beeclaw.json` - 主配置文件（必需）
+- `beeclaw.schema.json` - JSON Schema 验证（可选）
+
+### 配置结构
+
+```json
+{
+  "$schema": "./beeclaw.schema.json",
+
+  "providers": [...],    // AI 提供商
+  "roles": {...},        // 模型角色
+  "llmRouter": {...},    // 路由配置
+  "agent": {...},        // Agent 配置
+
+  "compression": {...},  // 上下文压缩
+  "feishu": {...},       // 飞书 Bot
+  "memory": {...},       // 记忆系统
+  "mcp": {...},          // MCP 服务器
+  "user": {...},         // 用户配置
+  "logging": {...}       // 日志配置
+}
 ```
-beeclaw.json                          # 主配置文件
-├── providers[]                       # AI 提供商列表
-├── agents[]                          # Agent 定义
-├── mcp{}                             # MCP 服务器配置
-├── proactive{}                       # 主动系统配置
-├── session{}                         # 会话配置
-├── subagent{}                        # 子代理配置
-└── user{}                            # 用户配置
+
+---
+
+## 详细文档
+
+| 文档 | 说明 |
+|------|------|
+| [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md) | v6 完整配置指南 |
+| [CONFIGURATION-CONCEPTS.md](./CONFIGURATION-CONCEPTS.md) | 核心概念说明 |
+| [CONFIGURATION-SIMPLIFICATION.md](./CONFIGURATION-SIMPLIFICATION.md) | 配置简化历程 |
+| [CONFIGURATION-V5-DESIGN.md](./CONFIGURATION-V5-DESIGN.md) | v5 设计文档 |
+| [CONFIGURATION-MIGRATION-GUIDE.md](./CONFIGURATION-MIGRATION-GUIDE.md) | 迁移指南 |
+
+---
+
+## 常见配置场景
+
+### 单 Provider（最简）
+
+```json
+{
+  "providers": [{
+    "name": "zhipu",
+    "type": "zhipu",
+    "apiKey": "${ZHIPU_API_KEY}",
+    "default": true,
+    "models": {
+      "glm-5": { "contextWindow": 131072, "maxTokens": 131072 }
+    }
+  }],
+  "roles": {
+    "chat": {
+      "provider": "zhipu",
+      "model": "glm-5",
+      "params": { "temperature": 0.7, "max_tokens": 65536 }
+    }
+  },
+  "agent": { "role": "chat" }
+}
 ```
 
-### 完整配置示例
+### 多 Provider
 
 ```json
 {
@@ -98,119 +195,136 @@ beeclaw.json                          # 主配置文件
       "name": "zhipu",
       "type": "zhipu",
       "apiKey": "${ZHIPU_API_KEY}",
-      "models": ["glm-4", "glm-5"],
-      "default": true
+      "default": true,
+      "models": {
+        "glm-5": { "contextWindow": 131072, "maxTokens": 131072 }
+      }
     },
     {
       "name": "openai",
       "type": "openai",
       "apiKey": "${OPENAI_API_KEY}",
-      "baseUrl": "https://api.openai.com/v1",
-      "models": ["gpt-4o", "gpt-4o-mini"]
-    }
-  ],
-  "agents": [
-    {
-      "id": "beeclaw",
-      "name": "Beeclaw Assistant",
-      "provider": "zhipu",
-      "model": "glm-4",
-      "systemPrompt": "You are Beeclaw, a helpful AI assistant.",
-      "tools": ["memory_*", "goal_*", "skill_*", "persona_*"],
-      "temperature": 0.7,
-      "maxTokens": 4096
-    }
-  ],
-  "mcp": {
-    "servers": {
-      "filesystem": {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+      "models": {
+        "gpt-4o": { "contextWindow": 128000, "maxTokens": 16384 }
       }
     }
-  },
-  "session": {
-    "timeout": 120000,
-    "compressionThreshold": 20,
-    "retention": "90d"
-  },
-  "subagent": {
-    "defaultTimeout": 180000,
-    "maxParallelism": 3,
-    "maxRetries": 2
-  },
-  "proactive": {
-    "enabled": true,
-    "checkInterval": 60000,
-    "daemon": {
-      "enabled": true,
-      "schedules": []
+  ],
+  "roles": {
+    "chat": {
+      "provider": "zhipu",
+      "model": "glm-5",
+      "params": { "temperature": 0.7, "max_tokens": 65536 }
+    },
+    "code": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "params": { "temperature": 0.3, "max_tokens": 16384 }
     }
+  },
+  "llmRouter": {
+    "enabled": true,
+    "tiers": {
+      "standard": { "role": "chat" },
+      "advanced": { "role": "code" }
+    }
+  },
+  "agent": { "role": "chat" }
+}
+```
+
+### 飞书 Bot
+
+```json
+{
+  "providers": [...],
+  "roles": {...},
+  "agent": { "role": "chat" },
+
+  "feishu": {
+    "enabled": true,
+    "appId": "${LARK_BEECLAW_APPID}",
+    "appSecret": "${LARK_BEECLAW_AS}",
+    "useCardV2": true
   }
 }
 ```
 
-### 环境变量插值
+---
 
-配置文件中支持 `${ENV_VAR}` 语法引用环境变量：
+## 配置验证
 
-```json
+Beeclaw 使用 JSON Schema 和 Zod 进行配置验证：
+
+```bash
+# 验证配置文件
+bun run config:validate
+
+# 或使用 JSON Schema（IDE 自动验证）
 {
-  "apiKey": "${ZHIPU_API_KEY}"
+  "$schema": "./beeclaw.schema.json",
+  ...
 }
 ```
 
-运行时会自动替换为对应的环境变量值。
-
 ---
 
-## 用户配置
+## 环境变量插值
 
-### user 配置段
-
-`user` 配置段用于个性化用户体验，包括时区、位置和语言。
+配置文件支持环境变量插值：
 
 ```json
 {
-  "user": {
-    "location": "北京",
-    "timezone": "Asia/Shanghai",
-    "locale": "zh-CN"
-  }
+  "providers": [{
+    "apiKey": "${ZHIPU_API_KEY}",     // 从环境变量读取
+    "baseUrl": "${API_BASE_URL:-https://api.zhipu.ai}"  // 带默认值
+  }]
 }
 ```
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `location` | string | - | 地理位置，用于天气查询和本地化搜索 |
-| `timezone` | string | 系统时区 | IANA 时区标识（如 `Asia/Shanghai`） |
-| `locale` | string | `zh-CN` | 语言环境 |
+---
 
-### 影响范围
+## 故障排查
 
-- **天气工具**：基于 `location` 自动查询当地天气
-- **时间感知**：系统提示词中的当前时间使用 `timezone`
-- **搜索优化**：`location` 影响搜索结果的区域偏好
-- **日期格式**：`locale` 决定日期、数字的显示格式
+### 配置文件未找到
+
+```bash
+Error: Cannot find module './beeclaw.json'
+```
+
+**解决方案**：
+```bash
+cp beeclaw.example.json beeclaw.json
+```
+
+### API Key 未设置
+
+```bash
+Error: ZHIPU_API_KEY is not defined
+```
+
+**解决方案**：
+```bash
+export ZHIPU_API_KEY=your_key_here
+# 或在 .env 文件中设置
+echo 'ZHIPU_API_KEY=your_key_here' >> .env
+```
+
+### 配置验证失败
+
+```bash
+Error: Invalid configuration: ...
+```
+
+**解决方案**：
+1. 检查 JSON 格式是否正确
+2. 检查必填字段是否完整
+3. 参考完整配置示例：`beeclaw.example.json`
 
 ---
 
-## 配置热加载
+## 更多帮助
 
-Beeclaw 支持配置文件的热加载，修改 `beeclaw.json` 后无需重启：
-
-- 文件变更自动检测（基于 fs.watch）
-- 200ms 防抖避免频繁重载
-- 变更 diff 通知（新增/删除/修改的字段）
-- 日志记录所有配置变更
-
-> **注意**：Provider 相关的配置变更需要重启才能生效。
-
----
-
-## 相关文档
-
-- [快速开始](./getting-started.md) — 安装和首次运行
-- [CLI 参考](./references/cli.md) — 命令行使用详解
-- [飞书集成](./guide/feishu-integration.md) — 飞书 Bot 配置
-- [部署指南](./operations/deployment.md) — PM2 生产部署
+- **完整配置文档**: [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md)
+- **配置示例**: [../beeclaw.example.json](../beeclaw.example.json)
+- **Schema 定义**: [../beeclaw.schema.json](../beeclaw.schema.json)
+- **迁移指南**: [CONFIGURATION-MIGRATION-GUIDE.md](./CONFIGURATION-MIGRATION-GUIDE.md)
