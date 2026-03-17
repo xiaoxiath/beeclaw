@@ -1874,6 +1874,8 @@ const ALLOWED_PATTERNS = [
   /^tsc\s+/,
   /^eslint\s+/,
   /^prettier\s+/,
+  // Programming language runtimes
+  /^python3?\s+/,
   // Process management
   /^pm2\s+/,
   // Process info
@@ -2017,7 +2019,7 @@ export const shellTool = {
 SUPPORTED COMMANDS (all are allowed):
 - Git: ALL git commands (git status, git commit, git push, git pull, git branch, git log, git diff, etc.)
 - File ops: ls, cat, head, tail, grep, find, mkdir, touch, cp, mv, rm
-- Development: node, bun, npx, tsc, eslint, prettier
+- Development: node, bun, npx, tsc, eslint, prettier, python3
 - Process: pm2, ps, top, htop
 - Network: ping, curl, wget
 - Text: sed, awk, sort, uniq, echo
