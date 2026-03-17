@@ -8,7 +8,7 @@
  */
 
 import { readdirSync, existsSync, statSync, realpathSync, readFileSync } from "fs";
-import { join, resolve, basename } from "path";
+import { join, resolve } from "path";
 import { homedir } from "os";
 
 export type PluginOrigin = "bundled" | "global" | "workspace" | "config";

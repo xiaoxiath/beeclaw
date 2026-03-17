@@ -6,7 +6,7 @@
  * 方案：Promise.allSettled + 每工具独立 AbortController + 断路器前置检查 + 可选回退
  */
 
-import { CircuitBreaker, CircuitState, CircuitBreakerConfig } from './circuit-breaker';
+import { CircuitBreaker, CircuitState } from './circuit-breaker';
 
 // ─── 工具超时模式匹配 ─────────────────────────────────────────
 

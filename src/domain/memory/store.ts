@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, appendFileSync, readFileSync, renameSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSync, renameSync, unlinkSync } from 'fs';
 import { join, dirname, resolve, sep } from 'path';
 import type { MemoryConfig, MemoryCategory, ConversationEntry, MemoryToolResult } from './types';
 import { buildFullIndex, loadIndex, saveIndex, searchIndex, type MemoryIndex } from './indexer';

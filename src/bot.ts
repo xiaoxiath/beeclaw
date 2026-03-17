@@ -11,10 +11,10 @@
  */
 
 import { join } from 'path';
-import { initApp, getAgent, getProvider, getModel, getTokenStatsConfig } from './app';
+import { initApp } from './app';
 import { initFeishuWSIntegration } from './app/routes/proactive';
 import { loadAllSessions, saveAllSessions } from './domain/session';
-import { getDaemon, getScheduler, registerFeishuHandler, pushPendingNotifications, setCliDeliveryHandler } from './domain/proactive';
+import { getDaemon, registerFeishuHandler, setCliDeliveryHandler, getScheduler } from './domain/proactive';
 import { getFeishuWSClient } from './adapter/feishu';
 import { initSelfEvolution } from './domain/agent/evolution/self-evolution';
 import { fetchHolidayInfo } from './domain/tools/holiday';
@@ -82,7 +82,7 @@ async function main() {
     // Fetch holiday info for today
     await fetchHolidayInfo();
     console.log('   ✓ Holiday information loaded');
-  } catch (error) {
+  } catch (_error) {
     console.log('   ⚠ Holiday information unavailable (will use fallback)');
   }
 
@@ -90,7 +90,7 @@ async function main() {
     // Fetch weather info
     await fetchWeatherInfo();
     console.log('   ✓ Weather information loaded');
-  } catch (error) {
+  } catch (_error) {
     console.log('   ⚠ Weather information unavailable (QWEATHER_TOKEN may not be configured)');
   }
 

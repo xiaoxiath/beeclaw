@@ -7,8 +7,7 @@ import type {
   StockQuote,
   StockHistory,
   StockFinancial,
-  StockInfo,
-  FinanceDataSource,
+  StockInfo
 } from '../types';
 
 describe('Finance Types', () => {

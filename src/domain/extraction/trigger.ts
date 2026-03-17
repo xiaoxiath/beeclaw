@@ -8,8 +8,7 @@ import type { ChatMessage, MultimodalContent } from '../agent/types';
 import {
   DEFAULT_EXTRACTION_CONFIG,
   type ExtractionConfig,
-  type TriggerCheckResult,
-  type TriggerType,
+  type TriggerCheckResult
 } from './types';
 
 export class ExtractionTrigger {

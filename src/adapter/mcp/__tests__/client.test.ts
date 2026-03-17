@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { MCPClientManager, getMCPManager, resetMCPManager, type MCPServerConfig } from '../client';
+import { MCPClientManager } from '../client';
 
 describe('MCPClientManager', () => {
   let manager: MCPClientManager;

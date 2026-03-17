@@ -5,7 +5,6 @@
 
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { Database } from 'bun:sqlite';
-import { join } from 'path';
 import { existsSync } from 'fs';
 import { mkdirSync } from 'fs';
 import * as schema from './schema';

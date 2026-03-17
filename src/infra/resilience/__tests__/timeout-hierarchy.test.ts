@@ -8,7 +8,6 @@ import {
   TurnDeadlineGuard,
   TimeoutError,
   createRequestTimeout,
-  fetchWithTimeout,
   executeWithStepTimeout,
 } from '../../timeout-hierarchy';
 

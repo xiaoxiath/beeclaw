@@ -16,7 +16,7 @@ export function useAuth() {
       const response = await api.api.auth.me.$get();
       const data = await response.json();
       setIsAuthenticated(data.authenticated || false);
-    } catch (error) {
+    } catch (_error) {
       setIsAuthenticated(false);
     } finally {
       setIsLoading(false);

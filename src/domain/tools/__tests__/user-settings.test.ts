@@ -9,7 +9,7 @@ import {
   updateUserSettingsTool,
   executeUpdateUserSettings,
 } from '../user-settings';
-import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
+import { unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const TEST_CONFIG_PATH = join(process.cwd(), 'test-beeclaw.json');

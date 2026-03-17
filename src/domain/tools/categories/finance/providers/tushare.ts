@@ -18,11 +18,7 @@ import type {
   StockFinancialItem,
   StockInfo,
   StockInfoRequest,
-  TushareConfig,
-  HistoryPeriod,
-  AdjustType,
-  ReportType,
-  ReportPeriod,
+  TushareConfig
 } from '../types';
 
 export class TushareProvider extends FinanceDataProvider {

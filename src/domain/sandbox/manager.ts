@@ -23,7 +23,6 @@ import type {
   SandboxProvider,
   SandboxProviderType,
   SandboxConfig,
-  SandboxConfigSchema,
   SandboxCreateOptions,
   SandboxEvent,
   SandboxEventHandler,

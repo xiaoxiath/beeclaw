@@ -9,8 +9,7 @@ import {
 } from '../message-renderer';
 import {
   createToolUseBlock,
-  createTextBlock,
-  createThinkingBlock,
+  createTextBlock
 } from '../../../../types/content-block';
 
 describe('MessageCardRenderer', () => {

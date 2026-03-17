@@ -67,10 +67,10 @@ export {
 import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
 import { type ExtractionConfig, DEFAULT_EXTRACTION_CONFIG } from './types';
-import { ExtractionTrigger, getExtractionTrigger } from './trigger';
-import { KnowledgeExtractor, initKnowledgeExtractor, getKnowledgeExtractor } from './extractor';
-import { KnowledgeDeduper, getKnowledgeDeduper } from './deduper';
-import { KnowledgeStore, initKnowledgeStore, getKnowledgeStore } from './store';
+import { ExtractionTrigger } from './trigger';
+import { KnowledgeExtractor } from './extractor';
+import { KnowledgeDeduper } from './deduper';
+import { KnowledgeStore } from './store';
 
 /**
  * 提取管理器

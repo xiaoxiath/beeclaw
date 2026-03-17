@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { rmSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { PersonaStore, getPersonaStore, resetPersonaStore } from '../store';
 import { executePersonaTool } from '../tools';

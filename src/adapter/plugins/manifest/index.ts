@@ -139,7 +139,7 @@ export function validatePluginConfig(
   }
 
   const validate = ajv.compile(manifest.configSchema);
-  const valid = validate(config) as boolean;
+  const valid = validate(config);
 
   if (!valid) {
     return {

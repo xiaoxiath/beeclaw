@@ -6,7 +6,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { dirname } from 'path';
 import { getHookRunner } from '../../adapter/plugins/hooks';
 
 // ============================================================================

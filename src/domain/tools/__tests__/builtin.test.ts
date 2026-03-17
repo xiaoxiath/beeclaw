@@ -2,10 +2,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import {
   WebSearchSchema,
   webSearchTool,
-  executeWebSearch,
   WebFetchSchema,
   webFetchTool,
-  executeWebFetch,
   TimeSchema,
   timeTool,
   executeTime,
@@ -33,8 +31,7 @@ import {
   executeBuiltinTool,
   isBuiltinTool,
 } from '../builtin';
-import type { BuiltinToolResult } from '../builtin';
-import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const TEST_DIR = join(process.cwd(), 'test-builtin-files');

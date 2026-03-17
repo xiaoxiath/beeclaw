@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { loadConfig, getConfig, reloadConfig, resetConfig, type AppConfig } from '../index';
+import { loadConfig, getConfig, reloadConfig, resetConfig } from '../index';
 
 const TEST_CONFIG_DIR = './test-config-data';
 

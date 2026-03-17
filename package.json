@@ -18,7 +18,13 @@
     "example:tool-selector": "bun run examples/hybrid-tool-selector.ts",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "lint:unused": "ts-prune --project tsconfig.json",
+    "lint:unused:strict": "ts-prune --project tsconfig.json --unusedInModule",
+    "lint:cleanup": "bun scripts/remove-unused-imports.ts",
+    "lint:fix-unused": "bun scripts/fix-unused-vars.ts",
     "validate:imports": "bun scripts/validate-dynamic-imports.ts",
+    "validate:env": "bun scripts/validate-env.ts",
+    "clean:env": "bun scripts/cleanup-env.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:start:prod": "pm2 start ecosystem.config.cjs --env production",
     "pm2:start:no-daemon": "pm2 start ecosystem.flexible.cjs --env no_daemon",
@@ -82,6 +88,7 @@
     "tailwindcss": "4.2.1",
     "tailwindcss-cli": "0.1.2",
     "ts-morph": "27.0.2",
+    "ts-prune": "0.10.3",
     "typescript": "^5.6.0"
   }
 }

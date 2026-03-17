@@ -7,7 +7,7 @@
  * - 提供全局单例访问（避免跨模块冲突）
  */
 
-import { resolve, dirname, relative, isAbsolute } from "path";
+import { resolve, relative, isAbsolute } from "path";
 import type { PluginHookName, PluginHookHandlerMap } from "../types";
 
 // ============================================================================

@@ -24,7 +24,7 @@ export {
 } from './extractor';
 
 // Re-export commonly used types
-import type { SearchResult, SearchRequest, SearchRegion, SearchConfig } from './types';
+import type { SearchResult, SearchRegion } from './types';
 import { getSearchOrchestrator, initSearchFromEnv } from './orchestrator';
 import { getContentExtractor } from './extractor';
 

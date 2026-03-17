@@ -12,7 +12,7 @@ import {
   spawnSubagent,
   spawnParallelSubagents,
 } from '../runtime';
-import type { SubagentConfig, SubagentResult } from '../types';
+import type { SubagentConfig } from '../types';
 
 // Mock dependencies
 const mockAgent = {

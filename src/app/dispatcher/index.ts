@@ -10,7 +10,6 @@ import { eq, and, lt, gte, isNull, or } from 'drizzle-orm';
 import type {
   Task,
   TaskType,
-  TaskStatus,
   TaskHandler,
   TaskDispatcherConfig,
   TaskDispatcherStats,

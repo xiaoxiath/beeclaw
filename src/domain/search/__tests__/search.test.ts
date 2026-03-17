@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 import { SearchOrchestrator, getSearchOrchestrator } from '../orchestrator';
 import { SearchRegion, type SearchConfig, type SearchResult } from '../types';
 

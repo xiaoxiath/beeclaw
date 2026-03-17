@@ -4,9 +4,9 @@
  * Recommends relevant historical sessions based on current context.
  */
 
-import { readdirSync, statSync, readFileSync } from 'fs';
+import { readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
-import { listSessions, getSession, type Session } from '../session';
+import { listSessions, type Session } from '../session';
 
 export interface SessionRecommendation {
   sessionId: string;

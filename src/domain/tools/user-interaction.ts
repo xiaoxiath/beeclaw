@@ -4,7 +4,7 @@
  * Allows the AI agent to request information, clarification, or decisions from users.
  */
 
-import type { OpenAITool, ToolResult } from '../agent/types';
+import type { ToolResult } from '../agent/types';
 import type { UserContext } from '../agent/types';
 
 export interface AskUserQuestionParams {
@@ -65,7 +65,7 @@ export const askUserQuestionTool = {
  */
 export async function executeAskUserQuestion(
   params: AskUserQuestionParams,
-  context?: UserContext
+  _context?: UserContext
 ): Promise<ToolResult> {
   // Validate params
   if (!params.question || params.question.trim().length === 0) {

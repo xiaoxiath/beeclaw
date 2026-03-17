@@ -30,7 +30,7 @@ export abstract class FinanceDataProvider {
   /**
    * Get real-time stock quotes
    */
-  async getQuote(request: StockQuoteRequest): Promise<StockQuote[]> {
+  async getQuote(_request: StockQuoteRequest): Promise<StockQuote[]> {
     throw new Error(`${this.name} does not support getQuote`);
   }
 
@@ -41,7 +41,7 @@ export abstract class FinanceDataProvider {
   /**
    * Get historical stock data (K-line)
    */
-  async getHistory(request: StockHistoryRequest): Promise<StockHistory> {
+  async getHistory(_request: StockHistoryRequest): Promise<StockHistory> {
     throw new Error(`${this.name} does not support getHistory`);
   }
 
@@ -52,7 +52,7 @@ export abstract class FinanceDataProvider {
   /**
    * Get financial statements
    */
-  async getFinancial(request: StockFinancialRequest): Promise<StockFinancial> {
+  async getFinancial(_request: StockFinancialRequest): Promise<StockFinancial> {
     throw new Error(`${this.name} does not support getFinancial`);
   }
 
@@ -63,7 +63,7 @@ export abstract class FinanceDataProvider {
   /**
    * Get company information
    */
-  async getInfo(request: StockInfoRequest): Promise<StockInfo> {
+  async getInfo(_request: StockInfoRequest): Promise<StockInfo> {
     throw new Error(`${this.name} does not support getInfo`);
   }
 

@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { rmSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { handleSkillJob } from '../../../app/queue-handlers/handlers/skill-handler';
 import { getSkillStore, resetSkillStore } from '../../../domain/skills/store';
 import type { SkillJobData } from '../types';

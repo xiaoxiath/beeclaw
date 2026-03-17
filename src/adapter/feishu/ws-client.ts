@@ -10,12 +10,8 @@ import type { FeishuAuthConfig } from './types';
 import { logger } from '../../infra/observability/logger';
 import { sendPostMessage, sendMarkdownMessage, sendMarkdownCard } from './send';
 import type {
-  FeishuUserId,
-  FeishuOperator,
   FeishuSender,
-  FeishuMember,
-  BaseFeishuEvent,
-  FeishuReceiveIdType,
+  BaseFeishuEvent
 } from './event-types';
 
 // [P2 FIX 4.7] Re-export shared types for backward compatibility
@@ -1336,13 +1332,13 @@ export class FeishuWSClient {
    * Reply with interactive card message
    * @param messageId The message ID to reply to
    * @param card Card configuration (Card Schema 2.0 or legacy)
-   * @param options Optional parameters
+   * @param _options Optional parameters
    * @returns The created message ID
    */
   async replyCard(
     messageId: string,
     card: CardConfig | string,
-    options?: { replyInThread?: boolean }
+    _options?: { replyInThread?: boolean }
   ): Promise<string> {
     if (!this.client) {
       throw new Error('[FeishuWS] Client not initialized');

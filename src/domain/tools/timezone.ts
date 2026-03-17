@@ -68,7 +68,7 @@ export function resolveUserTimezone(): string {
         return cachedTz;
       }
     }
-  } catch (error) {
+  } catch (_error) {
     // Config not loaded, use default
   }
 
@@ -92,7 +92,7 @@ export function resolveUserLocation(): string {
     if (config.weather?.defaultLocation) {
       return config.weather.defaultLocation;
     }
-  } catch (error) {
+  } catch (_error) {
     // Config not loaded, use default
   }
 

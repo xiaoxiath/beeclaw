@@ -238,7 +238,7 @@ export class HookRunner {
    * before_model_resolve 钩子
    */
   async runBeforeModelResolve(
-    event: PluginHookBeforeModelResolveEvent,
+    _event: PluginHookBeforeModelResolveEvent,
     ctx: PluginHookAgentContext,
   ): Promise<PluginHookBeforeModelResolveResult> {
     const hookCtx: HookContext = {
@@ -256,7 +256,7 @@ export class HookRunner {
    * before_prompt_build 钩子
    */
   async runBeforePromptBuild(
-    event: PluginHookBeforePromptBuildEvent,
+    _event: PluginHookBeforePromptBuildEvent,
     ctx: PluginHookAgentContext,
   ): Promise<PluginHookBeforePromptBuildResult> {
     const hookCtx: HookContext = {

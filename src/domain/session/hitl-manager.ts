@@ -5,7 +5,6 @@
  */
 
 import { getSession, saveSession } from './index';
-import { createConfirmationRequestBlock, createUserInputRequestBlock } from '../../types/content-block';
 import { logger } from '../../infra/observability/logger';
 
 /**

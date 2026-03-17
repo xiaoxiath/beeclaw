@@ -86,7 +86,7 @@ export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<un
 
 // Task handlers
 
-async function handleGoalProgressCheck(params?: Record<string, unknown>): Promise<unknown> {
+async function handleGoalProgressCheck(_params?: Record<string, unknown>): Promise<unknown> {
   try {
     const goalStore = getGoalStore();
     const goals = goalStore.list({ state: 'active' });
@@ -114,7 +114,7 @@ async function handleGoalProgressCheck(params?: Record<string, unknown>): Promis
       notificationsCreated: notifications.length,
       goalIds: notifications,
     };
-  } catch (error) {
+  } catch (_error) {
     return { error: 'Goal store not initialized' };
   }
 }
@@ -150,7 +150,7 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
   try {
     // Determine channels and metadata: use Feishu if available, otherwise CLI
     let channels: ('cli' | 'feishu')[] = ['cli'];
-    let metadata: Record<string, unknown> = {};
+    const metadata: Record<string, unknown> = {};
 
     try {
       const client = getFeishuWSClient();
@@ -192,7 +192,7 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
   }
 }
 
-async function handleMemoryCompress(params?: Record<string, unknown>): Promise<unknown> {
+async function handleMemoryCompress(_params?: Record<string, unknown>): Promise<unknown> {
   // This will be implemented in Phase 3
   console.log('[Worker:proactive] Memory compression not yet implemented');
 

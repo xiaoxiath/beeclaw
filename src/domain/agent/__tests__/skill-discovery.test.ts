@@ -8,8 +8,7 @@ import { describe, test, expect, beforeEach } from 'bun:test';
 import {
   SkillDiscoveryEngine,
   getSkillDiscoveryEngine,
-  type ToolSequence,
-  type SkillCandidate,
+  type ToolSequence
 } from '../skill-discovery';
 
 describe('SkillDiscoveryEngine', () => {

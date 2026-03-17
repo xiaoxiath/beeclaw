@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, rmSync } from 'fs';
 import { getTaskManager } from '../manager';
 import { initWorkers } from '../../../app/queue-handlers/workers';
 import { handleProactiveJob } from '../../../app/queue-handlers/handlers';

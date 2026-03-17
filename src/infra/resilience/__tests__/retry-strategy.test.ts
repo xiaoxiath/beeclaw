@@ -7,8 +7,7 @@ import {
   NO_RETRY_STRATEGY,
   createRetryStrategy,
   calculateDelay,
-  getRetryStrategy,
-  type RetryStrategy,
+  getRetryStrategy
 } from '../../retry-strategy';
 import type { ClassifiedError } from '../../observability/error-handler';
 

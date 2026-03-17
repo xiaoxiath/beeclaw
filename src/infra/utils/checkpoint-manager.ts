@@ -585,7 +585,7 @@ export class CheckpointManager {
 // 工具函数
 // ============================================================================
 
-function generateCheckpointId(turnId: string, iteration: number): string {
+function generateCheckpointId(_turnId: string, iteration: number): string {
   const ts = Date.now().toString(36);
   const rand = crypto.randomBytes(4).toString('hex');
   return `cp-${ts}-i${iteration}-${rand}`;

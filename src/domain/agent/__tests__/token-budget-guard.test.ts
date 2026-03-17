@@ -5,7 +5,7 @@
  * runaway tool loops from consuming the entire context window.
  */
 
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, test, expect, mock } from 'bun:test';
 import { Agent } from '../index';
 import type { AIProvider } from '../../config/schema';
 

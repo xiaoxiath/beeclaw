@@ -156,7 +156,7 @@ export class TieredLLMRouter {
   selectModelForTier(tier: LLMTier): string {
     // 1. 检查用户偏好
     if (this.modelPreferences[tier]) {
-      return this.modelPreferences[tier]!;
+      return this.modelPreferences[tier];
     }
 
     // 2. 从配置中选择第一个可用的模型

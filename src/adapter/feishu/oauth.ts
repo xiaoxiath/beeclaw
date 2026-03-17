@@ -237,7 +237,7 @@ export async function getUserToken(
       try {
         token = await refreshUserToken(client, token.refreshToken);
         await saveUserToken(openId, token);
-      } catch (error) {
+      } catch (_error) {
         logger.error('Failed to refresh token, removing from cache');
         cache.delete(cacheKey);
         return null;

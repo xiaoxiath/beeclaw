@@ -2,8 +2,7 @@ import {
   createRouter,
   createRootRoute,
   createRoute,
-  RouterProvider,
-  Outlet,
+  RouterProvider
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RootLayout from './components/layout/RootLayout';

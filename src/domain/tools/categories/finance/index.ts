@@ -18,15 +18,7 @@ export {
 // Re-export commonly used types
 import type {
   StockQuote,
-  StockQuoteRequest,
-  StockHistory,
-  StockHistoryRequest,
-  StockFinancial,
-  StockFinancialRequest,
-  StockInfo,
-  StockInfoRequest,
-  FinanceDataSource,
-  FinanceConfig,
+  StockHistory
 } from './types';
 import { getFinanceOrchestrator, initFinanceFromEnv } from './orchestrator';
 

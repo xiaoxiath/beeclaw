@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Lock } from 'lucide-react';
-import { api } from '../lib/api';
 
 export default function LoginPage() {
   const [token, setToken] = useState('');
@@ -28,7 +27,7 @@ export default function LoginPage() {
         const data = await response.json();
         setError(data.message || 'Login failed');
       }
-    } catch (err) {
+    } catch (_err) {
       setError('Network error. Please try again.');
     } finally {
       setIsLoading(false);

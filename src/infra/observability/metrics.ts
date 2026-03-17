@@ -557,8 +557,8 @@ const DEFAULT_CONFIG: ObservabilityConfig = {
   metricsEnabled: true,
 };
 
-let globalLogger = new StructuredLogger(DEFAULT_CONFIG);
-let globalMetrics = new MetricsCollector(undefined, DEFAULT_CONFIG.metricsEnabled);
+const globalLogger = new StructuredLogger(DEFAULT_CONFIG);
+const globalMetrics = new MetricsCollector(undefined, DEFAULT_CONFIG.metricsEnabled);
 let globalConfig = { ...DEFAULT_CONFIG };
 
 /**

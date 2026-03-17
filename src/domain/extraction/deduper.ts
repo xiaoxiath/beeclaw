@@ -4,7 +4,7 @@
  * 检测重复、合并更新、处理冲突
  */
 
-import type { ExtractedKnowledge, KnowledgeCategory } from './types';
+import type { ExtractedKnowledge } from './types';
 
 // ============================================================================
 // Synonym Normalization — maps semantically equivalent terms to canonical forms

@@ -16,7 +16,6 @@ import { loadPluginManifest, validatePluginConfig } from "../manifest";
 import { getOrCreatePluginRegistry } from "../registry";
 import { createPluginRuntimeShim } from "../runtime-shim";
 import { createHookRunner } from "../hook-runner";
-import type { PluginManifest } from "../manifest";
 
 export interface LoadPluginsOptions {
   discovery?: {

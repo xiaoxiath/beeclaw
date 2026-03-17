@@ -3,7 +3,6 @@ import { BingProvider } from '../providers/bing';
 import { BraveProvider } from '../providers/brave';
 import { GoogleProvider } from '../providers/google';
 import { DuckDuckGoProvider } from '../providers/duckduckgo';
-import { BochaProvider, TavilyProvider } from '../providers/bocha';
 import { SearchRegion } from '../types';
 
 describe('BingProvider', () => {

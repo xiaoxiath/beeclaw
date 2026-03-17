@@ -299,7 +299,7 @@ export async function handleLlmProactiveChatJob(
 /**
  * Handle self-evolution task
  */
-export async function handleSelfEvolutionJob(job: ProactiveJobData): Promise<void> {
+export async function handleSelfEvolutionJob(_job: ProactiveJobData): Promise<void> {
   console.log('[Daemon] Self-evolution triggered...');
 
   try {

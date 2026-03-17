@@ -10,8 +10,7 @@ import {
   detectPatterns,
   getRecentQueries,
   clearQueryTracking,
-  getQueryTrackingStats,
-  type QueryPattern,
+  getQueryTrackingStats
 } from '../query-tracking';
 
 describe('QueryTracking', () => {

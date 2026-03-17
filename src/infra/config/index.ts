@@ -1,8 +1,8 @@
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { AppConfigSchema, type AppConfig, type WeatherConfig, type SearchConfig, type FinanceConfig, type AgentDisplayConfig, type AgentConfig, type LLMTierConfig, type LLMTiersConfig, type CompressionConfig } from './schema';
-import { DEFAULT_CONFIG, mergeWithDefaults } from './defaults';
+import { AppConfigSchema, type AppConfig, type WeatherConfig, type SearchConfig, type FinanceConfig, type AgentDisplayConfig, type LLMTiersConfig } from './schema';
+import { DEFAULT_CONFIG } from './defaults';
 import { ProviderResolver } from './provider-resolver';
 import { ParamsMerger } from './params-merger';
 import { logger } from '../observability/logger';

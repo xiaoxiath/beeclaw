@@ -269,7 +269,7 @@ export class SearchOrchestrator {
                 allResults.push(...fallbackResults);
                 break;
               }
-            } catch (fallbackError) {
+            } catch (_fallbackError) {
               console.warn(`[Search] Fallback ${fallbackName} also failed`);
             }
           }

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { rmSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
   MemoryCompression,

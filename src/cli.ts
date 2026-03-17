@@ -10,25 +10,21 @@
  */
 
 import { createInterface } from 'readline';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 import clipboardy from 'clipboardy';
-import { sessionService } from './domain/session/service';
 import { getMemoryStore, executeMemoryTool, getMemoryToolsForAI } from './domain/memory';
 import { getSkillStore, executeSkillTool, getSkillToolsForAI } from './domain/skills';
-import { getGoalStore, executeGoalTool, getGoalToolsForAI } from './domain/agent/goal';
-import { getScheduler, getNotificationManager, getDaemon, executeProactiveTool, pushPendingNotifications, formatNotifications, setCliDeliveryHandler } from './domain/proactive';
-import { getAllToolsForAI, SYSTEM_PROMPTS } from './domain/agent';
-import { getCompressionEngine } from './domain/memory/compression';
-import { initTaskManager, createReminderTask, getQueueStatistics } from './infra/queue';
-import { initWorkers } from './app/queue-handlers/workers';
+import { executeGoalTool } from './domain/agent/goal';
+import { getNotificationManager, getDaemon, executeProactiveTool, pushPendingNotifications, setCliDeliveryHandler } from './domain/proactive';
+import { getAllToolsForAI } from './domain/agent';
+import { } from './domain/memory/compression';
+import { createReminderTask } from './infra/queue';
 import { getPendingNotifications } from './app/queue-handlers/handlers/reminder-handler';
-import { LoadingIndicator, formatElapsed, withSpinner, rewriteLine } from './adapter/cli/input';
-import { initApp, getAgent, getProvider, getModel, switchModel, isInitialized, getConfig_, getOrCreateSession, continueConversation, listSessions, getSession, deleteSession, getSessionStats, type Session } from './app';
+import { LoadingIndicator, formatElapsed } from './adapter/cli/input';
+import { initApp, switchModel, continueConversation, listSessions } from './app';
 import { recommendSessions, formatRecommendation } from './domain/session/recommender';
 import { getPersonaStore, executePersonaTool } from './domain/agent/persona';
-import { getMBTIDescription, getOCEANDescription, getOCEANLevel } from './domain/agent/persona/traits';
-import type { AIProvider } from './infra/config/schema';
-
+import { getMBTIDescription, getOCEANLevel } from './domain/agent/persona/traits';
 let rl = createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -223,7 +219,7 @@ function prompt(query: string): Promise<string> {
  * Enhanced prompt that handles large pasted content better
  * Uses a chunked approach for very large inputs
  */
-function promptEnhanced(query: string): Promise<string> {
+function _promptEnhanced(query: string): Promise<string> {
   return new Promise((resolve) => {
     // For non-TTY, use simple readline
     if (!process.stdin.isTTY) {
@@ -555,7 +551,7 @@ async function handleMemoryCommand(input: string): Promise<boolean> {
           console.log(`  Last run: ${stats.lastRun}`);
         }
         console.log('');
-      } catch (error) {
+      } catch (_error) {
         console.log('Compression stats not available.');
       }
       break;
@@ -1060,7 +1056,7 @@ async function handleNotificationsCommand(): Promise<void> {
     }
 
     console.log('');
-  } catch (error) {
+  } catch (_error) {
     console.log('Notification system not initialized.');
   }
 }
@@ -1483,7 +1479,7 @@ async function main(): Promise<void> {
         }
         console.log('   Use /sessions to see all sessions');
       }
-    } catch (error) {
+    } catch (_error) {
       // Recommender might fail, that's ok
     }
 

@@ -374,7 +374,7 @@ export class ResearchSynthesizer {
   }
 
   private buildCredibilityRationale(
-    source: FetchedSource,
+    _source: FetchedSource,
     factors: { domainAuthority: number; contentQuality: number; recency: number; crossCorroboration: number },
   ): string {
     const parts: string[] = [];
@@ -642,7 +642,7 @@ ${truncated}`;
         references: [],
         synthesisTimeMs: 0,
       };
-    } catch (error) {
+    } catch (_error) {
       // 降级: 将原始内容作为单章节报告
       return {
         title: topic,

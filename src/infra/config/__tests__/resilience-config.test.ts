@@ -7,9 +7,6 @@ import {
   resolveConfig,
   RESILIENCE_PRESETS,
   compileToolTimeoutPatterns,
-  type ResilienceConfig,
-  type PresetName,
-  type DeepPartial,
   ConfigValidationError,
 } from '../resilience-config';
 

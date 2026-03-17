@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { AIProvider, CompressionConfig } from '../../infra/config/schema';
 
 // OpenAI-compatible tool schema

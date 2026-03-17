@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { MemoryToolResult } from './types';
 import { getMemoryStore } from './store';
 import { getCompressionEngine } from './compression';
-import { scoreImportance, findDuplicates } from './scoring';
+import { scoreImportance } from './scoring';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 

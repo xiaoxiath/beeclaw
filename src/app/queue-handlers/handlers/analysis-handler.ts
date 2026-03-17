@@ -145,7 +145,7 @@ ${taskList}
 /**
  * Format the analysis result for pushing to user
  */
-function formatAnalysisResult(originalMessage: string, analysisResponse: string): string {
+function formatAnalysisResult(_originalMessage: string, analysisResponse: string): string {
   // Add a header indicating this is the result of deep analysis
   const header = `📊 关于你之前的问题，我完成了深度分析：
 

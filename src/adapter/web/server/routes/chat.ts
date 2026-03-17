@@ -79,10 +79,10 @@ export default new Hono()
           sessionId: session.id,
           loadMemory: true,
           autoRefreshMemory: false,
-          onToolCall: (name, params) => {
+          onToolCall: (name, _params) => {
             console.log('[Chat API] Tool call:', name);
           },
-          onToolResult: (name, result) => {
+          onToolResult: (name, _result) => {
             console.log('[Chat API] Tool result:', name);
           },
         });

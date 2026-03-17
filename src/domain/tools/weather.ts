@@ -278,7 +278,7 @@ async function fetchDailyWeather(locationId: string, days: string = '3d'): Promi
 /**
  * Get current hour index (0-23)
  */
-function getCurrentHourIndex(): number {
+function _getCurrentHourIndex(): number {
   return new Date().getHours();
 }
 

@@ -15,13 +15,9 @@ import type {
   StockHistoryItem,
   StockFinancial,
   StockFinancialRequest,
-  StockFinancialItem,
   StockInfo,
   StockInfoRequest,
-  HistoryPeriod,
-  AdjustType,
-  ReportType,
-  ReportPeriod,
+  ReportType
 } from '../types';
 
 export class EastmoneyProvider extends FinanceDataProvider {

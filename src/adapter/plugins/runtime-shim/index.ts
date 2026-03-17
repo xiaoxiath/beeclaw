@@ -142,7 +142,7 @@ export function createChannelRuntimeStub(logger: any): any {
       {},
       {
         get(_target, prop) {
-          return (...args: any[]) => {
+          return (..._args: any[]) => {
             logger.warn(
               `[RuntimeShim] channel.${adapter}.${String(prop)}() called but not implemented`
             );
@@ -164,7 +164,7 @@ function createStubProxy(moduleName: string, logger: any): any {
     {},
     {
       get(_target, prop) {
-        return (...args: any[]) => {
+        return (..._args: any[]) => {
           logger.warn(
             `[RuntimeShim] ${moduleName}.${String(prop)}() called but not implemented`
           );

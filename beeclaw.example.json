@@ -135,9 +135,22 @@
 
   "web": {
     "enabled": false,
-    "port": 3000,
+    "port": "${BEECLAW_PORT:-3000}",
     "auth": {
-      "level": "none"
+      "level": "none",
+      "token": "${WEBUI_AUTH_TOKEN}"
     }
+  },
+
+  "search": {
+    "providers": {
+      "bocha": {
+        "apiKey": "${BOCHA_API_KEY}"
+      },
+      "tavily": {
+        "apiKey": "${TAVILY_API_KEY}"
+      }
+    }
+    "defaultProvider": "bocha"
   }
 }

@@ -245,7 +245,7 @@ export function getCurrentTimeContext(): string {
   const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const version = getBeeclawVersion();
 
-  let locationInfo = `**Location**: ${userLocation}`;
+  const locationInfo = `**Location**: ${userLocation}`;
   let timezoneInfo = `**Timezone**: ${userTimezone}`;
 
   if (userTimezone !== systemTimezone) {

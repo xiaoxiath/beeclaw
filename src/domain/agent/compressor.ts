@@ -374,7 +374,7 @@ export async function hybridCompress(
         compressionRatio: result.compressionRatio,
         method: 'llm',
       };
-    } catch (error) {
+    } catch (_error) {
       console.warn('[HybridCompressor] LLM compression failed, falling back to rule-based');
     }
   }

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { loadPlugins } from "../loader";
-import { getOrCreatePluginRegistry, resetPluginRegistry } from "../registry";
+import { resetPluginRegistry } from "../registry";
 
 describe("Plugin System Integration", () => {
   beforeEach(() => {

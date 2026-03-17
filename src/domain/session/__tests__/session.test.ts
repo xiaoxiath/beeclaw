@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
 import {
-  initSessionManager,
   getOrCreateSession,
   getSession,
   listSessions,
@@ -9,8 +8,7 @@ import {
   registerChannelHandler,
   calculateRecoveryBackoff,
   getSessionSummary,
-  confirmDelivery,
-  type Session,
+  confirmDelivery
 } from '../index';
 
 describe('Session Manager', () => {

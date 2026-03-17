@@ -4,7 +4,7 @@ import {
   getMessageGateway,
   resetMessageGateway,
 } from '../gateway-channel';
-import type { MessageChannel, ChannelType, MessageResult } from '../types';
+import type { MessageChannel, ChannelType } from '../types';
 
 describe('MultiChannelMessageGateway', () => {
   let gateway: MultiChannelMessageGateway;

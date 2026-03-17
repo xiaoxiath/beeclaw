@@ -8,41 +8,37 @@
 import { join } from 'path';
 
 // Infra layer
-import { loadConfig, getConfig, shouldShowTokenStats } from '../infra/config';
+import { loadConfig, shouldShowTokenStats } from '../infra/config';
 import { initStores } from '../infra/db/store';
 import { initDataConnection } from '../infra/db/connection';
 import { logger } from '../infra/observability/logger';
 
 // Domain layer
-import { getMemoryStore } from '../domain/memory';
-import { createAgent, getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt } from '../domain/agent';
+import { createAgent, getAllToolsForAI, SYSTEM_PROMPTS } from '../domain/agent';
 import { callAI } from '../domain/agent/api';
 import { sessionService } from '../domain/session/service';
-import { initSessionManager, loadAllSessions, getOrCreateSession, type Session } from '../domain/session';
+import { initSessionManager, loadAllSessions } from '../domain/session';
 import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../domain/subagent';
 import { initializeTimezoneCache, resolveUserLocation, resolveUserTimezone } from '../domain/tools/timezone';
-import { setSimilarityProvider } from '../domain/memory/scoring';
 import { setCompressionLLMProvider } from '../domain/memory/compression';
 import { setEmbeddingProvider, getVectorStore } from '../domain/memory/vector-store';
-import { setSummaryLLMProvider } from '../domain/memory/summary-engine';
 import { getLifecycleManager } from '../domain/memory/lifecycle-manager';
 import { getReflectionEngine } from '../domain/agent/reflection-engine';
 import { getSkillDiscoveryEngine } from '../domain/agent/skill-discovery';
-import { initExtractionManager, getExtractionManager as getExtractionManagerInstance, type ExtractionManager } from '../domain/extraction';
-import { getScheduler } from '../domain/proactive';
+import { initExtractionManager, type ExtractionManager } from '../domain/extraction';
 import { SandboxManager } from '../domain/sandbox/manager';
 import { listSessions, sendProactiveMessage } from '../domain/session';
 import { recoverUnansweredSessions } from '../domain/session/recovery';
 import { createEmbeddingProvider } from '../domain/memory/embeddings';
-import { TieredLLMRouter, LLMTask } from '../infra/ai/tiered-router';
+import { TieredLLMRouter } from '../infra/ai/tiered-router';
 import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
 import { getSkillStore } from '../domain/skills';
 import { callAI } from '../domain/agent/api';
 
 // Adapter layer
-import { initializeMCP, getMCPManager, shutdownMCP } from '../adapter/mcp';
+import { initializeMCP, shutdownMCP } from '../adapter/mcp';
 import { getHookRunner, resetHookRunner } from '../adapter/plugins/hooks';
-import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
+import { loadPlugins } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
 import { FeishuChannel } from '../adapter/feishu/channel';
@@ -51,10 +47,10 @@ import { FeishuChannel } from '../adapter/feishu/channel';
 import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
 import { getMessageGateway } from './gateway-channel';
 import { getTaskDispatcher } from './dispatcher';
-import { bootstrapHealthCheck, shutdownHealthCheck } from './bootstrap-health';
+import { bootstrapHealthCheck } from './bootstrap-health';
 
 // Types
-import type { AIProvider, AppConfig, EmbeddingProviderConfigType } from '../infra/config/schema';
+import type { AIProvider, AppConfig } from '../infra/config/schema';
 import type { TokenStatsConfig } from '../domain/agent/context';
 import type { EmbeddingProviderConfig } from '../domain/memory/embeddings';
 
@@ -437,7 +433,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
       // Create LLM skill matcher
       const llmMatcher = createLLMSkillMatcher({
         provider: {
-          chat: async (messages, options) => {
+          chat: async (messages, _options) => {
             // Use standard tier for skill matching
             const model = router.selectModelForTier('standard');
 

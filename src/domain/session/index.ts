@@ -8,7 +8,7 @@
  * - Auto knowledge extraction
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { ChatMessage, MultimodalContent } from '../agent/types';
 import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, formatSkillsForPrompt, type TokenStatsConfig } from '../agent';
@@ -802,7 +802,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     const visionConfig = { ...DEFAULT_VISION_CONFIG, ...(agentConfig as any).visionConfig };
 
     let selectedModel = agentConfig.model;
-    let selectedProvider = agentConfig.provider;
+    const selectedProvider = agentConfig.provider;
     let imageDescription: string | undefined;
     let originalMultimodalMessage: MultimodalContent[] | undefined;
 

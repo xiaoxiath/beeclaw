@@ -14,8 +14,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, rmSync } from 'fs';
 import { join } from 'path';
-import type { MemoryConfig, MemoryToolResult } from './types';
-import { scoreImportance, scoreImportanceAsync, findDuplicates, type ImportanceScore } from './scoring';
+import { scoreImportance, scoreImportanceAsync, type ImportanceScore } from './scoring';
 import { logger } from '../../infra/observability/logger';
 
 // ---------------------------------------------------------------------------

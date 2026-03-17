@@ -377,7 +377,7 @@ export async function evaluatePatterns(context?: Partial<TriggerContext>): Promi
 /**
  * Helper to update pattern (add to scheduler)
  */
-function updatePatternTrigger(patternId: string, updates: Partial<Pattern>): void {
+export function _updatePatternTrigger(_patternId: string, _updates: Partial<Pattern>): void {
   // This is a helper that would be implemented in scheduler
   // For now, we'll just note that it needs to be added
 }

@@ -6,8 +6,6 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { SharedState, initSharedState, getSharedState, resetSharedState } from '../state';
-import type { StateStats } from '../state';
-
 describe('SharedState', () => {
   let state: SharedState;
 

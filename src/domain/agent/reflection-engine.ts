@@ -504,7 +504,7 @@ export class ReflectionEngine {
 
   private generateStrategyUpdates(
     patterns: ConversationPattern[],
-    stats: ConversationStats
+    _stats: ConversationStats
   ): StrategyUpdate[] {
     const updates: StrategyUpdate[] = [];
 

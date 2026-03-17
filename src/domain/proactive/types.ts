@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import type { ToolResult, Priority } from '../types';
+import type { ToolResult } from '../types';
 
 // Re-export for convenience
 export type { ToolResult } from '../types';

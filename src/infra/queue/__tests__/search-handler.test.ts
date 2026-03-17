@@ -1,5 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { rmSync, existsSync, mkdirSync } from 'fs';
+import { describe, test, expect } from 'bun:test';
 import {
   handleSearchJob,
 } from '../handlers/search-handler';

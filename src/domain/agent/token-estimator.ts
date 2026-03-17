@@ -11,7 +11,7 @@
  * ⚡ 新增文件 — 不替换 context.ts，而是提供可选增强模块
  */
 
-import type { ChatMessage, MultimodalContent } from './types';
+import type { MultimodalContent } from './types';
 
 // ---------------------------------------------------------------------------
 // 1. Tokenizer Provider 接口（依赖注入）

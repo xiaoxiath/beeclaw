@@ -129,7 +129,7 @@ export default function Chat() {
 
       if (!reader) throw new Error('No reader available');
 
-      let assistantMessage: Message = {
+      const assistantMessage: Message = {
         role: 'assistant',
         content: '',
         timestamp: new Date().toISOString(),

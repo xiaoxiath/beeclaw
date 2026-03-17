@@ -69,7 +69,7 @@ export async function executeUpdateUserSettings(params: {
     try {
       const configContent = readFileSync(configPath, 'utf-8');
       config = JSON.parse(configContent) as Partial<AppConfig>;
-    } catch (error) {
+    } catch (_error) {
       // Config file doesn't exist or is invalid, create new one with minimal structure
       config = {};
     }

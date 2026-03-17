@@ -341,7 +341,7 @@ export class GoalStore {
         writeFileSync(goalPath, JSON.stringify(subGoal, null, 2), 'utf-8');
         this.updateIndex(subGoal);
         subGoalIds.push(id);
-      } catch (error) {
+      } catch (_error) {
         return { success: false, error: `Failed to create sub-goal: ${title}` };
       }
     }
@@ -357,7 +357,7 @@ export class GoalStore {
     try {
       writeFileSync(parentPath, JSON.stringify(updatedParent, null, 2), 'utf-8');
       this.updateIndex(updatedParent);
-    } catch (error) {
+    } catch (_error) {
       return { success: false, error: 'Failed to update parent goal' };
     }
 

@@ -6,7 +6,7 @@
 
 import type { TraitsProfile, PersonaPackage } from './types';
 import { getPersonaStore } from './store';
-import { traitsToPromptModifier, validateTraitsProfile, getMBTIDescription, getOCEANDescription } from './traits';
+import { traitsToPromptModifier, getMBTIDescription, getOCEANDescription } from './traits';
 
 // Tool type definition - matches OpenAITool format
 interface PersonaTool {

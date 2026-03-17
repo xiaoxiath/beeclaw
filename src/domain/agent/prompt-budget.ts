@@ -279,7 +279,7 @@ export function assembleBudgetedPrompt(
     logger.debug(`[PromptBudget] Dropped layer "${layer.name}" (${layer.tokens} tokens) — over budget`);
   }
 
-  let remainingLayers = layersWithTokens.filter(l => !toDrop.has(l.name));
+  const remainingLayers = layersWithTokens.filter(l => !toDrop.has(l.name));
 
   // Phase 2: If still over budget, truncate the largest trimmable remaining layer
   if (totalTokens > maxTokens) {

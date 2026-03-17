@@ -76,7 +76,7 @@ export function registerDefaultHandlers(): void {
     // Build ProactiveJobData from task payload
     const jobData: ProactiveJobData = {
       scheduleId: task.id || 'cron-task',
-      taskType: handlerName as any,
+      taskType: handlerName,
       params: params || {},
       triggeredAt: new Date().toISOString(),
       triggeredBy: 'cron',

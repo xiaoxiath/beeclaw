@@ -2,7 +2,7 @@
  * Session Recovery Module Tests
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 import { detectUnansweredSessions, recoverUnansweredSessions } from '../recovery';
 import type { Session, RecoveryConfig } from '../index';
 

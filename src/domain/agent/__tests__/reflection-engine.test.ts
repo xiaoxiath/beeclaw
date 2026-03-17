@@ -9,8 +9,7 @@ import { describe, test, expect, beforeEach } from 'bun:test';
 import {
   ReflectionEngine,
   getReflectionEngine,
-  type ConversationRecord,
-  type ReflectionResult,
+  type ConversationRecord
 } from '../reflection-engine';
 
 describe('ReflectionEngine', () => {

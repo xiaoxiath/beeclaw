@@ -975,7 +975,7 @@ Return JSON: { "score": 75, "gaps": ["gap description 1", "gap description 2"] }
   }
 
   private async quickCoverageEstimate(
-    topic: string,
+    _topic: string,
     aspects: string[],
     report: SynthesisReport
   ): Promise<number> {

@@ -12,8 +12,7 @@ import {
   createCard,
   createStreamingConfig,
   createCardBody,
-  type Card,
-  type CardBody,
+  type Card
 } from './types/card';
 import {
   createMarkdownElement,
@@ -58,7 +57,7 @@ export function renderMessageCard(
   const hitlBlocks = blocks.filter(
     (block) => block.type === 'confirmation_request' || block.type === 'user_input_request'
   );
-  const finalAnswer = blocks.find((block) => block.type === 'text') as TextBlock | undefined;
+  const finalAnswer = blocks.find((block) => block.type === 'text');
   const images = blocks.filter((block) => block.type === 'image');
 
   // Build card elements
@@ -91,7 +90,7 @@ export function renderMessageCard(
   }
 
   // Add images
-  images.forEach((image) => {
+  images.forEach((_image) => {
     // TODO: Add image element when supported
     // For now, just add a note
     elements.push(
@@ -314,7 +313,7 @@ export function renderErrorCard(error: string): Card {
  * Update existing card with new blocks
  */
 export function updateMessageCard(
-  existingCard: Card,
+  _existingCard: Card,
   blocks: ContentBlock[],
   options?: RenderOptions
 ): Card {

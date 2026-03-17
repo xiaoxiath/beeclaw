@@ -1,11 +1,3 @@
-/**
- * Embedding Providers
- *
- * 支持多种 embedding 后端，参考 OpenClaw 的设计
- */
-
-import type { AIProvider } from '../../infra/config/schema';
-
 // ============================================================================
 // 类型定义
 // ============================================================================
@@ -279,7 +271,7 @@ export function createEmbeddingProvider(config: EmbeddingProviderConfig): Embedd
         );
       }
       return new MiniMaxEmbeddingProvider({
-        apiKey: config.apiKey!,
+        apiKey: config.apiKey,
         groupId: config.groupId || '', // Use groupId from config or empty string
         model: config.model,
         dims: config.dims,

@@ -24,7 +24,7 @@ async function getDockerModule(): Promise<any> {
     const mod = await import('dockerode');
     Docker = mod.default || mod;
     return Docker;
-  } catch (error) {
+  } catch (_error) {
     throw new Error('ContainerPool requires "dockerode" package.');
   }
 }
@@ -67,7 +67,7 @@ export class ContainerPool {
     // Verify Docker connectivity
     try {
       await this.docker.ping();
-    } catch (error) {
+    } catch (_error) {
       logger.error('[ContainerPool] Docker not available, pool disabled');
       return;
     }

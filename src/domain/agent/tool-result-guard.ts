@@ -186,7 +186,7 @@ function smartTruncateText(text: string, maxTokens: number): string {
   // 按段落分割
   const paragraphs = text.split(/\n\n+/);
   let result = '';
-  let remainingTokens = maxTokens - estimateTokens(guardConfig.truncationSuffix);
+  const remainingTokens = maxTokens - estimateTokens(guardConfig.truncationSuffix);
 
   for (const para of paragraphs) {
     const paraTokens = estimateTokens(para);

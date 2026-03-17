@@ -112,7 +112,7 @@ export function createHookRunner(
         const result = await (reg.handler as Function)(current);
         if (result != null) {
           current = mergeStrategy === 'deep'
-            ? deepMerge(current as any, result as any)
+            ? deepMerge(current as any, result)
             : { ...current, ...result };
         }
       } catch (err) {
@@ -141,7 +141,7 @@ export function createHookRunner(
         const result = (reg.handler as Function)(current);
         if (result != null) {
           current = mergeStrategy === 'deep'
-            ? deepMerge(current as any, result as any)
+            ? deepMerge(current as any, result)
             : { ...current, ...result };
         }
       } catch (err) {

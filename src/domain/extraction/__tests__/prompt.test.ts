@@ -4,13 +4,13 @@
  * 测试知识提取功能
  */
 
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 import {
   parseExtractionResult,
   validateExtraction,
   formatConversationForExtraction,
 } from '../prompt';
-import type { ExtractionItem, ExtractedKnowledge } from '../types';
+import type { ExtractionItem } from '../types';
 
 describe('Extraction Prompt Utils', () => {
   describe('parseExtractionResult', () => {

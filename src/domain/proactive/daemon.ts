@@ -9,7 +9,6 @@ import { join } from 'path';
 import type { DaemonState, Schedule, ProactiveJobData } from './types';
 import { getScheduler } from './scheduler';
 import { getNotificationManager } from './notifications';
-import { getGoalStore } from '../goal/store';
 import {
   handleLlmProactiveChatJob,
   handleSelfEvolutionJob,

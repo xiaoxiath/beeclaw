@@ -8,7 +8,6 @@ import {
   SessionStorageConfigSchema,
   MemoryConfigSchema,
   SkillsConfigSchema,
-  PluginConfigSchema,
   ChannelPluginConfigSchema,
   ToolPluginConfigSchema,
   LoggingConfigSchema,

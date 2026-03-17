@@ -139,7 +139,7 @@ export class FinanceOrchestrator {
 
     if (this.config.defaultSource && this.config.defaultSource !== 'auto') {
       // Use specified source only
-      sourcesToTry = [this.config.defaultSource as FinanceDataSource];
+      sourcesToTry = [this.config.defaultSource];
     }
 
     const errors: Error[] = [];

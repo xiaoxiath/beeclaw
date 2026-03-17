@@ -183,7 +183,7 @@ async function persistQueryRecord(record: QueryRecord): Promise<void> {
         source: 'query_tracking',
       },
     });
-  } catch (error) {
+  } catch (_error) {
     // Memory store might not be initialized
     console.debug('[QueryTracking] Memory store not available for persistence');
   }

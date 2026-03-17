@@ -19,9 +19,6 @@ import type {
 } from './types';
 import {
   IdentitySchema,
-  SoulSchema,
-  AgentGuidelinesSchema,
-  UserProfileSchema,
   TraitsProfileSchema,
   PersonaPackageSchema,
 } from './types';
@@ -67,7 +64,7 @@ function parseFrontmatter<T>(content: string, schema: z.ZodSchema<T>): T | null 
           // Parse arrays
           if (typeof value === 'string' && value.startsWith('[')) {
             try {
-              value = JSON.parse(value as string);
+              value = JSON.parse(value);
             } catch {
               // Keep as string
             }

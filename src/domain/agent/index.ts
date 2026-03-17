@@ -1,10 +1,10 @@
 import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../../infra/resilience/circuit-breaker';
-import { LoopDetector, createLoopDetector, type LoopDetectionResult } from '../../infra/resilience/loop-detector';
+import { LoopDetector, createLoopDetector } from '../../infra/resilience/loop-detector';
 
 import type { AIProvider } from '../../infra/config/schema';
-import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, ConversationContext, MultimodalContent, MessageMetadata } from './types';
+import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent } from './types';
 import { stripMessageMetadata } from './types';
-import { callAI, executeToolCalls, hasToolCalls, extractToolCalls, extractContent } from './api';
+import { callAI, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
 import { logger } from '../../infra/observability/logger';
 import { getMemoryStore } from '../memory';
@@ -19,7 +19,6 @@ import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { recordSkillFailure } from './evolution';
-import { getFeishuWSClient } from '../../adapter/feishu';
 import {
   estimateMessageTokens,
   estimateTotalTokens,
@@ -37,10 +36,9 @@ import {
   type TokenStats,
 } from './context';
 import { hybridCompress, type CompressionResult } from './compressor';
-import { groupToolCalls, getGroupingStats, isParallelTool } from './tool-dependencies';
+import { groupToolCalls, getGroupingStats } from './tool-dependencies';
 import { getHybridToolSelector } from './hybrid-tool-selector';
 import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
-import { getHealthChecker } from '../tools';
 import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
 import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 
@@ -111,7 +109,7 @@ export function createDefaultToolExecutor(): ToolExecutor {
 }
 
 // Inner tool execution logic (separated for circuit breaker wrapping)
-async function _executeToolInner(name: string, params: Record<string, unknown>, userContext?: UserContext): Promise<{ success: boolean; data?: unknown; error?: string }> {
+async function _executeToolInner(name: string, params: Record<string, unknown>, _userContext?: UserContext): Promise<{ success: boolean; data?: unknown; error?: string }> {
     // Plugin tools (highest priority)
     try {
       const registry = getPluginRegistry();
@@ -805,7 +803,7 @@ export class Agent {
       console.log(`[Agent] Context at ${Math.round(usage * 100)}% — critical compression (LLM + trim)`);
       try {
         await this.compressContextWithLLM();
-      } catch (error) {
+      } catch (_error) {
         console.warn('[Agent] LLM compression failed in critical mode');
       }
       this.trimContextIfNeeded();
@@ -814,7 +812,7 @@ export class Agent {
       console.log(`[Agent] Context at ${Math.round(usage * 100)}% — preventive LLM compression`);
       try {
         await this.compressContextWithLLM();
-      } catch (error) {
+      } catch (_error) {
         console.warn('[Agent] LLM compression failed, falling back to trim');
         this.trimContextIfNeeded();
       }

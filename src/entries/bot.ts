@@ -12,7 +12,7 @@
  */
 
 import { join } from 'path';
-import { initApp, getAgent, getProvider, getModel } from '../app';
+import { initApp, getAgent } from '../app';
 import { getMessageGateway } from '../app/gateway-channel';
 import { getTaskDispatcher } from '../app/dispatcher';
 import { FeishuAdapter } from '../adapter/feishu/adapter';
@@ -91,14 +91,14 @@ async function main() {
   try {
     await fetchHolidayInfo();
     console.log('   ✓ Holiday information loaded');
-  } catch (error) {
+  } catch (_error) {
     console.log('   ⚠ Holiday information unavailable (will use fallback)');
   }
 
   try {
     await fetchWeatherInfo();
     console.log('   ✓ Weather information loaded');
-  } catch (error) {
+  } catch (_error) {
     console.log('   ⚠ Weather information unavailable (QWEATHER_TOKEN may not be configured)');
   }
 

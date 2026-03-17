@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 import {
   getAllTools,
   getAllToolsForAI,
@@ -10,7 +10,6 @@ import {
   formatSkillsForPrompt,
   SYSTEM_PROMPTS,
 } from '../tools';
-import type { OpenAITool } from '../types';
 import type { Session } from '../../session';
 
 describe('Agent Tools', () => {

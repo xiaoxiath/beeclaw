@@ -5,7 +5,7 @@
  * 支持事件驱动架构，允许插件和内部模块响应各种生命周期事件
  */
 
-import type { ChatMessage, OpenAITool } from '../../../domain/agent/types';
+import type { ChatMessage } from '../../../domain/agent/types';
 
 // ============================================================================
 // 钩子名称定义

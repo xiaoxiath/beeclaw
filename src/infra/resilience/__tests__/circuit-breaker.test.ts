@@ -6,8 +6,7 @@ import { describe, test, expect, beforeEach } from 'bun:test';
 import {
   CircuitBreaker,
   CircuitBreakerRegistry,
-  CircuitOpenError,
-  CircuitState,
+  CircuitOpenError
 } from '../../circuit-breaker';
 
 describe('CircuitBreaker', () => {

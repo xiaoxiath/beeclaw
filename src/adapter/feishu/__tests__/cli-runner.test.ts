@@ -2,7 +2,7 @@
  * Tests for Feishu CLI Runner
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
   FeishuCLIRunner,
   FeishuCLIConfig,

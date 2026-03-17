@@ -458,8 +458,8 @@ export class LoopDetector {
    * 构建注入给 LLM 的警告消息
    */
   private buildWarningMessage(
-    toolName: string,
-    count: number,
+    _toolName: string,
+    _count: number,
     type: 'exact' | 'semantic' | 'stall',
     message: string
   ): string {

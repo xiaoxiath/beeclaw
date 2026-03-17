@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ReactFlow,
   Node,
@@ -10,7 +10,6 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import dagre from 'dagre';
-import '@xyflow/react/dist/style.css';
 import {
   Wrench,
   CheckCircle,
@@ -89,7 +88,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
 };
 
 // Custom Task Node Component
-function TaskNode({ data, id }: { data: any; id: string }) {
+function TaskNode({ data, _id }: { data: any; _id: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const statusConfig = {

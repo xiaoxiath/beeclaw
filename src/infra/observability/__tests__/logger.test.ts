@@ -3,7 +3,7 @@ import { setupMockConsole, restoreConsole, getConsoleCalls, getConsoleCallsFor, 
 
 // Re-import logger to get a fresh instance for testing
 // Since logger is a singleton, we need to work with it directly
-import { logger, type LoggerConfig, type LogLevel } from '../logger';
+import { logger } from '../logger';
 
 describe('Logger', () => {
   beforeEach(() => {

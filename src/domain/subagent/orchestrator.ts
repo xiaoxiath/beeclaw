@@ -7,12 +7,11 @@
 import type { AIProvider } from '../../infra/config/schema';
 import { decomposeTask } from './decompose';
 import { DAGScheduler } from './scheduler';
-import { getSubagentRuntime, spawnSubagent } from './runtime';
+import { spawnSubagent } from './runtime';
 import type {
   TaskDecomposition,
   OrchestrationResult,
   OrchestrationOptions,
-  ExecutionProgress,
   SubTask,
 } from './orchestration-types';
 import type { SubagentResult } from './types';

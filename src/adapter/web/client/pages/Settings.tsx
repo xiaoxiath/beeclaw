@@ -60,7 +60,7 @@ export default function SettingsPage() {
     try {
       const parsed = JSON.parse(editedConfig);
       updateMutation.mutate(parsed);
-    } catch (error) {
+    } catch (_error) {
       alert('Invalid JSON format');
     }
   };

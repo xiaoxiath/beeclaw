@@ -60,7 +60,7 @@ export default new Hono()
     const dagEdges: any[] = [];
     let nodeIndex = 0;
 
-    session.messages.forEach((message, messageIndex) => {
+    session.messages.forEach((message, _messageIndex) => {
       if (message.role === 'assistant' && (message as any).toolCalls) {
         const toolCalls = (message as any).toolCalls;
         toolCalls.forEach((toolCall: any) => {

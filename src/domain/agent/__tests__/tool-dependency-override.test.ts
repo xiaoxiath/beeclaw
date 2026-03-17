@@ -13,8 +13,7 @@ import {
   registerToolDependencyPattern,
   clearToolDependencyOverrides,
   getToolDependencyOverrides,
-  getToolDependency,
-  type ToolDependencyConfig,
+  getToolDependency
 } from '../../agent/tool-dependencies';
 
 describe('Tool Dependency Overrides', () => {

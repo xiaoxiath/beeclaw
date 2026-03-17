@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { join } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type {
   Skill,
@@ -14,7 +14,7 @@ import type {
   BenchmarkResult,
 } from './types';
 import { SkillFrontmatterSchema } from './types';
-import { LLMSkillMatcher, type LLMMatchConfig } from './llm-matcher';
+import { LLMSkillMatcher } from './llm-matcher';
 
 export class SkillStore {
   private basePath: string;          // User skills path
@@ -713,7 +713,7 @@ export class SkillStore {
   }
 
   // Save grading result
-  saveGrading(skillName: string, runDir: string, grading: GradingResult): SkillToolResult {
+  saveGrading(_skillName: string, runDir: string, grading: GradingResult): SkillToolResult {
     const gradingPath = join(runDir, 'grading.json');
 
     try {

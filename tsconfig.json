@@ -15,6 +15,8 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "jsx": "react-jsx",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "paths": {
       "@/*": ["./src/*"],
       "@infra/*": ["./src/infra/*"],

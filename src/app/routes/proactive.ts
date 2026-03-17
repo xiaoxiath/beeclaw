@@ -60,7 +60,7 @@ async function getTenantAccessToken(): Promise<string> {
     }),
   });
 
-  const data = await response.json() as any;
+  const data = await response.json();
 
   if (data.code !== 0) {
     throw new Error(`Failed to get tenant access token: ${data.msg}`);

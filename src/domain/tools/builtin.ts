@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'fs';
-import { join, resolve, dirname, basename, extname } from 'path';
+import { join, resolve, dirname, basename } from 'path';
 import { create, all } from 'mathjs';
 import { parse as parseShell } from 'shell-quote';
 import { logger } from '../../infra/observability/logger';
@@ -15,15 +15,12 @@ import type { MemoryToolResult } from '../memory/types';
 import {
   getSearchOrchestrator,
   getContentExtractor,
-  SearchRegion,
-  type SearchConfig,
+  SearchRegion
 } from '../search';
 import {
   getFinanceOrchestrator,
 } from './categories/finance';
 import {
-  spawnSubagentTool,
-  spawnParallelTool,
   type SpawnSubagentParams,
   type SpawnParallelParams,
 } from '../subagent/tools';
@@ -63,8 +60,7 @@ import {
 } from '../subagent/state-executor';
 import {
   requestDeepAnalysisTool,
-  executeRequestDeepAnalysis,
-  isDeepAnalysisTool,
+  executeRequestDeepAnalysis
 } from './deep-analysis';
 import {
   updateUserSettingsTool,
@@ -87,7 +83,6 @@ import {
 // Tool result type
 import {
   sandboxTools,
-  sandboxToolNames,
   executeSandboxTool,
 } from '../sandbox/tools';
 import {
@@ -1175,9 +1170,6 @@ export async function executeQrCode(params: Record<string, unknown>): Promise<Bu
 // ============================================================================
 // Claude Code Tool
 // ============================================================================
-
-import { $ } from 'bun';
-
 export const ClaudeCodeSchema = z.object({
   prompt: z.string().describe('The task or prompt to send to Claude Code'),
   working_dir: z.string().optional().describe('Working directory for the task (default: current directory)'),
@@ -1356,7 +1348,7 @@ interface ResearchSource {
   source?: string;
 }
 
-interface ResearchFinding {
+interface _ResearchFinding {
   aspect: string;
   keyFacts: string[];
   sources: ResearchSource[];
@@ -2252,7 +2244,7 @@ export async function executeStateSetTool(params: Record<string, unknown>): Prom
   return executeStateList(params as StateListParams);
  }
 
- export async function executeStateStatsTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+ export async function executeStateStatsTool(_params: Record<string, unknown>): Promise<BuiltinToolResult> {
   return executeStateStats();
  }
 

@@ -12,19 +12,8 @@ import { getTaskManager } from './manager';
 
 // Re-export commonly used types
 import type {
-  QueueName,
-  JobOptions,
   JobResult,
-  QueueStats,
-  QueueConfig,
-  TaskType,
-  SkillJobData,
-  SearchJobData,
-  ReminderJobData,
-  ReportJobData,
-  EvalJobData,
-  CleanupJobData,
-  AnalysisJobData,
+  QueueStats
 } from './types';
 
 /**

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { MemoryStore } from '../store';
 

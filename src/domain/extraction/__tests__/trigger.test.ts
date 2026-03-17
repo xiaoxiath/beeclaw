@@ -11,8 +11,6 @@ import {
   resetExtractionTrigger,
 } from '../trigger';
 import type { ChatMessage } from '../../agent/types';
-import { DEFAULT_EXTRACTION_CONFIG } from '../types';
-
 describe('ExtractionTrigger', () => {
   let trigger: ExtractionTrigger;
 

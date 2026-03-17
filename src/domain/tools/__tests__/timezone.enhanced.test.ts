@@ -4,7 +4,7 @@
  * Comprehensive tests for timezone resolution and caching
  */
 
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import {
   getTimezoneFromLocation,
   resolveUserTimezone,

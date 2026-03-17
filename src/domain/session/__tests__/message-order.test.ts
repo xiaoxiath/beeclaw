@@ -4,9 +4,9 @@
  * These tests verify that the recovery system doesn't cause message ordering issues
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 import { detectUnansweredSessions, type RecoveryConfig } from '../recovery';
-import type { Session, SessionMessage } from '../index';
+import type { Session } from '../index';
 
 const defaultConfig: RecoveryConfig = {
   enabled: true,

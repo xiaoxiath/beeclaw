@@ -11,7 +11,6 @@
  * - Post-turn validation: verifies that skill steps were followed completely
  * - Output completeness guard: detects truncated/summarized skill outputs
  */
-import Anthropic from '@anthropic-ai/sdk';
 import type { Logger } from '../../infra/observability/logger';
 import { getSkillStore, type Skill } from './store';
 

@@ -6,7 +6,7 @@
  */
 
 import type { ContentBlock } from '../../../types/content-block';
-import { renderMessageCard, renderEmptyCard, type Card } from './message-renderer';
+import { renderMessageCard } from './message-renderer';
 import type { FeishuWSClient } from '../ws-client';
 
 /**

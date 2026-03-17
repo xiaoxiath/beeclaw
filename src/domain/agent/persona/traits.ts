@@ -9,7 +9,7 @@
  * 5. Made threshold boundaries configurable
  */
 
-import type { MBTI, OCEAN, LinguisticStyle, TraitsProfile, Motivation } from './types';
+import type { MBTI, OCEAN, LinguisticStyle, TraitsProfile } from './types';
 
 // ============================================================
 // MBTI Utilities
@@ -138,7 +138,7 @@ export const OCEAN_DESCRIPTIONS = {
   },
 } as const;
 
-export function getOCEANLevel(trait: keyof OCEAN, value: number): 'high' | 'medium' | 'low' {
+export function getOCEANLevel(_trait: keyof OCEAN, value: number): 'high' | 'medium' | 'low' {
   if (value >= 0.66) return 'high';
   if (value >= 0.33) return 'medium';
   return 'low';

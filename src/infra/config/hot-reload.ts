@@ -247,7 +247,7 @@ export class ConfigWatcher {
    */
   private buildDiff(
     oldConfig: AppConfig | null,
-    newConfig: AppConfig,
+    _newConfig: AppConfig,
     changes: ConfigChange[],
   ): ConfigDiff {
     const added: ConfigChange[] = [];

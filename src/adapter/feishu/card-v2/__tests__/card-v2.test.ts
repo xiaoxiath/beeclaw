@@ -2,7 +2,6 @@ import { describe, test, expect } from 'bun:test';
 import {
   CardSchema,
   CardConfigSchema,
-  CardBodySchema,
   createCard,
   createStreamingConfig,
   createCardBody,

@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { rmSync, existsSync, readFileSync, readdirSync } from 'fs';
+import { rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { GoalStore, getGoalStore, resetGoalStore } from '../store';
 import { executeGoalTool } from '../tools';
-import type { GoalFilter, CreateGoalOptions } from '../types';
+import type { CreateGoalOptions } from '../types';
 
 const TEST_GOAL_PATH = './test-goal-data';
 

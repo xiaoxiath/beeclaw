@@ -16,7 +16,7 @@
 
 import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from './types';
-import { estimateTokens, estimateMessageTokens, estimateTotalTokens } from './context';
+import { estimateTokens, estimateTotalTokens } from './context';
 import { callAI } from './api';
 import { logger } from '../../infra/observability/logger';
 
@@ -363,7 +363,7 @@ export async function graduatedCompress(
       }
 
       logger.info(`[GraduatedCompressor] Summary updated, ${result.extractedFacts.length} new facts extracted`);
-    } catch (error) {
+    } catch (_error) {
       logger.warn('[GraduatedCompressor] Summarization failed, using fallback');
       newSummary = existingSummary
         ? `${existingSummary}\n\n${ruleBasedExtract(messagesToSummarize)}`

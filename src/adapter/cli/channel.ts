@@ -21,7 +21,7 @@ export class CLIChannel implements MessageChannel {
 
   async postMessage(
     content: MessageContent,
-    options?: PostMessageOptions
+    _options?: PostMessageOptions
   ): Promise<MessageResult> {
     try {
       const text = this.contentToString(content);

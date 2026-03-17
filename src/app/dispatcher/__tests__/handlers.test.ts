@@ -4,7 +4,7 @@
  * Validates that cron tasks are correctly dispatched to job handlers
  */
 
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, mock } from 'bun:test';
 import type { Task } from '../types';
 import type { ProactiveJobData } from '../../../domain/proactive/types';
 

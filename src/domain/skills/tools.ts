@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SkillToolResult, MaturityAssessment, SkillEvals, GradingResult, BenchmarkResult } from './types';
+import type { SkillToolResult, SkillEvals } from './types';
 import { getSkillStore } from './store';
 
 // Tool parameter schemas

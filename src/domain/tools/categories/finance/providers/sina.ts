@@ -69,7 +69,7 @@ export class SinaProvider extends FinanceDataProvider {
     }
   }
 
-  private parseQuotes(responseText: string, symbols: string[]): StockQuote[] {
+  private parseQuotes(responseText: string, _symbols: string[]): StockQuote[] {
     const quotes: StockQuote[] = [];
 
     // Parse Sina's response format:
@@ -113,7 +113,7 @@ export class SinaProvider extends FinanceDataProvider {
   // Stock History (Not supported by Sina)
   // ============================================================================
 
-  async getHistory(request: StockHistoryRequest): Promise<StockHistory> {
+  async getHistory(_request: StockHistoryRequest): Promise<StockHistory> {
     // Sina doesn't provide historical K-line data via public API
     throw new Error('Sina does not support historical K-line data');
   }

@@ -57,7 +57,7 @@ export class ContentExtractor {
         return text.slice(0, maxLength);
       }
 
-      let html = await response.text();
+      const html = await response.text();
       return this.htmlToMarkdown(html, maxLength, options?.includeImages);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {

@@ -190,7 +190,7 @@ export async function exampleChatLoop(
 
       // 3. LLM 调用（示例 - 实际使用时需要替换为真实的 LLM 调用）
       const llmResponse = await ctx.timeout.wrapLLMCall(
-        async (signal) => {
+        async (_signal) => {
           // 这里应该是实际的 LLM 调用
           return {
             content: 'This is a sample response',
@@ -235,7 +235,7 @@ export async function exampleChatLoop(
 
       const batchSummary = await ctx.executor.executeBatch(
         toolRequests,
-        async (name, args, signal) => {
+        async (name, _args, _signal) => {
           ctx.monitor.recordToolCall(name);
           const startTime = Date.now();
 

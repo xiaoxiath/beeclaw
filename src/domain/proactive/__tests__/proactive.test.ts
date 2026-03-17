@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { rmSync, existsSync } from 'fs';
 import { Scheduler, getScheduler, resetScheduler } from '../scheduler';
-import { evaluateCondition, type TriggerContext } from '../triggers';
+import { evaluateCondition } from '../triggers';
 
 const TEST_PROACTIVE_PATH = './test-proactive-data';
 
