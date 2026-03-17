@@ -300,7 +300,7 @@ export class ResearchProgressEmitter {
  * 前端可根据 `<!-- research-progress:... -->` 标记解析进度。
  */
 export function formatProgressForStream(event: ResearchProgressEvent): string {
-  const pct = Math.round(event.progress * 100);
+  const _pct = Math.round(event.progress * 100);
   const phaseEmoji: Record<string, string> = {
     planning: '📋', searching: '🔍', fetching: '📥', analyzing: '🔬',
     synthesizing: '🧠', refining: '🔄', finalizing: '📝',

@@ -23,7 +23,7 @@ export default new Hono()
       // Get agent stats if available
       let tokenUsage = 0;
       try {
-        const agent = getAgent();
+        const _agent = getAgent();
         // Agent might have token stats in the future
         // For now, we'll return 0
         tokenUsage = 0;

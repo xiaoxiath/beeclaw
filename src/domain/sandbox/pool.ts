@@ -256,7 +256,7 @@ export class ContainerPool {
     const idleTimeout = this.config.docker.idleTimeout;
 
     // Mark stale containers
-    for (const [id, pooled] of this.pool.entries()) {
+    for (const [_id, pooled] of this.pool.entries()) {
       if (pooled.status === 'idle' && (now - pooled.lastUsedAt) > idleTimeout) {
         pooled.status = 'stale';
       }

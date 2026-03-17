@@ -242,7 +242,7 @@ export class EastmoneyProvider extends FinanceDataProvider {
 
     const reportType = request.report_type;
     const period = request.period || 'annual';
-    const limit = Math.min(request.limit || 4, 8);
+    const _limit = Math.min(request._limit || 4, 8);
 
     // Eastmoney financial API
     // Report types: RPT_LICO_FN_CPD (income), RPT_DMSK_FN_BALANCE (balance), RPT_DMSK_FN_CASHFLOW (cashflow)
@@ -274,7 +274,7 @@ export class EastmoneyProvider extends FinanceDataProvider {
         throw new Error(`Eastmoney API error: ${response.status}`);
       }
 
-      const result = await response.json() as {
+      const _result = await response.json() as {
         data?: {
           klines?: string[];
           datelist?: string[];

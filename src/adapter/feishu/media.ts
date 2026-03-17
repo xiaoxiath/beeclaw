@@ -12,7 +12,7 @@ const logger = getLogger('feishu:media');
 
 // Supported image types
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.tiff', '.bmp', '.ico'];
-const IMAGE_MIME_TYPES: Record<string, string> = {
+const _IMAGE_MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
@@ -25,7 +25,7 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 
 // Supported file types
 const FILE_EXTENSIONS = ['.opus', '.mp4', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.stream'];
-const FILE_MIME_TYPES: Record<string, string> = {
+const _FILE_MIME_TYPES: Record<string, string> = {
   '.opus': 'audio/opus',
   '.mp4': 'video/mp4',
   '.pdf': 'application/pdf',

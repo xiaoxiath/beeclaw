@@ -9,7 +9,7 @@ import type { SkillJobData } from '../../../infra/queue/types';
 import { getSkillStore } from '../../../domain/skills';
 
 export async function handleSkillJob(job: Job<SkillJobData>): Promise<unknown> {
-  const { skillName, action, params, sessionId } = job.data;
+  const { skillName, action, params, _sessionId } = job.data;
 
   console.log(`[Worker:skill] Executing skill: ${skillName}.${action}`);
 

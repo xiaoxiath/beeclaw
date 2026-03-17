@@ -94,6 +94,7 @@ function isBinaryContent(text: string): boolean {
   if (/^[A-Za-z0-9+/=]{100,}$/.test(text.trim())) return true;
 
   // 高密度不可打印字符
+  // eslint-disable-next-line no-control-regex
   const nonPrintable = (text.match(/[\x00-\x1F\x7F-\x9F]/g) || []).length;
   if (text.length > 100 && nonPrintable / text.length > 0.1) return true;
 

@@ -71,7 +71,7 @@ async function main() {
   });
 
   // Initialize app (unified initialization)
-  const { config, provider, model } = await initApp({
+  const { config, _provider, _model } = await initApp({
     daemon: args.includes('--daemon'),
     enableRecovery: true,
   });

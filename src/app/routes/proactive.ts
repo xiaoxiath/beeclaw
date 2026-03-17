@@ -24,7 +24,7 @@ const deduplicator = new MessageDeduplicator({
 });
 
 // Reference to shutdown manager
-const shutdownManager = GracefulShutdown.getInstance({ installSignalHandlers: false });
+const _shutdownManager = GracefulShutdown.getInstance({ installSignalHandlers: false });
 
 // Bot start time - only process messages sent after this time
 const botStartTime = Date.now();

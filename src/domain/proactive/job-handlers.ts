@@ -441,7 +441,7 @@ export async function handleSendReminderJob(
   }
 ): Promise<void> {
   const client = options?.getFeishuClient?.();
-  const { channel, chatId, userId } = getPushTarget(job.params, client);
+  const { _channel, chatId, _userId } = getPushTarget(job.params, client);
   
   if (chatId && job.params?.message) {
     if (client) {

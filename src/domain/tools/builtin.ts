@@ -262,6 +262,7 @@ export async function executeWebFetch(params: Record<string, unknown>): Promise<
     if (format === 'text') {
       // Strip markdown formatting for plain text
       const text = content
+        // eslint-disable-next-line no-useless-escape
         .replace(/[#*`_\[\]]/g, '')
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .replace(/```[\s\S]*?```/g, match => match.replace(/```\n?/g, ''));
@@ -1236,27 +1237,29 @@ export async function executeClaudeCode(params: Record<string, unknown>): Promis
     cmd += ` '${escapedPrompt}'`;
 
     // Execute using Bun's shell
-    const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>(async (resolve) => {
+    const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
       const timer = setTimeout(() => {
         resolve({ stdout: '', stderr: 'Timeout reached', exitCode: 124 });
       }, timeout);
 
-      try {
-        const proc = Bun.spawn(['bash', '-c', cmd], {
-          cwd: working_dir || process.cwd(),
-          env: { ...process.env, CLAUDECODE: undefined },
-        });
+      (async () => {
+        try {
+          const proc = Bun.spawn(['bash', '-c', cmd], {
+            cwd: working_dir || process.cwd(),
+            env: { ...process.env, CLAUDECODE: undefined },
+          });
 
-        const stdout = await new Response(proc.stdout).text();
-        const stderr = await new Response(proc.stderr).text();
-        const exitCode = await proc.exited;
+          const stdout = await new Response(proc.stdout).text();
+          const stderr = await new Response(proc.stderr).text();
+          const exitCode = await proc.exited;
 
-        clearTimeout(timer);
-        resolve({ stdout, stderr, exitCode });
-      } catch (err) {
-        clearTimeout(timer);
-        resolve({ stdout: '', stderr: err instanceof Error ? err.message : 'Unknown error', exitCode: 1 });
-      }
+          clearTimeout(timer);
+          resolve({ stdout, stderr, exitCode });
+        } catch (err) {
+          clearTimeout(timer);
+          resolve({ stdout: '', stderr: err instanceof Error ? err.message : 'Unknown error', exitCode: 1 });
+        }
+      })();
     });
 
     if (result.exitCode === 124) {

@@ -221,7 +221,7 @@ export default new Hono()
     memoryPath = memoryPath.replace(/^\//, '');
     console.log('[Memory API] DELETE /*', memoryPath);
 
-    const store = getMemoryStore();
+    const _store = getMemoryStore();
 
     try {
       // Note: Memory store doesn't have a delete method in the current implementation

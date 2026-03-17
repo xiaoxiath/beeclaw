@@ -9,7 +9,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
-  const location = useLocation();
+  const _location = useLocation();
 
   useEffect(() => {
     checkAuth();

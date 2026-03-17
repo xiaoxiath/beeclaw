@@ -321,7 +321,7 @@ export async function fetchWeatherInfo(location?: string): Promise<WeatherInfo |
     // Find the closest hour
     const now = new Date();
     const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
+    const _currentMinute = now.getMinutes();
 
     // API returns data starting from the next hour or current hour
     // Find the entry that matches current time best

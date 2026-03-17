@@ -176,7 +176,7 @@ export class SkillEnforcementEngine {
    */
   recordToolCall(toolName: string, _toolInput: Record<string, unknown>): void {
     // Track which skill tools are being called
-    for (const [traceId, trace] of this.executionTraces) {
+    for (const [_traceId, trace] of this.executionTraces) {
       const skill = getSkillStore()?.get(trace.skillId);
       if (skill && skill.tools && skill.tools.includes(toolName)) {
         trace.toolCallsMade.push(toolName);

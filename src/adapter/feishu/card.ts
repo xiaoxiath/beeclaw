@@ -7,7 +7,7 @@
 import { getLogger } from '../../infra/observability/logger';
 import { sendCardMessage } from './send';
 
-const logger = getLogger('feishu:card');
+const _logger = getLogger('feishu:card');
 
 /**
  * Card builder for creating interactive cards

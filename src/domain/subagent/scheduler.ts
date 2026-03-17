@@ -40,7 +40,7 @@ export class DAGScheduler {
   getReadyTasks(): SubTask[] {
     const ready: SubTask[] = [];
 
-    for (const [id, state] of this.taskStates) {
+    for (const [_id, state] of this.taskStates) {
       if (state.status !== 'pending') {
         continue;
       }

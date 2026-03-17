@@ -121,7 +121,7 @@ function prompt(query: string): Promise<string> {
     const handler = (data: Buffer) => {
       const str = data.toString('utf8');
       const now = Date.now();
-      const timeSinceLastInput = now - lastInputTime;
+      const _timeSinceLastInput = now - lastInputTime;
       lastInputTime = now;
 
       // Detect paste: large chunk (>30 chars)
@@ -1441,7 +1441,7 @@ async function main(): Promise<void> {
   }
 
   // Get agent configuration
-  const agentConfig = config.agents[0];
+  const _agentConfig = config.agents[0];
   const useTools = !args.includes('--no-tools');
 
   try {

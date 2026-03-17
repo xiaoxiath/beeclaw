@@ -131,7 +131,7 @@ export class SessionMessageQueue {
   }
 
   async drainAll(timeoutMs: number = 30_000): Promise<void> {
-    for (const [sessionId, queue] of this.queues.entries()) {
+    for (const [_sessionId, queue] of this.queues.entries()) {
       for (const entry of queue) {
         entry.reject(new Error('[SessionQueue] Shutting down — message dropped.'));
       }

@@ -91,7 +91,7 @@ export function scoreMessageImportance(
     let score = 50; // Base score
     const reasons: string[] = [];
     const content = typeof msg.content === 'string' ? msg.content : '';
-    const lowerContent = content.toLowerCase();
+    const _lowerContent = content.toLowerCase();
 
     // --- Positive signals ---
 

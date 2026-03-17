@@ -1841,7 +1841,7 @@ export function createAgent(options: {
   }
 
   // Merge params with legacy options (params take precedence)
-  const mergedOptions = {
+  const _mergedOptions = {
     ...options,
     temperature: options.params?.temperature ?? options.temperature,
     topP: options.params?.top_p ?? options.topP,

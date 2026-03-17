@@ -380,7 +380,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   }
 
   // 9.8. Initialize hook system (built-in hooks)
-  const hookRunner = getHookRunner();
+  const _hookRunner = getHookRunner();
 
   // 9.9. Load plugins (OpenClaw-compatible)
   if (config.plugins?.enabled !== false) {

@@ -186,7 +186,7 @@ const RETRYABLE_TYPES = new Set<UnifiedErrorType>([
 ]);
 
 /** 可重试的 HTTP 状态码 */
-const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const _RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
 /**
  * 统一错误分类器

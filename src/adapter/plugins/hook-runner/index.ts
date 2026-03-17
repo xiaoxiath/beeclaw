@@ -78,7 +78,7 @@ export function createHookRunner(
     await Promise.allSettled(
       registrations.map(async (reg) => {
         try {
-          const promise = (reg.handler as Function)(event);
+          const promise = (reg.handler as (...args: any[]) => any)(event);
           if (promise instanceof Promise) {
             await Promise.race([
               promise,
@@ -109,7 +109,7 @@ export function createHookRunner(
 
     for (const reg of registrations) {
       try {
-        const result = await (reg.handler as Function)(current);
+        const result = await (reg.handler as (...args: any[]) => any)(current);
         if (result != null) {
           current = mergeStrategy === 'deep'
             ? deepMerge(current as any, result)
@@ -138,7 +138,7 @@ export function createHookRunner(
 
     for (const reg of registrations) {
       try {
-        const result = (reg.handler as Function)(current);
+        const result = (reg.handler as (...args: any[]) => any)(current);
         if (result != null) {
           current = mergeStrategy === 'deep'
             ? deepMerge(current as any, result)

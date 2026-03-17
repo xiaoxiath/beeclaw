@@ -72,7 +72,7 @@ export default new Hono()
         const agent = getAgent();
 
         // Collect tool calls during streaming
-        const collectedToolCalls: any[] = [];
+        const _collectedToolCalls: any[] = [];
 
         console.log('[Chat API] Calling agent.chat()');
         const fullResponse = await agent.chat(message, {

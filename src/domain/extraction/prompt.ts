@@ -177,9 +177,9 @@ const SENSITIVE_PATTERNS: Array<{
   label: string;
 }> = [
   // API keys (common formats)
-  { type: 'api_key', pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*["']?[A-Za-z0-9_\-]{20,}["']?/i, label: 'API Key' },
+  { type: 'api_key', pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*["']?[A-Za-z0-9_-]{20,}["']?/i, label: 'API Key' },
   { type: 'api_key', pattern: /sk-[A-Za-z0-9]{32,}/i, label: 'OpenAI API Key' },
-  { type: 'api_key', pattern: /AIza[A-Za-z0-9_\-]{35}/i, label: 'Google API Key' },
+  { type: 'api_key', pattern: /AIza[A-Za-z0-9_-]{35}/i, label: 'Google API Key' },
   { type: 'api_key', pattern: /ghp_[A-Za-z0-9]{36}/i, label: 'GitHub Personal Access Token' },
 
   // Passwords
@@ -190,7 +190,7 @@ const SENSITIVE_PATTERNS: Array<{
   { type: 'private_key', pattern: /-----BEGIN\s+(?:EC\s+)?PRIVATE\s+KEY-----/i, label: 'EC Private Key' },
 
   // Tokens
-  { type: 'token', pattern: /(?:bearer|token|access_token|refresh_token)\s*[:=]\s*["']?[A-Za-z0-9_\-\.]{20,}["']?/i, label: 'Auth Token' },
+  { type: 'token', pattern: /(?:bearer|token|access_token|refresh_token)\s*[:=]\s*["']?[A-Za-z0-9_.\-]{20,}["']?/i, label: 'Auth Token' },
   { type: 'token', pattern: /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/i, label: 'JWT Token' },
 
   // Credit card numbers (basic Luhn-eligible patterns)

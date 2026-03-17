@@ -7,7 +7,7 @@ import { cn } from '../lib/utils';
 
 export default function Skills() {
   const [search, setSearch] = useState('');
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [_selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   // Fetch skills
