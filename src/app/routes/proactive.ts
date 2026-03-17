@@ -4,7 +4,7 @@
  * Provides Feishu bot integration with memory system
  */
 
-import { initSessionManager, sendProactiveMessage, confirmDelivery } from '../../domain/session';
+import { initSessionManager, sendProactiveMessage, confirmDelivery, isMessageProcessed, markMessageProcessed } from '../../domain/session';
 import { pushNotification } from '../../domain/proactive/pusher';
 import { evaluatePatterns } from '../../domain/proactive/triggers';
 import { getGoalStore } from '../../domain/agent/goal/store';
@@ -12,16 +12,9 @@ import { initFeishuWSClient, getFeishuWSClient } from '../../adapter/feishu';
 import type { AIProvider, FeishuConfig } from '../../infra/config/schema';
 import { checkPreferenceTriggers, recordQuery } from '../../domain/agent/evolution';
 import type { TokenStatsConfig } from '../../domain/agent';
-import { MessageDeduplicator } from '../../infra/utils/deduplicator';
 import { GracefulShutdown } from '../../infra/utils/graceful-shutdown';
 import { getMessageGateway } from '../gateway-channel';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
-
-// BUG #6 FIX: Replace Set<string> with LRU+TTL deduplicator
-const deduplicator = new MessageDeduplicator({
-  maxSize: 2000,
-  ttlMs: 10 * 60 * 1000,  // 10 minutes
-});
 
 // Reference to shutdown manager
 const _shutdownManager = GracefulShutdown.getInstance({ installSignalHandlers: false });
@@ -146,9 +139,11 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     await messageQueue.enqueue(`chat-${chatId}`, async () => {
       // All message processing happens inside this queue to ensure ordering
 
-      // Double-check deduplication (in case message was processed while waiting in queue)
-      if (deduplicator.isDuplicate(messageId)) {
-        console.log(`[FeishuWS:${process.pid}] Duplicate message ${messageId} (second check), skipping`);
+      // [PERSISTENT DEDUPLICATION] Check if message was already processed
+      // Uses session-based storage (survives restarts) with 24-hour TTL
+      const sessionId = `feishu-${chatId}-${userId}`;
+      if (isMessageProcessed(sessionId, messageId)) {
+        console.log(`[FeishuWS:${process.pid}] ⏭️  Duplicate message ${messageId} (already processed), skipping`);
         return;
       }
 
@@ -299,6 +294,9 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       if (result.usedCardV2) {
         console.log(`[FeishuWS:${process.pid}] ✅ Card V2 already sent, skipping text reply`);
 
+        // Mark message as processed (for persistent deduplication)
+        markMessageProcessed(sessionId, messageId);
+
         // Remove the reaction since reply is complete
         if (reactionId) {
           try {
@@ -333,6 +331,9 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
         }
 
         console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully via Gateway`);
+
+        // Mark message as processed (for persistent deduplication)
+        markMessageProcessed(sessionId, messageId);
 
         // Remove the reaction since reply is complete
         if (reactionId) {

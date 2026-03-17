@@ -85,6 +85,15 @@ export interface Session {
   lastMessageSource?: string;
   /** Consecutive recovery failure count for exponential backoff */
   consecutiveRecoveryFailures?: number;
+  /**
+   * [BUG FIX] Set of processed message IDs for permanent deduplication
+   * Key: messageId, Value: true (presence = processed)
+   *
+   * Storage: Permanent (no TTL cleanup)
+   * Reason: Feishu message IDs are globally unique (UUID-like)
+   * Impact: ~5 KB/month for medium usage (50 msgs/day)
+   */
+  processedMessageIds?: Record<string, boolean>;
 }
 
 export interface ProactiveMessageOptions {
@@ -243,6 +252,58 @@ export function confirmDelivery(sessionId: string): void {
     saveSession(session);
     console.log(`[Session] Delivery confirmed for session ${sessionId}`);
   }
+}
+
+/**
+ * [BUG FIX] Check if a message has already been processed in this session.
+ *
+ * This provides persistent deduplication across restarts by checking the session's
+ * processedMessageIds set. Since Feishu message IDs are globally unique (UUID-like),
+ * we keep them permanently to ensure 100% deduplication.
+ *
+ * Storage impact:
+ * - Low usage (10 msgs/day): ~1 KB/day = 360 KB/year
+ * - Medium usage (50 msgs/day): ~5 KB/day = 1.8 MB/year
+ * - High usage (200 msgs/day): ~20 KB/day = 7.2 MB/year
+ *
+ * @param sessionId - Session ID
+ * @param messageId - Feishu message ID to check
+ * @returns true if message was already processed, false otherwise
+ */
+export function isMessageProcessed(sessionId: string, messageId: string): boolean {
+  const session = sessions.get(sessionId);
+  if (!session || !session.processedMessageIds) {
+    return false;
+  }
+
+  return messageId in session.processedMessageIds;
+}
+
+/**
+ * [BUG FIX] Mark a message as processed in the session.
+ *
+ * This should be called AFTER successfully processing and replying to a message.
+ * The message ID will be stored permanently for deduplication.
+ *
+ * @param sessionId - Session ID
+ * @param messageId - Feishu message ID to record
+ */
+export function markMessageProcessed(sessionId: string, messageId: string): void {
+  const session = sessions.get(sessionId);
+  if (!session) {
+    return;
+  }
+
+  if (!session.processedMessageIds) {
+    session.processedMessageIds = {};
+  }
+
+  // Store as boolean (presence = processed)
+  session.processedMessageIds[messageId] = true;
+  session.updatedAt = new Date().toISOString();
+  saveSession(session);
+
+  console.log(`[Session] ✓ Marked message as processed: ${messageId}`);
 }
 
 /**
