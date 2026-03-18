@@ -52,7 +52,7 @@ The `initApp()` function is the single entry point for both CLI and Bot modes:
 ### Skills System (`src/domain/skills/`)
 - Markdown files with YAML frontmatter in `skills/` directory
 - Maturity levels: seed, growing, mature, deprecated
-- Tools: `skill_list`, `skill_get`, `skill_create`, `skill_update`
+- Tools: `skill_list`, `skill_get`, `skill_ensure`
 
 ### Session Management (`src/domain/session/`)
 - Sessions stored as JSONL in `data/sessions/`
@@ -63,12 +63,12 @@ The `initApp()` function is the single entry point for both CLI and Bot modes:
 - Independent context for each subagent
 - Shared state for inter-subagent communication
 
-### MCP Integration (`src/domain/mcp/`)
+### MCP Integration (`src/adapter/mcp/`)
 - Configured in `beeclaw.json` under `mcp.servers`
 - Supports stdio transport
 - Tools exposed alongside built-in tools
 
-### Plugin System (`src/domain/plugins/`)
+### Plugin System (`src/adapter/plugins/`)
 - OpenClaw-compatible plugin architecture
 - Hook system for behavior interception
 - Load with `loadPlugins()` during initialization
@@ -82,12 +82,20 @@ src/
 │   ├── memory/   # Memory storage and retrieval
 │   ├── skills/   # Skill system
 │   ├── session/  # Session management
-│   ├── subagent/ # Subagent orchestration
+│   └── subagent/ # Subagent orchestration
+├── adapter/      # External adapters
+│   ├── feishu/   # Feishu bot integration
 │   ├── mcp/      # MCP protocol integration
-│   └── plugins/  # Plugin system
-├── adapter/      # External adapters (Feishu, etc.)
-├── infra/        # Infrastructure (config, logging)
-└── utils/        # Utility functions
+│   ├── plugins/  # Plugin system
+│   ├── cli/      # CLI interface
+│   └── web/      # Web interface
+├── infra/        # Infrastructure
+│   ├── config/   # Configuration
+│   ├── observability/ # Logging & monitoring
+│   ├── queue/    # Job queue
+│   ├── resilience/ # Circuit breaker & retry
+│   └── utils/    # Utility functions
+└── types/        # TypeScript type definitions
 ```
 
 ## Important Patterns

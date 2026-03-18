@@ -167,12 +167,20 @@ export class FastLLMJudge {
   private async callLLM<T>(options: JudgmentOptions<T>): Promise<T> {
     this.stats.llmCalls++;
 
+    const startTime = Date.now();
+
     // 构建 prompt
     const prompt = this.buildPrompt(options.promptTemplate, options.promptVariables);
     const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
 
     // Use maxTokens from options, then instance default, then undefined
     const maxTokens = options.maxTokens ?? this.defaultMaxTokens ?? undefined;
+
+    logger.info(`[FastLLMJudge] Starting LLM call for ${options.taskName}`, {
+      promptLength: prompt.length,
+      maxTokens,
+      temperature: options.temperature ?? this.config.defaultTemperature,
+    });
 
     // 调用 AI
     const response = await callAI({
@@ -182,6 +190,8 @@ export class FastLLMJudge {
       temperature: options.temperature ?? this.config.defaultTemperature,
       maxTokens,
     });
+
+    const llmCallTime = Date.now() - startTime;
 
     // 提取内容
     const content = this.extractContent(response);
@@ -195,7 +205,12 @@ export class FastLLMJudge {
       throw new Error(`Output validation failed for ${options.taskName}`);
     }
 
-    logger.info(`[FastLLMJudge] Judgment completed for ${options.taskName}`);
+    const totalTime = Date.now() - startTime;
+    logger.info(`[FastLLMJudge] Judgment completed for ${options.taskName}`, {
+      llmCallTime: `${llmCallTime}ms`,
+      totalTime: `${totalTime}ms`,
+    });
+
     return validated;
   }
 

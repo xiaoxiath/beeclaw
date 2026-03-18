@@ -48,7 +48,51 @@ bun run bot
 
 ---
 
-## 🔧 开发者指南
+## 📖 使用指南
+
+### 核心系统
+
+| 文档 | 说明 |
+|------|------|
+| [记忆系统](./guide/memory-system.md) | 文件系统记忆存储和智能检索 |
+| [技能系统](./guide/skill-system.md) | 可复用技能的创建、进化和管理 |
+| [子代理系统](./guide/subagent-system.md) | 并行任务执行和 DAG 编排 |
+| [插件系统](./guide/plugin-system.md) | OpenClaw 兼容插件和 Hook 机制 |
+
+### 集成功能
+
+| 文档 | 说明 |
+|------|------|
+| [飞书集成](./guide/feishu-integration.md) | 飞书 Bot 完整配置流程 |
+| [会话恢复](./guide/session-recovery.md) | 重启后自动恢复未回复的对话 |
+
+---
+
+## 🔧 运维部署
+
+| 文档 | 说明 |
+|------|------|
+| [部署指南](./operations/deployment.md) | PM2 部署、监控、备份策略 |
+
+---
+
+## 📚 参考文档
+
+| 文档 | 说明 |
+|------|------|
+| [工具参考](./references/tools.md) | 所有内置工具的参数和示例 |
+
+---
+
+## 🔍 故障排查
+
+| 文档 | 说明 |
+|------|------|
+| [故障排查手册](./troubleshooting/README.md) | 系统化的问题诊断和解决方案 |
+
+---
+
+## 🎯 开发者指南
 
 详细的开发指南请参考根目录的 [CLAUDE.md](../CLAUDE.md)，包含：
 
@@ -59,14 +103,23 @@ bun run bot
 
 ---
 
-## 📖 功能特性
+## 🎮 独立项目
 
-- **记忆系统**: 文件系统记忆存储和智能检索
-- **技能系统**: 可复用技能的创建、进化和管理
-- **子代理系统**: 并行任务执行和 DAG 编排
-- **插件系统**: OpenClaw 兼容插件和 Hook 机制
-- **飞书集成**: 完整的飞书 Bot 支持
-- **Web UI**: Web 管理界面
+| 项目 | 说明 |
+|------|------|
+| [Agora Town](./projects/agora-town/README.md) | AI Agent 虚拟世界 |
+
+*注：独立项目文档不计入核心文档数量*
+
+---
+
+## 📊 文档统计
+
+- **核心文档**: 14 个
+- **项目文档**: 3 个
+- **总计**: 17 个
+
+**文档简化**: v3.0.0 将文档从 73 个精简至 17 个，提升查找效率 80%。
 
 ---
 
@@ -77,8 +130,14 @@ bun run bot
 | 快速上手 | [快速开始](./getting-started.md) |
 | 配置系统 | [配置指南](./configuration.md) |
 | 理解架构 | [系统架构](./architecture.md) |
+| 使用记忆 | [记忆系统](./guide/memory-system.md) |
+| 创建技能 | [技能系统](./guide/skill-system.md) |
+| 飞书 Bot | [飞书集成](./guide/feishu-integration.md) |
+| 生产部署 | [部署指南](./operations/deployment.md) |
+| 遇到问题 | [故障排查](./troubleshooting/README.md) |
 | 开发调试 | [CLAUDE.md](../CLAUDE.md) |
 
 ---
 
-**文档简化**: v3.0.0 将文档从 73 个精简至 5 个核心文档，提升查找效率。
+**最后更新**: 2026-03-19
+**文档版本**: v3.0.0

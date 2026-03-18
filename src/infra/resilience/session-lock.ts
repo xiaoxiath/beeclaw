@@ -9,6 +9,9 @@
  * the same conversation history, producing duplicate/conflicting AI responses.
  *
  * Solution: Per-session FIFO queue with configurable depth and timeout.
+ *
+ * IMPORTANT: maxWaitTime should be >= turn timeout from resilience config
+ * to prevent messages from expiring while the agent is processing a long task.
  */
 
 interface QueueEntry<T = unknown> {
@@ -26,7 +29,7 @@ export interface SessionMessageQueueOptions {
 }
 
 const DEFAULT_MAX_QUEUE_DEPTH = 10;
-const DEFAULT_MAX_WAIT_TIME = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_MAX_WAIT_TIME = 10 * 60 * 1000; // 10 minutes (must be >= turn timeout)
 
 export class SessionMessageQueue {
   private queues = new Map<string, QueueEntry[]>();

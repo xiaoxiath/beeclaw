@@ -35,6 +35,7 @@ import { TieredLLMRouter } from '../infra/ai/tiered-router';
 import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
 import { getSkillStore } from '../domain/skills';
 import { callAI } from '../domain/agent/api';
+import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience-config';
 
 // Adapter layer
 import { initializeMCP, shutdownMCP } from '../adapter/mcp';
@@ -355,6 +356,9 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 3. Default: use agent's model for both vision and text (handled in session/index.ts)
 
   // 7. Initialize SessionManager for unified session management
+  // Get resilience config for timeout alignment
+  const resilienceConfig = resolveConfig('standard');
+
   initSessionManager({
     provider: defaultProvider,
     model,
@@ -364,6 +368,8 @@ export async function initApp(options: InitOptions = {}): Promise<{
     visionConfig: resolvedVisionConfig,
     // Pass resolved params from role + agent configuration
     params: resolvedParams,
+    // Pass resilience config for timeout alignment
+    resilienceConfig,
   });
 
   // 8. Load all persisted sessions

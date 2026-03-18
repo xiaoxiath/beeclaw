@@ -26,6 +26,7 @@ import { getPluginRegistry } from '../../adapter/plugins';
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
+import type { SessionMessageQueueOptions } from '../../infra/resilience/session-lock';
 import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../../infra/utils/atomic-fs';
 import { getDataConnection } from '../../infra/db';
 import { sessions as sessionsTable } from '../../infra/db/schema';
@@ -35,6 +36,7 @@ import { getFeishuWSClient } from '../../adapter/feishu';
 import { getConfig_ } from '../../app';
 import { SmartTimeout } from '../../infra/resilience/smart-timeout';
 import { handleHITLResponse } from './hitl-manager';
+import { resolveConfig, type ResilienceConfig } from '../../infra/config/resilience-config';
 
 export interface SessionOptions {
   sessionId: string;
@@ -210,6 +212,8 @@ export function initSessionManager(config: {
     thinking?: { type: 'enabled' | 'disabled' };
     [key: string]: any;
   };
+  /** Resilience configuration for timeout alignment */
+  resilienceConfig?: ResilienceConfig;
 }): void {
   agentConfig = config;
 
@@ -217,6 +221,27 @@ export function initSessionManager(config: {
   if (!existsSync(sessionConfig.storagePath)) {
     mkdirSync(sessionConfig.storagePath, { recursive: true });
   }
+
+  // Configure SessionMessageQueue with timeout aligned to resilience config
+  // IMPORTANT: maxWaitTime must be >= turn timeout to prevent messages from expiring
+  // while agent is processing long-running tasks
+  const resilience = config.resilienceConfig || resolveConfig('standard');
+  const queueOptions: SessionMessageQueueOptions = {
+    maxQueueDepth: 10,
+    maxWaitTime: Math.max(
+      resilience.timeout.turnTimeoutMs + 60000, // Add 1 minute buffer
+      600000 // At least 10 minutes
+    ),
+  };
+
+  // Reset and reinitialize the queue with correct timeout
+  SessionMessageQueue.resetInstance();
+  SessionMessageQueue.getInstance(queueOptions);
+
+  logger.info(
+    `[SessionManager] Queue configured with maxWaitTime: ${Math.round(queueOptions.maxWaitTime / 1000)}s ` +
+    `(turn timeout: ${Math.round(resilience.timeout.turnTimeoutMs / 1000)}s)`
+  );
 
   // Initialize extraction manager
   if (config.extractionConfig?.enabled !== false) {

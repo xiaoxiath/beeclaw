@@ -69,6 +69,8 @@ agent      → 用户实体（单个）
 | **1** | roles | 模型配置 | ✅ 必需 |
 | **2** | llmRouter | 路由优化 | ⚪ 可选 |
 | **3** | agent | 用户实体 | ✅ 必需 |
+| **4** | toolSelector | 工具选择 | ⚪ 可选 |
+| **5** | user | 用户配置 | ⚪ 可选 |
 
 **→ [详细配置说明](./CONFIGURATION-FINAL.md)** · **[概念说明](./CONFIGURATION-CONCEPTS.md)**
 
@@ -142,7 +144,121 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
   "memory": {...},       // 记忆系统
   "mcp": {...},          // MCP 服务器
   "user": {...},         // 用户配置
-  "logging": {...}       // 日志配置
+  "logging": {...},      // 日志配置
+  "toolSelector": {...}, // 工具选择器
+  "weather": {...},      // 天气服务
+  "hooks": {...},        // 钩子配置
+  "web": {...},          // Web UI
+  "search": {...}        // 搜索配置
+}
+```
+
+---
+
+## 扩展配置
+
+### 工具选择器 (toolSelector)
+
+智能选择工具子集以优化性能：
+
+```json
+{
+  "toolSelector": {
+    "enabled": true,
+    "mode": "hybrid",  // "static" | "hybrid" | "dynamic"
+    "maxTools": 20
+  }
+}
+```
+
+### 用户配置 (user)
+
+个性化用户设置：
+
+```json
+{
+  "user": {
+    "name": "Your Name",
+    "timezone": "Asia/Shanghai",
+    "locale": "zh-CN"
+  }
+}
+```
+
+### 天气服务 (weather)
+
+集成天气查询：
+
+```json
+{
+  "weather": {
+    "enabled": true,
+    "apiHost": "devapi.qweather.com",
+    "apiKey": "${QWEATHER_API_KEY}"
+  }
+}
+```
+
+### 钩子系统 (hooks)
+
+配置事件钩子：
+
+```json
+{
+  "hooks": {
+    "enabled": true,
+    "beforeToolCall": [],
+    "afterToolCall": []
+  }
+}
+```
+
+### Web UI (web)
+
+启用 Web 管理界面：
+
+```json
+{
+  "web": {
+    "enabled": true,
+    "port": 3000,
+    "auth": {
+      "level": "token",
+      "tokens": ["${WEBUI_AUTH_TOKEN}"]
+    }
+  }
+}
+```
+
+### 搜索配置 (search)
+
+网络搜索服务：
+
+```json
+{
+  "search": {
+    "enabled": true,
+    "defaultProvider": "tavily",
+    "providers": {
+      "tavily": {
+        "apiKey": "${TAVILY_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### 日志配置 (logging)
+
+日志级别和输出：
+
+```json
+{
+  "logging": {
+    "level": "info",  // "debug" | "info" | "warn" | "error"
+    "file": "logs/beeclaw.log",
+    "console": true
+  }
 }
 ```
 
@@ -152,9 +268,8 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
 
 | 文档 | 说明 |
 |------|------|
-| [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md) | v6 完整配置指南 |
-| [CONFIGURATION-CONCEPTS.md](./CONFIGURATION-CONCEPTS.md) | 核心概念说明 |
-| [env-vs-config.md](./env-vs-config.md) | 环境变量与配置文件对比 |
+| [完整配置示例](../beeclaw.example.json) | 所有配置字段的完整示例 |
+| [架构设计](./architecture.md) | 系统架构和技术选型 |
 
 ---
 
