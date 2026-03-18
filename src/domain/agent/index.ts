@@ -1013,26 +1013,50 @@ export class Agent {
     if (selectedPattern === 'direct') {
       // Direct 模式：简单问题直接回答，不进入工具循环
       logger.info('[Agent] Using Direct pattern (simple query)');
-      const response = await callAI({
-        provider: this.options.provider,
-        model: this.options.model,
-        messages: this.getMessagesForAPI(),
-        tools: [], // 不使用工具
-        temperature: this.options.temperature,
-        topP: this.options.topP,
-      });
 
-      const content = extractContent(response);
-      this.messages.push({ role: 'assistant', content });
-      this.estimatedTokens += estimateMessageTokens({ role: 'assistant', content });
+      try {
+        logger.info('[Agent] Direct pattern: calling LLM...');
+        const response = await callAI({
+          provider: this.options.provider,
+          model: this.options.model,
+          messages: this.getMessagesForAPI(),
+          tools: [], // 不使用工具
+          temperature: this.options.temperature,
+          topP: this.options.topP,
+        });
 
-      // Generate ContentBlock for Card V2 streaming
-      options?.onContentBlock?.({
-        type: 'text',
-        text: content,
-      });
+        logger.info('[Agent] Direct pattern: LLM call completed, {
+          responseKeys: Object.keys(response || {}),
+          hasChoices: !!response?.choices,
+        });
 
-      return content;
+        const content = extractContent(response);
+
+        if (!content) {
+          logger.warn('[Agent] Direct pattern: extractContent returned empty content');
+        }
+
+        this.messages.push({ role: 'assistant', content });
+        this.estimatedTokens += estimateMessageTokens({ role: 'assistant', content });
+
+        // Generate ContentBlock for Card V2 streaming
+        options?.onContentBlock?.({
+          type: 'text',
+          text: content,
+        });
+
+        logger.info('[Agent] Direct pattern: completed successfully', {
+          contentLength: content?.length || 0
+        });
+
+        return content;
+      } catch (error) {
+        logger.error('[Agent] Direct pattern failed', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      }
     }
 
     if (selectedPattern === 'plan-execute') {

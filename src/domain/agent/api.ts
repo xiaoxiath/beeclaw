@@ -311,5 +311,26 @@ export function extractToolCalls(response: AIResponse): ToolCall[] {
 
 // Extract content from response
 export function extractContent(response: AIResponse): string {
+  if (!response) {
+    logger.error('[API] extractContent called with null/undefined response');
+    throw new Error('Cannot extract content from null response');
+  }
+
+  if (!response.choices || !Array.isArray(response.choices)) {
+    logger.error('[API] extractContent: response.choices is missing or not an array', {
+      hasResponse: !!response,
+      hasChoices: !!response?.choices,
+      isArray: Array.isArray(response?.choices),
+      responseKeys: Object.keys(response || {}),
+      responsePreview: JSON.stringify(response).substring(0, 200),
+    });
+    throw new Error('Invalid response format: missing or invalid choices array');
+  }
+
+  if (response.choices.length === 0) {
+    logger.warn('[API] extractContent: response.choices is empty array');
+    return '';
+  }
+
   return response.choices.map(c => c.message.content || '').join('');
 }
