@@ -13,8 +13,8 @@
 import { logger } from '../../infra/observability/logger';
 import type { OpenAITool, ChatMessage } from './types';
 import { getFastLLMJudge } from './fast-llm-judge';
+import { JudgmentStatsTracker } from './judgment-stats';
 import type { AIProvider } from '../../infra/config/schema';
-import { getConfig_ } from '../../app';
 
 // ---------------------------------------------------------------------------
 // 1. 配置
@@ -22,14 +22,10 @@ import { getConfig_ } from '../../app';
 
 interface ToolSelectorConfig {
   maxTools: number;
-  cacheEnabled: boolean;
-  cacheMaxAge: number;
 }
 
 const DEFAULT_CONFIG: ToolSelectorConfig = {
   maxTools: 30,
-  cacheEnabled: true,
-  cacheMaxAge: 5000, // 5 seconds
 };
 
 /**
@@ -80,27 +76,18 @@ const TOOL_SELECTION_PROMPT = `你是一个工具选择专家，负责从可用�
 export class HybridToolSelector {
   private config: ToolSelectorConfig;
   private provider: AIProvider;
-  private fastModel: string;
   private registeredTools: OpenAITool[] = [];
-  private stats = {
-    totalSelections: 0,
-    cacheHits: 0,
-    llmCalls: 0,
-    errors: 0,
-  };
+  private statsTracker = new JudgmentStatsTracker();
 
   constructor(
     provider: AIProvider,
-    fastModel: string,
     config?: Partial<ToolSelectorConfig>
   ) {
     this.provider = provider;
-    this.fastModel = fastModel;
     this.config = { ...DEFAULT_CONFIG, ...config };
     logger.info('[HybridToolSelector] Initialized', {
       ...this.config,
       provider: provider.type,
-      fastModel,
     });
   }
 
@@ -113,7 +100,7 @@ export class HybridToolSelector {
     maxTools?: number,
   ): Promise<OpenAITool[]> {
     const max = maxTools || this.config.maxTools;
-    this.stats.totalSelections++;
+    this.statsTracker.incrementTotalJudgments();
 
     // Get all available tools
     const allTools = this.getAllRegisteredTools();
@@ -136,7 +123,7 @@ export class HybridToolSelector {
         selectedToolNames.add(name);
       }
     } catch (error) {
-      this.stats.errors++;
+      this.statsTracker.incrementErrors();
       logger.warn('[HybridToolSelector] LLM selection failed, falling back to context', {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -175,7 +162,7 @@ export class HybridToolSelector {
    * 使用 FastLLMJudge 选择工具
    */
   private async selectToolsWithLLM(userMessage: string, maxTools: number): Promise<string[]> {
-    this.stats.llmCalls++;
+    this.statsTracker.incrementLlmCalls();
 
     // Build tool descriptions
     const toolDescriptions = this.registeredTools
@@ -186,11 +173,7 @@ export class HybridToolSelector {
       .join('\n');
 
     // Get FastLLMJudge instance
-    const judge = getFastLLMJudge(this.provider, this.fastModel, {
-      cacheEnabled: this.config.cacheEnabled,
-      cacheSize: 100,
-      defaultTimeout: 2000,
-    });
+    const judge = getFastLLMJudge(this.provider);
 
     // Execute judgment
     const result = await judge.judge<string[]>({
@@ -213,7 +196,6 @@ export class HybridToolSelector {
         return valid.length > 0 ? valid : null;
       },
       defaultValue: [],
-      cacheTTL: this.config.cacheMaxAge,
     });
 
     if (result.failed) {
@@ -223,7 +205,6 @@ export class HybridToolSelector {
     logger.info('[HybridToolSelector] LLM selected tools', {
       count: result.result.length,
       tools: result.result.join(', '),
-      fromCache: result.fromCache,
     });
 
     return result.result;
@@ -260,9 +241,7 @@ export class HybridToolSelector {
    * 获取统计信息
    */
   getStats() {
-    return {
-      ...this.stats,
-    };
+    return this.statsTracker.getStats();
   }
 }
 
@@ -276,12 +255,10 @@ let _selector: HybridToolSelector | null = null;
  * 获取 HybridToolSelector 实例
  *
  * @param provider AI Provider（首次调用时必需）
- * @param fastModel Fast 模型名称（可选，不传则从配置读取）
  * @param config 配置（可选）
  */
 export function getHybridToolSelector(
   provider?: AIProvider,
-  fastModel?: string,
   config?: Partial<ToolSelectorConfig>
 ): HybridToolSelector {
   if (!_selector) {
@@ -289,18 +266,7 @@ export function getHybridToolSelector(
       throw new Error('HybridToolSelector requires provider on first initialization');
     }
 
-    // 从配置读取 fast 模型
-    const config_ = getConfig_();
-    const fastModelFromConfig = config_?.llmRouter?.tiers?.fast?.models?.[0];
-    const resolvedFastModel = fastModel || fastModelFromConfig;
-
-    if (!resolvedFastModel) {
-      throw new Error(
-        'Fast model not specified. Pass fastModel parameter or configure llmRouter.tiers.fast in beeclaw.json'
-      );
-    }
-
-    _selector = new HybridToolSelector(provider, resolvedFastModel, config);
+    _selector = new HybridToolSelector(provider, config);
   }
   return _selector;
 }

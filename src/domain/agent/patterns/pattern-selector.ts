@@ -10,9 +10,9 @@
 
 import { logger } from '@infra/observability/logger';
 import { getFastLLMJudge } from '../fast-llm-judge';
+import { JudgmentStatsTracker } from '../judgment-stats';
 import type { AIProvider } from '@infra/config/schema';
 import type { ChatMessage } from '../types';
-import { getConfig_ } from '../../../app';
 
 // ---------------------------------------------------------------------------
 // 1. 类型定义
@@ -38,16 +38,12 @@ export interface PatternSelectionResult {
 export interface PatternSelectorConfig {
   enabled: boolean;
   logSelection: boolean;
-  cacheEnabled: boolean;
-  cacheSize: number;
   timeout: number;
 }
 
 export const DEFAULT_SELECTOR_CONFIG: PatternSelectorConfig = {
   enabled: true,
   logSelection: true,
-  cacheEnabled: true,
-  cacheSize: 100,
   timeout: 2000, // 2 seconds
 };
 
@@ -108,32 +104,23 @@ const PATTERN_SELECTION_PROMPT = `你是一个任务路由专家，负责分析�
 export class PatternSelector {
   private config: PatternSelectorConfig;
   private provider: AIProvider;
-  private fastModel: string;
-  private stats = {
-    selections: {
-      direct: 0,
-      react: 0,
-      'plan-execute': 0,
-      reflective: 0,
-    },
-    totalSelections: 0,
-    llmCalls: 0,
-    cacheHits: 0,
-    errors: 0,
+  private statsTracker = new JudgmentStatsTracker();
+  private patternCounts = {
+    direct: 0,
+    react: 0,
+    'plan-execute': 0,
+    reflective: 0,
   };
 
   constructor(
     provider: AIProvider,
-    fastModel: string,
     config: Partial<PatternSelectorConfig> = {}
   ) {
     this.provider = provider;
-    this.fastModel = fastModel;
     this.config = { ...DEFAULT_SELECTOR_CONFIG, ...config };
     logger.info('[PatternSelector] Initialized', {
       ...this.config,
       provider: provider.type,
-      fastModel,
     });
   }
 
@@ -154,7 +141,7 @@ export class PatternSelector {
       const result = await this.selectPatternWithLLM(task);
       return result;
     } catch (error) {
-      this.stats.errors++;
+      this.statsTracker.incrementErrors();
       logger.warn('[PatternSelector] LLM selection failed, using default react', {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -172,11 +159,9 @@ export class PatternSelector {
    * 使用 LLM 选择模式
    */
   private async selectPatternWithLLM(task: string): Promise<PatternSelectionResult> {
-    this.stats.llmCalls++;
+    this.statsTracker.incrementLlmCalls();
 
-    const judge = getFastLLMJudge(this.provider, this.fastModel, {
-      cacheEnabled: this.config.cacheEnabled,
-      cacheSize: this.config.cacheSize,
+    const judge = getFastLLMJudge(this.provider, {
       defaultTimeout: this.config.timeout,
     });
 
@@ -203,7 +188,7 @@ export class PatternSelector {
     });
 
     if (result.failed) {
-      this.stats.errors++;
+      this.statsTracker.incrementErrors();
       logger.warn('[PatternSelector] LLM judgment failed', {
         error: result.error,
       });
@@ -211,8 +196,8 @@ export class PatternSelector {
     }
 
     // 更新统计
-    this.stats.selections[result.result.pattern]++;
-    this.stats.totalSelections++;
+    this.patternCounts[result.result.pattern]++;
+    this.statsTracker.incrementTotalJudgments();
 
     if (this.config.logSelection) {
       logger.info('[PatternSelector] Pattern selected by LLM', {
@@ -274,13 +259,17 @@ export class PatternSelector {
    * 获取统计信息
    */
   getStats() {
+    const stats = this.statsTracker.getStats();
+    const total = stats.totalJudgments;
+
     return {
-      ...this.stats,
+      ...stats,
+      selections: { ...this.patternCounts },
       distribution: {
-        direct: `${((this.stats.selections.direct / this.stats.totalSelections) * 100 || 0).toFixed(1)}%`,
-        react: `${((this.stats.selections.react / this.stats.totalSelections) * 100 || 0).toFixed(1)}%`,
-        'plan-execute': `${((this.stats.selections['plan-execute'] / this.stats.totalSelections) * 100 || 0).toFixed(1)}%`,
-        reflective: `${((this.stats.selections.reflective / this.stats.totalSelections) * 100 || 0).toFixed(1)}%`,
+        direct: `${((this.patternCounts.direct / total) * 100 || 0).toFixed(1)}%`,
+        react: `${((this.patternCounts.react / total) * 100 || 0).toFixed(1)}%`,
+        'plan-execute': `${((this.patternCounts['plan-execute'] / total) * 100 || 0).toFixed(1)}%`,
+        reflective: `${((this.patternCounts.reflective / total) * 100 || 0).toFixed(1)}%`,
       },
     };
   }
@@ -304,12 +293,10 @@ let selectorInstance: PatternSelector | null = null;
  * 获取 PatternSelector 实例
  *
  * @param provider AI Provider（首次调用时必需）
- * @param fastModel Fast 模型名称（可选，不传则从配置读取）
  * @param config 配置（可选）
  */
 export function getPatternSelector(
   provider?: AIProvider,
-  fastModel?: string,
   config?: Partial<PatternSelectorConfig>
 ): PatternSelector {
   if (!selectorInstance) {
@@ -317,18 +304,7 @@ export function getPatternSelector(
       throw new Error('PatternSelector requires provider on first initialization');
     }
 
-    // 从配置读取 fast 模型
-    const config_ = getConfig_();
-    const fastModelFromConfig = config_?.llmRouter?.tiers?.fast?.models?.[0];
-    const resolvedFastModel = fastModel || fastModelFromConfig;
-
-    if (!resolvedFastModel) {
-      throw new Error(
-        'Fast model not specified. Pass fastModel parameter or configure llmRouter.tiers.fast in beeclaw.json'
-      );
-    }
-
-    selectorInstance = new PatternSelector(provider, resolvedFastModel, config);
+    selectorInstance = new PatternSelector(provider, config);
   }
   return selectorInstance;
 }

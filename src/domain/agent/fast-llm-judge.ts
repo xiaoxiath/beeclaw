@@ -28,6 +28,26 @@ import { getConfig_ } from '../../app';
 // 1. 类型定义
 // ---------------------------------------------------------------------------
 
+/**
+ * Get fast model name from v6 configuration
+ *
+ * Supports both v6 format (role-based) and legacy format (models array)
+ */
+export function getFastModelFromConfig(): string | undefined {
+  const config = getConfig_();
+  if (!config?.llmRouter?.tiers?.fast) return undefined;
+
+  const fastTier = config.llmRouter.tiers.fast;
+
+  // v6 format: roles[role].model
+  if (fastTier.role && config.roles) {
+    const roleConfig = config.roles[fastTier.role];
+    return roleConfig?.model;
+  }
+
+  return undefined;
+}
+
 export interface JudgmentOptions<T> {
   /** 判断任务名称（用于日志） */
   taskName: string;
@@ -59,10 +79,6 @@ export interface JudgmentResult<T> {
 }
 
 export interface FastLLMJudgeConfig {
-  /** 是否启用缓存 */
-  cacheEnabled: boolean;
-  /** 缓存大小（条目数） */
-  cacheSize: number;
   /** 默认超时（毫秒） */
   defaultTimeout: number;
   /** 默认温度 */
@@ -72,8 +88,6 @@ export interface FastLLMJudgeConfig {
 }
 
 const DEFAULT_CONFIG: FastLLMJudgeConfig = {
-  cacheEnabled: true,
-  cacheSize: 100,
   defaultTimeout: 2000,
   defaultTemperature: 0.1,
   defaultMaxTokens: 500,
@@ -87,11 +101,9 @@ export class FastLLMJudge {
   private provider: AIProvider;
   private fastModel: string;
   private config: FastLLMJudgeConfig;
-  private cache: Map<string, { result: any; timestamp: number }> = new Map();
   private stats = {
     totalJudgments: 0,
     llmCalls: 0,
-    cacheHits: 0,
     errors: 0,
   };
 
@@ -104,9 +116,9 @@ export class FastLLMJudge {
     this.fastModel = fastModel;
     this.config = { ...DEFAULT_CONFIG, ...config };
     logger.info('[FastLLMJudge] Initialized', {
-      ...this.config,
       provider: provider.type,
       fastModel,
+      ...this.config,
     });
   }
 
@@ -116,31 +128,9 @@ export class FastLLMJudge {
   async judge<T>(options: JudgmentOptions<T>): Promise<JudgmentResult<T>> {
     this.stats.totalJudgments++;
 
-    // 生成缓存 key
-    const cacheKey = this.computeCacheKey(options.promptTemplate, options.promptVariables);
-
-    // 检查缓存
-    if (this.config.cacheEnabled && options.cacheTTL !== 0) {
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < (options.cacheTTL || 0)) {
-        this.stats.cacheHits++;
-        logger.debug(`[FastLLMJudge] Cache hit for ${options.taskName}`);
-        return {
-          result: cached.result,
-          fromCache: true,
-          failed: false,
-        };
-      }
-    }
-
     // 调用 LLM
     try {
       const result = await this.callLLM(options);
-
-      // 缓存结果
-      if (this.config.cacheEnabled && options.cacheTTL !== 0) {
-        this.cacheResult(cacheKey, result);
-      }
 
       return {
         result,
@@ -242,47 +232,13 @@ export class FastLLMJudge {
   }
 
   /**
-   * 生成缓存 key
-   */
-  private computeCacheKey(template: string, variables: Record<string, string | number>): string {
-    const sortedVars = Object.entries(variables)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('&');
-    return `${template}::${sortedVars}`;
-  }
-
-  /**
-   * 缓存结果（LRU 淘汰）
-   */
-  private cacheResult(key: string, result: any): void {
-    if (this.cache.size >= this.config.cacheSize) {
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey) {
-        this.cache.delete(firstKey);
-      }
-    }
-    this.cache.set(key, { result, timestamp: Date.now() });
-  }
-
-  /**
    * 获取统计信息
    */
   getStats() {
     return {
       ...this.stats,
-      cacheSize: this.cache.size,
-      cacheHitRate: `${((this.stats.cacheHits / this.stats.totalJudgments) * 100 || 0).toFixed(1)}%`,
       errorRate: `${((this.stats.errors / this.stats.totalJudgments) * 100 || 0).toFixed(1)}%`,
     };
-  }
-
-  /**
-   * 清空缓存
-   */
-  clearCache(): void {
-    this.cache.clear();
-    logger.info('[FastLLMJudge] Cache cleared');
   }
 }
 
@@ -296,12 +252,10 @@ let judgeInstance: FastLLMJudge | null = null;
  * 获取 FastLLMJudge 实例
  *
  * @param provider AI Provider（首次调用时必需）
- * @param fastModel Fast 模型名称（可选，不传则从配置读取）
  * @param config 配置（可选）
  */
 export function getFastLLMJudge(
   provider?: AIProvider,
-  fastModel?: string,
   config?: Partial<FastLLMJudgeConfig>
 ): FastLLMJudge {
   if (!judgeInstance) {
@@ -310,17 +264,15 @@ export function getFastLLMJudge(
     }
 
     // 从配置读取 fast 模型
-    const config_ = getConfig_();
-    const fastModelFromConfig = config_?.llmRouter?.tiers?.fast?.models?.[0];
-    const resolvedFastModel = fastModel || fastModelFromConfig;
+    const fastModel = getFastModelFromConfig();
 
-    if (!resolvedFastModel) {
+    if (!fastModel) {
       throw new Error(
-        'Fast model not specified. Pass fastModel parameter or configure llmRouter.tiers.fast in beeclaw.json'
+        'Fast model not configured. Please configure llmRouter.tiers.fast in beeclaw.json'
       );
     }
 
-    judgeInstance = new FastLLMJudge(provider, resolvedFastModel, config);
+    judgeInstance = new FastLLMJudge(provider, fastModel, config);
   }
   return judgeInstance;
 }

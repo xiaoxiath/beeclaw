@@ -14,8 +14,8 @@ import { logger } from '../../infra/observability/logger';
 import { hybridSearch, SEARCH_PROFILES } from './hybrid-search';
 import { getMemoryStore } from './store';
 import { getFastLLMJudge } from '../agent/fast-llm-judge';
+import { JudgmentStatsTracker } from '../agent/judgment-stats';
 import type { AIProvider } from '../../infra/config/schema';
-import { getConfig_ } from '../../app';
 
 // ---------------------------------------------------------------------------
 // 1. 配置
@@ -76,26 +76,18 @@ const INJECTION_DECISION_PROMPT = `你是一个上下文管理专家，负责判
 export class DynamicMemoryInjector {
   private config: InjectorConfig;
   private provider: AIProvider;
-  private fastModel: string;
-  private stats = {
-    injections: 0,
-    llmCalls: 0,
-    cacheHits: 0,
-    errors: 0,
-  };
+  private statsTracker = new JudgmentStatsTracker();
+  private injections = 0;
 
   constructor(
     provider: AIProvider,
-    fastModel: string,
     config: Partial<InjectorConfig> = {}
   ) {
     this.provider = provider;
-    this.fastModel = fastModel;
     this.config = { ...DEFAULT_CONFIG, ...config };
     logger.info('[DynamicInjector] Initialized', {
       ...this.config,
       provider: provider.type,
-      fastModel,
     });
   }
 
@@ -135,7 +127,7 @@ export class DynamicMemoryInjector {
       // 3. 合并到用户消息
       const enrichedMessage = this.mergeWithMessage(userMessage, injectedContext);
 
-      this.stats.injections++;
+      this.injections++;
       logger.info(`[DynamicInjector] Injected ${memories.length} memories`, {
         contextLength: injectedContext.length,
         originalLength: userMessage.length,
@@ -144,7 +136,7 @@ export class DynamicMemoryInjector {
 
       return enrichedMessage;
     } catch (error) {
-      this.stats.errors++;
+      this.statsTracker.incrementErrors();
       logger.error('[DynamicInjector] Failed to inject memories:', error);
       return userMessage; // 失败时返回原始消息
     }
@@ -158,14 +150,10 @@ export class DynamicMemoryInjector {
     intent: string;
     reasoning: string;
   }> {
-    this.stats.llmCalls++;
+    this.statsTracker.incrementLlmCalls();
 
     // Get FastLLMJudge instance
-    const judge = getFastLLMJudge(this.provider, this.fastModel, {
-      cacheEnabled: true,
-      cacheSize: 50,
-      defaultTimeout: 2000,
-    });
+    const judge = getFastLLMJudge(this.provider);
 
     // Execute judgment
     const result = await judge.judge<{
@@ -197,7 +185,6 @@ export class DynamicMemoryInjector {
         intent: 'general',
         reasoning: 'LLM call failed',
       },
-      cacheTTL: 5000, // 5 seconds
     });
 
     if (result.failed) {
@@ -376,8 +363,10 @@ ${userMessage}`;
    * 获取统计信息
    */
   getStats() {
+    const stats = this.statsTracker.getStats();
     return {
-      ...this.stats,
+      ...stats,
+      injections: this.injections,
       enabled: this.config.enabled,
     };
   }
@@ -401,12 +390,10 @@ let injectorInstance: DynamicMemoryInjector | null = null;
  * 获取 DynamicMemoryInjector 实例
  *
  * @param provider AI Provider（首次调用时必需）
- * @param fastModel Fast 模型名称（可选，不传则从配置读取）
  * @param config 配置（可选）
  */
 export function getDynamicMemoryInjector(
   provider?: AIProvider,
-  fastModel?: string,
   config?: Partial<InjectorConfig>
 ): DynamicMemoryInjector {
   if (!injectorInstance) {
@@ -414,18 +401,7 @@ export function getDynamicMemoryInjector(
       throw new Error('DynamicMemoryInjector requires provider on first initialization');
     }
 
-    // 从配置读取 fast 模型
-    const config_ = getConfig_();
-    const fastModelFromConfig = config_?.llmRouter?.tiers?.fast?.models?.[0];
-    const resolvedFastModel = fastModel || fastModelFromConfig;
-
-    if (!resolvedFastModel) {
-      throw new Error(
-        'Fast model not specified. Pass fastModel parameter or configure llmRouter.tiers.fast in beeclaw.json'
-      );
-    }
-
-    injectorInstance = new DynamicMemoryInjector(provider, resolvedFastModel, config);
+    injectorInstance = new DynamicMemoryInjector(provider, config);
   }
   return injectorInstance;
 }
