@@ -29,7 +29,7 @@ import { getSkillDiscoveryEngine } from '../domain/agent/skill-discovery';
 import { initExtractionManager, type ExtractionManager } from '../domain/extraction';
 import { SandboxManager } from '../domain/sandbox/manager';
 import { listSessions, sendProactiveMessage } from '../domain/session';
-import { recoverUnansweredSessions } from '../domain/session/recovery';
+// import { recoverUnansweredSessions } from '../domain/session/recovery'; // DISABLED: redundant with permanent deduplication
 import { createEmbeddingProvider } from '../domain/memory/embeddings';
 import { TieredLLMRouter } from '../infra/ai/tiered-router';
 import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
@@ -644,30 +644,34 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 11.5. Web server is now started by WebAdapter (not here)
   // See: src/adapter/web/adapter.ts and src/entries/web.ts
 
-  // 11.6. Session recovery (delayed execution)
-  if (options.enableRecovery !== false && process.env.ENABLE_RECOVERY !== 'false') {
-    const recoveryConfig = config.recovery || {
-      enabled: true,
-      maxAge: 300000,  // 5 minutes
-      minAge: 10000,   // 10 seconds
-      channels: ['feishu'],
-      batchSize: 5,
-      delayMs: 2000,
-      startupDelay: 10000,
-    };
-
-    if (recoveryConfig.enabled) {
-      console.log(`   ⏰ Session recovery enabled (delay: ${recoveryConfig.startupDelay / 1000}s)`);
-
-      setTimeout(async () => {
-        await recoverUnansweredSessions(recoveryConfig, {
-          getFeishuClient: getFeishuWSClient,
-          sendProactiveMessage,
-          getAllSessions: () => listSessions(),
-        });
-      }, recoveryConfig.startupDelay);
-    }
-  }
+  // 11.6. Session recovery (DISABLED - permanent deduplication makes this redundant)
+  // NOTE: With permanent session-based message deduplication (commit 2d0d19a),
+  // recovery mechanism is no longer needed and causes duplicate replies.
+  // Feishu message re-delivery is now handled by processedMessageIds deduplication.
+  //
+  // if (options.enableRecovery !== false && process.env.ENABLE_RECOVERY !== 'false') {
+  //   const recoveryConfig = config.recovery || {
+  //     enabled: true,
+  //     maxAge: 300000,  // 5 minutes
+  //     minAge: 10000,   // 10 seconds
+  //     channels: ['feishu'],
+  //     batchSize: 5,
+  //     delayMs: 2000,
+  //     startupDelay: 10000,
+  //   };
+  //
+  //   if (recoveryConfig.enabled) {
+  //     console.log(`   ⏰ Session recovery enabled (delay: ${recoveryConfig.startupDelay / 1000}s)`);
+  //
+  //     setTimeout(async () => {
+  //       await recoverUnansweredSessions(recoveryConfig, {
+  //         getFeishuClient: getFeishuWSClient,
+  //         sendProactiveMessage,
+  //         getAllSessions: () => listSessions(),
+  //       });
+  //     }, recoveryConfig.startupDelay);
+  //   }
+  // }
 
   // 10. Initialize sandbox system
   const sandboxConfig = (config as any).sandbox || {};

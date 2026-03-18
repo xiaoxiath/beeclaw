@@ -209,3 +209,18 @@ describe('isCommandSafe - Security Tests', () => {
     expect(result.reason).toContain('Blocked');
   });
 });
+
+describe('isCommandSafe - CLI Tools', () => {
+  test('should allow feishu-cli commands', () => {
+    expect(isCommandSafe('feishu-cli --help').safe).toBe(true);
+    expect(isCommandSafe('feishu-cli doc --help').safe).toBe(true);
+    expect(isCommandSafe('feishu-cli doc create').safe).toBe(true);
+    expect(isCommandSafe('feishu-cli sheet read').safe).toBe(true);
+  });
+
+  test('should allow feishu-cli with arguments', () => {
+    expect(isCommandSafe('feishu-cli doc list --space-id 123').safe).toBe(true);
+    expect(isCommandSafe('feishu-cli sheet export --output csv').safe).toBe(true);
+    expect(isCommandSafe('feishu-cli bitable list --app-token abc').safe).toBe(true);
+  });
+});

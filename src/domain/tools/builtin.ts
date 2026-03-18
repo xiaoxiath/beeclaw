@@ -1813,6 +1813,8 @@ const ALLOWED_PATTERNS = [
   /^env\s*$/,
   /^uptime\s*$/,
   /^uname\s+/,
+  // CLI tools
+  /^feishu-cli(\s|$)/,  // Feishu/Lark CLI tool
 ];
 
 // Check if command is safe to execute
@@ -1930,6 +1932,7 @@ SUPPORTED COMMANDS (all are allowed):
 - Network: ping, curl, wget
 - Text: sed, awk, sort, uniq, echo
 - System: pwd, whoami, date, env, df, du
+- CLI tools: feishu-cli (Feishu/Lark command-line tool)
 
 BLOCKED: sudo, rm -rf /, ssh, system modifications, package installations
 

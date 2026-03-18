@@ -943,7 +943,10 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // Replay conversation history
     // NOTE: Skip the last user message since it was just saved and will be added by agent.chat()
     // [AUDIT FIX M-03] Preserve multimodal semantic markers during replay
-    for (let i = 0; i < session.messages.length - 1; i++) {
+    // [BUG FIX] Load ALL messages except the last one (which will be added by agent.chat)
+    // IMPORTANT: This loop assumes session.messages does NOT include the new user message yet
+    // The new user message is added AFTER this loop (see line 1043)
+    for (let i = 0; i < session.messages.length; i++) {  // ← Changed from length-1 to length
       const msg = session.messages[i];
       if (msg.role === 'user') {
         // [AUDIT FIX M-03] If original was multimodal with vision description, add semantic marker
