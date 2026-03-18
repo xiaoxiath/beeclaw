@@ -44,7 +44,7 @@ export interface PatternSelectorConfig {
 export const DEFAULT_SELECTOR_CONFIG: PatternSelectorConfig = {
   enabled: true,
   logSelection: true,
-  timeout: 2000, // 2 seconds
+  timeout: 10000, // 10 seconds
 };
 
 // ---------------------------------------------------------------------------

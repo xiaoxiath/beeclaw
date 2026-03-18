@@ -88,7 +88,7 @@ export interface FastLLMJudgeConfig {
 }
 
 const DEFAULT_CONFIG: FastLLMJudgeConfig = {
-  defaultTimeout: 2000,
+  defaultTimeout: 10000, // 10 seconds - fast model should respond quickly but 2s was too aggressive
   defaultTemperature: 0.1,
   defaultMaxTokens: 500,
 };
