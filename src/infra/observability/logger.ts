@@ -39,9 +39,24 @@ class Logger {
     }
 
     const coloredLevel = this.colorize(level, level.toUpperCase());
-    const formattedArgs = args.length > 0 ? ' ' + args.map(a =>
-      typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-    ).join(' ') : '';
+    const formattedArgs = args.length > 0 ? ' ' + args.map(a => {
+      // Special handling for Error objects to avoid empty {} serialization
+      if (a instanceof Error) {
+        const errorObj: Record<string, unknown> = {
+          name: a.name,
+          message: a.message,
+        };
+        if (a.stack) {
+          errorObj.stack = a.stack;
+        }
+        // Include any additional enumerable properties
+        Object.keys(a).forEach(key => {
+          errorObj[key] = (a as any)[key];
+        });
+        return JSON.stringify(errorObj, null, 2);
+      }
+      return typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a);
+    }).join(' ') : '';
 
     return `${prefix.replace(level.toUpperCase(), coloredLevel)} ${message}${formattedArgs}`;
   }

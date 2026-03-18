@@ -139,6 +139,10 @@ export class PlanAndExecutePattern {
       // 提取 JSON
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
+        logger.error('[PlanExecute] Failed to extract plan JSON from response', {
+          responseLength: response.length,
+          responsePreview: response.slice(0, 200),
+        });
         throw new Error('Failed to extract plan JSON from response');
       }
 
@@ -146,6 +150,11 @@ export class PlanAndExecutePattern {
 
       // 验证计划结构
       if (!planData.goal || !Array.isArray(planData.steps)) {
+        logger.error('[PlanExecute] Invalid plan structure', {
+          hasGoal: !!planData.goal,
+          hasSteps: Array.isArray(planData.steps),
+          planData,
+        });
         throw new Error('Invalid plan structure');
       }
 
