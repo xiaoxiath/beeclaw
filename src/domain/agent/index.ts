@@ -273,7 +273,7 @@ export class Agent {
     };
   }> = [];
   private loopDetector: LoopDetector = createLoopDetector();
-  private toolSelector = getHybridToolSelector();
+  private toolSelector: ReturnType<typeof getHybridToolSelector> | null = null;
   private currentUserContext?: UserContext;  // User context for tool execution
   private skillEnforcement?: SkillEnforcementEngine;
   private healthMonitor?: PeriodicHealthMonitor;
@@ -284,6 +284,16 @@ export class Agent {
    */
   private isToolBlocked(toolName: string): boolean {
     return this.options.blockedTools?.includes(toolName) ?? false;
+  }
+
+  /**
+   * Get or initialize hybrid tool selector
+   */
+  private getToolSelector(): ReturnType<typeof getHybridToolSelector> {
+    if (!this.toolSelector) {
+      this.toolSelector = getHybridToolSelector(this.options.provider);
+    }
+    return this.toolSelector;
   }
 
   constructor(options: AgentOptions & {
@@ -933,7 +943,7 @@ export class Agent {
     let enrichedMessage = userMessage;
     if (typeof userMessage === 'string') {
       try {
-        const injector = getDynamicMemoryInjector();
+        const injector = getDynamicMemoryInjector(this.options.provider);
         const userId = options?.userContext?.userId || 'default';
         enrichedMessage = await injector.inject(userMessage, userId);
 
@@ -983,8 +993,9 @@ export class Agent {
       logger.info('[Agent] Pattern explicitly set', { pattern: selectedPattern });
     } else if (typeof enrichedMessage === 'string' && !options?.tools) {
       try {
-        const patternSelector = getPatternSelector();
-        const selection = patternSelector.selectPattern(enrichedMessage);
+        // [FIX] Use PatternSelector with config-based fast model
+        const patternSelector = getPatternSelector(this.options.provider);
+        const selection = await patternSelector.selectPattern(enrichedMessage);
         selectedPattern = selection.pattern;
 
         logger.info('[Agent] Pattern selected', {

@@ -646,7 +646,11 @@ async function compressMessages(
   });
 
   try {
-    const summary = await agent.chat(`请总结以下对话：\n\n${conversationText}`);
+    // [FIX] Explicitly use 'direct' pattern to avoid PatternSelector misjudgment
+    // Compression is a simple summarization task, not a complex multi-step workflow
+    const summary = await agent.chat(`请总结以下对话：\n\n${conversationText}`, {
+      pattern: 'direct',
+    });
     console.log('[Session] Compressed', oldMessages.length, 'messages into summary');
     return { summary, recentMessages };
   } catch (error) {

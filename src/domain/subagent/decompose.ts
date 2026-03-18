@@ -1,15 +1,10 @@
 /**
- * Task Decomposition - LLM-assisted task breakdown (Optimized)
+ * Task Decomposition - FastLLMJudge-based task breakdown
  *
- * Changes from original:
- * 1. Removed duplicate validateDependencies export (was defined twice)
- * 2. Added simple-task bypass: tasks with ≤2 steps skip LLM decomposition
- * 3. Improved prompt with few-shot example and edge case handling
- * 4. Unified language to English in prompt (was mixed)
- * 5. Lowered temperature to 0.3 for more deterministic decomposition
+ * Uses FastLLMJudge for intelligent task decomposition
  */
 
-import { callAI } from '../agent/api';
+import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
 import type { TaskDecomposition, SubTask } from './orchestration-types';
 
@@ -37,48 +32,45 @@ const DECOMPOSITION_PROMPT = `You are a task decomposition specialist. Break dow
 
 5. **Simple Tasks**: If the task needs only 1-2 steps, return just those steps. Do NOT over-decompose.
 
+## Task to Decompose
+
+{task}
+
+{context}
+
 ## Output Format
 
-Return ONLY a JSON object:
-
-\`\`\`json
-{
+Return ONLY valid JSON (no markdown code blocks):
+{{
   "subtasks": [
-    {
+    {{
       "id": 0,
       "type": "research",
       "description": "Search for current best practices on X",
       "parallel": true,
       "dependsOn": [],
       "estimatedComplexity": 3
-    },
-    {
+    }},
+    {{
       "id": 1,
       "type": "memory",
       "description": "Read existing knowledge about X from user memory",
       "parallel": true,
       "dependsOn": [],
       "estimatedComplexity": 2
-    },
-    {
+    }},
+    {{
       "id": 2,
       "type": "code",
       "description": "Generate implementation based on research and existing knowledge",
       "parallel": false,
       "dependsOn": [0, 1],
       "estimatedComplexity": 6
-    }
+    }}
   ],
   "strategy": "mixed",
   "reasoning": "Research and memory lookup are independent; code generation needs both."
-}
-\`\`\`
-
-## Task to Decompose
-
-{{TASK}}
-
-{{CONTEXT}}`;
+}}`;
 
 /**
  * Check if a task is simple enough to skip LLM decomposition
@@ -91,127 +83,21 @@ function isSimpleTask(task: string): boolean {
 }
 
 /**
- * Decompose a complex task using LLM.
- * Simple tasks (≤2 inferred steps) bypass LLM and use a direct sequential plan.
+ * Validate subtask dependencies (no circular references, no self-deps, no invalid refs)
  */
-export async function decomposeTask(options: {
-  provider: AIProvider;
-  model: string;
-  task: string;
-  context?: string;
-}): Promise<TaskDecomposition> {
-  const { provider, model, task, context } = options;
-
-  // Fast path: skip LLM for simple tasks
-  if (isSimpleTask(task)) {
-    return createSequentialDecomposition(task, [task]);
-  }
-
-  // Build prompt
-  let prompt = DECOMPOSITION_PROMPT.replace('{{TASK}}', task);
-
-  if (context) {
-    prompt = prompt.replace('{{CONTEXT}}', `\n\n## Additional Context\n\n${context}`);
-  } else {
-    prompt = prompt.replace('{{CONTEXT}}', '');
-  }
-
-  // Call LLM with lower temperature for deterministic decomposition
-  const response = await callAI({
-    provider,
-    model,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a task decomposition expert. Always respond with valid JSON only.',
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-    temperature: 0.3,
-    maxTokens: 2000,
-  });
-
-  // Parse response
-  const content = response.choices[0].message.content || '';
-
-  try {
-    // Extract JSON from response
-    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-    const jsonStr = jsonMatch ? jsonMatch[1] : content;
-
-    const parsed = JSON.parse(jsonStr);
-
-    // Validate structure
-    if (!parsed.subtasks || !Array.isArray(parsed.subtasks)) {
-      throw new Error('Invalid decomposition: missing subtasks array');
-    }
-
-    // Validate subtasks
-    const subtasks: SubTask[] = parsed.subtasks.map((st: any, idx: number) => {
-      if (!st.type || !st.description) {
-        throw new Error(`Invalid subtask at index ${idx}: missing type or description`);
-      }
-
-      return {
-        id: st.id !== undefined ? st.id : idx,
-        type: st.type,
-        description: st.description,
-        parallel: st.parallel !== undefined ? st.parallel : true,
-        dependsOn: st.dependsOn || [],
-        estimatedComplexity: st.estimatedComplexity || 5,
-        priority: st.priority,
-        expectedOutput: st.expectedOutput,
-        context: st.context,
-      };
-    });
-
-    // Validate dependencies (no circular references, no self-deps, no invalid refs)
-    validateDependencies(subtasks);
-
-    // Calculate metrics
-    const strategy = parsed.strategy || determineStrategy(subtasks);
-    const totalComplexity = subtasks.reduce((sum, st) => sum + (st.estimatedComplexity || 5), 0);
-    const maxParallelism = calculateMaxParallelism(subtasks);
-
-    return {
-      originalTask: task,
-      subtasks,
-      strategy,
-      reasoning: parsed.reasoning || 'Task decomposed into parallel and sequential phases',
-      totalComplexity,
-      maxParallelism,
-    };
-
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    throw new Error(`Failed to parse decomposition: ${errorMessage}\n\nResponse: ${content}`);
-  }
-}
-
-/**
- * Validate that dependencies form a valid DAG:
- * - No self-dependencies
- * - No references to non-existent tasks
- * - No circular dependencies
- */
-export function validateDependencies(subtasks: SubTask[]): void {
+function validateDependencies(subtasks: SubTask[]): void {
   const taskIds = new Set(subtasks.map(st => st.id));
 
-  // Check for self-dependencies
-  for (const task of subtasks) {
-    if (task.dependsOn.includes(task.id)) {
-      throw new Error(`Self-dependency detected in task ${task.id}`);
+  for (const subtask of subtasks) {
+    // No self-dependency
+    if (subtask.dependsOn.includes(subtask.id)) {
+      throw new Error(`Subtask ${subtask.id} depends on itself`);
     }
-  }
 
-  // Check for invalid references
-  for (const task of subtasks) {
-    for (const depId of task.dependsOn) {
+    // All dependencies must exist
+    for (const depId of subtask.dependsOn) {
       if (!taskIds.has(depId)) {
-        throw new Error(`Invalid dependency reference: task ${task.id} depends on non-existent task ${depId}`);
+        throw new Error(`Subtask ${subtask.id} depends on non-existent task ${depId}`);
       }
     }
   }
@@ -220,7 +106,7 @@ export function validateDependencies(subtasks: SubTask[]): void {
   const visited = new Set<number>();
   const recursionStack = new Set<number>();
 
-  const hasCycle = (taskId: number): boolean => {
+  function hasCycle(taskId: number): boolean {
     if (recursionStack.has(taskId)) return true;
     if (visited.has(taskId)) return false;
 
@@ -236,42 +122,37 @@ export function validateDependencies(subtasks: SubTask[]): void {
 
     recursionStack.delete(taskId);
     return false;
-  };
+  }
 
-  for (const task of subtasks) {
-    if (hasCycle(task.id)) {
-      throw new Error(`circular dependency detected in task graph`);
+  for (const subtask of subtasks) {
+    if (hasCycle(subtask.id)) {
+      throw new Error('Circular dependency detected in subtasks');
     }
   }
 }
 
 /**
- * Determine the overall strategy based on subtasks
+ * Determine execution strategy based on subtasks
  */
 function determineStrategy(subtasks: SubTask[]): 'sequential' | 'parallel' | 'mixed' {
   const parallelCount = subtasks.filter(st => st.parallel).length;
-  const totalCount = subtasks.length;
-
-  if (parallelCount === totalCount) return 'parallel';
+  if (parallelCount === subtasks.length) return 'parallel';
   if (parallelCount === 0) return 'sequential';
   return 'mixed';
 }
 
 /**
- * Calculate maximum possible parallelism
+ * Calculate maximum parallelism
  */
 function calculateMaxParallelism(subtasks: SubTask[]): number {
-  const independent = subtasks.filter(st => st.dependsOn.length === 0);
-  return Math.max(1, independent.length);
+  // Simple heuristic: count tasks with no dependencies
+  return subtasks.filter(st => st.dependsOn.length === 0).length;
 }
 
 /**
- * Create a simple sequential decomposition (fallback)
+ * Create a simple sequential decomposition for simple tasks
  */
-export function createSequentialDecomposition(
-  task: string,
-  steps: string[]
-): TaskDecomposition {
+function createSequentialDecomposition(task: string, steps: string[]): TaskDecomposition {
   const subtasks: SubTask[] = steps.map((step, idx) => ({
     id: idx,
     type: 'general' as const,
@@ -282,37 +163,109 @@ export function createSequentialDecomposition(
   }));
 
   return {
-    originalTask: task,
     subtasks,
     strategy: 'sequential',
-    reasoning: 'Simple task — sequential execution',
-    totalComplexity: steps.length * 5,
+    reasoning: 'Simple task, sequential execution',
+    totalComplexity: subtasks.length * 5,
     maxParallelism: 1,
   };
 }
 
 /**
- * Create a simple parallel decomposition (fallback)
+ * Decompose a complex task using FastLLMJudge.
+ * Simple tasks (≤2 inferred steps) bypass LLM and use a direct sequential plan.
  */
-export function createParallelDecomposition(
-  task: string,
-  subtasksDescriptions: Array<{ type: SubTask['type']; description: string }>
-): TaskDecomposition {
-  const subtasks: SubTask[] = subtasksDescriptions.map((st, idx) => ({
-    id: idx,
-    type: st.type,
-    description: st.description,
-    parallel: true,
-    dependsOn: [],
-    estimatedComplexity: 5,
-  }));
+export async function decomposeTask(options: {
+  provider: AIProvider;
+  model: string;
+  task: string;
+  context?: string;
+}): Promise<TaskDecomposition> {
+  const { provider, model, task, context } = options;
 
-  return {
-    originalTask: task,
-    subtasks,
-    strategy: 'parallel',
-    reasoning: 'Parallel execution of independent tasks',
-    totalComplexity: subtasksDescriptions.length * 5,
-    maxParallelism: subtasksDescriptions.length,
-  };
+  // Fast path: skip LLM for simple tasks
+  if (isSimpleTask(task)) {
+    return createSequentialDecomposition(task, [task]);
+  }
+
+  // Build context section
+  const contextSection = context
+    ? `\n\n## Additional Context\n\n${context}`
+    : '';
+
+  // Get FastLLMJudge instance
+  const judge = getFastLLMJudge(provider, model, {
+    cacheEnabled: true,
+    cacheSize: 20,
+    defaultTimeout: 10000, // 10s for complex decomposition
+  });
+
+  // Execute judgment
+  const result = await judge.judge<TaskDecomposition>({
+    taskName: 'task-decomposition',
+    promptTemplate: DECOMPOSITION_PROMPT,
+    promptVariables: {
+      task,
+      context: contextSection,
+    },
+    validateOutput: (output) => {
+      // Validate structure
+      if (!output.subtasks || !Array.isArray(output.subtasks)) {
+        return null;
+      }
+
+      // Validate subtasks
+      const subtasks: SubTask[] = output.subtasks.map((st: any, idx: number) => {
+        if (!st.type || !st.description) {
+          throw new Error(`Invalid subtask at index ${idx}: missing type or description`);
+        }
+
+        return {
+          id: st.id !== undefined ? st.id : idx,
+          type: st.type,
+          description: st.description,
+          parallel: st.parallel !== undefined ? st.parallel : true,
+          dependsOn: st.dependsOn || [],
+          estimatedComplexity: st.estimatedComplexity || 5,
+          priority: st.priority,
+          expectedOutput: st.expectedOutput,
+          context: st.context,
+        };
+      });
+
+      // Validate dependencies
+      try {
+        validateDependencies(subtasks);
+      } catch (error) {
+        console.warn('[Decompose] Dependency validation failed:', error);
+        return null;
+      }
+
+      // Calculate metrics
+      const strategy = output.strategy || determineStrategy(subtasks);
+      const totalComplexity = subtasks.reduce((sum, st) => sum + (st.estimatedComplexity || 5), 0);
+      const maxParallelism = calculateMaxParallelism(subtasks);
+
+      return {
+        subtasks,
+        strategy,
+        reasoning: output.reasoning || 'LLM-generated decomposition',
+        totalComplexity,
+        maxParallelism,
+      };
+    },
+    defaultValue: createSequentialDecomposition(task, [task]),
+    cacheTTL: 60000, // 1 minute
+  });
+
+  if (result.failed) {
+    console.warn('[Decompose] LLM decomposition failed, using fallback:', result.error);
+  }
+
+  return result.result;
 }
+
+/**
+ * Export for backward compatibility
+ */
+export { validateDependencies };

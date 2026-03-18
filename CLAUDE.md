@@ -432,3 +432,188 @@ Plugins follow the OpenClaw plugin API:
 2. Use `listSessions()` to see all active sessions
 3. Check session recovery logs on startup
 4. Verify session ID consistency across messages
+
+## Important Patterns
+
+### FastLLMJudge - Unified Engineering Judgment
+
+All "engineering judgment" scenarios should use `FastLLMJudge` instead of manual `callAI()` calls:
+
+**What is FastLLMJudge?**
+- Unified judgment engine for deterministic, low-stakes decisions
+- Uses fast model from config (`llmRouter.tiers.fast`)
+- Low temperature (0.1) for consistency
+- Fast timeout (2s) with graceful degradation
+- Structured JSON output with validation
+
+**When to Use FastLLMJudge:**
+✅ **Engineering Judgment** (low-stakes, deterministic):
+- Pattern selection (direct/react/plan-execute/reflective)
+- Tool selection (which tools to include)
+- Memory injection decisions (should load context?)
+- Skill matching (which skills are relevant?)
+- Task decomposition (break down into subtasks)
+- Knowledge extraction (extract facts from conversation)
+
+❌ **Complex Tasks** (require creativity, nuance):
+- Summary generation (compressing conversation history)
+- Reflection engine (analyzing patterns, generating insights)
+- Research synthesis (combining multiple sources)
+- Content generation (writing code, documentation)
+
+**Usage Pattern:**
+```typescript
+import { getFastLLMJudge } from '../agent/fast-llm-judge';
+
+const judge = getFastLLMJudge(provider, fastModel);
+
+const result = await judge.judge<SelectionResult>({
+  taskName: 'pattern-selection',
+  promptTemplate: PATTERN_SELECTION_PROMPT,
+  promptVariables: { task },
+  validateOutput: (output) => {
+    // Validate and transform output
+    return validated;
+  },
+  defaultValue: { pattern: 'react', ... }, // Fallback on failure
+});
+
+if (result.failed) {
+  // Handle failure (result.result contains defaultValue)
+}
+```
+
+**Why No Caching?**
+- Engineering judgment inputs are highly dynamic (user queries, tasks, context)
+- Cache hit rate ≈ 0% for these scenarios
+- Fast model cost is negligible (~$0.0001/call, ~$3/month for 30K calls)
+- Removing cache simplifies code and reduces maintenance burden
+
+**Migration Checklist:**
+If you find code using `callAI()` for judgment tasks:
+1. Check if it's an engineering judgment (low-stakes, deterministic)
+2. Create a prompt template with `{variable}` placeholders
+3. Implement `validateOutput()` to validate and transform the result
+4. Define a sensible `defaultValue` for graceful degradation
+5. Replace `callAI()` with `judge.judge()`
+6. Remove manual JSON parsing and error handling (FastLLMJudge handles this)
+
+**Reference:**
+- Implementation: `src/domain/agent/fast-llm-judge.ts`
+- Examples: `src/domain/agent/patterns/pattern-selector.ts`, `src/domain/agent/hybrid-tool-selector.ts`
+- Design doc: `docs/design/unified-llm-judgment.md`
+
+### MemoryStore API Correct Usage
+
+MemoryStore has specific methods for different operations. Using non-existent methods causes runtime errors:
+
+**Correct Methods:**
+```typescript
+const store = getMemoryStore();
+
+// ✅ Get recent conversations
+const conversations = await store.getRecentConversations('default', 50);
+
+// ✅ Record a fact
+await store.record('lessons', 'Pattern: Users prefer concise responses');
+
+// ✅ Read/write files
+const content = store.read('facts/preferences.md');
+await store.write('facts/test.md', 'content', 'overwrite');
+
+// ✅ Get core context (USER.md + SOUL.md + facts/)
+const context = store.getCoreContext();
+```
+
+**Non-Existent Methods (will throw errors):**
+```typescript
+// ❌ This method doesn't exist
+store.getByCategory('conversations');
+
+// ❌ This method doesn't exist
+store.add({ category: 'facts', key: 'test', value: '...' });
+```
+
+**Common Pitfall - Daily Reflection:**
+```typescript
+// ❌ Wrong - getByCategory() doesn't exist
+const conversations = store.getByCategory('conversations');
+
+// ✅ Correct - use getRecentConversations()
+const conversationEntries = await store.getRecentConversations('default', 50);
+
+// Convert format if needed
+const conversations = conversationEntries.map(entry => ({
+  timestamp: entry.timestamp,
+  userMessage: entry.user,
+  assistantMessage: entry.assistant,
+  skillTriggered: entry.metadata?.skillTriggered,
+}));
+```
+
+**When to Use Each Method:**
+- `getRecentConversations(userId, limit)` - Get last N conversations
+- `record(category, fact)` - Record a new fact to `facts/{category}.md`
+- `read(path)` / `write(path, content, mode)` - Direct file operations
+- `getCoreContext()` - Get all core memory for AI context
+- `ls(path)` / `grep(query, path)` - Browse and search memory
+
+**Reference:**
+- Implementation: `src/domain/memory/store.ts`
+- Tools: `src/domain/memory/tools.ts`
+
+### Configuration-Driven Model Selection
+
+Always read fast model from configuration instead of hardcoding:
+
+**❌ Bad - Hardcoded model:**
+```typescript
+const response = await callAI({
+  provider,
+  model: 'glm-4-flash', // ❌ Hardcoded!
+  messages,
+  temperature: 0.1,
+});
+```
+
+**✅ Good - Configuration-driven:**
+```typescript
+import { getConfig_ } from '../../app';
+
+const config = getConfig_();
+const fastModel = config?.llmRouter?.tiers?.fast?.models?.[0];
+
+const response = await callAI({
+  provider,
+  model: fastModel, // ✅ From config
+  messages,
+  temperature: 0.1,
+});
+```
+
+**Or use FastLLMJudge (even better):**
+```typescript
+import { getFastLLMJudge } from '../agent/fast-llm-judge';
+
+// FastLLMJudge automatically reads fast model from config
+const judge = getFastLLMJudge(provider, fastModel);
+```
+
+**Why?**
+- Different environments may use different models (gpt-4o-mini vs glm-4-flash)
+- Cost optimization: switch models without code changes
+- Testing: use cheaper models in development
+- Configuration is the single source of truth
+
+**Configuration Schema (`beeclaw.json`):**
+```json
+{
+  "llmRouter": {
+    "tiers": {
+      "fast": {
+        "models": ["glm-4-flash"]
+      }
+    }
+  }
+}
+```

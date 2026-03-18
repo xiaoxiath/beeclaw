@@ -1,18 +1,21 @@
 /**
- * Dynamic Memory Injector (P0 优化)
+ * Dynamic Memory Injector (P0 优化 - LLM 驱动版)
  *
  * 根据用户查询动态注入相关历史记忆，提升上下文相关性。
  *
  * 功能：
- * - 检测需要历史上下文的查询模式
+ * - 使用 LLM 智能检测是否需要历史上下文
+ * - 使用 LLM 判断查询意图类型
  * - 使用 HybridSearch 检索相关记忆
  * - 智能注入到用户消息中
- * - 性能监控和缓存优化
  */
 
 import { logger } from '../../infra/observability/logger';
 import { hybridSearch, SEARCH_PROFILES } from './hybrid-search';
 import { getMemoryStore } from './store';
+import { getFastLLMJudge } from '../agent/fast-llm-judge';
+import type { AIProvider } from '../../infra/config/schema';
+import { getConfig_ } from '../../app';
 
 // ---------------------------------------------------------------------------
 // 1. 配置
@@ -40,39 +43,31 @@ const DEFAULT_CONFIG: InjectorConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// 2. 查询意图检测
+// 2. LLM Prompts
 // ---------------------------------------------------------------------------
 
-/**
- * 检测是否需要注入历史记忆
- */
-function shouldInject(userMessage: string): boolean {
-  const triggers = [
-    // 时间引用
-    /之前|上次|记得吗|以前|曾经|刚才|昨天|前天|最近/,
-    // 引用提及
-    /那个项目|那个问题|那个文件|那个功能|那个bug/,
-    // 继续操作
-    /继续|接着|接下来|完成|修改|更新|调整|优化/,
-    // 对比查询
-    /对比|比较|区别|差异|相同|不同/,
-    // 回顾总结
-    /总结|回顾|复盘|梳理|整理/,
-  ];
+const INJECTION_DECISION_PROMPT = `你是一个上下文管理专家，负责判断用户请求是否需要历史上下文。
 
-  return triggers.some(pattern => pattern.test(userMessage));
-}
+用户请求：{task}
 
-/**
- * 检测查询意图类型
- */
-function detectInjectionIntent(userMessage: string): 'recall' | 'continue' | 'compare' | 'summarize' | 'general' {
-  if (/之前|上次|记得吗|以前|曾经/.test(userMessage)) return 'recall';
-  if (/继续|接着|接下来|完成/.test(userMessage)) return 'continue';
-  if (/对比|比较|区别|差异/.test(userMessage)) return 'compare';
-  if (/总结|回顾|复盘|梳理|整理/.test(userMessage)) return 'summarize';
-  return 'general';
-}
+请分析并返回 JSON（不要包含 markdown 代码块标记）：
+{{
+  "needsContext": true/false,
+  "intent": "recall|continue|compare|summarize|general",
+  "reasoning": "简要说明理由"
+}}
+
+意图说明：
+- recall: 回忆过去的对话或事件（"之前"、"上次"、"记得吗"）
+- continue: 继续之前的工作（"继续"、"接着"、"完成"）
+- compare: 对比分析多个内容（"对比"、"比较"、"区别"）
+- summarize: 总结或回顾（"总结"、"回顾"、"复盘"）
+- general: 一般查询，不需要特殊上下文
+
+重要提示：
+- 只有明确引用过去内容时才需要上下文
+- 简单的常识问题不需要历史上下文
+- 如果不确定，宁可判断为不需要上下文`;
 
 // ---------------------------------------------------------------------------
 // 3. Dynamic Memory Injector 实现
@@ -80,39 +75,49 @@ function detectInjectionIntent(userMessage: string): 'recall' | 'continue' | 'co
 
 export class DynamicMemoryInjector {
   private config: InjectorConfig;
+  private provider: AIProvider;
+  private fastModel: string;
   private stats = {
     injections: 0,
+    llmCalls: 0,
     cacheHits: 0,
-    cacheMisses: 0,
     errors: 0,
   };
 
-  constructor(config: Partial<InjectorConfig> = {}) {
+  constructor(
+    provider: AIProvider,
+    fastModel: string,
+    config: Partial<InjectorConfig> = {}
+  ) {
+    this.provider = provider;
+    this.fastModel = fastModel;
     this.config = { ...DEFAULT_CONFIG, ...config };
-    logger.info('[DynamicInjector] Initialized', this.config);
+    logger.info('[DynamicInjector] Initialized', {
+      ...this.config,
+      provider: provider.type,
+      fastModel,
+    });
   }
 
   /**
    * 动态注入相关记忆到用户消息
-   *
-   * @param userMessage 原始用户消息
-   * @param userId 用户ID（可选）
-   * @returns 增强后的用户消息
    */
   async inject(userMessage: string, userId: string = 'default'): Promise<string> {
     if (!this.config.enabled) {
       return userMessage;
     }
 
-    // 检测是否需要注入
-    if (!shouldInject(userMessage)) {
-      logger.debug('[DynamicInjector] No injection needed');
+    // 使用 LLM 判断是否需要注入
+    const decision = await this.shouldInjectWithLLM(userMessage);
+
+    if (!decision.needsContext) {
+      logger.debug('[DynamicInjector] No injection needed (LLM decision)');
       return userMessage;
     }
 
-    const intent = detectInjectionIntent(userMessage);
-    logger.info(`[DynamicInjector] Injecting memories for intent: ${intent}`, {
+    logger.info(`[DynamicInjector] Injecting memories for intent: ${decision.intent}`, {
       messageLength: userMessage.length,
+      reasoning: decision.reasoning,
     });
 
     try {
@@ -125,7 +130,7 @@ export class DynamicMemoryInjector {
       }
 
       // 2. 构建注入上下文
-      const injectedContext = this.buildInjectedContext(memories, intent);
+      const injectedContext = this.buildInjectedContext(memories, decision.intent);
 
       // 3. 合并到用户消息
       const enrichedMessage = this.mergeWithMessage(userMessage, injectedContext);
@@ -143,6 +148,63 @@ export class DynamicMemoryInjector {
       logger.error('[DynamicInjector] Failed to inject memories:', error);
       return userMessage; // 失败时返回原始消息
     }
+  }
+
+  /**
+   * 使用 FastLLMJudge 判断是否需要注入
+   */
+  private async shouldInjectWithLLM(userMessage: string): Promise<{
+    needsContext: boolean;
+    intent: string;
+    reasoning: string;
+  }> {
+    this.stats.llmCalls++;
+
+    // Get FastLLMJudge instance
+    const judge = getFastLLMJudge(this.provider, this.fastModel, {
+      cacheEnabled: true,
+      cacheSize: 50,
+      defaultTimeout: 2000,
+    });
+
+    // Execute judgment
+    const result = await judge.judge<{
+      needsContext: boolean;
+      intent: string;
+      reasoning: string;
+    }>({
+      taskName: 'injection-decision',
+      promptTemplate: INJECTION_DECISION_PROMPT,
+      promptVariables: {
+        task: userMessage,
+      },
+      validateOutput: (output) => {
+        if (typeof output.needsContext !== 'boolean') {
+          return null;
+        }
+        const validIntents = ['recall', 'continue', 'compare', 'summarize', 'general'];
+        if (!validIntents.includes(output.intent)) {
+          return null;
+        }
+        return {
+          needsContext: output.needsContext,
+          intent: output.intent,
+          reasoning: output.reasoning || 'LLM judgment',
+        };
+      },
+      defaultValue: {
+        needsContext: false,
+        intent: 'general',
+        reasoning: 'LLM call failed',
+      },
+      cacheTTL: 5000, // 5 seconds
+    });
+
+    if (result.failed) {
+      logger.warn('[DynamicInjector] LLM judgment failed', { error: result.error });
+    }
+
+    return result.result;
   }
 
   /**
@@ -201,7 +263,7 @@ export class DynamicMemoryInjector {
         return items.slice(0, maxResults);
       };
 
-      // 执行混合搜索（暂时只用关键词搜索，向量搜索需要单独配置）
+      // 执行混合搜索
       const result = await hybridSearch(
         query,
         keywordSearch,
@@ -335,11 +397,35 @@ ${userMessage}`;
 
 let injectorInstance: DynamicMemoryInjector | null = null;
 
+/**
+ * 获取 DynamicMemoryInjector 实例
+ *
+ * @param provider AI Provider（首次调用时必需）
+ * @param fastModel Fast 模型名称（可选，不传则从配置读取）
+ * @param config 配置（可选）
+ */
 export function getDynamicMemoryInjector(
+  provider?: AIProvider,
+  fastModel?: string,
   config?: Partial<InjectorConfig>
 ): DynamicMemoryInjector {
   if (!injectorInstance) {
-    injectorInstance = new DynamicMemoryInjector(config);
+    if (!provider) {
+      throw new Error('DynamicMemoryInjector requires provider on first initialization');
+    }
+
+    // 从配置读取 fast 模型
+    const config_ = getConfig_();
+    const fastModelFromConfig = config_?.llmRouter?.tiers?.fast?.models?.[0];
+    const resolvedFastModel = fastModel || fastModelFromConfig;
+
+    if (!resolvedFastModel) {
+      throw new Error(
+        'Fast model not specified. Pass fastModel parameter or configure llmRouter.tiers.fast in beeclaw.json'
+      );
+    }
+
+    injectorInstance = new DynamicMemoryInjector(provider, resolvedFastModel, config);
   }
   return injectorInstance;
 }

@@ -1,19 +1,18 @@
 /**
- * Pattern Selector (P2 任务)
+ * Pattern Selector (P2 任务 - LLM 驱动版)
  *
- * 智能选择 Agent 控制模式：
+ * 使用 LLM 智能选择 Agent 控制模式：
  * - direct: 简单问题直接回答
  * - react: 标准工具调用循环
  * - plan-execute: 复杂任务规划执行
  * - reflective: 高质量输出反思改进
- *
- * 选择依据：
- * - 任务复杂度（步骤数）
- * - 任务类型（代码、文档、分析等）
- * - 质量要求（是否需要高质量输出）
  */
 
 import { logger } from '@infra/observability/logger';
+import { getFastLLMJudge } from '../fast-llm-judge';
+import type { AIProvider } from '@infra/config/schema';
+import type { ChatMessage } from '../types';
+import { getConfig_ } from '../../../app';
 
 // ---------------------------------------------------------------------------
 // 1. 类型定义
@@ -38,24 +37,78 @@ export interface PatternSelectionResult {
 
 export interface PatternSelectorConfig {
   enabled: boolean;
-  logSelection: boolean; // 是否记录选择日志
-  preferPlanExecute: boolean; // 偏好 Plan-Execute
-  qualityThreshold: number; // 触发 Reflective 的阈值
+  logSelection: boolean;
+  cacheEnabled: boolean;
+  cacheSize: number;
+  timeout: number;
 }
 
 export const DEFAULT_SELECTOR_CONFIG: PatternSelectorConfig = {
   enabled: true,
   logSelection: true,
-  preferPlanExecute: false,
-  qualityThreshold: 0.8,
+  cacheEnabled: true,
+  cacheSize: 100,
+  timeout: 2000, // 2 seconds
 };
 
 // ---------------------------------------------------------------------------
-// 2. Pattern Selector 实现
+// 2. LLM Prompt
+// ---------------------------------------------------------------------------
+
+const PATTERN_SELECTION_PROMPT = `你是一个任务路由专家，负责分析用户请求并选择最佳处理模式。
+
+可选模式：
+1. **direct**: 简单问题直接回答（无需工具）
+   - 闲聊、问候、常识问题
+   - 不需要搜索、查询、执行操作
+   - 示例：你好、今天星期几、1+1等于几
+
+2. **react**: 标准工具调用循环
+   - 需要搜索、查询、读取文件
+   - 需要获取实时数据（新闻、天气、股票等）
+   - 需要调用外部工具或 API
+   - 示例：看看新闻、天气怎么样、查询股票
+
+3. **plan-execute**: 复杂任务规划执行
+   - 多步骤任务，需要全局规划
+   - 涉及多个模块或组件
+   - 复杂的代码实现、系统设计
+   - 示例：分析项目架构并优化、重构整个模块
+
+4. **reflective**: 高质量输出反思改进
+   - 需要高质量代码或文档
+   - 关键任务，需要反复打磨
+   - 示例：编写生产级代码、撰写正式文档
+
+用户请求：{task}
+
+请分析并返回 JSON（不要包含markdown代码块标记）：
+{{
+  "pattern": "direct|react|plan-execute|reflective",
+  "reasoning": "选择理由（一句话）",
+  "features": {{
+    "stepCount": 1-10,
+    "requiresPlanning": true/false,
+    "requiresHighQuality": true/false,
+    "requiresTools": true/false,
+    "taskType": "code|document|analysis|general",
+    "complexity": "low|medium|high"
+  }}
+}}
+
+重要提示：
+- stepCount 必须是具体数字（1-10），不能是范围
+- 需要实时数据的查询（新闻、天气、股票等）必须选择 react 模式
+- 简单的代码编写（如排序算法）通常选择 direct 模式即可`;
+
+// ---------------------------------------------------------------------------
+// 3. Pattern Selector 实现
 // ---------------------------------------------------------------------------
 
 export class PatternSelector {
   private config: PatternSelectorConfig;
+  private provider: AIProvider;
+  private fastModel: string;
   private stats = {
     selections: {
       direct: 0,
@@ -64,239 +117,157 @@ export class PatternSelector {
       reflective: 0,
     },
     totalSelections: 0,
+    llmCalls: 0,
+    cacheHits: 0,
+    errors: 0,
   };
 
-  constructor(config: Partial<PatternSelectorConfig> = {}) {
+  constructor(
+    provider: AIProvider,
+    fastModel: string,
+    config: Partial<PatternSelectorConfig> = {}
+  ) {
+    this.provider = provider;
+    this.fastModel = fastModel;
     this.config = { ...DEFAULT_SELECTOR_CONFIG, ...config };
-    logger.info('[PatternSelector] Initialized', this.config);
+    logger.info('[PatternSelector] Initialized', {
+      ...this.config,
+      provider: provider.type,
+      fastModel,
+    });
   }
 
   /**
-   * 选择最佳模式
+   * 选择最佳模式（完全使用 LLM）
    */
-  selectPattern(task: string): PatternSelectionResult {
+  async selectPattern(task: string): Promise<PatternSelectionResult> {
     if (!this.config.enabled) {
       return {
         pattern: 'react',
-        features: this.extractFeatures(task),
+        features: this.getDefaultFeatures(),
         reasoning: 'Pattern selector disabled, using default react',
       };
     }
 
-    const features = this.extractFeatures(task);
-    const pattern = this.determinePattern(features, task);
-    const reasoning = this.explainSelection(pattern, features);
+    // 使用 FastLLMJudge 选择（内置缓存）
+    try {
+      const result = await this.selectPatternWithLLM(task);
+      return result;
+    } catch (error) {
+      this.stats.errors++;
+      logger.warn('[PatternSelector] LLM selection failed, using default react', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      // LLM 失败时返回默认值
+      return {
+        pattern: 'react',
+        features: this.getDefaultFeatures(),
+        reasoning: 'LLM selection failed, using default',
+      };
+    }
+  }
+
+  /**
+   * 使用 LLM 选择模式
+   */
+  private async selectPatternWithLLM(task: string): Promise<PatternSelectionResult> {
+    this.stats.llmCalls++;
+
+    const judge = getFastLLMJudge(this.provider, this.fastModel, {
+      cacheEnabled: this.config.cacheEnabled,
+      cacheSize: this.config.cacheSize,
+      defaultTimeout: this.config.timeout,
+    });
+
+    const result = await judge.judge<PatternSelectionResult>({
+      taskName: 'pattern-selection',
+      promptTemplate: PATTERN_SELECTION_PROMPT,
+      promptVariables: { task },
+      validateOutput: (output) => {
+        // 验证并规范化
+        const pattern = this.validatePattern(output.pattern);
+        const features = this.validateFeatures(output.features);
+
+        return {
+          pattern,
+          features,
+          reasoning: output.reasoning || 'LLM selected',
+        };
+      },
+      defaultValue: {
+        pattern: 'react' as AgentPattern,
+        features: this.getDefaultFeatures(),
+        reasoning: 'LLM judgment failed, using default',
+      },
+    });
+
+    if (result.failed) {
+      this.stats.errors++;
+      logger.warn('[PatternSelector] LLM judgment failed', {
+        error: result.error,
+      });
+      return result.result;
+    }
 
     // 更新统计
-    this.stats.selections[pattern]++;
+    this.stats.selections[result.result.pattern]++;
     this.stats.totalSelections++;
 
     if (this.config.logSelection) {
-      logger.info('[PatternSelector] Pattern selected', {
-        pattern,
-        taskType: features.taskType,
-        complexity: features.complexity,
-        stepCount: features.stepCount,
-        reasoning,
+      logger.info('[PatternSelector] Pattern selected by LLM', {
+        pattern: result.result.pattern,
+        taskType: result.result.features.taskType,
+        complexity: result.result.features.complexity,
+        stepCount: result.result.features.stepCount,
+        reasoning: result.result.reasoning,
       });
     }
 
-    return { pattern, features, reasoning };
+    return result.result;
   }
 
   /**
-   * 提取任务特征
+   * 验证模式
    */
-  private extractFeatures(task: string): TaskFeatures {
-    const stepCount = this.estimateSteps(task);
-    const taskType = this.detectTaskType(task);
-    const complexity = this.estimateComplexity(task, stepCount);
-
-    return {
-      stepCount,
-      requiresPlanning: this.requiresPlanning(task),
-      requiresHighQuality: this.requiresHighQuality(task, taskType),
-      requiresTools: this.requiresTools(task),
-      taskType,
-      complexity,
-    };
-  }
-
-  /**
-   * 确定最佳模式
-   */
-  private determinePattern(features: TaskFeatures): AgentPattern {
-    // 规则 1: 复杂任务使用 Plan-Execute（最高优先级）
-    if (
-      (features.requiresPlanning && features.stepCount >= 4) ||
-      features.complexity === 'high' ||
-      this.config.preferPlanExecute
-    ) {
-      return 'plan-execute';
+  private validatePattern(pattern: any): AgentPattern {
+    const validPatterns: AgentPattern[] = ['direct', 'react', 'plan-execute', 'reflective'];
+    if (validPatterns.includes(pattern)) {
+      return pattern;
     }
-
-    // 规则 2: 高质量要求使用 Reflective（次高优先级）
-    if (features.requiresHighQuality) {
-      return 'reflective';
-    }
-
-    // 规则 3: 简单问题直接回答
-    if (features.stepCount <= 1 && !features.requiresTools && features.complexity === 'low') {
-      return 'direct';
-    }
-
-    // 规则 4: 默认使用 ReAct
     return 'react';
   }
 
   /**
-   * 估算步骤数
+   * 验证特征
    */
-  private estimateSteps(task: string): number {
-    // 统计分隔符和连接词
-    const delimiters = (task.match(/，|。|；|、/g) || []).length;
-    const connectors = (task.match(/然后|接着|之后|再|并且|同时|以及/g) || []).length;
-    const verbs = (task.match(/分析|设计|实现|编写|创建|生成|优化|修改|删除/g) || []).length;
-
-    const estimate = Math.max(delimiters, connectors, verbs) + 1;
-    return Math.min(estimate, 10); // 最多 10 步
+  private validateFeatures(features: any): TaskFeatures {
+    return {
+      stepCount: Math.max(1, Math.min(10, Number(features?.stepCount) || 1)),
+      requiresPlanning: Boolean(features?.requiresPlanning),
+      requiresHighQuality: Boolean(features?.requiresHighQuality),
+      requiresTools: Boolean(features?.requiresTools),
+      taskType: ['code', 'document', 'analysis', 'general'].includes(features?.taskType)
+        ? features.taskType
+        : 'general',
+      complexity: ['low', 'medium', 'high'].includes(features?.complexity)
+        ? features.complexity
+        : 'low',
+    };
   }
 
   /**
-   * 检测任务类型
+   * 获取默认特征
    */
-  private detectTaskType(task: string): 'code' | 'document' | 'analysis' | 'general' {
-    const taskLower = task.toLowerCase();
-
-    // 代码相关
-    if (
-      /代码|code|function|class|实现|implement|编写函数|开发|编程/i.test(taskLower) ||
-      /```[\s\S]*```/.test(task)
-    ) {
-      return 'code';
-    }
-
-    // 文档相关
-    if (
-      /文档|document|readme|说明|指南|教程|手册/i.test(taskLower) ||
-      /编写.*文档|生成.*说明/i.test(taskLower)
-    ) {
-      return 'document';
-    }
-
-    // 分析相关
-    if (
-      /分析|报告|总结|review|评估|对比|调研/i.test(taskLower) ||
-      /分析.*项目|总结.*经验/i.test(taskLower)
-    ) {
-      return 'analysis';
-    }
-
-    return 'general';
-  }
-
-  /**
-   * 估算任务复杂度
-   */
-  private estimateComplexity(
-    task: string,
-    stepCount: number
-  ): 'low' | 'medium' | 'high' {
-    // 检查是否涉及多个模块或文件（优先级最高）
-    const multiModuleKeywords = /系统|架构|模块|组件|多个|全部|整个/i;
-    if (multiModuleKeywords.test(task)) return 'high';
-
-    // 检查步骤数
-    if (stepCount >= 5) return 'high';
-    if (stepCount >= 3) return 'medium';
-
-    // 检查是否涉及复杂逻辑
-    const complexKeywords = /复杂|集成|优化|重构|迁移|升级/i;
-    if (complexKeywords.test(task)) return 'medium';
-
-    return 'low';
-  }
-
-  /**
-   * 判断是否需要规划
-   */
-  private requiresPlanning(task: string): boolean {
-    const planningKeywords = [
-      /然后|接着|之后|步骤|流程|计划|安排/i,
-      /首先.*其次.*最后/i,
-      /第一阶段|第二阶段/i,
-      /分析.*然后.*实现/i,
-    ];
-
-    return planningKeywords.some(pattern => pattern.test(task));
-  }
-
-  /**
-   * 判断是否需要高质量输出
-   */
-  private requiresHighQuality(task: string, taskType: string): boolean {
-    // 代码任务通常需要高质量
-    if (taskType === 'code') return true;
-
-    // 文档任务需要高质量
-    if (taskType === 'document') return true;
-
-    // 明确要求高质量
-    const qualityKeywords = /高质量|完美|专业|正式|严格|仔细|精确/i;
-    if (qualityKeywords.test(task)) return true;
-
-    // 关键任务
-    const criticalKeywords = /重要|关键|核心|紧急|生产|上线/i;
-    if (criticalKeywords.test(task)) return true;
-
-    return false;
-  }
-
-  /**
-   * 判断是否需要工具
-   */
-  private requiresTools(task: string): boolean {
-    const toolKeywords = [
-      /搜索|查询|执行|运行|读取|写入/i,
-      /调用|创建|删除|修改|更新/i,
-      /获取|下载|上传|发送/i,
-      /memory_|skill_|web_|file_/i,
-    ];
-
-    return toolKeywords.some(pattern => pattern.test(task));
-  }
-
-  /**
-   * 解释模式选择原因
-   */
-  private explainSelection(pattern: AgentPattern, features: TaskFeatures): string {
-    const reasons: string[] = [];
-
-    switch (pattern) {
-      case 'direct':
-        reasons.push('简单任务，无需工具');
-        reasons.push(`步骤数：${features.stepCount}`);
-        break;
-
-      case 'react':
-        reasons.push('标准任务，使用工具调用循环');
-        if (features.requiresTools) reasons.push('需要工具支持');
-        break;
-
-      case 'plan-execute':
-        reasons.push('复杂任务，需要全局规划');
-        reasons.push(`复杂度：${features.complexity}`);
-        reasons.push(`步骤数：${features.stepCount}`);
-        break;
-
-      case 'reflective':
-        reasons.push('需要高质量输出');
-        reasons.push(`任务类型：${features.taskType}`);
-        if (features.requiresHighQuality) reasons.push('质量优先');
-        break;
-    }
-
-    return reasons.join('；');
+  private getDefaultFeatures(): TaskFeatures {
+    return {
+      stepCount: 1,
+      requiresPlanning: false,
+      requiresHighQuality: false,
+      requiresTools: false,
+      taskType: 'general',
+      complexity: 'low',
+    };
   }
 
   /**
@@ -324,16 +295,40 @@ export class PatternSelector {
 }
 
 // ---------------------------------------------------------------------------
-// 3. 单例模式
+// 4. 单例模式
 // ---------------------------------------------------------------------------
 
 let selectorInstance: PatternSelector | null = null;
 
+/**
+ * 获取 PatternSelector 实例
+ *
+ * @param provider AI Provider（首次调用时必需）
+ * @param fastModel Fast 模型名称（可选，不传则从配置读取）
+ * @param config 配置（可选）
+ */
 export function getPatternSelector(
+  provider?: AIProvider,
+  fastModel?: string,
   config?: Partial<PatternSelectorConfig>
 ): PatternSelector {
   if (!selectorInstance) {
-    selectorInstance = new PatternSelector(config);
+    if (!provider) {
+      throw new Error('PatternSelector requires provider on first initialization');
+    }
+
+    // 从配置读取 fast 模型
+    const config_ = getConfig_();
+    const fastModelFromConfig = config_?.llmRouter?.tiers?.fast?.models?.[0];
+    const resolvedFastModel = fastModel || fastModelFromConfig;
+
+    if (!resolvedFastModel) {
+      throw new Error(
+        'Fast model not specified. Pass fastModel parameter or configure llmRouter.tiers.fast in beeclaw.json'
+      );
+    }
+
+    selectorInstance = new PatternSelector(provider, resolvedFastModel, config);
   }
   return selectorInstance;
 }

@@ -390,15 +390,23 @@ export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
 
       // Get recent conversations from memory store
       const store = getMemoryStore();
-      const conversations = store.getByCategory('conversations');
+      const conversationEntries = await store.getRecentConversations('default', 50);
 
-      if (conversations.length === 0) {
+      if (conversationEntries.length === 0) {
         console.log('[Daemon] No conversations to reflect on');
         return;
       }
 
+      // Convert ConversationEntry[] to ConversationRecord[] format
+      const conversations = conversationEntries.map(entry => ({
+        timestamp: entry.timestamp,
+        userMessage: entry.user,
+        assistantMessage: entry.assistant,
+        skillTriggered: entry.metadata?.skillTriggered,
+      }));
+
       // Run reflection
-      const result = await engine.reflect();
+      const result = await engine.reflect(conversations);
 
       if (result && (result.patterns || result.strategyUpdates)) {
         console.log('[Daemon] Reflection complete:');
@@ -408,18 +416,10 @@ export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
         // Store patterns as facts in memory
         if (result.patterns && result.patterns.length > 0) {
           for (const pattern of result.patterns) {
-            store.add({
-              category: 'facts',
-              key: `pattern_${pattern.type}_${Date.now()}`,
-              value: pattern.description,
-              metadata: {
-                frequency: pattern.frequency,
-                examples: pattern.examples,
-                source: 'reflection',
-              },
-            });
+            const patternText = `${pattern.description}${pattern.suggestion ? ` Suggestion: ${pattern.suggestion}` : ''}`;
+            await store.record('lessons', patternText);
           }
-          console.log(`[Daemon] Stored ${result.patterns.length} patterns as facts`);
+          console.log(`[Daemon] Stored ${result.patterns.length} patterns as lessons`);
         }
       }
     } catch (error) {

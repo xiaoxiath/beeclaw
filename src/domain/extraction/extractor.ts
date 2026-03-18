@@ -1,12 +1,12 @@
 /**
- * 知识提取器
+ * Knowledge Extractor - FastLLMJudge-based knowledge extraction
  *
- * 使用 LLM 从对话中提取结构化知识
+ * Uses FastLLMJudge for intelligent knowledge extraction from conversations
  */
 
+import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
-import { callAI } from '../agent/api';
 import {
   EXTRACTION_PROMPT,
   INCREMENTAL_EXTRACTION_PROMPT,
@@ -21,10 +21,56 @@ import {
   type ExtractedKnowledge,
 } from './types';
 
+/**
+ * Extraction prompt for FastLLMJudge
+ */
+const EXTRACTION_JUDGE_PROMPT = `You are a knowledge extraction specialist. Extract structured knowledge from the given conversation.
+
+## Conversation
+
+{conversation}
+
+## Existing Knowledge (for incremental extraction)
+
+{existingKnowledge}
+
+## Extraction Rules
+
+1. **Categories**: Use appropriate categories:
+   - user_info: Personal information, preferences
+   - project: Project details, requirements
+   - technical: Technical decisions, architecture
+   - process: Workflows, processes
+   - domain: Domain-specific knowledge
+   - preference: User preferences, habits
+   - fact: General facts and information
+
+2. **Quality Criteria**:
+   - Only extract clear, actionable information
+   - Avoid redundant or duplicate knowledge
+   - Confidence should reflect certainty (0.0-1.0)
+   - Skip sensitive information (passwords, API keys, etc.)
+
+3. **Output Format**: Return ONLY valid JSON
+
+## Output
+
+{outputFormat}
+
+Important: Return ONLY the JSON array, no markdown code blocks.`;
+
+/**
+ * Knowledge Extractor using FastLLMJudge
+ */
 export class KnowledgeExtractor {
   private config: ExtractionConfig;
   private provider: AIProvider;
   private model: string;
+  private stats = {
+    totalExtractions: 0,
+    successfulExtractions: 0,
+    errors: 0,
+  };
 
   constructor(
     provider: AIProvider,
@@ -37,7 +83,7 @@ export class KnowledgeExtractor {
   }
 
   /**
-   * 执行知识提取
+   * Execute knowledge extraction
    */
   async extract(
     messages: ChatMessage[],
@@ -48,7 +94,9 @@ export class KnowledgeExtractor {
   ): Promise<ExtractionItem[]> {
     const { existingKnowledge = [], incremental = false } = options || {};
 
-    // 1. 格式化对话
+    this.stats.totalExtractions++;
+
+    // 1. Format conversation
     const conversationText = formatConversationForExtraction(
       messages,
       8000  // max chars
@@ -58,57 +106,70 @@ export class KnowledgeExtractor {
       return [];
     }
 
-    // 2. 构建提示词
-    let prompt: string;
-    if (incremental && existingKnowledge.length > 0) {
-      prompt = this.buildIncrementalPrompt(conversationText, existingKnowledge);
-    } else {
-      prompt = EXTRACTION_PROMPT.replace('{conversation}', conversationText);
+    // 2. Get FastLLMJudge instance
+    const judge = getFastLLMJudge(this.provider, this.model, {
+      cacheEnabled: false, // Don't cache extraction results
+      cacheSize: 0,
+      defaultTimeout: 10000, // 10s for extraction
+    });
+
+    // 3. Build prompt variables
+    const existingText = existingKnowledge.length > 0
+      ? existingKnowledge
+          .map(k => `- ${k.category}/${k.key}: ${k.value} (confidence: ${k.confidence})`)
+          .join('\n')
+      : 'None';
+
+    const outputFormat = `{
+  "extractions": [
+    {
+      "category": "project",
+      "key": "project-name",
+      "value": "Project description or value",
+      "confidence": 0.9,
+      "source": "conversation"
     }
+  ]
+}`;
 
-    // 3. 调用 LLM
-    try {
-      console.log('[Extractor] Calling LLM for knowledge extraction...');
+    // 4. Execute judgment
+    const result = await judge.judge<ExtractionItem[]>({
+      taskName: incremental ? 'incremental-extraction' : 'knowledge-extraction',
+      promptTemplate: EXTRACTION_JUDGE_PROMPT,
+      promptVariables: {
+        conversation: conversationText,
+        existingKnowledge: existingText,
+        outputFormat,
+      },
+      validateOutput: (output) => {
+        // Parse extractions
+        const extractions = parseExtractionResult(JSON.stringify(output));
 
-      const response = await callAI({
-        provider: this.provider,
-        model: this.model,
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个知识提取专家，擅长从对话中识别和提取有价值的信息。',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,  // 较低温度，更稳定
-        maxTokens: 2000,
-      });
+        // Validate and filter
+        const validExtractions = extractions
+          .filter(validateExtraction)
+          .filter(item => item.confidence >= this.config.lowConfidenceThreshold)
+          .slice(0, this.config.maxExtractionsPerRun);
 
-      const content = response.choices[0]?.message?.content || '';
+        return validExtractions.length > 0 ? validExtractions : null;
+      },
+      defaultValue: [],
+    });
 
-      // 4. 解析结果
-      const extractions = parseExtractionResult(content);
-
-      // 5. 验证和过滤
-      const validExtractions = extractions
-        .filter(validateExtraction)
-        .filter(item => item.confidence >= this.config.lowConfidenceThreshold)
-        .slice(0, this.config.maxExtractionsPerRun);
-
-      console.log(`[Extractor] Extracted ${validExtractions.length} items from ${messages.length} messages`);
-
-      return validExtractions;
-    } catch (error) {
-      console.error('[Extractor] Extraction failed:', error);
+    if (result.failed) {
+      this.stats.errors++;
+      console.error('[Extractor] Extraction failed:', result.error);
       return [];
     }
+
+    this.stats.successfulExtractions++;
+    console.log(`[Extractor] Extracted ${result.result.length} items from ${messages.length} messages`);
+
+    return result.result;
   }
 
   /**
-   * 增量提取
+   * Incremental extraction
    */
   async extractIncremental(
     newMessages: ChatMessage[],
@@ -121,24 +182,7 @@ export class KnowledgeExtractor {
   }
 
   /**
-   * 构建增量提取提示词
-   */
-  private buildIncrementalPrompt(
-    conversationText: string,
-    existingKnowledge: ExtractedKnowledge[]
-  ): string {
-    const existingText = existingKnowledge
-      .map(k => `- ${k.category}/${k.key}: ${k.value} (置信度: ${k.confidence})`)
-      .join('\n');
-
-    return INCREMENTAL_EXTRACTION_PROMPT
-      .replace('{existingKnowledge}', existingText || '暂无')
-      .replace('{conversation}', conversationText)
-      .replace('{outputFormat}', `输出 JSON 数组，格式同主提取提示词`);
-  }
-
-  /**
-   * 检测敏感信息
+   * Detect sensitive information
    */
   detectSensitiveInfo(content: string): {
     hasSensitive: boolean;
@@ -147,7 +191,7 @@ export class KnowledgeExtractor {
   } {
     const detectedPatterns: string[] = [];
 
-    // 检查配置的敏感模式
+    // Check configured sensitive patterns
     for (const pattern of this.config.sensitivePatterns) {
       try {
         const regex = new RegExp(pattern, 'gi');
@@ -155,111 +199,50 @@ export class KnowledgeExtractor {
           detectedPatterns.push(pattern);
         }
       } catch {
-        // 无效正则，跳过
-      }
-    }
-
-    // 额外的启发式检测
-    const heuristicPatterns = [
-      { pattern: /密码[是为：:]\s*\S+/gi, name: 'password' },
-      { pattern: /密钥[是为：:]\s*\S+/gi, name: 'secret_key' },
-      { pattern: /token[是为：:]\s*\S+/gi, name: 'token' },
-      { pattern: /api[_-]?key[是为：:]\s*\S+/gi, name: 'api_key' },
-      { pattern: /[a-zA-Z0-9]{32,}/g, name: 'long_hash' },
-      { pattern: /-----BEGIN[^-]+-----/g, name: 'pem_key' },
-    ];
-
-    for (const { pattern, name } of heuristicPatterns) {
-      if (pattern.test(content)) {
-        detectedPatterns.push(name);
+        // Invalid regex, skip
       }
     }
 
     return {
       hasSensitive: detectedPatterns.length > 0,
-      patterns: [...new Set(detectedPatterns)],
-      shouldSkip: detectedPatterns.length > 0,
+      patterns: detectedPatterns,
+      shouldSkip: detectedPatterns.length > 0 && this.config.skipSensitiveContent,
     };
   }
 
   /**
-   * 过滤敏感信息
+   * Get statistics
    */
-  filterSensitiveContent(content: string): string {
-    let filtered = content;
-
-    // 过滤密码
-    filtered = filtered.replace(/密码[是为：:]\s*\S+/gi, '密码: [已过滤]');
-    filtered = filtered.replace(/密钥[是为：:]\s*\S+/gi, '密钥: [已过滤]');
-    filtered = filtered.replace(/token[是为：:]\s*\S+/gi, 'token: [已过滤]');
-    filtered = filtered.replace(/api[_-]?key[是为：:]\s*\S+/gi, 'api_key: [已过滤]');
-
-    // 过滤长哈希
-    filtered = filtered.replace(/[a-zA-Z0-9]{32,}/g, '[已过滤]');
-
-    // 过滤 PEM 格式
-    filtered = filtered.replace(/-----BEGIN[^-]+-----[\s\S]*?-----END[^-]+-----/g, '[密钥已过滤]');
-
-    return filtered;
-  }
-
-  /**
-   * 转换为 ExtractedKnowledge
-   */
-  toItem(
-    extraction: ExtractionItem,
-    source: string
-  ): ExtractedKnowledge {
-    const now = new Date();
+  getStats() {
     return {
-      id: `${extraction.category}_${extraction.key}_${Date.now()}`,
-      category: extraction.category,
-      key: extraction.key,
-      value: extraction.value,
-      confidence: extraction.confidence,
-      source,
-      timestamp: now,
-      status: extraction.confidence >= this.config.confidenceThreshold
-        ? 'confirmed'
-        : 'pending',
+      ...this.stats,
+      successRate: this.stats.totalExtractions > 0
+        ? (this.stats.successfulExtractions / this.stats.totalExtractions * 100).toFixed(1) + '%'
+        : '0%',
     };
-  }
-
-  /**
-   * 批量转换
-   */
-  toItems(
-    extractions: ExtractionItem[],
-    source: string
-  ): ExtractedKnowledge[] {
-    return extractions.map(e => this.toItem(e, source));
-  }
-
-  /**
-   * 更新配置
-   */
-  updateConfig(config: Partial<ExtractionConfig>): void {
-    this.config = { ...this.config, ...config };
   }
 }
 
-// 单例
-let extractorInstance: KnowledgeExtractor | null = null;
-
-export function getKnowledgeExtractor(
-  provider?: AIProvider,
-  model?: string,
+/**
+ * Create knowledge extractor
+ */
+export function createKnowledgeExtractor(
+  provider: AIProvider,
+  model: string,
   config?: Partial<ExtractionConfig>
 ): KnowledgeExtractor {
-  if (!extractorInstance && provider && model) {
-    extractorInstance = new KnowledgeExtractor(provider, model, config);
-  }
-  if (!extractorInstance) {
-    throw new Error('KnowledgeExtractor not initialized. Call initKnowledgeExtractor first.');
-  }
-  return extractorInstance;
+  return new KnowledgeExtractor(provider, model, config);
 }
 
+// ---------------------------------------------------------------------------
+// 单例模式（向后兼容）
+// ---------------------------------------------------------------------------
+
+let extractorInstance: KnowledgeExtractor | null = null;
+
+/**
+ * 初始化知识提取器
+ */
 export function initKnowledgeExtractor(
   provider: AIProvider,
   model: string,
@@ -269,6 +252,19 @@ export function initKnowledgeExtractor(
   return extractorInstance;
 }
 
+/**
+ * 获取知识提取器实例
+ */
+export function getKnowledgeExtractor(): KnowledgeExtractor {
+  if (!extractorInstance) {
+    throw new Error('KnowledgeExtractor not initialized. Call initKnowledgeExtractor first.');
+  }
+  return extractorInstance;
+}
+
+/**
+ * 重置知识提取器
+ */
 export function resetKnowledgeExtractor(): void {
   extractorInstance = null;
 }
