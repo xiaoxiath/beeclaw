@@ -89,14 +89,11 @@ export interface FastLLMJudgeConfig {
   defaultTimeout: number;
   /** 默认温度 */
   defaultTemperature: number;
-  /** 默认最大 tokens */
-  defaultMaxTokens: number;
 }
 
 const DEFAULT_CONFIG: FastLLMJudgeConfig = {
-  defaultTimeout: 10000, // 10 seconds - fast model should respond quickly but 2s was too aggressive
+  defaultTimeout: 10000, // 10 seconds
   defaultTemperature: 0.1,
-  defaultMaxTokens: 500,
 };
 
 // ---------------------------------------------------------------------------
@@ -174,8 +171,8 @@ export class FastLLMJudge {
     const prompt = this.buildPrompt(options.promptTemplate, options.promptVariables);
     const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
 
-    // Use maxTokens from options, then config default, then role default
-    const maxTokens = options.maxTokens ?? this.defaultMaxTokens ?? this.config.defaultMaxTokens;
+    // Use maxTokens from options, then instance default, then undefined
+    const maxTokens = options.maxTokens ?? this.defaultMaxTokens ?? undefined;
 
     // 调用 AI
     const response = await callAI({
