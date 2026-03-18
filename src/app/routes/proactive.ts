@@ -73,6 +73,19 @@ export function initProactiveApi(config: {
   systemPrompt?: string;
   useTools?: boolean;
   tokenStatsConfig?: Partial<TokenStatsConfig>;
+  visionConfig?: {
+    visionModel?: string;
+    textModel?: string;
+    visionSystemPrompt?: string;
+    fallbackOnError?: 'description' | 'placeholder' | 'retry';
+    maxRetries?: number;
+  };
+  params?: {
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+    [key: string]: any;
+  };
 }): void {
   initSessionManager(config);
 }

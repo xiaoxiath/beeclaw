@@ -2,12 +2,12 @@ import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } 
 import { LoopDetector, createLoopDetector } from '../../infra/resilience/loop-detector';
 
 import type { AIProvider } from '../../infra/config/schema';
-import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent } from './types';
+import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent, UserContext } from './types';
 import { stripMessageMetadata } from './types';
 import { callAI, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
 import { logger } from '../../infra/observability/logger';
-import { getMemoryStore } from '../memory';
+import { getMemoryStore, getDynamicMemoryInjector } from '../memory';
 import { getSkillStore } from '../skills/store';
 import { executeMemoryTool } from '../memory/tools';
 import { executeSkillTool } from '../skills/tools';
@@ -46,6 +46,13 @@ import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 import { getContextSelector } from './context/selector';
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
+// P1+P2 Pattern imports
+import {
+  getPatternSelector,
+  getPlanExecutePattern,
+  getReflectiveLoopPattern,
+  type AgentPattern,
+} from './patterns';
 
 /**
  * Safely parse JSON with fallback
@@ -917,18 +924,41 @@ export class Agent {
     this.loopDetector.reset(); // Reset loop detector for new turn
     this.lastToolCalls = []; // Clear tool calls from previous turn
 
+    // [P0 优化] 动态注入相关历史记忆
+    let enrichedMessage = userMessage;
+    if (typeof userMessage === 'string') {
+      try {
+        const injector = getDynamicMemoryInjector();
+        const userId = options?.userContext?.userId || 'default';
+        enrichedMessage = await injector.inject(userMessage, userId);
+
+        // 如果注入成功，记录日志
+        if (enrichedMessage !== userMessage) {
+          logger.info('[Agent] Dynamic memory injection triggered', {
+            originalLength: userMessage.length,
+            enrichedLength: enrichedMessage.length,
+            userId,
+          });
+        }
+      } catch (error) {
+        // 注入失败不影响主流程，使用原始消息
+        logger.warn('[Agent] Dynamic memory injection failed, using original message', error);
+        enrichedMessage = userMessage;
+      }
+    }
+
     if (this.hookRunner) {
       await this.hookRunner.runMessageReceived({
-        content: userMessage,
+        content: enrichedMessage,
         timestamp: new Date().toISOString(),
       });
     }
 
     this.messages.push({
       role: 'user',
-      content: userMessage,
+      content: enrichedMessage,
     });
-    this.estimatedTokens += estimateMessageTokens({ role: 'user', content: userMessage });
+    this.estimatedTokens += estimateMessageTokens({ role: 'user', content: enrichedMessage });
 
     // [AUDIT FIX M-04] Coordinated context compression strategy
     // Prevents race between rule-based trimming and LLM summarization
@@ -940,6 +970,70 @@ export class Agent {
       this.messages.slice(-5) // Recent 5 messages for context
     );
 
+    // [P1+P2 优化] 智能选择控制模式
+    let selectedPattern: 'direct' | 'react' | 'plan-execute' | 'reflective' = 'react';
+    if (typeof enrichedMessage === 'string' && !options?.tools) {
+      try {
+        const patternSelector = getPatternSelector();
+        const selection = patternSelector.selectPattern(enrichedMessage);
+        selectedPattern = selection.pattern;
+
+        logger.info('[Agent] Pattern selected', {
+          pattern: selectedPattern,
+          reasoning: selection.reasoning,
+          taskType: selection.features.taskType,
+          complexity: selection.features.complexity,
+        });
+      } catch (error) {
+        logger.warn('[Agent] Pattern selection failed, using default react', error);
+      }
+    }
+
+    // 根据模式执行不同的路径
+    if (selectedPattern === 'direct') {
+      // Direct 模式：简单问题直接回答，不进入工具循环
+      logger.info('[Agent] Using Direct pattern (simple query)');
+      const response = await callAI({
+        provider: this.options.provider,
+        model: this.options.model,
+        messages: this.getMessagesForAPI(),
+        tools: [], // 不使用工具
+        temperature: this.options.temperature,
+        topP: this.options.topP,
+      });
+
+      const content = extractContent(response);
+      this.messages.push({ role: 'assistant', content });
+      this.estimatedTokens += estimateMessageTokens({ role: 'assistant', content });
+
+      // Generate ContentBlock for Card V2 streaming
+      options?.onContentBlock?.({
+        type: 'text',
+        text: content,
+      });
+
+      return content;
+    }
+
+    if (selectedPattern === 'plan-execute') {
+      // Plan-Execute 模式：复杂任务规划执行
+      logger.info('[Agent] Using Plan-Execute pattern (complex task)');
+      const pattern = getPlanExecutePattern();
+      const result = await pattern.execute(enrichedMessage as string, this);
+
+      this.messages.push({ role: 'assistant', content: result });
+      this.estimatedTokens += estimateMessageTokens({ role: 'assistant', content: result });
+
+      // Generate ContentBlock for Card V2 streaming
+      options?.onContentBlock?.({
+        type: 'text',
+        text: result,
+      });
+
+      return result;
+    }
+
+    // ReAct 和 Reflective 模式继续使用原有循环
     let iterations = 0;
     let finalContent = '';
     let totalCompletionTokens = 0;
@@ -1598,6 +1692,31 @@ export class Agent {
         totalTokens: this.estimatedTokens,
         timestamp: new Date().toISOString(),
       });
+    }
+
+    // [P1 优化] Reflective 模式：高质量输出反思改进
+    if (selectedPattern === 'reflective' && finalContent) {
+      logger.info('[Agent] Using Reflective pattern (quality improvement)');
+      try {
+        const reflectivePattern = getReflectiveLoopPattern();
+        const improvedContent = await reflectivePattern.execute(
+          enrichedMessage as string,
+          finalContent,
+          this
+        );
+
+        // Update finalContent and notify Card V2 if content was improved
+        if (improvedContent !== finalContent) {
+          finalContent = improvedContent;
+          // Generate updated ContentBlock for Card V2 streaming
+          options?.onContentBlock?.({
+            type: 'text',
+            text: finalContent,
+          });
+        }
+      } catch (error) {
+        logger.warn('[Agent] Reflective improvement failed, using original response', error);
+      }
     }
 
     return finalContent;

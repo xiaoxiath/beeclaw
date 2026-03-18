@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSy
 import { join, dirname, resolve, sep } from 'path';
 import type { MemoryConfig, MemoryCategory, ConversationEntry, MemoryToolResult } from './types';
 import { buildFullIndex, loadIndex, saveIndex, searchIndex, type MemoryIndex } from './indexer';
+import { getShortTermCache } from './short-term-cache';
+import { logger } from '../../infra/observability/logger';
 
 /**
  * Cross-process file lock using .lock files with PID + stale detection.
@@ -507,6 +509,7 @@ export class MemoryStore {
    * Record conversation entry with atomic write.
    *
    * [P0 FIX] Uses file lock + atomic write for concurrent safety.
+   * [P0 优化] Updates short-term cache for faster retrieval.
    */
   async recordConversation(entry: ConversationEntry): Promise<MemoryToolResult> {
     try {
@@ -557,10 +560,144 @@ export class MemoryStore {
         release();
       }
 
+      // [P0 优化] 更新短期缓存
+      try {
+        const cache = getShortTermCache();
+        await cache.addConversation(entry.source || 'default', entry);
+      } catch (error) {
+        // 缓存更新失败不影响主流程
+        logger.error('[MemoryStore] Failed to update short-term cache:', error);
+      }
+
       return { success: true, data: `Conversation recorded: ${yearMonth}/${day}.md` };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Get recent conversations with short-term cache.
+   *
+   * [P0 优化] Uses LRU cache to speed up recent conversation retrieval.
+   *
+   * @param userId 用户ID（可选，默认为 'default'）
+   * @param limit 返回的最大对话数量（默认 10）
+   */
+  async getRecentConversations(
+    userId: string = 'default',
+    limit: number = 10
+  ): Promise<ConversationEntry[]> {
+    // 1. 尝试从缓存获取
+    try {
+      const cache = getShortTermCache();
+      const cached = await cache.getRecentConversations(userId, limit);
+      if (cached) {
+        return cached;
+      }
+    } catch (error) {
+      logger.error('[MemoryStore] Failed to get from short-term cache:', error);
+    }
+
+    // 2. 缓存未命中，从磁盘加载
+    const conversations: ConversationEntry[] = [];
+    const conversationsPath = join(this.basePath, 'conversations');
+
+    if (!existsSync(conversationsPath)) {
+      return [];
+    }
+
+    // 获取最近的月份目录（最多扫描最近 3 个月）
+    const months = readdirSync(conversationsPath)
+      .filter(f => {
+        const fullPath = join(conversationsPath, f);
+        return statSync(fullPath).isDirectory() && /^\d{4}-\d{2}$/.test(f);
+      })
+      .sort()
+      .reverse()
+      .slice(0, 3);
+
+    // 从最新的日期开始读取
+    for (const month of months) {
+      const monthPath = join(conversationsPath, month);
+      const days = readdirSync(monthPath)
+        .filter(f => f.endsWith('.md'))
+        .sort()
+        .reverse();
+
+      for (const dayFile of days) {
+        const filePath = join(monthPath, dayFile);
+        const content = readFileSync(filePath, 'utf-8');
+
+        // 解析对话（简化版，只提取关键信息）
+        const entries = this.parseConversationFile(content);
+        conversations.push(...entries);
+
+        if (conversations.length >= limit * 2) {
+          break; // 获取足够多的对话
+        }
+      }
+
+      if (conversations.length >= limit * 2) {
+        break;
+      }
+    }
+
+    // 按时间排序并截取
+    const recentConversations = conversations
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit);
+
+    // 3. 更新缓存
+    try {
+      const cache = getShortTermCache();
+      await cache.updateConversations(userId, recentConversations);
+    } catch (error) {
+      console.error('[MemoryStore] Failed to update short-term cache:', error);
+    }
+
+    return recentConversations;
+  }
+
+  /**
+   * Parse conversation file to extract entries.
+   * 简化版解析器，用于快速加载最近对话。
+   */
+  private parseConversationFile(content: string): ConversationEntry[] {
+    const entries: ConversationEntry[] = [];
+    const sections = content.split('## ').slice(1); // 跳过标题
+
+    for (const section of sections) {
+      const lines = section.split('\n');
+      const header = lines[0]; // "HH:MM - source"
+
+      // 提取时间戳和来源
+      const timeMatch = header.match(/^(\d{1,2}:\d{2})\s*-\s*(.+)$/);
+      if (!timeMatch) continue;
+
+      const time = timeMatch[1];
+      const source = timeMatch[2].trim();
+
+      // 提取用户和助手消息
+      let user = '';
+      let assistant = '';
+
+      const userMatch = section.match(/\*\*用户\*\*[：:]\s*(.+?)(?=\n\n\*\*助手\*\*|\n\n---)/s);
+      const assistantMatch = section.match(/\*\*助手\*\*[：:]\s*(.+?)(?=\n\n---|\n\n##|$)/s);
+
+      if (userMatch) user = userMatch[1].trim();
+      if (assistantMatch) assistant = assistantMatch[1].trim();
+
+      if (user || assistant) {
+        entries.push({
+          timestamp: new Date().toISOString().split('T')[0] + 'T' + time + ':00',
+          source,
+          user,
+          assistant,
+        });
+      }
+    }
+
+    return entries;
   }
 
   // Read USER.md (用户信息)

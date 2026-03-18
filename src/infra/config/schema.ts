@@ -82,9 +82,13 @@ export const AIProviderSchema = z.object({
 
 // Vision (multimodal) configuration schema
 export const VisionConfigSchema = z.object({
-  /** Vision model for image recognition (default: 'GLM-4.6V') */
-  visionModel: z.string().default('GLM-4.6V'),
-  /** Text model for processing vision results (default: 'glm-5') */
+  /** Vision model for image recognition (default: 'glm-4.6v') */
+  visionModel: z.string().default('glm-4.6v'),
+  /**
+   * Text model for processing vision results
+   * Default: Uses agent's model from agent.role configuration
+   * This schema default ('glm-5') is only used if agent config is missing
+   */
   textModel: z.string().default('glm-5'),
   /** System prompt for vision recognition */
   visionSystemPrompt: z.string().default(
@@ -180,12 +184,22 @@ export const AgentConfigSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   role: z.string(),              // Reference to global roles
-  visionRole: z.string().optional(), // Vision role reference
+  /**
+   * Vision role reference (optional)
+   * If provided, uses the model from roles[visionRole] for image recognition
+   * Priority: visionConfig > visionRole > role
+   */
+  visionRole: z.string().optional(),
   params: ModelParamsSchema.optional(), // Agent-level params override
   systemPrompt: z.string().optional(),
   tools: z.array(z.string()).default([]),
   blockedTools: z.array(z.string()).optional(),
   contextConfig: ContextConfigSchema.optional(), // Context compression configuration
+  /**
+   * Vision configuration (optional, overrides visionRole)
+   * If not provided, defaults to using visionRole or agent's model
+   */
+  visionConfig: VisionConfigSchema.optional(),
 });
 
 // Session storage schema

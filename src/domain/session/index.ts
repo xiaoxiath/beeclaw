@@ -147,6 +147,23 @@ let agentConfig: {
   tokenStatsConfig?: Partial<TokenStatsConfig>;
   extractionConfig?: Partial<ExtractionConfigSchemaType>;
   memoryDir?: string;
+  visionConfig?: {
+    visionModel?: string;
+    textModel?: string;
+    visionSystemPrompt?: string;
+    fallbackOnError?: 'description' | 'placeholder' | 'retry';
+    maxRetries?: number;
+  };
+  params?: {
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+    top_k?: number;
+    do_sample?: boolean;
+    stream?: boolean;
+    thinking?: { type: 'enabled' | 'disabled' };
+    [key: string]: any;
+  };
 } | null = null;
 
 // Channel handlers
@@ -860,7 +877,17 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // [AUDIT FIX M-03] Configurable two-stage vision processing
     // Replaces hardcoded model names with VisionConfig
     const { DEFAULT_VISION_CONFIG } = await import('../agent/types');
-    const visionConfig = { ...DEFAULT_VISION_CONFIG, ...(agentConfig as any).visionConfig };
+
+    // Build visionConfig with smart defaults:
+    // 1. User-provided visionConfig (highest priority)
+    // 2. DEFAULT_VISION_CONFIG defaults
+    // 3. Use agent's model as textModel default (instead of hardcoded 'glm-5')
+    const visionConfig = {
+      ...DEFAULT_VISION_CONFIG,
+      // Override textModel default to use agent's model
+      textModel: agentConfig.model, // ← Use configured model, not hardcoded 'glm-5'
+      ...(agentConfig.visionConfig || {}), // User config takes precedence
+    };
 
     let selectedModel = agentConfig.model;
     const selectedProvider = agentConfig.provider;
@@ -917,8 +944,8 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       options.message = imageDescription || '[图片识别失败]';
       console.log(`[Session] 🧠 Stage 2: Intent detection with ${selectedModel}`);
     } else {
-      // Text-only message — use configured model
-      selectedModel = visionConfig.textModel;
+      // Text-only message — use agent's configured model
+      selectedModel = agentConfig.model;
       console.log(`[Session] 📝 Using text model (${selectedModel}) for text message`);
     }
 

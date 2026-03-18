@@ -158,10 +158,16 @@ export interface VisionConfig {
 
 /**
  * Default vision configuration
+ *
+ * NOTE: In session/index.ts, textModel is overridden to use agentConfig.model
+ * by default, instead of the hardcoded 'glm-5' here. This ensures vision
+ * processing uses the same model configured in beeclaw.json's agent.role.
+ *
+ * Users can still override by setting agent.visionConfig.textModel in config.
  */
 export const DEFAULT_VISION_CONFIG: VisionConfig = {
-  visionModel: 'GLM-4.6V',
-  textModel: 'glm-5',
+  visionModel: 'glm-4.6v',
+  textModel: 'glm-5', // Fallback only; overridden by agentConfig.model in runtime
   visionSystemPrompt:
     '请识别并详细描述这张图片的内容。包括：主要物体、文字、场景、颜色等关键信息。' +
     '如果是食物，列出所有可见的食材和菜品名称。' +

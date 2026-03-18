@@ -330,6 +330,30 @@ export async function initApp(options: InitOptions = {}): Promise<{
     console.log(`   ⚙️  Resolved params:`, resolvedParams);
   }
 
+  // Resolve vision configuration (v6: role reference pattern)
+  // Priority: visionConfig > visionRole > agent's model
+  let resolvedVisionConfig: any = undefined;
+
+  if (agentConfig.visionConfig) {
+    // 1. Explicit visionConfig (highest priority)
+    resolvedVisionConfig = agentConfig.visionConfig;
+    console.log(`   👁️  Vision config: explicit configuration`);
+  } else if (agentConfig.visionRole && config.roles[agentConfig.visionRole]) {
+    // 2. Vision role reference
+    const visionRoleDef = config.roles[agentConfig.visionRole];
+    const visionProvider = config.providers.find(p => p.name === visionRoleDef.provider);
+
+    if (visionProvider && visionRoleDef.model) {
+      resolvedVisionConfig = {
+        visionModel: visionRoleDef.model, // Use vision role's model
+        textModel: model, // Use agent's model for intent detection
+        visionSystemPrompt: undefined, // Use default
+      };
+      console.log(`   👁️  Vision role: ${agentConfig.visionRole} (${visionRoleDef.model})`);
+    }
+  }
+  // 3. Default: use agent's model for both vision and text (handled in session/index.ts)
+
   // 7. Initialize SessionManager for unified session management
   initSessionManager({
     provider: defaultProvider,
@@ -337,7 +361,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
     systemPrompt: agentConfig.systemPrompt || SYSTEM_PROMPTS.default,
     useTools: true,
     tokenStatsConfig: getTokenStatsConfig(),
-    visionRole: agentConfig.visionRole,  // v6: vision role reference
+    visionConfig: resolvedVisionConfig,
     // Pass resolved params from role + agent configuration
     params: resolvedParams,
   });
