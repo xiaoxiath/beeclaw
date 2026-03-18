@@ -180,7 +180,10 @@ ${criteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 - 0.0-0.59: 不合格（必须重做）`;
 
     try {
-      const evalResponse = await agent.chat(prompt, { tools: [] });
+      const evalResponse = await agent.chat(prompt, {
+        tools: [],
+        pattern: 'direct', // 强制使用 direct 模式，避免递归
+      });
 
       // 提取 JSON
       const jsonMatch = evalResponse.match(/\{[\s\S]*\}/);
@@ -246,7 +249,9 @@ ${evaluation.suggestions.map(s => `- ${s}`).join('\n')}
 3. 输出改进后的完整版本（不要标注修改）
 4. 确保输出是完整、独立的`;
 
-    const improvedResponse = await agent.chat(prompt);
+    const improvedResponse = await agent.chat(prompt, {
+      pattern: 'direct', // 强制使用 direct 模式，避免递归
+    });
 
     logger.info('[ReflectiveLoop] Output improved', {
       originalLength: currentResponse.length,
@@ -329,7 +334,10 @@ ${finalResponse.slice(0, 500)}...
 2. 什么方法无效？
 3. 有什么可以改进？`;
 
-      const lessons = await agent.chat(prompt, { tools: [] });
+      const lessons = await agent.chat(prompt, {
+        tools: [],
+        pattern: 'direct', // 强制使用 direct 模式，避免递归
+      });
 
       logger.info('[ReflectiveLoop] Learning completed', {
         lessonsLength: lessons.length,

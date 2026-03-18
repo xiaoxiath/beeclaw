@@ -134,6 +134,7 @@ export class PlanAndExecutePattern {
     try {
       const response = await agent.chat(prompt, {
         tools: [], // 不使用工具，纯规划
+        pattern: 'direct', // 强制使用 direct 模式，避免递归
       });
 
       // 提取 JSON
@@ -295,8 +296,13 @@ ${previousResults ? `前置步骤结果：\n${previousResults}` : ''}
 
 请执行并返回结果。如果遇到问题，说明原因和可能的解决方案。`;
 
-    // 使用 Agent 执行（会自动使用工具）
-    const result = await agent.chat(prompt);
+    // 使用 Agent 执行子任务
+    // 关键：强制指定模式，避免递归的 plan-execute 选择
+    // - 如果步骤声明了需要工具，使用 react 模式（支持工具调用）
+    // - 如果步骤没有声明工具，使用 direct 模式（更快，更简单）
+    const result = await agent.chat(prompt, {
+      pattern: step.tools.length > 0 ? 'react' : 'direct',
+    });
 
     return result;
   }
@@ -418,7 +424,9 @@ ${executionResult.finalResult}
 
 请生成简洁的总结（包含关键成果和下一步建议）。`;
 
-    return await agent.chat(prompt);
+    return await agent.chat(prompt, {
+      pattern: 'direct', // 强制使用 direct 模式，避免递归
+    });
   }
 }
 

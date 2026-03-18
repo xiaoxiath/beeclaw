@@ -908,6 +908,11 @@ export class Agent {
      * User context for tool execution (e.g., Feishu openId, chatId)
      */
     userContext?: UserContext;
+    /**
+     * Force a specific pattern, bypassing automatic selection
+     * Used to avoid recursive pattern selection (e.g., in plan-execute subtasks)
+     */
+    pattern?: 'direct' | 'react' | 'plan-execute' | 'reflective';
   }): Promise<string> {
     this.refreshTime();
 
@@ -972,7 +977,11 @@ export class Agent {
 
     // [P1+P2 优化] 智能选择控制模式
     let selectedPattern: 'direct' | 'react' | 'plan-execute' | 'reflective' = 'react';
-    if (typeof enrichedMessage === 'string' && !options?.tools) {
+    if (options?.pattern) {
+      // 如果明确指定了模式，直接使用，绕过自动选择
+      selectedPattern = options.pattern;
+      logger.info('[Agent] Pattern explicitly set', { pattern: selectedPattern });
+    } else if (typeof enrichedMessage === 'string' && !options?.tools) {
       try {
         const patternSelector = getPatternSelector();
         const selection = patternSelector.selectPattern(enrichedMessage);
