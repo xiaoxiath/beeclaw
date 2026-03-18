@@ -29,11 +29,11 @@ import { getConfig_ } from '../../app';
 // ---------------------------------------------------------------------------
 
 /**
- * Get fast model name from v6 configuration
+ * Get fast model name and params from v6 configuration
  *
  * Supports both v6 format (role-based) and legacy format (models array)
  */
-export function getFastModelFromConfig(): string | undefined {
+export function getFastModelFromConfig(): { model: string; maxTokens?: number } | undefined {
   const config = getConfig_();
   if (!config?.llmRouter?.tiers?.fast) return undefined;
 
@@ -42,7 +42,12 @@ export function getFastModelFromConfig(): string | undefined {
   // v6 format: roles[role].model
   if (fastTier.role && config.roles) {
     const roleConfig = config.roles[fastTier.role];
-    return roleConfig?.model;
+    if (roleConfig?.model) {
+      return {
+        model: roleConfig.model,
+        maxTokens: roleConfig.params?.max_tokens,
+      };
+    }
   }
 
   return undefined;
@@ -100,6 +105,7 @@ const DEFAULT_CONFIG: FastLLMJudgeConfig = {
 export class FastLLMJudge {
   private provider: AIProvider;
   private fastModel: string;
+  private defaultMaxTokens?: number;
   private config: FastLLMJudgeConfig;
   private stats = {
     totalJudgments: 0,
@@ -110,14 +116,17 @@ export class FastLLMJudge {
   constructor(
     provider: AIProvider,
     fastModel: string,
+    defaultMaxTokens?: number,
     config?: Partial<FastLLMJudgeConfig>
   ) {
     this.provider = provider;
     this.fastModel = fastModel;
+    this.defaultMaxTokens = defaultMaxTokens;
     this.config = { ...DEFAULT_CONFIG, ...config };
     logger.info('[FastLLMJudge] Initialized', {
       provider: provider.type,
       fastModel,
+      defaultMaxTokens: defaultMaxTokens || 'not set',
       ...this.config,
     });
   }
@@ -164,13 +173,16 @@ export class FastLLMJudge {
     const prompt = this.buildPrompt(options.promptTemplate, options.promptVariables);
     const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
 
+    // Use maxTokens from options, then config default, then role default
+    const maxTokens = options.maxTokens ?? this.defaultMaxTokens ?? this.config.defaultMaxTokens;
+
     // 调用 AI
     const response = await callAI({
       provider: this.provider,
       model: this.fastModel,
       messages,
       temperature: options.temperature ?? this.config.defaultTemperature,
-      maxTokens: options.maxTokens ?? this.config.defaultMaxTokens,
+      maxTokens,
     });
 
     // 提取内容
@@ -222,9 +234,17 @@ export class FastLLMJudge {
    * 提取响应内容
    */
   private extractContent(response: any): string {
+    // Standard OpenAI format
     if (response.choices?.[0]?.message?.content) {
       return response.choices[0].message.content;
     }
+
+    // Zhipu/Antropic reasoning format (content in reasoning_content)
+    if (response.choices?.[0]?.message?.reasoning_content) {
+      return response.choices[0].message.reasoning_content;
+    }
+
+    // Direct message format
     if (response.message?.content) {
       return response.message.content;
     }
@@ -273,16 +293,21 @@ export function getFastLLMJudge(
       throw new Error('FastLLMJudge requires provider on first initialization');
     }
 
-    // 从配置读取 fast 模型
-    const fastModel = getFastModelFromConfig();
+    // 从配置读取 fast 模型和参数
+    const fastModelConfig = getFastModelFromConfig();
 
-    if (!fastModel) {
+    if (!fastModelConfig) {
       throw new Error(
         'Fast model not configured. Please configure llmRouter.tiers.fast in beeclaw.json'
       );
     }
 
-    judgeInstance = new FastLLMJudge(provider, fastModel, config);
+    judgeInstance = new FastLLMJudge(
+      provider,
+      fastModelConfig.model,
+      fastModelConfig.maxTokens,
+      config
+    );
   }
   return judgeInstance;
 }
