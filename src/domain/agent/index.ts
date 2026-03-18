@@ -555,7 +555,7 @@ export class Agent {
         : '';
 
     try {
-      const selectedTools = await this.toolSelector.selectTools(
+      const selectedTools = await this.getToolSelector().selectTools(
         messageText,
         recentMessages,
         maxTools
