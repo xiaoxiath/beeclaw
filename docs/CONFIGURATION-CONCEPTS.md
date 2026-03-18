@@ -276,8 +276,8 @@ const agent = {
 
 ## 📚 相关文档
 
-- [配置简化说明](./CONFIGURATION-SIMPLIFICATION.md)
-- [v5 设计文档](./CONFIGURATION-V5-DESIGN.md)
+- [完整配置指南](./CONFIGURATION-FINAL.md)
+- [配置快速开始](./configuration.md)
 - [最终配置示例](../beeclaw.ultimate.json)
 
 ---

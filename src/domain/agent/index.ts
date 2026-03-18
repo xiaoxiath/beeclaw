@@ -1605,6 +1605,7 @@ export class Agent {
 
             const retryContent = extractContent(retryResponse);
             if (retryContent && retryContent.length > finalContent.length) {
+              const previousLength = finalContent.length;
               finalContent = retryContent;
               this.messages.push({
                 role: 'assistant',
@@ -1614,7 +1615,7 @@ export class Agent {
                 role: 'assistant',
                 content: retryContent,
               });
-              console.log(`[SkillEnforcement] Retry produced longer output (${retryContent.length} > ${finalContent.length} chars)`);
+              console.log(`[SkillEnforcement] Retry produced longer output (${retryContent.length} > ${previousLength} chars)`);
 
               // Update content block for streaming
               options?.onContentBlock?.({

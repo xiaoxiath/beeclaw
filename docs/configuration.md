@@ -154,9 +154,7 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
 |------|------|
 | [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md) | v6 完整配置指南 |
 | [CONFIGURATION-CONCEPTS.md](./CONFIGURATION-CONCEPTS.md) | 核心概念说明 |
-| [CONFIGURATION-SIMPLIFICATION.md](./CONFIGURATION-SIMPLIFICATION.md) | 配置简化历程 |
-| [CONFIGURATION-V5-DESIGN.md](./CONFIGURATION-V5-DESIGN.md) | v5 设计文档 |
-| [CONFIGURATION-MIGRATION-GUIDE.md](./CONFIGURATION-MIGRATION-GUIDE.md) | 迁移指南 |
+| [env-vs-config.md](./env-vs-config.md) | 环境变量与配置文件对比 |
 
 ---
 

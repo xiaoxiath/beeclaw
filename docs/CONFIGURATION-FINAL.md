@@ -393,9 +393,9 @@ Agent    → 用户实体
 
 ## 📚 相关文档
 
+- [配置快速开始](./configuration.md)
 - [概念说明](./CONFIGURATION-CONCEPTS.md)
-- [简化说明](./CONFIGURATION-SIMPLIFICATION.md)
-- [迁移指南](./CONFIGURATION-MIGRATION-GUIDE.md)
+- [环境变量与配置文件对比](./env-vs-config.md)
 
 ---
 
