@@ -14,6 +14,8 @@ import { getMCPManager } from '../adapter/mcp';
 import { setupHealthChecker } from '../domain/tools';
 import { getSearchOrchestrator } from '../domain/search';
 import { logger } from '../infra/observability/logger';
+import { getCompressionStats } from '../domain/agent/compression';
+import { getContextHealthDashboard } from '../domain/agent/context/health-dashboard';
 
 let _healthChecker: DataSourceHealthChecker | null = null;
 let _healthMonitor: PeriodicHealthMonitor | null = null;
@@ -164,4 +166,98 @@ export function shutdownHealthCheck(): void {
   }
   _healthChecker = null;
   logger.info('[Bootstrap] Health check subsystem shut down');
+}
+
+/**
+ * Check compression system health.
+ *
+ * Returns compression statistics and health status.
+ * - healthy: Average compression ratio > 30%
+ * - warning: Average compression ratio <= 30% (ineffective compression)
+ */
+export function checkCompressionHealth(): {
+  status: 'healthy' | 'warning';
+  metrics: {
+    totalCompressions: number;
+    avgRatio: number;
+    tokensSaved: number;
+  };
+} {
+  const stats = getCompressionStats();
+
+  return {
+    status: stats.avgRatio > 0.3 ? 'healthy' : 'warning',
+    metrics: {
+      totalCompressions: stats.totalCompressions,
+      avgRatio: stats.avgRatio,
+      tokensSaved: stats.totalTokensSaved,
+    },
+  };
+}
+
+/**
+ * Check context health.
+ *
+ * Returns context health metrics, alerts, and trends.
+ * This function provides real-time monitoring of context quality.
+ *
+ * @returns Context health status with metrics and alerts
+ */
+export function checkContextHealth(): {
+  status: 'healthy' | 'degraded' | 'no_data';
+  metrics?: {
+    tokenUtilization: number;
+    redundancyRate: number;
+    freshnessScore: number;
+    coherenceScore: number;
+    informationDensity: number;
+  };
+  alerts?: Array<{
+    metric: string;
+    severity: 'warning' | 'critical';
+    value: number;
+    threshold: number;
+    message: string;
+  }>;
+  trends?: {
+    tokenUtilization: number;
+    redundancyRate: number;
+    freshnessScore: number;
+    coherenceScore: number;
+    informationDensity: number;
+  };
+  message?: string;
+} {
+  const dashboard = getContextHealthDashboard();
+  const history = dashboard.getHistory();
+
+  if (history.length === 0) {
+    return {
+      status: 'no_data',
+      message: 'No context data yet. Context health monitoring will start after first conversation turn.',
+    };
+  }
+
+  const latest = history[history.length - 1];
+  const alerts = dashboard.checkAlerts(latest);
+
+  // Calculate trends for all metrics
+  const trends = {
+    tokenUtilization: dashboard.trend('tokenUtilization', 10),
+    redundancyRate: dashboard.trend('redundancyRate', 10),
+    freshnessScore: dashboard.trend('freshnessScore', 10),
+    coherenceScore: dashboard.trend('coherenceScore', 10),
+    informationDensity: dashboard.trend('informationDensity', 10),
+  };
+
+  return {
+    status: alerts.some(a => a.severity === 'critical')
+      ? 'degraded'
+      : alerts.length > 0
+        ? 'degraded'
+        : 'healthy',
+    metrics: latest,
+    alerts,
+    trends,
+  };
 }

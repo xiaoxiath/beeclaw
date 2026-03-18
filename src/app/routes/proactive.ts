@@ -206,9 +206,6 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
         console.log(`[FeishuWS:${process.pid}] Failed to add reaction (non-critical):`, error);
       }
 
-      // Create consistent session ID for conversation continuity
-      const sessionId = `feishu-${chatId}-${userId}`;
-
       // Build multimodal message content (image + text)
       let messageContent: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
       if (imageBase64) {

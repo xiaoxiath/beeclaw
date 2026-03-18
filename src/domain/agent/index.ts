@@ -35,12 +35,17 @@ import {
   type TokenStatsConfig,
   type TokenStats,
 } from './context';
+import { getTieredCompressor, compressMessages, shouldCompress } from './compression';
 import { hybridCompress, type CompressionResult } from './compressor';
 import { groupToolCalls, getGroupingStats } from './tool-dependencies';
 import { getHybridToolSelector } from './hybrid-tool-selector';
 import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
 import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
 import { getHealthMonitorInstance } from '../../app/bootstrap-health';
+// P0 Context Engineering imports
+import { getContextSelector } from './context/selector';
+import { getSimHasher } from './context/simhash';
+import { getContextHealthDashboard } from './context/health-dashboard';
 
 /**
  * Safely parse JSON with fallback
@@ -784,11 +789,11 @@ export class Agent {
   /**
    * [AUDIT FIX M-04] Coordinated context compression.
    *
-   * Three-tier strategy based on token usage ratio:
-   * - >90% (critical): LLM summarize first, then rule-trim remainder
-   * - >70% (preventive): LLM summarize only
-   * - >50% (routine): Rule-trim only
-   * - <=50%: No action
+   * Enhanced with P0 Context Engineering features:
+   * - Health monitoring (ContextHealthDashboard)
+   * - Deduplication (SimHash)
+   * - Smart selection (RRI + Lost-in-the-Middle)
+   * - Three-tier compression
    *
    * This prevents the race condition where rule-trim runs before LLM summarize,
    * causing trimmed messages to be neither summarized nor retained.
@@ -798,32 +803,91 @@ export class Agent {
 
     const usage = this.estimatedTokens / this.contextConfig.maxTokens;
 
-    if (usage > 0.9) {
-      // Critical: LLM summarize first, then trim remainder
-      console.log(`[Agent] Context at ${Math.round(usage * 100)}% — critical compression (LLM + trim)`);
-      try {
-        await this.compressContextWithLLM();
-      } catch (_error) {
-        console.warn('[Agent] LLM compression failed in critical mode');
-      }
-      this.trimContextIfNeeded();
-    } else if (usage > 0.7) {
-      // Preventive: LLM summarize only
-      console.log(`[Agent] Context at ${Math.round(usage * 100)}% — preventive LLM compression`);
-      try {
-        await this.compressContextWithLLM();
-      } catch (_error) {
-        console.warn('[Agent] LLM compression failed, falling back to trim');
-        this.trimContextIfNeeded();
-      }
-    } else if (usage > 0.5) {
-      // Routine: lightweight rule-based trim only
-      this.trimContextIfNeeded();
+    // [P0] Step 1: Health monitoring
+    const dashboard = getContextHealthDashboard();
+    const healthMetrics = dashboard.measure(
+      this.messages.map(m => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : '',
+        timestamp: Date.now(), // Use current time as approximation
+      })),
+      this.contextConfig.maxTokens
+    );
+
+    const alerts = dashboard.checkAlerts(healthMetrics);
+    if (alerts.length > 0) {
+      logger.warn(`[Agent] Context health alerts: ${alerts.map(a => a.message).join('; ')}`);
     }
-    // <= 50%: no action needed
+
+    // [P0] Step 2: Deduplication using SimHash
+    const hasher = getSimHasher();
+    const originalCount = this.messages.length;
+
+    // Convert messages to items with content for deduplication
+    const messagesWithContent = this.messages.map((m, idx) => ({
+      ...m,
+      content: typeof m.content === 'string' ? m.content : '',
+      _index: idx,
+    }));
+
+    const dedupedItems = hasher.deduplicateItems(messagesWithContent, 3);
+    const duplicatesRemoved = originalCount - dedupedItems.length;
+
+    if (duplicatesRemoved > 0) {
+      logger.info(`[Agent] Removed ${duplicatesRemoved} near-duplicate messages`);
+      this.messages = dedupedItems.map(item => {
+        const { _index, ...msg } = item;
+        return msg;
+      });
+      // Recalculate tokens after deduplication
+      this.estimatedTokens = estimateTotalTokens(this.messages);
+    }
+
+    // Use new three-tier compression system
+    if (shouldCompress(this.estimatedTokens, this.contextConfig.maxTokens)) {
+      logger.info(`[Agent] Context at ${Math.round(usage * 100)}% — starting three-tier compression`);
+
+      try {
+        const result = await compressMessages(
+          this.messages,
+          this.contextConfig.maxTokens,
+          this.contextConfig.keepRecent
+        );
+
+        this.messages = result.messages;
+
+        if (result.stats) {
+          this.estimatedTokens = result.stats.compressedTokens;
+          logger.info(
+            `[Agent] Compression complete: ${result.stats.originalTokens} → ${result.stats.compressedTokens} tokens ` +
+            `(${(result.stats.ratio * 100).toFixed(1)}% reduction)`
+          );
+        }
+      } catch (error) {
+        logger.error('[Agent] Compression failed, falling back to legacy methods:', error);
+        // Fallback to old compression strategy
+        if (usage > 0.9) {
+          try {
+            await this.compressContextWithLLM();
+          } catch (_error) {
+            logger.warn('[Agent] LLM compression failed in critical mode');
+          }
+          this.trimContextIfNeeded();
+        } else if (usage > 0.7) {
+          try {
+            await this.compressContextWithLLM();
+          } catch (_error) {
+            logger.warn('[Agent] LLM compression failed, falling back to trim');
+            this.trimContextIfNeeded();
+          }
+        } else {
+          this.trimContextIfNeeded();
+        }
+      }
+    }
   }
 
-    async chat(userMessage: string | MultimodalContent[], options?: {
+  async chat(userMessage: string | MultimodalContent[], options?: {
     tools?: OpenAITool[];
     onToolCall?: (name: string, params: Record<string, unknown>) => void;
     onToolResult?: (name: string, result: unknown) => void;

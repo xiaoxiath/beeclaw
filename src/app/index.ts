@@ -21,6 +21,7 @@ import { initSessionManager, loadAllSessions } from '../domain/session';
 import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../domain/subagent';
 import { initializeTimezoneCache, resolveUserLocation, resolveUserTimezone } from '../domain/tools/timezone';
 import { setCompressionLLMProvider } from '../domain/memory/compression';
+import { configureTieredCompressor } from '../domain/agent/compression';
 import { setEmbeddingProvider, getVectorStore } from '../domain/memory/vector-store';
 import { getLifecycleManager } from '../domain/memory/lifecycle-manager';
 import { getReflectionEngine } from '../domain/agent/reflection-engine';
@@ -497,6 +498,20 @@ export async function initApp(options: InitOptions = {}): Promise<{
       return response.choices[0]?.message?.content || '';
     },
   });
+
+  // [Context Compression] Configure LLM provider for context compression
+  configureTieredCompressor({
+    async complete(prompt, maxTokens = 500) {
+      const response = await callAI({
+        provider: defaultProvider,
+        model: 'glm-4-flash', // Use cheap/fast model for compression
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens,
+      });
+      return response.choices[0]?.message?.content || '';
+    },
+  });
+  logger.info('[App] Context compression system initialized');
 
   // 10.6. [P3 Enhancement] Initialize P3 modules
   // Initialize embedding provider for tool selector and vector store

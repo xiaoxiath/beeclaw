@@ -99,6 +99,82 @@ export const VisionConfigSchema = z.object({
   maxRetries: z.number().min(0).max(3).default(1),
 });
 
+// Selector configuration schema (P0 Context Engineering)
+const SelectorConfigSchema = z.object({
+  /** RRI weights for context selection */
+  weights: z.object({
+    relevance: z.number().min(0).max(1).default(0.5),
+    recency: z.number().min(0).max(1).default(0.3),
+    importance: z.number().min(0).max(1).default(0.2),
+  }).default({}),
+  /** Maximum items to select */
+  maxItems: z.number().min(1).max(100).default(20),
+  /** Deduplication threshold (cosine similarity) */
+  dedupThreshold: z.number().min(0.5).max(1.0).default(0.92),
+  /** Enable Lost-in-the-Middle reordering */
+  enableReorder: z.boolean().default(true),
+}).default({});
+
+// SimHash configuration schema (P0 Context Engineering)
+const SimHashConfigSchema = z.object({
+  /** Hamming distance threshold for duplicate detection */
+  threshold: z.number().min(1).max(10).default(3),
+  /** Hash bits (64 for production, 32 for testing) */
+  hashBits: z.number().min(32).max(128).default(64),
+}).default({});
+
+// Health check thresholds schema (P0 Context Engineering)
+const HealthThresholdsSchema = z.object({
+  tokenUtilization: z.object({
+    warning: z.number().min(0).max(1).default(0.80),
+    critical: z.number().min(0).max(1).default(0.95),
+  }).default({}),
+  redundancyRate: z.object({
+    warning: z.number().min(0).max(1).default(0.30),
+    critical: z.number().min(0).max(1).default(0.50),
+  }).default({}),
+  freshnessScore: z.object({
+    warning: z.number().min(0).max(1).default(0.40),
+    critical: z.number().min(0).max(1).default(0.20),
+  }).default({}),
+  coherenceScore: z.object({
+    warning: z.number().min(0).max(1).default(0.50),
+    critical: z.number().min(0).max(1).default(0.30),
+  }).default({}),
+}).default({});
+
+// Health check configuration schema (P0 Context Engineering)
+const HealthCheckConfigSchema = z.object({
+  /** Enable context health monitoring */
+  enabled: z.boolean().default(true),
+  /** Check interval (in conversation turns) */
+  interval: z.number().min(1).max(20).default(5),
+  /** Alert thresholds */
+  thresholds: HealthThresholdsSchema,
+}).default({});
+
+// Context configuration schema
+export const ContextConfigSchema = z.object({
+  /** Maximum tokens for context window (default: 120000) */
+  maxTokens: z.number().min(1000).max(500000).default(120000),
+  /** Minimum recent messages to always keep (default: 6) */
+  keepRecent: z.number().min(0).max(20).default(6),
+  /** Always keep system messages (default: true) */
+  keepSystem: z.boolean().default(true),
+  /** Token threshold to start compression (default: 0.8 = 80%) */
+  compressionThreshold: z.number().min(0.5).max(1.0).default(0.8),
+  /** Enable/disable compression (default: true) */
+  compressionEnabled: z.boolean().default(true),
+  /** Compression level: "L1", "L1+L2", "L1+L2+L3", or "auto" (default: "auto") */
+  compressionLevel: z.enum(['L1', 'L1+L2', 'L1+L2+L3', 'auto']).default('auto'),
+  /** Context selector configuration (P0) */
+  selector: SelectorConfigSchema,
+  /** SimHash deduplication configuration (P0) */
+  simhash: SimHashConfigSchema,
+  /** Health monitoring configuration (P0) */
+  healthCheck: HealthCheckConfigSchema,
+});
+
 // Agent schema (v6: single agent instead of array)
 export const AgentConfigSchema = z.object({
   name: z.string().optional(),
@@ -109,6 +185,7 @@ export const AgentConfigSchema = z.object({
   systemPrompt: z.string().optional(),
   tools: z.array(z.string()).default([]),
   blockedTools: z.array(z.string()).optional(),
+  contextConfig: ContextConfigSchema.optional(), // Context compression configuration
 });
 
 // Session storage schema
@@ -458,6 +535,7 @@ export type ModelParams = z.infer<typeof ModelParamsSchema>;
 export type ModelDefinition = z.infer<typeof ModelDefinitionSchema>;
 export type RoleDefinition = z.infer<typeof RoleDefinitionSchema>;
 export type AIProvider = z.infer<typeof AIProviderSchema>;
+export type ContextConfig = z.infer<typeof ContextConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type SessionStorageConfig = z.infer<typeof SessionStorageConfigSchema>;
 export type MemoryConfigSchemaType = z.infer<typeof MemoryConfigSchema>;
