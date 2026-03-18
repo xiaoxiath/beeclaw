@@ -1025,7 +1025,7 @@ export class Agent {
           topP: this.options.topP,
         });
 
-        logger.info('[Agent] Direct pattern: LLM call completed, {
+        logger.info('[Agent] Direct pattern: LLM call completed', {
           responseKeys: Object.keys(response || {}),
           hasChoices: !!response?.choices,
         });
