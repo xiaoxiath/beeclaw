@@ -228,6 +228,16 @@ export class FastLLMJudge {
     if (response.message?.content) {
       return response.message.content;
     }
+
+    // Log the actual response structure for debugging
+    logger.error('[FastLLMJudge] Invalid AI response format', {
+      hasChoices: !!response.choices,
+      hasMessage: !!response.message,
+      responseType: typeof response,
+      responseKeys: Object.keys(response || {}),
+      responsePreview: JSON.stringify(response).substring(0, 500),
+    });
+
     throw new Error('Invalid AI response format');
   }
 

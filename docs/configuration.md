@@ -322,9 +322,157 @@ Error: Invalid configuration: ...
 
 ---
 
+## Sandbox 配置 ⚠️ 实验性
+
+Sandbox 系统目前为**实验性功能，尚未完全实现**。Local 和 Docker 提供者仅为存根，如果使用会抛出错误。
+
+```json
+{
+  "sandbox": {
+    "enabled": false,  // 推荐：保持禁用直到实现完成
+    "provider": "auto",
+    "workspaceBase": "./data/sandbox",
+    "local": {
+      "enabled": true,
+      "defaultTimeout": 30000,
+      "maxOutputSize": 1048576,
+      "blockedCommands": [
+        "rm\\s+-rf\\s+/",
+        "mkfs",
+        "dd\\s+if=",
+        ":(){ :|:& };:",
+        "chmod\\s+-R\\s+777\\s+/",
+        "shutdown",
+        "reboot",
+        "halt",
+        "init\\s+0"
+      ]
+    },
+    "docker": {
+      "enabled": false,  // 未实现 - 不会工作
+      "image": "beeclaw-sandbox:latest",
+      "memoryLimitMb": 512,
+      "cpuLimit": 1,
+      "networkEnabled": false,
+      "defaultTimeout": 60000
+    },
+    "pool": {
+      "enabled": false,  // 未实现
+      "minIdle": 1,
+      "maxTotal": 5
+    }
+  }
+}
+```
+
+**实现状态**:
+- ✅ **配置 Schema**: 已定义和验证
+- ⚠️ **Local Provider**: 仅存根 - 抛出 `Error('LocalSandboxProvider not implemented yet')`
+- ⚠️ **Docker Provider**: 仅存根 - 抛出 `Error('DockerSandboxProvider not implemented yet')`
+- ⚠️ **Pool System**: 未实现
+
+**推荐**: 生产环境禁用 sandbox
+
+---
+
+## 配置管理最佳实践
+
+### 配置分层策略
+
+Beeclaw 采用三层配置策略：
+
+**Layer 1: 环境变量（.env）- 敏感信息**
+
+存储 API Keys、密码等敏感信息：
+
+```bash
+# AI Provider API Keys（必需）
+ZHIPU_API_KEY=your_zhipu_api_key_here
+
+# Feishu 飞书配置（用于飞书机器人）
+LARK_BEECLAW_APPID=your_app_id_here
+LARK_BEECLAW_AS=your_app_secret_here
+
+# 第三方 API Keys（可选）
+TAVILY_API_KEY=your_tavily_api_key_here
+QWEATHER_API_KEY=your_qweather_api_key_here
+```
+
+**Layer 2: 应用配置（beeclaw.json）- 业务配置**
+
+存储应用逻辑配置，通过环境变量引用敏感信息：
+
+```json
+{
+  "providers": [{
+    "apiKey": "${ZHIPU_API_KEY}",  // 引用环境变量
+    "baseUrl": "${API_BASE_URL:-https://api.zhipu.ai}"  // 带默认值
+  }],
+  "feishu": {
+    "appId": "${LARK_BEECLAW_APPID}",
+    "appSecret": "${LARK_BEECLAW_AS}"
+  }
+}
+```
+
+**Layer 3: 配置模板（.example 文件）- 提交到 Git**
+
+提供配置示例和文档：
+- `.env.example` - 环境变量模板
+- `beeclaw.example.json` - 完整配置模板
+- `beeclaw.schema.json` - JSON Schema 验证
+
+### 推荐工作流程
+
+**新开发者加入**:
+```bash
+# 1. 复制模板文件
+cp .env.example .env
+cp beeclaw.example.json beeclaw.json
+
+# 2. 编辑 .env，填入自己的 API keys
+vim .env
+
+# 3. 根据需要调整 beeclaw.json
+vim beeclaw.json
+
+# 4. 启动应用
+bun run bot
+```
+
+**部署到生产**:
+```bash
+# 1. 设置生产环境变量
+export ZHIPU_API_KEY=prod_key_here
+export LARK_BEECLAW_APPID=prod_app_id
+
+# 2. 使用生产配置文件
+cp beeclaw.prod.json beeclaw.json
+
+# 3. 启动服务
+pm2 start beeclaw
+```
+
+### 配置注意事项
+
+1. **不要提交 .env 和 beeclaw.json**
+   - 已在 .gitignore 中
+   - 包含敏感信息
+
+2. **定期更新 .example 文件**
+   - 添加新配置时同步更新模板
+   - 添加注释说明
+
+3. **文档化配置项**
+   - 在 CLAUDE.md 中说明配置方法
+   - 在 .example 文件中添加注释
+
+---
+
 ## 更多帮助
 
 - **完整配置文档**: [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md)
+- **配置概念说明**: [CONFIGURATION-CONCEPTS.md](./CONFIGURATION-CONCEPTS.md)
 - **配置示例**: [../beeclaw.example.json](../beeclaw.example.json)
 - **Schema 定义**: [../beeclaw.schema.json](../beeclaw.schema.json)
-- **迁移指南**: [CONFIGURATION-MIGRATION-GUIDE.md](./CONFIGURATION-MIGRATION-GUIDE.md)
+- **环境变量 vs 配置文件**: [env-vs-config.md](./env-vs-config.md)
