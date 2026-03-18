@@ -31,26 +31,27 @@ import { getConfig_ } from '../../app';
 /**
  * Get fast model name and params from v6 configuration
  *
- * Supports both v6 format (role-based) and legacy format (models array)
+ * v6 format: llmRouter.tiers.fast.role -> roles[role]
+ * Priority: llmRouter.tiers.fast.params > roles[role].params
  */
 export function getFastModelFromConfig(): { model: string; maxTokens?: number } | undefined {
   const config = getConfig_();
-  if (!config?.llmRouter?.tiers?.fast) return undefined;
+  if (!config?.llmRouter?.tiers?.fast?.role) return undefined;
 
-  const fastTier = config.llmRouter.tiers.fast;
+  const roleName = config.llmRouter.tiers.fast.role;
+  const roleConfig = config.roles?.[roleName];
 
-  // v6 format: roles[role].model
-  if (fastTier.role && config.roles) {
-    const roleConfig = config.roles[fastTier.role];
-    if (roleConfig?.model) {
-      return {
-        model: roleConfig.model,
-        maxTokens: roleConfig.params?.max_tokens,
-      };
-    }
-  }
+  if (!roleConfig?.model) return undefined;
 
-  return undefined;
+  // Tier params override role params
+  const maxTokens =
+    config.llmRouter.tiers.fast.params?.max_tokens ??
+    roleConfig.params?.max_tokens;
+
+  return {
+    model: roleConfig.model,
+    maxTokens,
+  };
 }
 
 export interface JudgmentOptions<T> {
