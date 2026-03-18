@@ -19,7 +19,6 @@ import { getSkillToolsForAI } from '../skills';
 import { getGoalToolsForAI } from './goal';
 import { getProactiveToolsForAI } from '../proactive';
 import { getBuiltinToolsForAI, builtinToolNames } from '../tools';
-import { getSandboxToolsForAI } from '../sandbox/tools';
 import { getPersonaToolsForAI, getTraitSystemPrompt } from './persona';
 import { getGoalStore } from './goal/store';
 import { getDateContext } from '../tools/holiday';
@@ -133,7 +132,6 @@ export function getAllTools(): OpenAITool[] {
     // Feishu tools removed - now handled by feishu-cli-toolkit skill
     ...mcpTools,
     ...pluginTools,
-    ...getSandboxToolsForAI(),
   ];
 }
 
@@ -156,6 +154,8 @@ export const TOOL_CATEGORIES = {
   skill: ['skill_list', 'skill_get', 'skill_ensure', 'skill_delete', 'skill_search', 'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set', 'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create'],
   goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],
   proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once', 'notification_send', 'notification_list', 'notification_mark_read', 'notification_delete', 'notification_history', 'notification_stats'],
+  state: ['state_manage', 'state_query', 'state_lock_manage'],
+  state_legacy: ['state_set', 'state_get', 'state_delete', 'state_update', 'state_exists', 'state_list', 'state_stats', 'state_lock', 'state_unlock'],
   get builtin() { return [...builtinToolNames]; },
   sandbox: ['sandbox_exec', 'sandbox_write_file', 'sandbox_read_file', 'sandbox_list_files', 'sandbox_status'],
   persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],

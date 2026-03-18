@@ -1,23 +1,20 @@
 /**
- * Utility tools (time, calc, weather, QR, URL, etc.)
+ * Utility tools (time, calc, weather, code execution, etc.)
  *
  * Re-export from builtin.ts for modular imports.
- * Usage: import { webSearchTool } from '../tools/categories/search';
+ * Usage: import { timeTool } from '../tools/categories/utility';
  */
 export {
   timeTool,
   executeTime,
+  beeclawInfoTool,
+  executeBeeclawInfo,
   calcTool,
   executeCalc,
   weatherTool,
   executeWeather,
-  urlShortenTool,
-  executeUrlShorten,
-  qrCodeTool,
-  executeQrCode,
-  QrCodeSchema,
-  beeclawInfoTool,
-  executeBeeclawInfo,
+  // Removed: urlShortenTool, executeUrlShorten (low usage)
+  // Removed: qrCodeTool, executeQrCode (low usage)
   codeExecuteTool,
   executeCode,
   claudeCodeTool,

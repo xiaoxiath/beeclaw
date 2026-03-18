@@ -48,6 +48,14 @@ import {
   type StateUnlockParams,
 } from '../subagent/state-tools';
 import {
+  stateManageTool,
+  stateQueryTool,
+  stateLockManageTool,
+  type StateManageParams,
+  type StateQueryParams,
+  type StateLockManageParams,
+} from '../subagent/state-tools-consolidated';
+import {
   executeStateSet,
   executeStateGet,
   executeStateDelete,
@@ -57,6 +65,9 @@ import {
   executeStateStats,
   executeStateLock,
   executeStateUnlock,
+  executeStateManage,
+  executeStateQuery,
+  executeStateLockManage,
 } from '../subagent/state-executor';
 import {
   requestDeepAnalysisTool,
@@ -379,8 +390,6 @@ export const beeclawInfoTool = {
 export async function executeBeeclawInfo(): Promise<BuiltinToolResult> {
   try {
     // Read version from package.json
-    const { readFileSync } = require('fs');
-    const { join } = require('path');
     const packageJsonPath = join(process.cwd(), 'package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 
@@ -1061,109 +1070,6 @@ ${info.mainBusiness ? `主营业务:\n${info.mainBusiness}` : ''}
     return {
       success: false,
       error: `公司信息获取失败: ${error instanceof Error ? error.message : 'Unknown error'}`
-    };
-  }
-}
-
-// ============================================================================
-// URL Shorten Tool
-// ============================================================================
-
-export const UrlShortenSchema = z.object({
-  url: z.string().url().describe('URL to shorten'),
-});
-
-export const urlShortenTool = {
-  name: 'url_shorten',
-  description: 'Shorten a long URL using is.gd service.',
-  parameters: {
-    type: 'object' as const,
-    properties: {
-      url: {
-        type: 'string',
-        description: 'The URL to shorten',
-      },
-    },
-    required: ['url'],
-  },
-};
-
-export async function executeUrlShorten(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const parsed = UrlShortenSchema.safeParse(params);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.message };
-  }
-
-  const { url } = parsed.data;
-
-  try {
-    const response = await fetch(`https://is.gd/create.php?format=simple&url=${encodeURIComponent(url)}`);
-
-    if (!response.ok) {
-      return { success: false, error: `URL shortening failed: ${response.status}` };
-    }
-
-    const shortUrl = await response.text();
-    return {
-      success: true,
-      data: `Original: ${url}\nShortened: ${shortUrl}`
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: `URL shortening error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    };
-  }
-}
-
-// ============================================================================
-// QR Code Tool
-// ============================================================================
-
-export const QrCodeSchema = z.object({
-  text: z.string().describe('Text or URL to encode as QR code'),
-  size: z.number().min(100).max(500).optional().default(200).describe('QR code size in pixels'),
-});
-
-export const qrCodeTool = {
-  name: 'qrcode',
-  description: 'Generate a QR code image URL for text or URL.',
-  parameters: {
-    type: 'object' as const,
-    properties: {
-      text: {
-        type: 'string',
-        description: 'Text or URL to encode',
-      },
-      size: {
-        type: 'number',
-        description: 'QR code size in pixels (default: 200)',
-      },
-    },
-    required: ['text'],
-  },
-};
-
-export async function executeQrCode(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  const parsed = QrCodeSchema.safeParse(params);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.message };
-  }
-
-  const { text, size } = parsed.data;
-
-  try {
-    // Use QR code API
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}`;
-
-    return {
-      success: true,
-      data: `QR Code generated:\nURL: ${qrUrl}\n\nScan this QR code to access: ${text}`
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: `QR code error: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
@@ -2261,6 +2167,19 @@ export async function executeStateSetTool(params: Record<string, unknown>): Prom
   return executeStateUnlock(params as StateUnlockParams);
  }
 
+// Consolidated state tool executors
+export async function executeStateManageTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  return executeStateManage(params as StateManageParams);
+}
+
+export async function executeStateQueryTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  return executeStateQuery(params as StateQueryParams);
+}
+
+export async function executeStateLockManageTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  return executeStateLockManage(params as StateLockManageParams);
+}
+
 // ============================================================================
 // Tool Registry
 // ============================================================================
@@ -2277,8 +2196,8 @@ export const builtinTools = {
   stock_history: stockHistoryTool,
   stock_financial: stockFinancialTool,
   stock_info: stockInfoTool,
-  url_shorten: urlShortenTool,
-  qrcode: qrCodeTool,
+  // Removed: url_shorten (low usage)
+  // Removed: qrcode (low usage)
   claude_code: claudeCodeTool,
   deep_research: deepResearchTool,
   file_read: fileReadTool,
@@ -2288,15 +2207,13 @@ export const builtinTools = {
   shell: shellTool,
   spawn_subagent: spawnSubagentToolDef,
   spawn_parallel: spawnParallelToolDef,
-  state_set: stateSetTool,
-  state_get: stateGetTool,
-  state_delete: stateDeleteTool,
-  state_update: stateUpdateTool,
-  state_exists: stateExistsTool,
-  state_list: stateListTool,
-  state_stats: stateStatsTool,
-  state_lock: stateLockTool,
-  state_unlock: stateUnlockTool,
+  // Removed legacy state tools (replaced by consolidated versions)
+  // state_set, state_get, state_delete, state_update, state_exists,
+  // state_list, state_stats, state_lock, state_unlock
+  // Consolidated state tools (recommended)
+  state_manage: stateManageTool,
+  state_query: stateQueryTool,
+  state_lock_manage: stateLockManageTool,
   request_deep_analysis: requestDeepAnalysisTool,
   update_user_settings: updateUserSettingsTool,
   // Sandbox tools
@@ -2341,10 +2258,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeStockFinancial(params);
     case 'stock_info':
       return executeStockInfo(params);
-    case 'url_shorten':
-      return executeUrlShorten(params);
-    case 'qrcode':
-      return executeQrCode(params);
+    // Removed: url_shorten (low usage)
+    // Removed: qrcode (low usage)
     case 'claude_code':
       return executeClaudeCode(params);
     case 'deep_research':
@@ -2363,24 +2278,16 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeSpawnSubagentTool(params);
     case 'spawn_parallel':
       return executeSpawnParallelTool(params);
-    case 'state_set':
-      return executeStateSetTool(params);
-    case 'state_get':
-      return executeStateGetTool(params);
-    case 'state_delete':
-      return executeStateDeleteTool(params);
-    case 'state_update':
-      return executeStateUpdateTool(params);
-    case 'state_exists':
-      return executeStateExistsTool(params);
-    case 'state_list':
-      return executeStateListTool(params);
-    case 'state_stats':
-      return executeStateStatsTool(params);
-    case 'state_lock':
-      return executeStateLockTool(params);
-    case 'state_unlock':
-      return executeStateUnlockTool(params);
+    // Removed legacy state tools (replaced by consolidated versions)
+    // case 'state_set', 'state_get', 'state_delete', 'state_update',
+    // case 'state_exists', 'state_list', 'state_stats', 'state_lock', 'state_unlock'
+    // Consolidated state tools
+    case 'state_manage':
+      return executeStateManageTool(params);
+    case 'state_query':
+      return executeStateQueryTool(params);
+    case 'state_lock_manage':
+      return executeStateLockManageTool(params);
     case 'request_deep_analysis':
       return executeRequestDeepAnalysis(params);
     case 'update_user_settings':

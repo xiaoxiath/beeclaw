@@ -340,3 +340,96 @@ export async function executeStateUnlock(params: StateUnlockParams): Promise<Too
     };
   }
 }
+
+// ============================================================================
+// Consolidated Tool Executors
+// ============================================================================
+
+import type {
+  StateManageParams,
+  StateQueryParams,
+  StateLockManageParams,
+} from './state-tools-consolidated';
+
+/**
+ * Execute consolidated state_manage tool
+ */
+export async function executeStateManage(params: StateManageParams): Promise<ToolResult> {
+  switch (params.action) {
+    case 'set':
+      return executeStateSet({
+        key: params.key,
+        value: params.value!,
+        ttl: params.ttl,
+        metadata: params.metadata,
+      });
+
+    case 'get':
+      return executeStateGet({ key: params.key });
+
+    case 'update':
+      return executeStateUpdate({
+        key: params.key,
+        operation: params.operation!,
+        value: params.value,
+        ttl: params.ttl,
+      });
+
+    case 'delete':
+      return executeStateDelete({ key: params.key });
+
+    default:
+      return {
+        success: false,
+        output: `Unknown action: ${(params as any).action}`,
+        error: 'Invalid action',
+      };
+  }
+}
+
+/**
+ * Execute consolidated state_query tool
+ */
+export async function executeStateQuery(params: StateQueryParams): Promise<ToolResult> {
+  switch (params.action) {
+    case 'list':
+      return executeStateList({ prefix: params.prefix });
+
+    case 'exists':
+      return executeStateExists({ key: params.key! });
+
+    case 'stats':
+      return executeStateStats();
+
+    default:
+      return {
+        success: false,
+        output: `Unknown action: ${(params as any).action}`,
+        error: 'Invalid action',
+      };
+  }
+}
+
+/**
+ * Execute consolidated state_lock_manage tool
+ */
+export async function executeStateLockManage(params: StateLockManageParams): Promise<ToolResult> {
+  switch (params.action) {
+    case 'acquire':
+      return executeStateLock({
+        key: params.key,
+        owner: params.owner,
+        timeout: params.timeout,
+      });
+
+    case 'release':
+      return executeStateUnlock({ key: params.key });
+
+    default:
+      return {
+        success: false,
+        output: `Unknown action: ${(params as any).action}`,
+        error: 'Invalid action',
+      };
+  }
+}

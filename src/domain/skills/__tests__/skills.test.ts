@@ -360,46 +360,57 @@ describe('Skill Tools', () => {
 });
 
 describe('Skill Evals Run', () => {
+  let store: SkillStore;
+
   beforeEach(() => {
     if (existsSync(TEST_SKILLS_PATH)) {
       rmSync(TEST_SKILLS_PATH, { recursive: true });
     }
+    if (existsSync(TEST_BUILTIN_PATH)) {
+      rmSync(TEST_BUILTIN_PATH, { recursive: true });
+    }
     resetSkillStore();
-    getSkillStore(TEST_SKILLS_PATH);
+    store = getSkillStore(TEST_SKILLS_PATH, TEST_BUILTIN_PATH);
   });
 
   afterEach(() => {
     if (existsSync(TEST_SKILLS_PATH)) {
       rmSync(TEST_SKILLS_PATH, { recursive: true });
     }
+    if (existsSync(TEST_BUILTIN_PATH)) {
+      rmSync(TEST_BUILTIN_PATH, { recursive: true });
+    }
   });
 
-  test('skill_evals_run returns error for non-existent skill', () => {
-    const result = executeSkillTool('skill_evals_run', { skill_name: 'non-existent' });
+  test('skill_evals returns error for non-existent skill', () => {
+    const result = executeSkillTool('skill_evals', { action: 'run', skill_name: 'non-existent' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('not found');
   });
 
-  test('skill_evals_run returns error when no evals defined', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_evals returns error when no evals defined', () => {
+    store.create({
       name: 'skill-no-evals',
       description: 'Test skill without evals',
+      content: '# Test\n\nNo evals here',
     });
 
-    const result = executeSkillTool('skill_evals_run', { skill_name: 'skill-no-evals' });
+    const result = executeSkillTool('skill_evals', { action: 'run', skill_name: 'skill-no-evals' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('No evals defined');
   });
 
-  test('skill_evals_run runs all evals successfully', () => {
+  test('skill_evals runs all evals successfully', () => {
     // Create skill
-    executeSkillTool('skill_ensure', {
+    store.create({
       name: 'test-skill',
       description: 'Test skill',
+      content: '# Test\n\nTest skill',
     });
 
     // Set evals
-    executeSkillTool('skill_evals_set', {
+    executeSkillTool('skill_evals', {
+      action: 'set',
       skill_name: 'test-skill',
       evals: [
         {
@@ -418,7 +429,7 @@ describe('Skill Evals Run', () => {
     });
 
     // Run evals
-    const result = executeSkillTool('skill_evals_run', { skill_name: 'test-skill' });
+    const result = executeSkillTool('skill_evals', { action: 'run', skill_name: 'test-skill' });
     expect(result.success).toBe(true);
     expect((result.data as any).total_evals).toBe(2);
     expect((result.data as any).passed_count).toBe(2);
@@ -427,13 +438,15 @@ describe('Skill Evals Run', () => {
     expect((result.data as any).results).toHaveLength(2);
   });
 
-  test('skill_evals_run runs specific eval by ID', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_evals runs specific eval by ID', () => {
+    store.create({
       name: 'test-skill-2',
       description: 'Test',
+      content: '# Test',
     });
 
-    executeSkillTool('skill_evals_set', {
+    executeSkillTool('skill_evals', {
+      action: 'set',
       skill_name: 'test-skill-2',
       evals: [
         { id: 1, name: 'first', prompt: 'Test 1', expected_output: 'Output 1' },
@@ -441,7 +454,8 @@ describe('Skill Evals Run', () => {
       ],
     });
 
-    const result = executeSkillTool('skill_evals_run', {
+    const result = executeSkillTool('skill_evals', {
+      action: 'run',
       skill_name: 'test-skill-2',
       eval_id: 1,
     });
@@ -451,18 +465,21 @@ describe('Skill Evals Run', () => {
     expect((result.data as any).results[0].eval_id).toBe(1);
   });
 
-  test('skill_evals_run returns error for non-existent eval ID', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_evals returns error for non-existent eval ID', () => {
+    store.create({
       name: 'test-skill-3',
       description: 'Test',
+      content: '# Test',
     });
 
-    executeSkillTool('skill_evals_set', {
+    executeSkillTool('skill_evals', {
+      action: 'set',
       skill_name: 'test-skill-3',
       evals: [{ id: 1, name: 'only', prompt: 'Test', expected_output: 'Output' }],
     });
 
-    const result = executeSkillTool('skill_evals_run', {
+    const result = executeSkillTool('skill_evals', {
+      action: 'run',
       skill_name: 'test-skill-3',
       eval_id: 999,
     });

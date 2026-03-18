@@ -180,35 +180,58 @@ Use this tool for all skill creation/updating. The skill-creator workflow ensure
     },
   },
 
-  // New Evaluation System Tools
-  skill_evals_get: {
-    name: 'skill_evals_get',
-    description: 'Get the evaluation test cases for a skill. Use this to see how a skill is tested.',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        skill_name: {
-          type: 'string',
-          description: 'Skill name',
-        },
-      },
-      required: ['skill_name'],
-    },
-  },
+  // Consolidated Evaluation System Tool (recommended)
+  skill_evals: {
+    name: 'skill_evals',
+    description: `Manage evaluation test cases for a skill with a unified interface.
 
-  skill_evals_set: {
-    name: 'skill_evals_set',
-    description: 'Create or update evaluation test cases for a skill. Use this to define how to test a skill.',
+**Actions:**
+- **get**: Get evaluation test cases for a skill
+- **set**: Create or update evaluation test cases
+- **run**: Run evaluation test cases and get pass/fail results
+
+**Best practices:**
+1. Use 'get' to review existing test cases
+2. Use 'set' to define comprehensive test scenarios
+3. Use 'run' to validate skill behavior
+
+**Examples:**
+\`\`\`javascript
+// Get evals
+skill_evals({ action: "get", skill_name: "my-skill" })
+
+// Set evals
+skill_evals({
+  action: "set",
+  skill_name: "my-skill",
+  evals: [
+    {
+      id: 1,
+      name: "Test case 1",
+      prompt: "Test prompt",
+      expected_output: "Expected result"
+    }
+  ]
+})
+
+// Run evals
+skill_evals({ action: "run", skill_name: "my-skill" })
+\`\`\``,
     parameters: {
       type: 'object' as const,
       properties: {
+        action: {
+          type: 'string',
+          enum: ['get', 'set', 'run'],
+          description: 'Action to perform',
+        },
         skill_name: {
           type: 'string',
           description: 'Skill name',
         },
         evals: {
           type: 'array',
-          description: 'Array of eval test cases',
+          description: 'Array of eval test cases (for set action)',
           items: {
             type: 'object',
             properties: {
@@ -221,10 +244,19 @@ Use this tool for all skill creation/updating. The skill-creator workflow ensure
             },
           },
         },
+        eval_id: {
+          type: 'number',
+          description: 'Specific eval ID to run (for run action, optional)',
+        },
       },
-      required: ['skill_name', 'evals'],
+      required: ['action', 'skill_name'],
     },
   },
+
+  // Removed legacy tools (use consolidated skill_evals instead):
+  // - skill_evals_get
+  // - skill_evals_set
+  // - skill_evals_run
 
   skill_resource_read: {
     name: 'skill_resource_read',
@@ -306,25 +338,6 @@ Use this tool for all skill creation/updating. The skill-creator workflow ensure
         iteration: {
           type: 'number',
           description: 'Iteration number (default: 1)',
-        },
-      },
-      required: ['skill_name'],
-    },
-  },
-
-  skill_evals_run: {
-    name: 'skill_evals_run',
-    description: 'Run evaluation test cases for a skill. Executes defined test cases and returns pass/fail results with grading and feedback.',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        skill_name: {
-          type: 'string',
-          description: 'Skill name to run evals for',
-        },
-        eval_id: {
-          type: 'number',
-          description: 'Specific eval ID to run (optional). If not provided, runs all evals.',
         },
       },
       required: ['skill_name'],
@@ -552,7 +565,39 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
       return { success: true, data: assessment };
     }
 
-    // New Evaluation System Tool Cases
+    // Consolidated skill_evals tool
+    case 'skill_evals': {
+      const parsed = z.object({
+        action: z.enum(['get', 'set', 'run']),
+        skill_name: z.string(),
+        evals: z.array(z.any()).optional(),
+        eval_id: z.number().optional(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+
+      switch (parsed.data.action) {
+        case 'get':
+          return store.getEvals(parsed.data.skill_name);
+        case 'set': {
+          if (!parsed.data.evals) {
+            return { success: false, error: 'evals parameter required for set action' };
+          }
+          const evalsData: SkillEvals = {
+            skill_name: parsed.data.skill_name,
+            evals: parsed.data.evals,
+          };
+          return store.setEvals(parsed.data.skill_name, evalsData);
+        }
+        case 'run':
+          return store.runEval(parsed.data.skill_name, parsed.data.eval_id);
+        default:
+          return { success: false, error: `Unknown action: ${parsed.data.action}` };
+      }
+    }
+
+    // Legacy skill_evals_get tool (deprecated, use skill_evals instead)
     case 'skill_evals_get': {
       const parsed = z.object({ skill_name: z.string() }).safeParse(params);
       if (!parsed.success) {
@@ -561,6 +606,7 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
       return store.getEvals(parsed.data.skill_name);
     }
 
+    // Legacy skill_evals_set tool (deprecated, use skill_evals instead)
     case 'skill_evals_set': {
       const parsed = z.object({
         skill_name: z.string(),
@@ -620,6 +666,7 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
       return store.createWorkspace(parsed.data.skill_name, parsed.data.iteration);
     }
 
+    // Legacy skill_evals_run tool (deprecated, use skill_evals instead)
     case 'skill_evals_run': {
       const parsed = z.object({
         skill_name: z.string(),
