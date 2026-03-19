@@ -672,7 +672,8 @@ async function compressMessages(
   try {
     // [PERF OPT] Use fast model + direct API call instead of Agent
     const fastModelConfig = getFastModelFromConfig();
-    const compressionModel = fastModelConfig?.model || 'glm-5-turbo';
+    // Priority: fast model > main model from config
+    const compressionModel = fastModelConfig?.model || agentConfig.model;
 
     console.log(`[Session] 🗜️ Compressing ${oldMessages.length} messages using ${compressionModel}...`);
 
