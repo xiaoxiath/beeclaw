@@ -103,8 +103,17 @@ export function renderMessageCard(
   // Create card body
   const body = createCardBody(elements);
 
-  // Create card with optional streaming config
+  // Create card config
   const config = streaming ? createStreamingConfig() : undefined;
+
+  // Add summary for notification (参考 agentara)
+  if (config && steps.length > 0) {
+    const stepCount = steps.filter(s => s.type === 'tool_use').length;
+    config.summary = {
+      content: `Working on it (${stepCount} steps)`,
+    };
+  }
+
   return createCard(body, { config });
 }
 
@@ -133,10 +142,12 @@ export function renderStepsPanel(
   });
 
   // Create panel header (following agentara structure)
-  const headerText = summary || `Agent reasoning (${stepCount} steps)`;
+  const headerText = streaming
+    ? `Working on it (${stepCount} steps)`  // Streaming: show progress
+    : summary || `Show ${stepCount} steps`;  // Completed: show summary or steps
 
   // Create collapsible panel following agentara pattern
-  return createCollapsiblePanel({
+  const panel = createCollapsiblePanel({
     header: {
       title: {
         tag: 'plain_text',
@@ -160,6 +171,19 @@ export function renderStepsPanel(
     },
     vertical_spacing: '2px',
   });
+
+  // During streaming, add loading indicator at the end
+  if (streaming && stepElements.length > 0) {
+    // Add loading indicator
+    panel.elements.push(
+      createDivElement({
+        icon: createStandardIconElement('more_outlined', { color: 'grey' }),
+        text: createPlainTextElement(''),
+      })
+    );
+  }
+
+  return panel;
 }
 
 /**

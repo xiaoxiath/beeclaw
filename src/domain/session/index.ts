@@ -883,12 +883,13 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           debounceMs: 500,
         });
 
-        // 立即发送"正在思考..."状态，让用户知道AI已收到消息
+        // 【参考 agentara】立即发送初始 Card，显示 "Thinking..." 占位符
+        // 这样用户能立即看到反馈，而不是等到 agent 开始输出
         await streamingController.pushContent({
-          type: 'text',
-          text: '💭 正在思考...',
+          type: 'thinking',
+          thinking: 'Thinking...',
         });
-        console.log('[Session] ⚡ Card V2 early initialization - user sees immediate feedback');
+        console.log('[Session] ⚡ Card V2 initialized with early "Thinking..." placeholder');
       }
     }
   } catch (error) {
