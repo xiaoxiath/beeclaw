@@ -9,7 +9,9 @@ import { buildSubagentSystemPrompt } from './prompts';
 import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
 import type { AIProvider } from '../../infra/config/schema';
 import type { OpenAITool } from '../agent/types';
+// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
 import { getPluginRegistry } from '../../adapter/plugins';
+// TODO: [CR-Layer] Move createHookRunner to domain port interface
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { logger } from '../../infra/observability/logger';
 

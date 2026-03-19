@@ -298,6 +298,7 @@ export function renderEmptyCard(message?: string): Card {
 /**
  * Render error card
  */
+// SECURITY: [CR-Sec] Error messages may contain user input; sanitize before interpolation
 export function renderErrorCard(error: string): Card {
   const body = createCardBody([
     createDivElement({

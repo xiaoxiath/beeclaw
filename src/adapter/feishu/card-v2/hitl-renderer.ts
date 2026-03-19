@@ -22,6 +22,7 @@ type RiskLevel = keyof typeof RISK_COLORS;
 /**
  * 渲染确认请求卡片
  */
+// SECURITY: [CR-Sec] User input (toolName, message, question, context) should be sanitized before interpolation into lark_md content
 export function renderConfirmationRequestCard(block: ContentBlock): any {
   if (block.type !== 'confirmation_request') {
     return null;

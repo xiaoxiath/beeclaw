@@ -6,6 +6,7 @@
  */
 
 import { ActivityMonitor, type ActivityType } from '../utils/activity-monitor';
+import { logger } from '../observability/logger';
 
 /**
  * Smart timeout configuration
@@ -49,12 +50,16 @@ const DEFAULT_CHECK_INTERVAL_MS = 30000;  // 30 seconds
  * Monitors agent activity and triggers timeout only when
  * the agent has been inactive for the specified duration.
  *
+ * @deprecated Use `TimeoutOrchestrator` from `../resilience/timeout-hierarchy.ts` instead.
+ * TimeoutOrchestrator provides a hierarchical timeout system with phase-aware budgets.
+ * This class is retained until all call-sites are migrated.
+ *
  * @example
  * ```typescript
  * const timeout = new SmartTimeout({
  *   inactivityTimeoutMs: 60000,  // 1 minute
  *   onTimeout: (inactiveMs) => {
- *     console.log(`Agent inactive for ${inactiveMs}ms`);
+ *     logger.info(`Agent inactive for ${inactiveMs}ms`);
  *   },
  * });
  *
@@ -88,8 +93,8 @@ export class SmartTimeout {
 
     // Warn if timeout is too short
     if (config.inactivityTimeoutMs < 60000) {
-      console.warn(
-        `[SmartTimeout] Warning: inactivityTimeoutMs is ${config.inactivityTimeoutMs}ms ` +
+      logger.warn(
+        `[SmartTimeout] inactivityTimeoutMs is ${config.inactivityTimeoutMs}ms ` +
         `(< 1 minute). This may be too aggressive for complex tasks. ` +
         `Recommended: 180000ms (3 minutes)`
       );
@@ -101,7 +106,7 @@ export class SmartTimeout {
    */
   start(): void {
     if (this.isRunning) {
-      console.warn('[SmartTimeout] Already running');
+      logger.warn('[SmartTimeout] Already running');
       return;
     }
 
@@ -115,7 +120,7 @@ export class SmartTimeout {
       if (inactiveMs > this.config.inactivityTimeoutMs) {
         const stats = this.monitor.getStats();
 
-        console.error(
+        logger.error(
           `[SmartTimeout] Agent inactive for ${Math.round(inactiveMs / 1000)}s, ` +
           `triggering timeout`
         );

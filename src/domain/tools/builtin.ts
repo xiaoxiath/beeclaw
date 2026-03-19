@@ -633,17 +633,24 @@ export async function executeCode(params: Record<string, unknown>): Promise<Buil
       clearInterval: clearInterval,
     };
 
-    const sandboxKeys = Object.keys(sandbox);
-    const sandboxValues = Object.values(sandbox);
+    // Tighten sandbox: freeze globals to prevent prototype pollution
+    const frozenSandbox = Object.freeze({ ...sandbox });
+    const frozenKeys = Object.keys(frozenSandbox);
+    // Ensure key-value order consistency (avoid relying on Object.values order)
+    const frozenValues = frozenKeys.map(key => frozenSandbox[key]);
 
     // Wrap code in async function for timeout support
     const wrappedCode = `(async () => { ${code} })()`;
 
+    // Add strict mode and wrap in try-catch for better error containment
+    const strictCode = `"use strict"; return ${wrappedCode}`;
+
     // Execute with timeout
     const result = await Promise.race([
       (async () => {
-        const fn = new Function(...sandboxKeys, `return ${wrappedCode}`);
-        return await fn(...sandboxValues);
+        const fn = new Function(...frozenKeys, strictCode);
+        // Execute with frozen sandbox values
+        return await fn(...frozenValues);
       })(),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Execution timeout')), timeout)

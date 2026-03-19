@@ -15,8 +15,11 @@ import { executeGoalTool } from './goal/tools';
 import { executeProactiveTool } from '../proactive/tools';
 import { executePersonaTool } from './persona/tools';
 import { executeBuiltinTool, isBuiltinTool } from '../tools';
+// TODO: [CR-Layer] Move MCPClientManager/getMCPManager to domain port interface
 import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
+// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
 import { getPluginRegistry } from '../../adapter/plugins';
+// TODO: [CR-Layer] Move createHookRunner to domain port interface
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { recordSkillFailure } from './evolution';
 import {

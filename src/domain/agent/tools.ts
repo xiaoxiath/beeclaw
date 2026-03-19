@@ -25,7 +25,9 @@ import { getDateContext } from '../tools/holiday';
 import { getWeatherContext } from '../tools/weather';
 import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
 // Feishu tools are now handled by feishu-cli-toolkit skill
+// TODO: [CR-Layer] Move getMCPManager to domain port interface
 import { getMCPManager } from '../../adapter/mcp';
+// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
 import { getPluginRegistry } from '../../adapter/plugins';
 import { logger } from '../../infra/observability/logger';
 import { estimateTokens } from './context';
@@ -151,7 +153,7 @@ export function getSkillTools(): OpenAITool[] {
 
 export const TOOL_CATEGORIES = {
   memory: ['memory_ls', 'memory_grep', 'memory_read', 'memory_write', 'memory_record'],
-  skill: ['skill_list', 'skill_get', 'skill_ensure', 'skill_delete', 'skill_record', 'skill_maturity', 'skill_evals'],
+  skill: ['skill_list', 'skill_get', 'skill_ensure', 'skill_delete', 'skill_search', 'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set', 'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create'],
   goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],
   proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once', 'notification_send', 'notification_list', 'notification_mark_read', 'notification_delete', 'notification_history', 'notification_stats'],
   state: ['state_manage', 'state_query', 'state_lock_manage'],
@@ -159,6 +161,13 @@ export const TOOL_CATEGORIES = {
   get builtin() { return [...builtinToolNames]; },
   sandbox: ['sandbox_exec', 'sandbox_write_file', 'sandbox_read_file', 'sandbox_list_files', 'sandbox_status'],
   persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],
+  feishu: [
+    'feishu_calendar_list', 'feishu_calendar_get', 'feishu_calendar_event_create', 'feishu_calendar_event_list', 'feishu_calendar_event_get', 'feishu_calendar_event_update', 'feishu_calendar_event_delete', 'feishu_calendar_event_search', 'feishu_calendar_today', 'feishu_calendar_quick_event',
+    'feishu_docx_get', 'feishu_docx_list_children', 'feishu_docx_search', 'feishu_docx_create_text', 'feishu_docx_append', 'feishu_docx_update', 'feishu_docx_delete', 'feishu_docx_create_table',
+    'feishu_drive_list', 'feishu_drive_get', 'feishu_drive_create_folder', 'feishu_drive_move', 'feishu_drive_copy', 'feishu_drive_rename', 'feishu_drive_delete', 'feishu_drive_search', 'feishu_drive_download', 'feishu_drive_upload', 'feishu_drive_share',
+    'feishu_bitable_get_meta', 'feishu_bitable_list_tables', 'feishu_bitable_list_fields', 'feishu_bitable_create_field', 'feishu_bitable_list_records', 'feishu_bitable_get_record', 'feishu_bitable_create_record', 'feishu_bitable_update_record', 'feishu_bitable_delete_record', 'feishu_bitable_create_app',
+    'feishu_wiki_list_spaces', 'feishu_wiki_get_space', 'feishu_wiki_list_nodes', 'feishu_wiki_get_node', 'feishu_wiki_create_page', 'feishu_wiki_move_node', 'feishu_wiki_rename_node', 'feishu_wiki_delete_node', 'feishu_wiki_copy_node', 'feishu_wiki_search', 'feishu_wiki_tree',
+  ],
 };
 
 export function getToolsByCategory(categories: (keyof typeof TOOL_CATEGORIES)[]): OpenAITool[] {

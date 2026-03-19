@@ -192,7 +192,7 @@ export class SkillEnforcementEngine {
    * Start tracking a skill execution.
    */
   startSkillTracking(skillId: string): string {
-    const skill = this.skillStore.getSkill(skillId);
+    const skill = getSkillStore()?.get(skillId);
     if (!skill) return '';
 
     const traceId = `${skillId}-${Date.now()}`;

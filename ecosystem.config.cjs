@@ -13,7 +13,7 @@ module.exports = {
   apps: [
     {
       name: 'beeclaw',
-      script: 'src/bot.ts',
+      script: 'src/entries/bot.ts',
       interpreter: 'bun',
       cwd: './',
       args: '--daemon',  // Enable daemon mode for proactive scheduling
@@ -53,7 +53,7 @@ module.exports = {
     // Uncomment to enable
     // {
     //   name: 'beeclaw-cli',
-    //   script: 'src/cli.ts',
+    //   script: 'src/entries/cli.ts',
     //   interpreter: 'bun',
     //   instances: 1,
     //   autorestart: false,

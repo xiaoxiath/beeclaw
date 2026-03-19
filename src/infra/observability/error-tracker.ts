@@ -5,6 +5,7 @@
  */
 
 import type { ClassifiedError, ErrorType } from './error-handler';
+import { logger } from './logger';
 
 /**
  * Error statistics for a specific error type
@@ -71,7 +72,7 @@ export class ErrorTracker {
       error.type === 'INSUFFICIENT_BALANCE' ||
       error.type === 'AUTH_ERROR'
     ) {
-      console.error(`[ErrorTracker] Critical error: ${error.type} - ${error.message}`);
+      logger.error(`[ErrorTracker] Critical error: ${error.type} - ${error.message}`);
     }
   }
 

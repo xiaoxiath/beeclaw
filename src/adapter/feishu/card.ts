@@ -251,6 +251,7 @@ export function createCard(): CardBuilder {
 /**
  * Build markdown card (Schema 2.0)
  */
+// SECURITY: [CR-Sec] User input (title, markdown) should be sanitized before interpolation into lark_md content
 export function buildMarkdownCard(
   markdown: string,
   options?: {
@@ -291,6 +292,7 @@ export function buildMarkdownCard(
 /**
  * Build simple text card
  */
+// SECURITY: [CR-Sec] User input (title, content) should be sanitized before interpolation into lark_md content
 export function buildTextCard(
   title: string,
   content: string,
@@ -332,6 +334,7 @@ export function buildTextCard(
 /**
  * Build form card with input fields
  */
+// SECURITY: [CR-Sec] User input (title, field names/placeholders) should be sanitized before interpolation
 export function buildFormCard(
   title: string,
   fields: Array<{
@@ -447,6 +450,7 @@ export function buildFormCard(
 /**
  * Build list card
  */
+// SECURITY: [CR-Sec] User input (title, item titles/descriptions) should be sanitized before interpolation
 export function buildListCard(
   title: string,
   items: Array<{

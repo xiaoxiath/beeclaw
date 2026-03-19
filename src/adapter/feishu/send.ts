@@ -531,14 +531,9 @@ function buildMarkdownCard(
   });
 
   return {
-    type: 'template',
-    data: {
-      template_id: 'AAqkQM2eSAKme',
-      template_variable: {
-        title: options?.title || '',
-        content: markdown,
-      },
-    },
+    type: 'interactive',
+    config: { wide_screen_mode: true, enable_forward: true },
+    elements,
   };
 }
 

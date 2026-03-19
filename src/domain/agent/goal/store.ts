@@ -16,6 +16,9 @@ import type {
   Checkpoint,
 } from './types';
 
+// SECURITY: [CR-Sec] Methods that accept user-provided IDs (get, update, delete, addCheckpoint, etc.)
+// use them in path.join() without validation. Add path traversal checks before any fs operation.
+// e.g., verify id matches /^goal-[a-z0-9]+-[a-z0-9]+$/ pattern.
 export class GoalStore {
   private basePath: string;
   private initialized: boolean = false;
@@ -94,6 +97,7 @@ export class GoalStore {
 
   // Get a specific goal
   get(id: string): Goal | null {
+    // SECURITY: [CR-Sec] Validate id to prevent directory traversal (e.g., id="../../etc/passwd")
     this.init();
 
     // Search in all state directories

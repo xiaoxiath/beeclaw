@@ -7,6 +7,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
+// TODO: [CR-Layer] Move getHookRunner to domain port interface
 import { getHookRunner } from '../../adapter/plugins/hooks';
 
 // ============================================================================

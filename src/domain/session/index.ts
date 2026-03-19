@@ -24,7 +24,9 @@ import {
   resetExtractionManager,
   type ExtractionManager,
 } from '../extraction';
+// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
 import { getPluginRegistry } from '../../adapter/plugins';
+// TODO: [CR-Layer] Move createHookRunner to domain port interface
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
@@ -33,7 +35,9 @@ import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../../i
 import { getDataConnection } from '../../infra/db';
 import { sessions as sessionsTable } from '../../infra/db/schema';
 import { eq } from 'drizzle-orm';
+// TODO: [CR-Layer] StreamingMessageController is a Feishu adapter concern; inject via port
 import { StreamingMessageController } from '../../adapter/feishu/card-v2';
+// TODO: [CR-Layer] getFeishuWSClient is a Feishu adapter concern; inject via port
 import { getFeishuWSClient } from '../../adapter/feishu';
 import { getConfig_ } from '../../app';
 import { SmartTimeout } from '../../infra/resilience/smart-timeout';
@@ -885,6 +889,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           try {
             console.log(`[Session] 🗜️ Starting background compression for ${sessionId} (${session.messages.length} messages)`);
 
+            // Record message count before compression to detect messages added during async work
+            const messageCountAtStart = session.messages.length;
+
             const { summary, recentMessages } = await compressMessages(
               session.messages,
               sessionConfig.keepRecent
@@ -901,7 +908,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             latestSession.summary = latestSession.summary
               ? `${latestSession.summary}\n\n[更早的对话摘要]\n${summary}`
               : summary;
-            latestSession.messages = recentMessages;
+            // Preserve messages added during compression
+            const newMessagesDuringCompression = latestSession.messages.slice(messageCountAtStart);
+            latestSession.messages = [...recentMessages, ...newMessagesDuringCompression];
             latestSession.updatedAt = new Date().toISOString();
 
             // Save compressed session

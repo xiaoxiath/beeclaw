@@ -1,3 +1,11 @@
+/**
+ * Unified logger for beeclaw.
+ *
+ * NOTE: This module is imported directly by domain layer files.
+ * Ideally, the domain should depend on a Logger interface (port)
+ * defined in the domain layer, with this as the concrete implementation.
+ * TODO: [CR-Layer] Extract ILogger interface to domain/ports/logger.ts
+ */
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface LoggerConfig {

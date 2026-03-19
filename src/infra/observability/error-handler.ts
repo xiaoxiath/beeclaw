@@ -3,6 +3,12 @@
  *
  * Classifies errors into types and determines if they are retryable.
  * This is the foundation of the error handling and recovery system.
+ *
+ * @deprecated This module is superseded by the unified error classifier in
+ * `src/infra/resilience/unified-retry.ts`. New code should import
+ * `classifyError` from unified-retry instead. This file is retained only
+ * because `error-tracker.ts` still references its types (ErrorType,
+ * ClassifiedError). Migrate those usages and then delete this file.
  */
 
 /**
@@ -243,24 +249,13 @@ function getUserMessage(type: ErrorType, originalMessage: string): string {
 /**
  * Classify an error into a specific type with context
  *
+ * @deprecated Use `classifyError` from `src/infra/resilience/unified-retry.ts` instead.
+ * That implementation merges this classifier and `errors.ts#detectErrorCategory` into
+ * a single, more comprehensive classifier.
+ *
  * @param error - The original error
  * @param context - Additional context (optional)
  * @returns Classified error with type and retryability
- *
- * @example
- * ```typescript
- * try {
- *   await agent.chat(message);
- * } catch (error) {
- *   const classified = classifyError(error as Error);
- *
- *   if (classified.retryable) {
- *     console.log('Will retry:', classified.message);
- *   } else {
- *     console.error('Permanent failure:', classified.userMessage);
- *   }
- * }
- * ```
  */
 export function classifyError(
   error: Error,

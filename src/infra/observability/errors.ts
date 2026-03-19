@@ -91,6 +91,11 @@ export class BeeclawError extends Error {
 // 错误分类
 // ============================================================================
 
+/**
+ * @deprecated Use `classifyError` from `src/infra/resilience/unified-retry.ts` instead.
+ * unified-retry's classifier merges this function and error-handler.ts into a single,
+ * more comprehensive error classifier.
+ */
 export function detectErrorCategory(error: unknown): ErrorCategory {
   if (error instanceof BeeclawError) {
     return error.category;
@@ -208,6 +213,11 @@ export const DEFAULT_RETRY_POLICIES: Record<string, RetryPolicy> = {
 // 重试执行器
 // ============================================================================
 
+/**
+ * @deprecated Use `withRetry` from `src/infra/resilience/unified-retry.ts` instead.
+ * unified-retry provides a more robust retry implementation with jitter, circuit-breaker
+ * awareness, and richer error classification.
+ */
 export async function withRetry<T>(
   fn: () => Promise<T>,
   policy: Partial<RetryPolicy> = {},
