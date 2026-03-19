@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, watch, type FSWatcher } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type {
@@ -15,12 +15,17 @@ import type {
 } from './types';
 import { SkillFrontmatterSchema } from './types';
 import { LLMSkillMatcher } from './llm-matcher';
+import { logger } from '../../infra/observability/logger';
 
 export class SkillStore {
   private basePath: string;          // User skills path
   private builtinPath: string;       // Built-in skills path
   private initialized: boolean = false;
   private llmMatcher: LLMSkillMatcher | null = null;
+  private watcher: FSWatcher | null = null;
+  private skillsCache: Skill[] | null = null;
+  private cacheInvalidated: boolean = true;
+  private debounceTimer: Timer | null = null;
 
   constructor(basePath: string, builtinPath?: string) {
     this.basePath = basePath;
@@ -44,6 +49,72 @@ export class SkillStore {
     }
 
     this.initialized = true;
+
+    // Start watching user skills directory
+    this.startWatching();
+  }
+
+  /**
+   * Start watching user skills directory for hot reload
+   */
+  private startWatching(): void {
+    if (this.watcher) return;
+
+    try {
+      // Watch user skills directory (not builtin)
+      this.watcher = watch(
+        this.basePath,
+        { recursive: true, persistent: false },
+        (eventType, filename) => {
+          if (!filename) return;
+
+          // Only care about SKILL.md changes
+          if (filename.endsWith('SKILL.md') || filename.includes('SKILL.md')) {
+            this.handleSkillChange(eventType, filename);
+          }
+        }
+      );
+
+      this.watcher.on('error', (error) => {
+        logger.error(`[SkillStore] Watch error:`, error);
+      });
+
+      logger.info(`[SkillStore] Watching ${this.basePath} for skill changes`);
+    } catch (error) {
+      logger.warn(`[SkillStore] Failed to start watcher:`, error);
+    }
+  }
+
+  /**
+   * Handle skill file changes with debounce
+   */
+  private handleSkillChange(eventType: string, filename: string): void {
+    // Debounce: wait 250ms before invalidating cache
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+
+    this.debounceTimer = setTimeout(() => {
+      logger.info(`[SkillStore] Skill changed: ${filename} (${eventType}), invalidating cache`);
+      this.skillsCache = null;
+      this.cacheInvalidated = true;
+    }, 250);
+  }
+
+  /**
+   * Stop watching
+   */
+  stopWatching(): void {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+
+    if (this.watcher) {
+      this.watcher.close();
+      this.watcher = null;
+      logger.info('[SkillStore] Stopped watching skills directory');
+    }
   }
 
   // Get base path (user skills)
@@ -59,6 +130,11 @@ export class SkillStore {
   // List all skills (builtin + user)
   list(): Skill[] {
     this.init();
+
+    // Return cached skills if not invalidated
+    if (this.skillsCache && !this.cacheInvalidated) {
+      return this.skillsCache;
+    }
 
     const skills: Skill[] = [];
     const seenNames = new Set<string>();
@@ -85,6 +161,10 @@ export class SkillStore {
         skills.push(skill);
       }
     }
+
+    // Cache the skills list
+    this.skillsCache = skills;
+    this.cacheInvalidated = false;
 
     return skills;
   }
