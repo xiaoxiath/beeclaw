@@ -343,11 +343,25 @@ export function buildSystemPromptWithBudget(
 
   // Layer 6: Skills list (medium priority — trimmable)
   if (coreContext?.skills && coreContext.skills.trim().length > 10) {
+    const skillsTokens = estimateTokens(coreContext.skills);
+    logger.info('[PromptBudget] 📚 Adding skills layer:', {
+      contentLength: coreContext.skills.length,
+      estimatedTokens: skillsTokens,
+      priority: LAYER_PRIORITIES.SKILLS,
+      preview: coreContext.skills.substring(0, 300),
+    });
+
     layers.push({
       name: 'skills',
       content: `\n---\n\n# Available Skills\n\n${coreContext.skills}`,
       priority: LAYER_PRIORITIES.SKILLS,
       trimmable: true,
+    });
+  } else {
+    logger.warn('[PromptBudget] ⚠️  Skills layer NOT added:', {
+      hasContext: !!coreContext?.skills,
+      contentLength: coreContext?.skills?.length || 0,
+      trimmedLength: coreContext?.skills?.trim().length || 0,
     });
   }
 
@@ -418,6 +432,17 @@ export function buildSystemPromptWithBudget(
 
   // --- Assemble with budget ---
   const result = assembleBudgetedPrompt(layers, budgetConfig);
+
+  // Log final result
+  logger.info('[PromptBudget] 📊 Final prompt assembly:', {
+    totalLayers: layers.length,
+    totalTokens: result.totalTokens,
+    budget: budgetConfig.maxSystemPromptTokens,
+    droppedLayers: result.droppedLayers,
+    truncatedLayers: result.truncatedLayers,
+    skillsDropped: result.droppedLayers.includes('skills'),
+    examplesSelected: selectedExampleCount,
+  });
 
   if (result.droppedLayers.length > 0 || result.truncatedLayers.length > 0) {
     console.log(`[PromptBudget] System prompt: ${result.totalTokens} tokens (budget: ${budgetConfig.maxSystemPromptTokens})`);
