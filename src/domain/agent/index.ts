@@ -38,7 +38,6 @@ import {
 import { getTieredCompressor, compressMessages, shouldCompress } from './compression';
 import { hybridCompress, type CompressionResult } from './compressor';
 import { groupToolCalls, getGroupingStats } from './tool-dependencies';
-import { getHybridToolSelector } from './hybrid-tool-selector';
 import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
 import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
 import { getHealthMonitorInstance } from '../../app/bootstrap-health';
@@ -265,7 +264,6 @@ export class Agent {
     };
   }> = [];
   private loopDetector: LoopDetector = createLoopDetector();
-  private toolSelector: ReturnType<typeof getHybridToolSelector> | null = null;
   private currentUserContext?: UserContext;  // User context for tool execution
   private skillEnforcement?: SkillEnforcementEngine;
   private healthMonitor?: PeriodicHealthMonitor;
@@ -276,16 +274,6 @@ export class Agent {
    */
   private isToolBlocked(toolName: string): boolean {
     return this.options.blockedTools?.includes(toolName) ?? false;
-  }
-
-  /**
-   * Get or initialize hybrid tool selector
-   */
-  private getToolSelector(): ReturnType<typeof getHybridToolSelector> {
-    if (!this.toolSelector) {
-      this.toolSelector = getHybridToolSelector(this.options.provider);
-    }
-    return this.toolSelector;
   }
 
   constructor(options: AgentOptions & {
@@ -525,46 +513,6 @@ export class Agent {
     };
   }> {
     return this.lastToolCalls;
-  }
-
-  /**
-   * Select tools using hybrid selector
-   * Intelligently selects relevant tools based on user message and context
-   */
-  private async selectToolsWithHybrid(
-    userMessage: string | MultimodalContent[],
-    recentMessages: ChatMessage[],
-    maxTools: number = 30
-  ): Promise<OpenAITool[]> {
-    // Extract text from user message
-    const messageText = typeof userMessage === 'string'
-      ? userMessage
-      : Array.isArray(userMessage)
-        ? userMessage
-            .filter((c: any) => c.type === 'text')
-            .map((c: any) => c.text)
-            .join(' ')
-        : '';
-
-    try {
-      const selectedTools = await this.getToolSelector().selectTools(
-        messageText,
-        recentMessages,
-        maxTools
-      );
-
-      const allToolsCount = getAllToolsForAI().length;
-      logger.info('[Agent] Hybrid tool selection', {
-        selected: selectedTools.length,
-        total: allToolsCount,
-        reduction: `${Math.round((1 - selectedTools.length / allToolsCount) * 100)}%`,
-      });
-
-      return selectedTools;
-    } catch (error) {
-      logger.error('[Agent] Tool selection failed, falling back to all tools', error);
-      return getAllToolsForAI();
-    }
   }
 
   /**
@@ -971,11 +919,8 @@ export class Agent {
     // Prevents race between rule-based trimming and LLM summarization
     await this.manageContextCompression();
 
-    // [Hybrid Tool Selector] Intelligently select tools based on user message and context
-    const tools = options?.tools || this.options.tools || await this.selectToolsWithHybrid(
-      userMessage,
-      this.messages.slice(-5) // Recent 5 messages for context
-    );
+    // Get all available tools - LLM will decide which ones to use
+    const tools = options?.tools || this.options.tools || getAllToolsForAI();
 
     // [P1+P2 优化] 智能选择控制模式
     // Standard agent loop
@@ -1694,11 +1639,8 @@ export class Agent {
     // [AUDIT FIX M-04] Coordinated context compression strategy
     await this.manageContextCompression();
 
-    // [AUDIT FIX M-01] Hybrid tool selection (same as chat())
-    const tools = options?.tools || this.options.tools || await this.selectToolsWithHybrid(
-      userMessage,
-      this.messages.slice(-5)
-    );
+    // Get all available tools - LLM will decide which ones to use
+    const tools = options?.tools || this.options.tools || getAllToolsForAI();
 
     // [AUDIT FIX M-01] Skill enforcement matching (same as chat())
     if (this.skillEnforcement) {
