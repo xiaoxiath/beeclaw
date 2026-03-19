@@ -52,7 +52,7 @@ export const LAYER_PRIORITIES = {
   USER_CONTEXT: 80,
   /** Accumulated facts and lessons */
   FACTS: 70,
-  /** Available skill summaries */
+  /** Available skill summaries (metadata only) */
   SKILLS: 65,
   /** Worked examples — first to be trimmed */
   EXAMPLES: 10,

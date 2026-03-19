@@ -433,13 +433,24 @@ export class Agent {
         const skillStore = getSkillStore();
         const skills = skillStore.list();
         if (skills.length > 0) {
-          skillsPrompt = formatSkillsForPrompt(
-            skills.map(s => ({
+          const skillsForPrompt = skills.map(s => ({
+            name: s.name,
+            description: s.description,
+            triggers: s.triggers,
+          }));
+
+          // Debug: Log skills metadata being injected
+          logger.info('[Agent] 🎯 Injecting skills metadata:', {
+            count: skillsForPrompt.length,
+            sample: skillsForPrompt.slice(0, 3).map(s => ({
               name: s.name,
-              description: s.description,
-              triggers: s.triggers,
-            }))
-          );
+              hasDescription: !!s.description,
+              triggerCount: s.triggers?.length || 0,
+              triggers: s.triggers?.slice(0, 2),
+            })),
+          });
+
+          skillsPrompt = formatSkillsForPrompt(skillsForPrompt);
         }
       } catch (error) {
         logger.debug('SkillStore not initialized:', error);
@@ -1869,13 +1880,24 @@ export function createAgent(options: {
         const skillStore = getSkillStore();
         const skills = skillStore.list();
         if (skills.length > 0) {
-          skillsPrompt = formatSkillsForPrompt(
-            skills.map(s => ({
+          const skillsForPrompt = skills.map(s => ({
+            name: s.name,
+            description: s.description,
+            triggers: s.triggers,
+          }));
+
+          // Debug: Log skills metadata being injected
+          logger.info('[Agent] 🎯 Injecting skills metadata:', {
+            count: skillsForPrompt.length,
+            sample: skillsForPrompt.slice(0, 3).map(s => ({
               name: s.name,
-              description: s.description,
-              triggers: s.triggers,
-            }))
-          );
+              hasDescription: !!s.description,
+              triggerCount: s.triggers?.length || 0,
+              triggers: s.triggers?.slice(0, 2),
+            })),
+          });
+
+          skillsPrompt = formatSkillsForPrompt(skillsForPrompt);
         }
       } catch (error) {
         logger.debug('SkillStore not initialized:', error);
