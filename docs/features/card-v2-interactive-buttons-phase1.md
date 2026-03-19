@@ -287,7 +287,7 @@ sequenceDiagram
    private callbackHandler: CardCallbackHandler;
 
    constructor(config: FeishuWSConfig) {
-     this.callbackHandler = new CardCallbackHandler(this, hitlManager);
+     this.callbackHandler = new CardCallbackHandler(this);
    }
    ```
 
@@ -332,16 +332,20 @@ sequenceDiagram
 - ✅ 回调处理器框架
 - ✅ HITL 状态管理
 - ✅ 卡片更新机制
+- ✅ Zod Schema 验证支持
+- ✅ 单元测试覆盖
 
 ### 影响范围
 
-- **文件变更**: 3 个文件修改，1 个新建
-- **代码行数**: +510 -50
+- **文件变更**: 3 个文件修改，2 个新建
+- **代码行数**: +830 -50
 - **用户体验**: 大幅提升
-- **可用性**: 立即可用（需要 Phase 2 完成集成）
+- **可用性**: Phase 1 完成，需要 Phase 2 完成集成
 
 ---
 
-**提交记录**: `775a8a1` - fix: improve error handling for withdrawn messages and circular references
+**提交记录**:
+- `775a8a1` - fix: improve error handling for withdrawn messages and circular references
+- `65554a4` - fix: add ActionElement to Card V2 schema for interactive buttons
 
 **下一步**: 实现 Phase 2，完成 FeishuWSClient 集成和测试
