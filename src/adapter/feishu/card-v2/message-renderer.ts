@@ -206,16 +206,23 @@ export function renderToolUseStep(block: ToolUseBlock, stepNumber: number): DivE
 
 /**
  * Render a thinking step (agent's reasoning process)
+ * 参考 agentara：使用 robot_outlined 图标，灰色小号字体
  */
 export function renderThinkingStep(block: ThinkingBlock): DivElement {
-  // Create thinking element with brain icon
-  return createDivElement({
-    text: createPlainTextElement(`💭 ${block.thinking}`),
-    icon: createStandardIconElement('brainstorm_color', {
-      color: Color.TextSecondary,
-      size: 'small',
-    }),
-  });
+  return {
+    tag: 'div',
+    icon: {
+      tag: 'standard_icon',
+      token: 'robot_outlined',
+      color: 'grey',
+    },
+    text: {
+      tag: 'plain_text',
+      text_color: 'grey',
+      text_size: 'notation',
+      content: block.thinking,
+    },
+  };
 }
 
 /**
