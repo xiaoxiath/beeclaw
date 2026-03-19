@@ -301,6 +301,76 @@ export type HrElementSchema = typeof HrElementSchema;
 export type HrElement = z.infer<typeof HrElementSchema>;
 
 // ============================================
+// Button Element
+// ============================================
+
+/**
+ * Button element for interactive actions
+ */
+export const ButtonElementSchema = z.object({
+  tag: z.literal('button'),
+  text: z.union([PlainTextElementSchema, MarkdownElementSchema]),
+  type: z.enum(['primary', 'default', 'danger']).optional(),
+  size: z.enum(['tiny', 'small', 'medium', 'large']).optional(),
+  width: z.enum(['default', 'fill']).optional(),
+  icon: StandardIconElementSchema.optional(),
+  value: z.record(z.unknown()).optional(),
+  url: z.string().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export type ButtonElement = z.infer<typeof ButtonElementSchema>;
+
+// ============================================
+// Select Static Element
+// ============================================
+
+/**
+ * Static select dropdown element
+ */
+export const SelectOptionSchema = z.object({
+  text: z.union([PlainTextElementSchema, MarkdownElementSchema]),
+  value: z.string(),
+});
+
+export type SelectOption = z.infer<typeof SelectOptionSchema>;
+
+export const SelectStaticElementSchema = z.object({
+  tag: z.literal('select_static'),
+  placeholder: z.union([PlainTextElementSchema, MarkdownElementSchema]).optional(),
+  multiple: z.boolean().optional(),
+  options: z.array(SelectOptionSchema),
+  value: z.record(z.unknown()).optional(),
+  initial_option: z.string().optional(),
+  initial_options: z.array(z.string()).optional(),
+  enabled: z.boolean().optional(),
+  size: z.enum(['tiny', 'small', 'medium', 'large']).optional(),
+  width: z.enum(['default', 'fill']).optional(),
+});
+
+export type SelectStaticElement = z.infer<typeof SelectStaticElementSchema>;
+
+// ============================================
+// Action Element
+// ============================================
+
+/**
+ * Action element container for buttons and selects
+ */
+export const ActionElementSchema = z.object({
+  tag: z.literal('action'),
+  actions: z.array(z.union([ButtonElementSchema, SelectStaticElementSchema])),
+  horizontal_spacing: z.string().optional(),
+  vertical_spacing: z.string().optional(),
+  horizontal_align: z.enum(['left', 'center', 'right']).optional(),
+  vertical_align: z.enum(['top', 'center', 'bottom']).optional(),
+  padding: z.string().optional(),
+  margin: z.string().optional(),
+});
+
+export type ActionElement = z.infer<typeof ActionElementSchema>;
+
+// ============================================
 // Element Union Type
 // ============================================
 
@@ -315,6 +385,7 @@ export const ElementSchema = z.discriminatedUnion('tag', [
   CollapsiblePanelSchema,
   NoteElementSchema,
   HrElementSchema,
+  ActionElementSchema,
 ]);
 
 export type Element = z.infer<typeof ElementSchema>;
@@ -429,4 +500,61 @@ export function createNoteElement(elements: unknown[]): NoteElement {
  */
 export function createHrElement(): HrElement {
   return { tag: 'hr' };
+}
+
+/**
+ * Create a Button element
+ */
+export function createButtonElement(options: {
+  text: PlainTextElement | MarkdownElement;
+  type?: 'primary' | 'default' | 'danger';
+  value?: Record<string, unknown>;
+  url?: string;
+  icon?: StandardIconElement;
+  size?: 'tiny' | 'small' | 'medium' | 'large';
+  width?: 'default' | 'fill';
+  enabled?: boolean;
+}): ButtonElement {
+  return ButtonElementSchema.parse({
+    tag: 'button',
+    ...options,
+  });
+}
+
+/**
+ * Create a Select Static element
+ */
+export function createSelectStaticElement(options: {
+  placeholder?: PlainTextElement | MarkdownElement;
+  multiple?: boolean;
+  options: SelectOption[];
+  value?: Record<string, unknown>;
+  initial_option?: string;
+  initial_options?: string[];
+  enabled?: boolean;
+  size?: 'tiny' | 'small' | 'medium' | 'large';
+  width?: 'default' | 'fill';
+}): SelectStaticElement {
+  return SelectStaticElementSchema.parse({
+    tag: 'select_static',
+    ...options,
+  });
+}
+
+/**
+ * Create an Action element
+ */
+export function createActionElement(options: {
+  actions: Array<ButtonElement | SelectStaticElement>;
+  horizontal_spacing?: string;
+  vertical_spacing?: string;
+  horizontal_align?: 'left' | 'center' | 'right';
+  vertical_align?: 'top' | 'center' | 'bottom';
+  padding?: string;
+  margin?: string;
+}): ActionElement {
+  return ActionElementSchema.parse({
+    tag: 'action',
+    ...options,
+  });
 }

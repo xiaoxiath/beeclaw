@@ -6,7 +6,7 @@
 
 import type { FeishuWSClient } from './ws-client';
 import { logger } from '../../infra/observability/logger';
-import type { HITLManager } from '../../domain/session/hitl-manager';
+import * as HITLManager from '../../domain/session/hitl-manager';
 
 /**
  * 卡片回调事件
@@ -49,11 +49,9 @@ export interface CardCallbackEvent {
  */
 export class CardCallbackHandler {
   private client: FeishuWSClient;
-  private hitlManager: HITLManager;
 
-  constructor(client: FeishuWSClient, hitlManager: HITLManager) {
+  constructor(client: FeishuWSClient) {
     this.client = client;
-    this.hitlManager = hitlManager;
   }
 
   /**
@@ -120,7 +118,7 @@ export class CardCallbackHandler {
     });
 
     // 1. 设置 HITL 决策
-    this.hitlManager.setDecision(sessionId, toolCallId, decision);
+    HITLManager.setDecision(sessionId, toolCallId, decision);
 
     // 2. 更新卡片显示结果
     const updatedCard = {
@@ -159,7 +157,7 @@ export class CardCallbackHandler {
 
     // 4. 如果是批准，触发 Agent 继续执行
     if (decision === 'APPROVED') {
-      this.hitlManager.resume(sessionId);
+      HITLManager.resume(sessionId);
     }
   }
 
@@ -185,7 +183,7 @@ export class CardCallbackHandler {
     });
 
     // 1. 设置用户输入
-    this.hitlManager.setUserInput(sessionId, requestId, value);
+    HITLManager.setUserInput(sessionId, requestId, value);
 
     // 2. 更新卡片显示结果
     const displayValue = Array.isArray(value) ? value.join(', ') : value;
@@ -224,6 +222,6 @@ export class CardCallbackHandler {
     }
 
     // 4. 触发 Agent 继续执行
-    this.hitlManager.resume(sessionId);
+    HITLManager.resume(sessionId);
   }
 }
