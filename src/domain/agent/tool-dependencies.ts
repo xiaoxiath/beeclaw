@@ -44,15 +44,9 @@ const TOOL_DEPENDENCIES: Record<string, ToolDependencyConfig> = {
   skill_get: { mode: 'sequential', hasSideEffects: false },
   skill_maturity: { mode: 'parallel', hasSideEffects: false },
   skill_ensure: { mode: 'sequential', hasSideEffects: true },
-  skill_ensure: { mode: 'sequential', hasSideEffects: true },
   skill_delete: { mode: 'sequential', hasSideEffects: true },
   skill_record: { mode: 'sequential', hasSideEffects: true },
-  skill_evals_get: { mode: 'parallel', hasSideEffects: false },
-  skill_evals_set: { mode: 'sequential', hasSideEffects: true },
-  skill_resource_read: { mode: 'parallel', hasSideEffects: false },
-  skill_resource_write: { mode: 'sequential', hasSideEffects: true },
-  skill_structure: { mode: 'parallel', hasSideEffects: false },
-  skill_workspace_create: { mode: 'sequential', hasSideEffects: true },
+  skill_evals: { mode: 'sequential', hasSideEffects: true },
 
   // Goal tools - read operations are parallel
   goal_list: { mode: 'parallel', hasSideEffects: false },

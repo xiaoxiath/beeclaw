@@ -105,8 +105,7 @@ Verified: yes/no
 
 ### Available Tools
 \`skill_list\`, \`skill_get\`, \`skill_ensure\`, \`skill_record\`,
-\`skill_maturity\`, \`skill_evals_get\`, \`skill_evals_set\`,
-\`skill_resource_read\`, \`skill_resource_write\`, \`skill_structure\`
+\`skill_maturity\`, \`skill_evals\`,
 
 ### Guidelines
 1. Before creating a skill, \`skill_list\` to check if it already exists
