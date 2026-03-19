@@ -181,26 +181,6 @@ export class SemanticToolSelector {
       'proactive_schedule': ['schedule task', '定时任务', 'remind me', '提醒我'],
       'schedule_once': ['schedule once', '一次性提醒', 'remind once'],
 
-      // Feishu Calendar
-      'feishu_calendar_list': ['show calendars', '查看日历', 'list calendars'],
-      'feishu_calendar_event_create': ['create meeting', '创建会议', 'schedule event', '安排日程'],
-      'feishu_calendar_today': ['today schedule', '今天的日程', 'what\'s today'],
-
-      // Feishu Document
-      'feishu_docx_get': ['get document', '获取文档', 'read doc'],
-      'feishu_docx_create_text': ['create document', '创建文档', 'new doc', '新建文档'],
-      'feishu_docx_append': ['append to doc', '追加文档', 'add to document'],
-
-      // Feishu Drive
-      'feishu_drive_list': ['list files', '列出文件', 'show drive'],
-      'feishu_drive_upload': ['upload file', '上传文件'],
-
-      // Feishu Bitable
-      'feishu_bitable_list_records': ['list records', '列出记录', 'show table records'],
-
-      // Feishu Wiki
-      'feishu_wiki_list_spaces': ['list wiki', '列出知识库', 'show wiki spaces'],
-
       // Sandbox
       'sandbox_exec': ['run code', '执行代码', 'execute', '运行代码'],
 
