@@ -13,6 +13,7 @@ import type {
   FeishuSender,
   BaseFeishuEvent
 } from './event-types';
+import { CardCallbackHandler } from './card-callback-handler';
 
 // [P2 FIX 4.7] Re-export shared types for backward compatibility
 export type {
@@ -445,6 +446,9 @@ export class FeishuWSClient {
   private _lastActiveChatId: string | null = null;
   private _lastActiveUserId: string | null = null;
 
+  // Card callback handler for interactive buttons
+  private cardCallbackHandler: CardCallbackHandler | null = null;
+
   constructor(config: FeishuWSConfig) {
     this.config = config;
   }
@@ -639,6 +643,9 @@ export class FeishuWSClient {
     // Create SDK client for message sending (tools use CLI runner)
     this.client = new Lark.Client(baseConfig);
 
+    // Initialize card callback handler
+    this.cardCallbackHandler = new CardCallbackHandler(this);
+
     // Create event dispatcher
     console.log('[FeishuWS] Creating event dispatcher...');
     const eventDispatcher = new Lark.EventDispatcher({}).register({
@@ -706,6 +713,12 @@ export class FeishuWSClient {
       'im.chat.access_event.bot_p2p_chat_entered_v1': async (data: unknown) => {
         console.log('[FeishuWS] User entered P2P chat');
         await this.handleP2PChatEntered(data as P2PChatEnteredEventData);
+      },
+
+      // Card callback events for interactive buttons
+      'card.callback.trigger': async (data: unknown) => {
+        console.log('[FeishuWS] 🎯 Card callback triggered');
+        await this.handleCardCallback(data as any);
       },
     });
 
@@ -1129,6 +1142,22 @@ export class FeishuWSClient {
       } catch (error) {
         console.error('[FeishuWS] P2P chat entered handler error:', error);
       }
+    }
+  }
+
+  /**
+   * Handle card callback event for interactive buttons
+   */
+  private async handleCardCallback(data: any): Promise<void> {
+    if (!this.cardCallbackHandler) {
+      console.error('[FeishuWS] CardCallbackHandler not initialized');
+      return;
+    }
+
+    try {
+      await this.cardCallbackHandler.handleCallback(data);
+    } catch (error) {
+      console.error('[FeishuWS] Card callback handler error:', error);
     }
   }
 

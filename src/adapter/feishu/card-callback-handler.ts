@@ -4,7 +4,7 @@
  * 处理飞书 Card V2 的交互回调（按钮点击、表单提交等）
  */
 
-import type { FeishuWSClient } from './ws-client';
+import type { FeishuWSClient, CardConfig } from './ws-client';
 import { logger } from '../../infra/observability/logger';
 import * as HITLManager from '../../domain/session/hitl-manager';
 
@@ -88,9 +88,9 @@ export class CardCallbackHandler {
     const { hitlType, ...data } = action.value;
 
     if (hitlType === 'confirmation') {
-      await this.handleConfirmationCallback(open_message_id, data);
+      await this.handleConfirmationCallback(open_message_id, data as any);
     } else if (hitlType === 'user_input') {
-      await this.handleUserInputCallback(open_message_id, data);
+      await this.handleUserInputCallback(open_message_id, data as any);
     } else {
       logger.warn(`[CardCallback] Unknown HITL type: ${hitlType}`);
     }
@@ -121,25 +121,25 @@ export class CardCallbackHandler {
     HITLManager.setDecision(sessionId, toolCallId, decision);
 
     // 2. 更新卡片显示结果
-    const updatedCard = {
-      type: 'card',
+    const templateColor = decision === 'APPROVED' ? 'green' : 'red';
+    const updatedCard: CardConfig = {
       header: {
         title: {
-          tag: 'plain_text',
+          tag: 'plain_text' as const,
           content: decision === 'APPROVED' ? '✅ 已批准' : '❌ 已拒绝',
         },
-        template: decision === 'APPROVED' ? 'green' : 'red',
+        template: templateColor as 'green' | 'red',
       },
       elements: [
         {
-          tag: 'markdown',
+          tag: 'markdown' as const,
           content: `**工具**: ${toolName}\n**决策**: ${decision === 'APPROVED' ? '批准执行' : '拒绝操作'}`,
         },
         {
-          tag: 'note',
+          tag: 'note' as const,
           elements: [
             {
-              tag: 'plain_text',
+              tag: 'lark_md' as const,
               content: decision === 'APPROVED' ? '✅ 操作已批准，正在执行...' : '❌ 操作已取消',
             },
           ],
@@ -187,25 +187,24 @@ export class CardCallbackHandler {
 
     // 2. 更新卡片显示结果
     const displayValue = Array.isArray(value) ? value.join(', ') : value;
-    const updatedCard = {
-      type: 'card',
+    const updatedCard: CardConfig = {
       header: {
         title: {
-          tag: 'plain_text',
+          tag: 'plain_text' as const,
           content: '✅ 已收到您的输入',
         },
-        template: 'green',
+        template: 'green' as const,
       },
       elements: [
         {
-          tag: 'markdown',
+          tag: 'markdown' as const,
           content: `**您的输入**: ${displayValue}`,
         },
         {
-          tag: 'note',
+          tag: 'note' as const,
           elements: [
             {
-              tag: 'plain_text',
+              tag: 'lark_md' as const,
               content: '✅ 已收到，正在处理...',
             },
           ],
