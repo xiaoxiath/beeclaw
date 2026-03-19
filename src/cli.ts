@@ -18,8 +18,6 @@ import { executeGoalTool } from './domain/agent/goal';
 import { getNotificationManager, getDaemon, executeProactiveTool, pushPendingNotifications, setCliDeliveryHandler } from './domain/proactive';
 import { getAllToolsForAI } from './domain/agent';
 import { } from './domain/memory/compression';
-import { createReminderTask } from './infra/queue';
-import { getPendingNotifications } from './app/queue-handlers/handlers/reminder-handler';
 import { LoadingIndicator, formatElapsed } from './adapter/cli/input';
 import { initApp, switchModel, continueConversation, listSessions } from './app';
 import { recommendSessions, formatRecommendation } from './domain/session/recommender';
@@ -1251,13 +1249,6 @@ async function handleReminderCommand(input: string): Promise<void> {
       }, delayMs);
 
       activeReminders.set(reminderId, { timer, message, time: triggerTime });
-
-      // Also create queue task for persistence
-      try {
-        await createReminderTask('cli-user', message, { delay: delayMs });
-      } catch {
-        // Queue might not be initialized, that's OK for CLI
-      }
 
       const delayStr = delayMs < 60000
         ? `${Math.round(delayMs / 1000)}s`

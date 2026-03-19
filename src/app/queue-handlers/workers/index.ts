@@ -7,13 +7,7 @@
 import type { Job } from 'bunqueue/client';
 import { getTaskManager } from '../../../infra/queue/manager';
 import type { QueueConfig } from '../../../infra/queue/types';
-import {
-  handleSearchJob,
-  handleSkillJob,
-  handleReminderJob,
-  handleAnalysisJob,
-  handleProactiveJob,
-} from '../handlers';
+import { handleProactiveJob } from '../handlers';
 
 /**
  * Initialize all workers
@@ -24,23 +18,7 @@ export async function initWorkers(config?: QueueConfig): Promise<void> {
   // Ensure manager is initialized
   await manager.initialize();
 
-  // Register workers
-  manager.registerWorker('search-jobs', handleSearchJob as (job: Job) => Promise<unknown>, {
-    concurrency: config?.workers?.search?.concurrency ?? 5,
-  });
-
-  manager.registerWorker('skill-jobs', handleSkillJob as (job: Job) => Promise<unknown>, {
-    concurrency: config?.workers?.skill?.concurrency ?? 3,
-  });
-
-  manager.registerWorker('scheduled', handleReminderJob as (job: Job) => Promise<unknown>, {
-    concurrency: config?.workers?.cron?.concurrency ?? 1,
-  });
-
-  manager.registerWorker('analysis-jobs', handleAnalysisJob as (job: Job) => Promise<unknown>, {
-    concurrency: config?.workers?.analysis?.concurrency ?? 2,
-  });
-
+  // Register proactive worker (only active queue)
   manager.registerWorker('proactive-jobs', handleProactiveJob as (job: Job) => Promise<unknown>, {
     concurrency: config?.workers?.proactive?.concurrency ?? 3,
   });

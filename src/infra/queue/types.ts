@@ -10,17 +10,9 @@ export type JobState =
   | 'delayed'
   | 'paused';
 
-export type QueueName =
-  | 'skill-jobs'
-  | 'search-jobs'
-  | 'scheduled'
-  | 'eval-jobs'
-  | 'report-jobs'
-  | 'cleanup-jobs'
-  | 'proactive-jobs'
-  | 'analysis-jobs';
+export type QueueName = 'proactive-jobs';
 
-export type TaskType = 'skill' | 'search' | 'reminder' | 'report' | 'eval' | 'cleanup' | 'proactive' | 'analysis';
+export type TaskType = 'proactive';
 
 export interface JobOptions {
   priority?: number;        // 1-10, default 5
@@ -70,14 +62,7 @@ export interface QueueConfig {
     path?: string;
   };
   workers?: {
-    skill?: WorkerConfig;
-    search?: WorkerConfig;
-    cron?: WorkerConfig;
-    eval?: WorkerConfig;
-    report?: WorkerConfig;
-    cleanup?: WorkerConfig;
     proactive?: WorkerConfig;
-    analysis?: WorkerConfig;
   };
   defaultJobOptions?: JobOptions;
 }
@@ -88,63 +73,12 @@ export interface WorkerConfig {
   enabled?: boolean;
 }
 
-// Job data types for each queue
-
-export interface SkillJobData {
-  skillName: string;
-  action: string;
-  params: Record<string, unknown>;
-  sessionId?: string;
-  userId?: string;
-}
-
-export interface SearchJobData {
-  query: string;
-  numResults?: number;
-  region?: string;
-  timeRange?: string;
-  sessionId?: string;
-  userId?: string;
-}
-
-export interface ReminderJobData {
-  userId: string;
-  message: string;
-  type: 'one-time' | 'recurring';
-}
-
-export interface ReportJobData {
-  type: 'daily' | 'weekly' | 'monthly' | 'custom';
-  userId: string;
-  format: 'markdown' | 'docx' | 'pdf';
-  params?: Record<string, unknown>;
-}
-
-export interface EvalJobData {
-  skillName: string;
-  evalSet: string;
-  iteration?: number;
-}
-
-export interface CleanupJobData {
-  task: 'conversations' | 'sessions' | 'logs' | 'all';
-  retentionDays?: number;
-}
+// Job data types
 
 export interface ProactiveJobData {
   scheduleId: string;
-  taskType: 'check_goal_progress' | 'run_skill' | 'send_reminder' | 'memory_compress' | 'custom';
+  taskType: 'check_goal_progress' | 'run_skill' | 'send_reminder' | 'memory_compress' | 'llm_proactive_chat' | 'custom';
   params?: Record<string, unknown>;
   triggeredAt: string;
   triggeredBy: 'cron' | 'pattern' | 'manual';
-}
-
-export interface AnalysisJobData {
-  sessionId: string;
-  userId: string;
-  chatId: string;
-  originalMessage: string;
-  analysisTasks: string[];
-  context?: string;
-  createdAt: string;
 }

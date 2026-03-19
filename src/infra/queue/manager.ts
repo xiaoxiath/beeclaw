@@ -15,14 +15,7 @@ import type {
 
 // Queue name to config mapping
 const QUEUE_CONFIGS: Record<QueueName, { priority: number }> = {
-  'search-jobs': { priority: 8 },
-  'skill-jobs': { priority: 5 },
-  'scheduled': { priority: 3 },
-  'report-jobs': { priority: 4 },
-  'eval-jobs': { priority: 2 },
-  'cleanup-jobs': { priority: 1 },
   'proactive-jobs': { priority: 3 },
-  'analysis-jobs': { priority: 6 },  // Higher priority for deep analysis
 };
 
 class TaskManager {
