@@ -612,7 +612,7 @@ async function handleSkillCommand(input: string): Promise<boolean> {
 
   switch (subCmd) {
     case 'list': {
-      const result = executeSkillTool('skill_list', {});
+      const result = await executeSkillTool('skill_list', {});
       if (result.success) {
         const skills = result.data as any[];
         if (skills.length === 0) {
@@ -637,7 +637,7 @@ async function handleSkillCommand(input: string): Promise<boolean> {
         console.log('Usage: /skill get <name>');
         break;
       }
-      const result = executeSkillTool('skill_get', { name });
+      const result = await executeSkillTool('skill_get', { name });
       if (result.success) {
         const skill = result.data as any;
         console.log(`\n📖 ${skill.name}\n`);
@@ -658,7 +658,7 @@ async function handleSkillCommand(input: string): Promise<boolean> {
         console.log('Usage: /skill create <name> <description>');
         break;
       }
-      const result = executeSkillTool('skill_ensure', { name, description });
+      const result = await executeSkillTool('skill_ensure', { name, description });
       console.log(result.success ? `✅ Created skill: ${name}` : `Error: ${result.error}`);
       break;
     }
@@ -668,7 +668,7 @@ async function handleSkillCommand(input: string): Promise<boolean> {
         console.log('Usage: /skill search <query>');
         break;
       }
-      const result = executeSkillTool('skill_search', { query });
+      const result = await executeSkillTool('skill_search', { query });
       if (result.success) {
         const skills = result.data as any[];
         console.log(`\n🔍 Found ${skills.length} skills:\n`);
@@ -686,7 +686,7 @@ async function handleSkillCommand(input: string): Promise<boolean> {
         console.log('Usage: /skill maturity <name>');
         break;
       }
-      const result = executeSkillTool('skill_maturity', { name });
+      const result = await executeSkillTool('skill_maturity', { name });
       if (result.success) {
         const assessment = result.data as any;
         console.log(`\n📊 Maturity Assessment for ${name}\n`);
@@ -714,7 +714,7 @@ async function handleSkillCommand(input: string): Promise<boolean> {
         console.log('Usage: /skill delete <name>');
         break;
       }
-      const result = executeSkillTool('skill_delete', { name });
+      const result = await executeSkillTool('skill_delete', { name });
       console.log(result.success ? `🗑️ Deleted skill: ${name}` : `Error: ${result.error}`);
       break;
     }

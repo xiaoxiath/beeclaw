@@ -131,7 +131,7 @@ async function _executeToolInner(name: string, params: Record<string, unknown>, 
 
     // Skill tools
     if (name.startsWith('skill_')) {
-      const result = executeSkillTool(name, params);
+      const result = await executeSkillTool(name, params);
 
       // Handle skill_ensure requiring skill-creator workflow
       if (name === 'skill_ensure' && result.success === false && result.error === 'NEW_SKILL_REQUIRES_CREATOR') {

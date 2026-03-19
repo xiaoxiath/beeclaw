@@ -425,7 +425,7 @@ skill_evals({ action: "run", skill_name: "my-skill" })
 };
 
 // Tool executor
-export function executeSkillTool(name: string, params: Record<string, unknown>): SkillToolResult {
+export async function executeSkillTool(name: string, params: Record<string, unknown>): Promise<SkillToolResult> {
   const store = getSkillStore();
 
   switch (name) {
@@ -536,16 +536,38 @@ export function executeSkillTool(name: string, params: Record<string, unknown>):
       if (!parsed.success) {
         return { success: false, error: parsed.error.message };
       }
-      const skills = store.search(parsed.data.query);
-      return {
-        success: true,
-        data: skills.map(s => ({
-          name: s.name,
-          description: s.description,
-          tags: s.tags,
-          maturityScore: s.maturityScore,
-        })),
-      };
+
+      try {
+        // Use LLM semantic matching for better results
+        const result = await store.recommendSkillsWithLLM(parsed.data.query, {
+          topK: 5,
+          maxCandidates: 15,
+        });
+
+        return {
+          success: true,
+          data: result.recommendations.map(r => ({
+            name: r.name,
+            description: r.description,
+            confidence: r.confidence,
+            reason: r.reason,
+            tags: r.matched_tags,
+          })),
+        };
+      } catch (error) {
+        // Fallback to simple search if LLM fails
+        console.error('[skill_search] LLM matching failed, using fallback:', error);
+        const skills = store.search(parsed.data.query);
+        return {
+          success: true,
+          data: skills.slice(0, 5).map(s => ({
+            name: s.name,
+            description: s.description,
+            tags: s.tags,
+            maturityScore: s.maturityScore,
+          })),
+        };
+      }
     }
 
     case 'skill_record': {

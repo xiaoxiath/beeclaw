@@ -32,13 +32,13 @@ describe('SkillStore', () => {
   });
 
   describe('init', () => {
-    test('creates skills directory', () => {
+    test('creates skills directory', async () => {
       expect(existsSync(TEST_SKILLS_PATH)).toBe(true);
     });
   });
 
   describe('create', () => {
-    test('creates a new skill', () => {
+    test('creates a new skill', async () => {
       const result = store.create({
         name: 'test-skill',
         description: 'A test skill for testing',
@@ -54,7 +54,7 @@ describe('SkillStore', () => {
       expect(existsSync(join(skillPath, 'SKILL.md'))).toBe(true);
     });
 
-    test('creates SKILL.md with frontmatter', () => {
+    test('creates SKILL.md with frontmatter', async () => {
       store.create({
         name: 'my-skill',
         description: 'My skill description',
@@ -68,7 +68,7 @@ describe('SkillStore', () => {
       expect(content).toContain('Skill body content');
     });
 
-    test('fails if skill already exists', () => {
+    test('fails if skill already exists', async () => {
       store.create({ name: 'existing', description: 'First' });
       const result = store.create({ name: 'existing', description: 'Second' });
       expect(result.success).toBe(false);
@@ -77,7 +77,7 @@ describe('SkillStore', () => {
   });
 
   describe('get', () => {
-    test('returns skill by name', () => {
+    test('returns skill by name', async () => {
       store.create({
         name: 'get-test',
         description: 'Get test skill',
@@ -94,14 +94,14 @@ describe('SkillStore', () => {
       expect(skill?.tags).toEqual(['tag1']);
     });
 
-    test('returns null for non-existent skill', () => {
+    test('returns null for non-existent skill', async () => {
       const skill = store.get('non-existent');
       expect(skill).toBeNull();
     });
   });
 
   describe('list', () => {
-    test('returns all skills', () => {
+    test('returns all skills', async () => {
       store.create({ name: 'skill-a', description: 'A' });
       store.create({ name: 'skill-b', description: 'B' });
       store.create({ name: 'skill-c', description: 'C' });
@@ -111,14 +111,14 @@ describe('SkillStore', () => {
       expect(skills.map(s => s.name).sort()).toEqual(['skill-a', 'skill-b', 'skill-c']);
     });
 
-    test('returns empty array when no skills', () => {
+    test('returns empty array when no skills', async () => {
       const skills = store.list();
       expect(skills).toEqual([]);
     });
   });
 
   describe('update', () => {
-    test('updates skill description', () => {
+    test('updates skill description', async () => {
       store.create({ name: 'update-test', description: 'Original' });
       const result = store.update('update-test', { description: 'Updated' });
 
@@ -128,7 +128,7 @@ describe('SkillStore', () => {
       expect(skill?.description).toBe('Updated');
     });
 
-    test('updates skill content', () => {
+    test('updates skill content', async () => {
       store.create({ name: 'update-content', description: 'D', content: 'Original content' });
       store.update('update-content', { content: 'New content' });
 
@@ -136,14 +136,14 @@ describe('SkillStore', () => {
       expect(skill?.content).toBe('New content');
     });
 
-    test('fails for non-existent skill', () => {
+    test('fails for non-existent skill', async () => {
       const result = store.update('non-existent', { description: 'New' });
       expect(result.success).toBe(false);
     });
   });
 
   describe('delete', () => {
-    test('deletes a skill', () => {
+    test('deletes a skill', async () => {
       store.create({ name: 'delete-test', description: 'To delete' });
       const result = store.delete('delete-test');
 
@@ -151,7 +151,7 @@ describe('SkillStore', () => {
       expect(store.get('delete-test')).toBeNull();
     });
 
-    test('fails for non-existent skill', () => {
+    test('fails for non-existent skill', async () => {
       const result = store.delete('non-existent');
       expect(result.success).toBe(false);
     });
@@ -176,13 +176,13 @@ describe('SkillStore', () => {
       });
     });
 
-    test('finds skills by name', () => {
+    test('finds skills by name', async () => {
       const results = store.search('web');
       expect(results.length).toBe(2);
       expect(results.some(s => s.name === 'web-scraper')).toBe(true);
     });
 
-    test('finds skills by tag', () => {
+    test('finds skills by tag', async () => {
       const results = store.search('file');
       expect(results.length).toBe(1);
       expect(results[0].name).toBe('file-reader');
@@ -190,7 +190,7 @@ describe('SkillStore', () => {
   });
 
   describe('recordUsage', () => {
-    test('records successful usage', () => {
+    test('records successful usage', async () => {
       store.create({ name: 'usage-test', description: 'Test' });
       const result = store.recordUsage('usage-test', true);
 
@@ -202,7 +202,7 @@ describe('SkillStore', () => {
       expect(skill?.failureCount).toBe(0);
     });
 
-    test('records failed usage', () => {
+    test('records failed usage', async () => {
       store.create({ name: 'usage-fail', description: 'Test' });
       store.recordUsage('usage-fail', false);
 
@@ -214,7 +214,7 @@ describe('SkillStore', () => {
   });
 
   describe('assessMaturity', () => {
-    test('assesses immature skill', () => {
+    test('assesses immature skill', async () => {
       store.create({ name: 'immature', description: 'Test' });
       const assessment = store.assessMaturity('immature');
 
@@ -222,7 +222,7 @@ describe('SkillStore', () => {
       expect(assessment.checks.productionTested).toBe(false);
     });
 
-    test('assesses mature skill after successful uses', () => {
+    test('assesses mature skill after successful uses', async () => {
       store.create({ name: 'mature', description: 'Test skill' });
 
       // Simulate 5 successful uses
@@ -253,31 +253,31 @@ describe('Skill Tools', () => {
     }
   });
 
-  test('skill_list tool', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_list tool', async () => {
+    await executeSkillTool('skill_ensure', {
       name: 'test',
       description: 'Test skill',
     });
 
-    const result = executeSkillTool('skill_list', {});
+    const result = await executeSkillTool('skill_list', {});
     expect(result.success).toBe(true);
     expect(Array.isArray(result.data)).toBe(true);
   });
 
-  test('skill_get tool', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_get tool', async () => {
+    await executeSkillTool('skill_ensure', {
       name: 'get-test',
       description: 'Test',
       content: 'Skill content',
     });
 
-    const result = executeSkillTool('skill_get', { name: 'get-test' });
+    const result = await executeSkillTool('skill_get', { name: 'get-test' });
     expect(result.success).toBe(true);
     expect((result.data as any).name).toBe('get-test');
   });
 
-  test('skill_ensure tool', () => {
-    const result = executeSkillTool('skill_ensure', {
+  test('skill_ensure tool', async () => {
+    const result = await executeSkillTool('skill_ensure', {
       name: 'new-skill',
       description: 'A new skill',
       content: '# New Skill\n\nInstructions here.',
@@ -288,13 +288,13 @@ describe('Skill Tools', () => {
     expect((result.data as any).name).toBe('new-skill');
   });
 
-  test('skill_ensure tool', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_ensure tool', async () => {
+    await executeSkillTool('skill_ensure', {
       name: 'update-me',
       description: 'Original',
     });
 
-    const result = executeSkillTool('skill_ensure', {
+    const result = await executeSkillTool('skill_ensure', {
       name: 'update-me',
       description: 'Updated description',
     });
@@ -303,35 +303,35 @@ describe('Skill Tools', () => {
     expect((result.data as any).description).toBe('Updated description');
   });
 
-  test('skill_delete tool', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_delete tool', async () => {
+    await executeSkillTool('skill_ensure', {
       name: 'delete-me',
       description: 'To delete',
     });
 
-    const result = executeSkillTool('skill_delete', { name: 'delete-me' });
+    const result = await executeSkillTool('skill_delete', { name: 'delete-me' });
     expect(result.success).toBe(true);
   });
 
-  test('skill_search tool', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_search tool', async () => {
+    await executeSkillTool('skill_ensure', {
       name: 'web-fetcher',
       description: 'Fetch web pages',
     });
 
-    const result = executeSkillTool('skill_search', { query: 'web' });
+    const result = await executeSkillTool('skill_search', { query: 'web' });
     expect(result.success).toBe(true);
     expect(Array.isArray(result.data)).toBe(true);
     expect((result.data as any[]).length).toBeGreaterThan(0);
   });
 
-  test('skill_record tool', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_record tool', async () => {
+    await executeSkillTool('skill_ensure', {
       name: 'record-test',
       description: 'Test',
     });
 
-    const result = executeSkillTool('skill_record', {
+    const result = await executeSkillTool('skill_record', {
       name: 'record-test',
       success: true,
     });
@@ -340,20 +340,20 @@ describe('Skill Tools', () => {
     expect((result.data as any).usageCount).toBe(1);
   });
 
-  test('skill_maturity tool', () => {
-    executeSkillTool('skill_ensure', {
+  test('skill_maturity tool', async () => {
+    await executeSkillTool('skill_ensure', {
       name: 'maturity-test',
       description: 'Test',
     });
 
-    const result = executeSkillTool('skill_maturity', { name: 'maturity-test' });
+    const result = await executeSkillTool('skill_maturity', { name: 'maturity-test' });
     expect(result.success).toBe(true);
     expect((result.data as any).ready).toBe(false);
     expect(Array.isArray((result.data as any).recommendations)).toBe(true);
   });
 
-  test('invalid tool returns error', () => {
-    const result = executeSkillTool('invalid', {});
+  test('invalid tool returns error', async () => {
+    const result = await executeSkillTool('invalid', {});
     expect(result.success).toBe(false);
     expect(result.error).toContain('Unknown tool');
   });
@@ -382,25 +382,25 @@ describe('Skill Evals Run', () => {
     }
   });
 
-  test('skill_evals returns error for non-existent skill', () => {
-    const result = executeSkillTool('skill_evals', { action: 'run', skill_name: 'non-existent' });
+  test('skill_evals returns error for non-existent skill', async () => {
+    const result = await executeSkillTool('skill_evals', { action: 'run', skill_name: 'non-existent' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('not found');
   });
 
-  test('skill_evals returns error when no evals defined', () => {
+  test('skill_evals returns error when no evals defined', async () => {
     store.create({
       name: 'skill-no-evals',
       description: 'Test skill without evals',
       content: '# Test\n\nNo evals here',
     });
 
-    const result = executeSkillTool('skill_evals', { action: 'run', skill_name: 'skill-no-evals' });
+    const result = await executeSkillTool('skill_evals', { action: 'run', skill_name: 'skill-no-evals' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('No evals defined');
   });
 
-  test('skill_evals runs all evals successfully', () => {
+  test('skill_evals runs all evals successfully', async () => {
     // Create skill
     store.create({
       name: 'test-skill',
@@ -409,7 +409,7 @@ describe('Skill Evals Run', () => {
     });
 
     // Set evals
-    executeSkillTool('skill_evals', {
+    await executeSkillTool('skill_evals', {
       action: 'set',
       skill_name: 'test-skill',
       evals: [
@@ -429,7 +429,7 @@ describe('Skill Evals Run', () => {
     });
 
     // Run evals
-    const result = executeSkillTool('skill_evals', { action: 'run', skill_name: 'test-skill' });
+    const result = await executeSkillTool('skill_evals', { action: 'run', skill_name: 'test-skill' });
     expect(result.success).toBe(true);
     expect((result.data as any).total_evals).toBe(2);
     expect((result.data as any).passed_count).toBe(2);
@@ -438,14 +438,14 @@ describe('Skill Evals Run', () => {
     expect((result.data as any).results).toHaveLength(2);
   });
 
-  test('skill_evals runs specific eval by ID', () => {
+  test('skill_evals runs specific eval by ID', async () => {
     store.create({
       name: 'test-skill-2',
       description: 'Test',
       content: '# Test',
     });
 
-    executeSkillTool('skill_evals', {
+    await executeSkillTool('skill_evals', {
       action: 'set',
       skill_name: 'test-skill-2',
       evals: [
@@ -454,7 +454,7 @@ describe('Skill Evals Run', () => {
       ],
     });
 
-    const result = executeSkillTool('skill_evals', {
+    const result = await executeSkillTool('skill_evals', {
       action: 'run',
       skill_name: 'test-skill-2',
       eval_id: 1,
@@ -465,20 +465,20 @@ describe('Skill Evals Run', () => {
     expect((result.data as any).results[0].eval_id).toBe(1);
   });
 
-  test('skill_evals returns error for non-existent eval ID', () => {
+  test('skill_evals returns error for non-existent eval ID', async () => {
     store.create({
       name: 'test-skill-3',
       description: 'Test',
       content: '# Test',
     });
 
-    executeSkillTool('skill_evals', {
+    await executeSkillTool('skill_evals', {
       action: 'set',
       skill_name: 'test-skill-3',
       evals: [{ id: 1, name: 'only', prompt: 'Test', expected_output: 'Output' }],
     });
 
-    const result = executeSkillTool('skill_evals', {
+    const result = await executeSkillTool('skill_evals', {
       action: 'run',
       skill_name: 'test-skill-3',
       eval_id: 999,
@@ -512,7 +512,7 @@ describe('Skill Dependency Validation', () => {
     }
   });
 
-  test('skill_create validates dependencies', () => {
+  test('skill_create validates dependencies', async () => {
     // Create a dependency skill first
     store.create({
       name: 'base-skill',
@@ -531,7 +531,7 @@ describe('Skill Dependency Validation', () => {
     expect(skill?.dependsOn).toEqual(['base-skill']);
   });
 
-  test('skill_create fails for missing dependencies', () => {
+  test('skill_create fails for missing dependencies', async () => {
     const result = store.create({
       name: 'skill-with-missing-dep',
       description: 'Skill with missing dependency',
@@ -543,7 +543,7 @@ describe('Skill Dependency Validation', () => {
     expect((result.data as any)?.missing_dependencies).toContain('non-existent-skill');
   });
 
-  test('skill_get includes dependency warnings for missing deps', () => {
+  test('skill_get includes dependency warnings for missing deps', async () => {
     // Create skill with missing dependency using raw file operations
     store.create({
       name: 'skill-with-dep',
@@ -568,7 +568,7 @@ describe('Skill Dependency Validation', () => {
     expect((skill as any).dependencyWarnings.some((w: string) => w.includes('missing-skill'))).toBe(true);
   });
 
-  test('skill_create validates multiple dependencies', () => {
+  test('skill_create validates multiple dependencies', async () => {
     // Create two dependency skills
     store.create({ name: 'dep-1', description: 'Dependency 1' });
     store.create({ name: 'dep-2', description: 'Dependency 2' });
@@ -585,7 +585,7 @@ describe('Skill Dependency Validation', () => {
     expect(skill?.dependsOn).toEqual(['dep-1', 'dep-2']);
   });
 
-  test('skill_create fails if any dependency is missing', () => {
+  test('skill_create fails if any dependency is missing', async () => {
     store.create({ name: 'existing-dep', description: 'Exists' });
 
     const result = store.create({
@@ -629,7 +629,7 @@ describe('P2 Features', () => {
   });
 
   describe('Skill Recommendation', () => {
-    test('skill_recommend returns relevant skills', () => {
+    test('skill_recommend returns relevant skills', async () => {
       // Create test skills with clear triggers
       store.create({
         name: 'web-scraper',
@@ -654,7 +654,7 @@ describe('P2 Features', () => {
       expect(result.recommendations[0].matched_triggers).toContain('scrape website');
     });
 
-    test('skill_recommend returns empty array when no match', () => {
+    test('skill_recommend returns empty array when no match', async () => {
       store.create({
         name: 'unrelated-skill',
         description: 'Something else',
@@ -666,14 +666,14 @@ describe('P2 Features', () => {
       expect(result.recommendations.length).toBe(0);
     });
 
-    test('skill_recommend tool', () => {
-      executeSkillTool('skill_ensure', {
+    test('skill_recommend tool', async () => {
+      await executeSkillTool('skill_ensure', {
         name: 'test-skill',
         description: 'Test skill',
         triggers: ['test trigger'],
       });
 
-      const result = executeSkillTool('skill_recommend', {
+      const result = await executeSkillTool('skill_recommend', {
         context: 'test trigger',
       });
 
@@ -683,7 +683,7 @@ describe('P2 Features', () => {
   });
 
   describe('Performance Monitoring', () => {
-    test('skill_performance returns metrics', () => {
+    test('skill_performance returns metrics', async () => {
       store.create({
         name: 'perf-test-skill',
         description: 'Test skill',
@@ -702,13 +702,13 @@ describe('P2 Features', () => {
       expect(metrics.max_execution_time_ms).toBe(1200);
     });
 
-    test('skill_performance tool', () => {
-      executeSkillTool('skill_ensure', {
+    test('skill_performance tool', async () => {
+      await executeSkillTool('skill_ensure', {
         name: 'perf-tool-test',
         description: 'Test',
       });
 
-      const result = executeSkillTool('skill_performance', {
+      const result = await executeSkillTool('skill_performance', {
         name: 'perf-tool-test',
       });
 
@@ -718,7 +718,7 @@ describe('P2 Features', () => {
   });
 
   describe('Failure Analysis', () => {
-    test('skill_analyze_failures identifies patterns', () => {
+    test('skill_analyze_failures identifies patterns', async () => {
       store.create({
         name: 'failing-skill',
         description: 'Problematic skill',
@@ -741,13 +741,13 @@ describe('P2 Features', () => {
       expect(analysis.recommendations.length).toBeGreaterThan(0);
     });
 
-    test('skill_analyze_failures tool', () => {
-      executeSkillTool('skill_ensure', {
+    test('skill_analyze_failures tool', async () => {
+      await executeSkillTool('skill_ensure', {
         name: 'analyze-test',
         description: 'Test',
       });
 
-      const result = executeSkillTool('skill_analyze_failures', {
+      const result = await executeSkillTool('skill_analyze_failures', {
         name: 'analyze-test',
       });
 
@@ -757,7 +757,7 @@ describe('P2 Features', () => {
   });
 
   describe('Import/Export', () => {
-    test('skill_export creates export package', () => {
+    test('skill_export creates export package', async () => {
       store.create({
         name: 'export-test-skill',
         description: 'Skill to export',
@@ -773,13 +773,13 @@ describe('P2 Features', () => {
       expect(result.checksum).toBeDefined();
     });
 
-    test('skill_export tool', () => {
-      executeSkillTool('skill_ensure', {
+    test('skill_export tool', async () => {
+      await executeSkillTool('skill_ensure', {
         name: 'export-tool-test',
         description: 'Test',
       });
 
-      const result = executeSkillTool('skill_export', {
+      const result = await executeSkillTool('skill_export', {
         name: 'export-tool-test',
       });
 
@@ -787,7 +787,7 @@ describe('P2 Features', () => {
       expect((result.data as any).skill_name).toBe('export-tool-test');
     });
 
-    test('skill_import imports package', () => {
+    test('skill_import imports package', async () => {
       // This would normally use a real file, but we're testing the interface
       const result = store.importSkill('/path/to/skill.tar.gz');
 
@@ -796,8 +796,8 @@ describe('P2 Features', () => {
       expect(result.files_imported.length).toBeGreaterThan(0);
     });
 
-    test('skill_import tool', () => {
-      const result = executeSkillTool('skill_import', {
+    test('skill_import tool', async () => {
+      const result = await executeSkillTool('skill_import', {
         file_path: '/path/to/skill.tar.gz',
       });
 
