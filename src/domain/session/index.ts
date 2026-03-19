@@ -674,6 +674,7 @@ async function compressMessages(
     const fastModelConfig = getFastModelFromConfig();
     // Priority: fast model > main model from config
     const compressionModel = fastModelConfig?.model || agentConfig.model;
+    const compressionMaxTokens = fastModelConfig?.maxTokens || 200;
 
     console.log(`[Session] 🗜️ Compressing ${oldMessages.length} messages using ${compressionModel}...`);
 
@@ -690,7 +691,7 @@ async function compressMessages(
           content: `请总结以下对话：\n\n${conversationText}`,
         },
       ],
-      maxTokens: 200,  // Limit output length
+      maxTokens: compressionMaxTokens,  // Use config value
       temperature: 0.3,  // Lower temperature for more focused output
     });
 

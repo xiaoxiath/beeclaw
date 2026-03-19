@@ -118,7 +118,9 @@ export async function callAI(options: {
   const response = retryResult.value!;
   const jsonResponse = await response.json();
 
-  // Handle MiniMax reasoning_details - append to content
+  // Handle reasoning content from various providers
+  // 1. MiniMax: reasoning_details (array format)
+  // 2. Zhipu: reasoning_content (string format, e.g., glm-4.7-flash)
   if (provider.type === 'minimax' || provider.options?.includeReasoning) {
     const reasoningDetails = jsonResponse.choices?.[0]?.message?.reasoning_details;
     if (reasoningDetails && Array.isArray(reasoningDetails)) {
@@ -129,6 +131,21 @@ export async function callAI(options: {
         jsonResponse.choices[0].message.content =
           `<thinking>\n${reasoningText}\n</thinking>\n\n${jsonResponse.choices[0].message.content || ''}`;
       }
+    }
+  }
+
+  // Handle Zhipu reasoning_content (glm-4.7-flash and similar reasoning models)
+  const reasoningContent = jsonResponse.choices?.[0]?.message?.reasoning_content;
+  if (reasoningContent && typeof reasoningContent === 'string') {
+    const finalContent = jsonResponse.choices?.[0]?.message?.content || '';
+    // For compression tasks, we only need the reasoning (it contains the answer)
+    // For other tasks, combine reasoning + content
+    if (finalContent) {
+      jsonResponse.choices[0].message.content =
+        `<thinking>\n${reasoningContent}\n</thinking>\n\n${finalContent}`;
+    } else {
+      // If no content, use reasoning as content (for compression tasks)
+      jsonResponse.choices[0].message.content = reasoningContent;
     }
   }
 
