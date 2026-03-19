@@ -46,14 +46,6 @@ import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 import { getContextSelector } from './context/selector';
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
-// P1+P2 Pattern imports
-import {
-  getPatternSelector,
-  getPlanExecutePattern,
-  getReflectiveLoopPattern,
-  type AgentPattern,
-} from './patterns';
-
 /**
  * Safely parse JSON with fallback
  */
@@ -986,112 +978,7 @@ export class Agent {
     );
 
     // [P1+P2 优化] 智能选择控制模式
-    let selectedPattern: 'direct' | 'react' | 'plan-execute' | 'reflective' = 'react';
-    if (options?.pattern) {
-      // 如果明确指定了模式，直接使用，绕过自动选择
-      selectedPattern = options.pattern;
-      logger.info('[Agent] Pattern explicitly set', { pattern: selectedPattern });
-    } else if (typeof enrichedMessage === 'string' && !options?.tools) {
-      try {
-        // [FIX] Include recent conversation context for better pattern selection
-        const recentMessages = this.messages.slice(-5).filter(m => m.role !== 'system');
-        let contextForSelection = enrichedMessage;
-
-        if (recentMessages.length > 0) {
-          const contextSummary = recentMessages.map(m => {
-            const role = m.role === 'user' ? 'User' : 'Assistant';
-            const content = typeof m.content === 'string' ? m.content : '[multimodal]';
-            return `${role}: ${content}`;
-          }).join('\n');
-
-          contextForSelection = `[Recent conversation]\n${contextSummary}\n\n[Current request]\n${enrichedMessage}`;
-        }
-
-        // [FIX] Use PatternSelector with config-based fast model
-        const patternSelector = getPatternSelector(this.options.provider);
-        const selection = await patternSelector.selectPattern(contextForSelection);
-        selectedPattern = selection.pattern;
-
-        logger.info('[Agent] Pattern selected', {
-          pattern: selectedPattern,
-          reasoning: selection.reasoning,
-          taskType: selection.features.taskType,
-          complexity: selection.features.complexity,
-        });
-      } catch (error) {
-        logger.warn('[Agent] Pattern selection failed, using default react', error);
-      }
-    }
-
-    // 根据模式执行不同的路径
-    if (selectedPattern === 'direct') {
-      // Direct 模式：简单问题直接回答，不进入工具循环
-      logger.info('[Agent] Using Direct pattern (simple query)');
-
-      try {
-        logger.info('[Agent] Direct pattern: calling LLM...');
-        const response = await callAI({
-          provider: this.options.provider,
-          model: this.options.model,
-          messages: this.getMessagesForAPI(),
-          tools: [], // 不使用工具
-          temperature: this.options.temperature,
-          topP: this.options.topP,
-        });
-
-        logger.info('[Agent] Direct pattern: LLM call completed', {
-          responseKeys: Object.keys(response || {}),
-          hasChoices: !!response?.choices,
-        });
-
-        const content = extractContent(response);
-
-        if (!content) {
-          logger.warn('[Agent] Direct pattern: extractContent returned empty content');
-        }
-
-        this.messages.push({ role: 'assistant', content });
-        this.estimatedTokens += estimateMessageTokens({ role: 'assistant', content });
-
-        // Generate ContentBlock for Card V2 streaming
-        options?.onContentBlock?.({
-          type: 'text',
-          text: content,
-        });
-
-        logger.info('[Agent] Direct pattern: completed successfully', {
-          contentLength: content?.length || 0
-        });
-
-        return content;
-      } catch (error) {
-        logger.error('[Agent] Direct pattern failed', {
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        });
-        throw error;
-      }
-    }
-
-    if (selectedPattern === 'plan-execute') {
-      // Plan-Execute 模式：复杂任务规划执行
-      logger.info('[Agent] Using Plan-Execute pattern (complex task)');
-      const pattern = getPlanExecutePattern();
-      const result = await pattern.execute(enrichedMessage as string, this);
-
-      this.messages.push({ role: 'assistant', content: result });
-      this.estimatedTokens += estimateMessageTokens({ role: 'assistant', content: result });
-
-      // Generate ContentBlock for Card V2 streaming
-      options?.onContentBlock?.({
-        type: 'text',
-        text: result,
-      });
-
-      return result;
-    }
-
-    // ReAct 和 Reflective 模式继续使用原有循环
+    // Standard agent loop
     let iterations = 0;
     let finalContent = '';
     let totalCompletionTokens = 0;
@@ -1754,30 +1641,6 @@ export class Agent {
     }
 
     // [P1 优化] Reflective 模式：高质量输出反思改进
-    if (selectedPattern === 'reflective' && finalContent) {
-      logger.info('[Agent] Using Reflective pattern (quality improvement)');
-      try {
-        const reflectivePattern = getReflectiveLoopPattern();
-        const improvedContent = await reflectivePattern.execute(
-          enrichedMessage as string,
-          finalContent,
-          this
-        );
-
-        // Update finalContent and notify Card V2 if content was improved
-        if (improvedContent !== finalContent) {
-          finalContent = improvedContent;
-          // Generate updated ContentBlock for Card V2 streaming
-          options?.onContentBlock?.({
-            type: 'text',
-            text: finalContent,
-          });
-        }
-      } catch (error) {
-        logger.warn('[Agent] Reflective improvement failed, using original response', error);
-      }
-    }
-
     return finalContent;
   }
 
