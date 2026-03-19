@@ -221,8 +221,8 @@ async function main() {
       console.log('   Creating daily memory compression schedule...');
       scheduler.createSchedule({
         name: 'Daily Memory Compression',
-        description: 'Compress old memories daily at 3 AM',
-        cron: '0 3 * * *',
+        description: 'Compress old memories daily at 3:30 AM (30min after Daily Reflection)',
+        cron: '30 3 * * *',
         taskType: 'memory_compress',
         taskParams: {},
         enabled: true,
