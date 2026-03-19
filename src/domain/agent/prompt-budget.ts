@@ -316,10 +316,7 @@ export function calculatePromptBudget(
   modelContextWindow: number,
   customConfig?: Partial<PromptBudgetConfig>,
 ): PromptBudgetConfig {
-  const maxSystemTokens = Math.min(
-    Math.floor(modelContextWindow * 0.25),
-    6000  // Hard cap: even for 200K models, 6000 tokens for system prompt is plenty
-  );
+  const maxSystemTokens = Math.floor(modelContextWindow * 0.25);
 
   return {
     ...DEFAULT_PROMPT_BUDGET,
