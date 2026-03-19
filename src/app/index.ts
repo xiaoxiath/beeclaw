@@ -442,13 +442,31 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 9.12. Initialize Tiered LLM Router
   if (config.llmRouter?.enabled !== false) {
     try {
+      // Helper function to resolve model name from tier config
+      const resolveTierModel = (tierKey: string): string | undefined => {
+        const tierConfig = config.llmRouter?.tiers?.[tierKey];
+        if (!tierConfig) return undefined;
+
+        // If models array is specified directly (legacy format)
+        if (tierConfig.models && tierConfig.models.length > 0) {
+          return tierConfig.models[0];
+        }
+
+        // If role is specified (v4 format), resolve from roles config
+        if (tierConfig.role && config.roles?.[tierConfig.role]) {
+          return config.roles[tierConfig.role].model;
+        }
+
+        return undefined;
+      };
+
       // Create tiered router
       const router = new TieredLLMRouter({
         provider: defaultProvider,
         modelPreferences: config.llmRouter?.tiers ? {
-          fast: config.llmRouter.tiers.fast?.models?.[0],
-          standard: config.llmRouter.tiers.standard?.models?.[0],
-          advanced: config.llmRouter.tiers.advanced?.models?.[0],
+          fast: resolveTierModel('fast'),
+          standard: resolveTierModel('standard'),
+          advanced: resolveTierModel('advanced'),
         } : undefined,
         fallbackEnabled: config.llmRouter?.fallbackEnabled ?? true,
         costTracking: config.llmRouter?.costTracking ?? true,
