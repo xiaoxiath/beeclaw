@@ -1312,7 +1312,13 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
       const chatPromise = agent.chat(messageForAgent, {
         onContentBlock: (block) => {
-          streamingController?.pushContent(block);
+          streamingController?.pushContent(block).catch(err => {
+            // Silently handle message withdrawn errors
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            if (!errorMsg.includes('withdrawn')) {
+              logger.warn('[Session] Failed to push content block:', errorMsg);
+            }
+          });
         },
         userContext: userContextForTools,
       });

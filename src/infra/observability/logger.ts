@@ -61,12 +61,32 @@ class Logger {
         Object.keys(a).forEach(key => {
           errorObj[key] = (a as any)[key];
         });
-        return JSON.stringify(errorObj, null, 2);
+        return this.safeStringify(errorObj, 2);
       }
-      return typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a);
+      return typeof a === 'object' ? this.safeStringify(a, 2) : String(a);
     }).join(' ') : '';
 
     return `${prefix.replace(level.toUpperCase(), coloredLevel)} ${message}${formattedArgs}`;
+  }
+
+  /**
+   * Safely stringify an object, handling circular references
+   */
+  private safeStringify(obj: unknown, indent?: number): string {
+    try {
+      const seen = new WeakSet();
+      return JSON.stringify(obj, (key, value) => {
+        if (typeof value === 'object' && value !== null) {
+          if (seen.has(value)) {
+            return '[Circular]';
+          }
+          seen.add(value);
+        }
+        return value;
+      }, indent);
+    } catch (error) {
+      return `[Stringify Error: ${error instanceof Error ? error.message : String(error)}]`;
+    }
   }
 
   private colorize(level: LogLevel, text: string): string {

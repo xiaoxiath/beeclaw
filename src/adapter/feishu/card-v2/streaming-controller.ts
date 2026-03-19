@@ -178,8 +178,20 @@ export class StreamingMessageController {
       this.state.messageId = messageId;
       this.state.initialized = true;
       this.state.lastUpdate = Date.now();
-    } catch (error) {
-      console.error('[StreamingController] Failed to send initial card message:', error);
+    } catch (error: any) {
+      // Check if message was withdrawn
+      const errorCode = error?.code || error?.response?.data?.code;
+      if (errorCode === 230011 || errorCode === 231003) {
+        console.warn('[StreamingController] ⚠️  Message was withdrawn, cannot send initial card');
+        // Mark as finished to prevent further attempts
+        this.state.finished = true;
+        throw new Error('Message withdrawn');
+      }
+
+      console.error('[StreamingController] Failed to send initial card message:', {
+        error: error?.message || String(error),
+        code: errorCode,
+      });
       throw error;
     }
   }

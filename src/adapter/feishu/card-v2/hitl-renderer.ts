@@ -105,13 +105,53 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
       {
         tag: 'hr',
       },
-      // 操作指引
+      // 【改进】交互按钮替换文本指令
       {
-        tag: 'markdown',
-        content:
-          '请回复以下命令之一：\n' +
-          '• `APPROVED` - 批准执行\n' +
-          '• `DENIED` - 拒绝操作',
+        tag: 'action',
+        actions: [
+          {
+            tag: 'button',
+            text: {
+              tag: 'plain_text',
+              content: '✅ 批准执行',
+            },
+            type: 'primary',
+            value: {
+              action: 'hitl_callback',
+              hitlType: 'confirmation',
+              decision: 'APPROVED',
+              toolCallId: (block as any).toolCallId || '',
+              toolName: (block as any).toolName || '',
+              sessionId: (block as any).sessionId || '',
+            },
+          },
+          {
+            tag: 'button',
+            text: {
+              tag: 'plain_text',
+              content: '❌ 拒绝操作',
+            },
+            type: 'danger',
+            value: {
+              action: 'hitl_callback',
+              hitlType: 'confirmation',
+              decision: 'DENIED',
+              toolCallId: (block as any).toolCallId || '',
+              toolName: (block as any).toolName || '',
+              sessionId: (block as any).sessionId || '',
+            },
+          },
+        ],
+      },
+      // 说明文字
+      {
+        tag: 'note',
+        elements: [
+          {
+            tag: 'plain_text',
+            content: '💡 点击按钮进行操作，或回复 APPROVED / DENIED',
+          },
+        ],
       },
     ],
   };
@@ -126,6 +166,102 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
   }
 
   const inputType = (block as any).inputType || 'text';
+  const hasOptions = (block as any).options && (block as any).options.length > 0;
+
+  const elements: any[] = [
+    // 问题
+    {
+      tag: 'markdown',
+      content: `**${(block as any).question}**`,
+    },
+    // 上下文（如果有）
+    (block as any).context && {
+      tag: 'markdown',
+      content: `\n💡 **上下文**: ${(block as any).context}`,
+    },
+  ];
+
+  // 【改进】根据输入类型添加不同的交互组件
+  if (inputType === 'confirmation') {
+    // 确认类型：使用按钮
+    elements.push({
+      tag: 'action',
+      actions: [
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '✅ 是',
+          },
+          type: 'primary',
+          value: {
+            action: 'hitl_callback',
+            hitlType: 'user_input',
+            inputType: 'confirmation',
+            value: 'YES',
+            requestId: (block as any).requestId || '',
+            sessionId: (block as any).sessionId || '',
+          },
+        },
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: '❌ 否',
+          },
+          type: 'default',
+          value: {
+            action: 'hitl_callback',
+            hitlType: 'user_input',
+            inputType: 'confirmation',
+            value: 'NO',
+            requestId: (block as any).requestId || '',
+            sessionId: (block as any).sessionId || '',
+          },
+        },
+      ],
+    });
+  } else if (hasOptions && (inputType === 'choice' || inputType === 'multi_choice')) {
+    // 选择类型：使用选择菜单
+    elements.push({
+      tag: 'action',
+      actions: [
+        {
+          tag: 'select_static',
+          placeholder: {
+            tag: 'plain_text',
+            content: inputType === 'multi_choice' ? '请选择（可多选）' : '请选择',
+          },
+          multiple: inputType === 'multi_choice',
+          options: ((block as any).options || []).map((opt: string, idx: number) => ({
+            text: {
+              tag: 'plain_text',
+              content: opt,
+            },
+            value: String(idx + 1),
+          })),
+          value: {
+            action: 'hitl_callback',
+            hitlType: 'user_input',
+            inputType: inputType,
+            requestId: (block as any).requestId || '',
+            sessionId: (block as any).sessionId || '',
+          },
+        },
+      ],
+    });
+  } else {
+    // 文本输入：保留文字提示（飞书 Card V2 的 input 组件需要表单容器）
+    elements.push({
+      tag: 'note',
+      elements: [
+        {
+          tag: 'plain_text',
+          content: '💡 请直接输入您的答案',
+        },
+      ],
+    });
+  }
 
   return {
     type: 'card',
@@ -136,45 +272,7 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
       },
       template: 'blue',
     },
-    elements: [
-      // 问题
-      {
-        tag: 'markdown',
-        content: `**${(block as any).question}**`,
-      },
-      // 上下文（如果有）
-      (block as any).context && {
-        tag: 'markdown',
-        content: `\n💡 **上下文**: ${(block as any).context}`,
-      },
-      // 选项（如果有）
-      (block as any).options &&
-      (block as any).options.length > 0 && {
-        tag: 'markdown',
-        content:
-          '\n**选项**:\n' +
-          (block as any).options.map((opt, idx) => `${idx + 1}. ${opt}`).join('\n'),
-      },
-      // 输入类型提示
-      {
-        tag: 'note',
-        elements: [
-          {
-            tag: 'plain_text',
-            content:
-              inputType === 'text'
-                ? '请直接输入您的答案'
-                : inputType === 'choice'
-                ? '请输入选项编号（1, 2, 3...）'
-                : inputType === 'multi_choice'
-                ? '请输入多个选项编号（例如： 1,2,3）'
-                : inputType === 'confirmation'
-                ? '请回复 YES 或 NO'
-                : '',
-          },
-        ],
-      },
-    ],
+    elements: elements.filter(Boolean),
   };
 }
 

@@ -212,3 +212,98 @@ export function parseMultiChoice(input: string, options: string[]): number[] {
 
   return [...new Set(indices)]; // 去重
 }
+
+/**
+ * 设置 HITL 确认决策（用于 Card V2 按钮回调）
+ *
+ * @param sessionId - Session ID
+ * @param toolCallId - Tool call ID
+ * @param decision - User decision (APPROVED/DENIED)
+ */
+export function setDecision(
+  sessionId: string,
+  toolCallId: string,
+  decision: 'APPROVED' | 'DENIED'
+): void {
+  const session = getSession(sessionId);
+  if (!session) {
+    logger.error(`[HITL] Session not found: ${sessionId}`);
+    return;
+  }
+
+  const metadata = session.metadata || {};
+  const pendingConfirmation = (metadata as any).pendingConfirmation;
+
+  if (!pendingConfirmation) {
+    logger.warn(`[HITL] No pending confirmation found for session ${sessionId}`);
+    return;
+  }
+
+  logger.info(`[HITL] Setting decision via button callback: ${decision} for tool ${pendingConfirmation.toolCall.name}`);
+
+  // 将决策保存到 metadata，供后续 handleHITLResponse 使用
+  (metadata as any).buttonDecision = {
+    toolCallId,
+    decision,
+    timestamp: Date.now(),
+  };
+
+  saveSession(session);
+}
+
+/**
+ * 设置用户输入（用于 Card V2 按钮回调）
+ *
+ * @param sessionId - Session ID
+ * @param requestId - Request ID
+ * @param value - User input value
+ */
+export function setUserInput(
+  sessionId: string,
+  requestId: string,
+  value: string | string[]
+): void {
+  const session = getSession(sessionId);
+  if (!session) {
+    logger.error(`[HITL] Session not found: ${sessionId}`);
+    return;
+  }
+
+  const metadata = session.metadata || {};
+
+  logger.info(`[HITL] Setting user input via button callback:`, { requestId, value });
+
+  // 将用户输入保存到 metadata，供后续 handleHITLResponse 使用
+  (metadata as any).buttonUserInput = {
+    requestId,
+    value,
+    timestamp: Date.now(),
+  };
+
+  saveSession(session);
+}
+
+/**
+ * 恢复 HITL 会话（触发 Agent 继续执行）
+ *
+ * @param sessionId - Session ID
+ */
+export function resume(sessionId: string): void {
+  const session = getSession(sessionId);
+  if (!session) {
+    logger.error(`[HITL] Session not found: ${sessionId}`);
+    return;
+  }
+
+  logger.info(`[HITL] Resuming session ${sessionId} after button callback`);
+
+  // 标记会话为可恢复状态
+  const metadata = session.metadata || {};
+  (metadata as any).hitlResumeReady = true;
+  (metadata as any).hitlResumeAt = Date.now();
+
+  saveSession(session);
+
+  // 注意：实际的 Agent 恢复由 Session Manager 处理
+  // 这里只是设置标志，告诉 Session Manager 可以恢复了
+}
