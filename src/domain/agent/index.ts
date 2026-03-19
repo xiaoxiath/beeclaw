@@ -1114,6 +1114,7 @@ export class Agent {
         const otherCalls = toolCalls.filter(tc => tc.function.name !== 'skill_get');
 
         if (skillGetCall && otherCalls.length > 0) {
+          // 【修复 Bug 1】先执行 skill_get，但不要 continue，继续执行其他工具
           const params = safeJsonParse(skillGetCall.function.arguments, {});
           console.log(`\n[Skill] 🎯 Getting skill: ${params.name}`);
           options?.onToolCall?.(skillGetCall.function.name, params);
@@ -1184,6 +1185,151 @@ export class Agent {
             });
           }
 
+          // 【修复】不要 continue！继续处理 otherCalls
+          // 将 otherCalls 作为下一批工具调用
+          console.log(`[Skill] ✅ Skill loaded, now executing ${otherCalls.length} other tool(s)`);
+
+          // 重新赋值 toolCalls 为 otherCalls，继续后续处理
+          const remainingToolCalls = otherCalls;
+
+          // 使用剩余的工具调用继续执行
+          const batches = groupToolCalls(remainingToolCalls.map(tc => ({
+            name: tc.function.name,
+            call: tc,
+          })));
+
+          const stats = getGroupingStats(remainingToolCalls.map(tc => ({ name: tc.function.name })));
+          console.log(`\n[Tool Execution Plan] (After skill_get)`);
+          console.log(`  Total calls: ${stats.totalCalls}`);
+          console.log(`  Parallel batches: ${stats.parallelBatches}`);
+          console.log(`  Sequential batches: ${stats.sequentialBatches}`);
+          console.log(`  Max parallelism: ${stats.maxParallelism}`);
+          if (batches.length > 0) {
+            batches.forEach((batch, idx) => {
+              const toolNames = batch.map(b => b.call.function.name).join(', ');
+              console.log(`  Batch ${idx + 1}: ${toolNames}`);
+            });
+          }
+
+          // 执行剩余的工具调用
+          for (const batch of batches) {
+            const batchStartTime = Date.now();
+
+            if (batch.length === 1 && batch[0].call.function.name.startsWith('state_')) {
+              // Sequential tool
+              const { call } = batch[0];
+              const params = safeJsonParse(call.function.arguments, {});
+              const toolName = call.function.name;
+
+              console.log(`[Sequential Tool] ${toolName}`);
+              options?.onToolCall?.(toolName, params);
+
+              // Generate ContentBlock
+              options?.onContentBlock?.({
+                type: 'tool_use',
+                id: call.id,
+                name: toolName,
+                input: params,
+              });
+
+              if (this.isToolBlocked(toolName)) {
+                const blockedMsg = `Tool "${toolName}" is blocked in this context.`;
+                console.warn(`[Agent] ${blockedMsg}`);
+                const blockedResult = { success: false, error: blockedMsg, blocked: true };
+                options?.onToolResult?.(toolName, blockedResult);
+              } else {
+                const result = await this.toolExecutor(toolName, params, this.currentUserContext);
+                options?.onToolResult?.(toolName, result);
+
+                let resultToSave = result;
+                if (this.hookRunner) {
+                  resultToSave = this.hookRunner.runToolResultPersist({
+                    toolName,
+                    result,
+                    toolCallId: call.id,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+
+                this.messages.push({
+                  role: 'tool',
+                  content: JSON.stringify(resultToSave),
+                  tool_call_id: call.id,
+                });
+                this.estimatedTokens += estimateMessageTokens({
+                  role: 'tool',
+                  content: JSON.stringify(resultToSave),
+                  tool_call_id: call.id,
+                });
+              }
+            } else {
+              // Parallel batch
+              const batchPromises = batch.map(async ({ call }) => {
+                const params = safeJsonParse(call.function.arguments, {});
+                const toolName = call.function.name;
+
+                console.log(`[Parallel Tool] ${toolName}`);
+                options?.onToolCall?.(toolName, params);
+
+                // Generate ContentBlock
+                options?.onContentBlock?.({
+                  type: 'tool_use',
+                  id: call.id,
+                  name: toolName,
+                  input: params,
+                });
+
+                if (this.isToolBlocked(toolName)) {
+                  const blockedMsg = `Tool "${toolName}" is blocked in this context.`;
+                  console.warn(`[Agent] ${blockedMsg}`);
+                  return {
+                    call,
+                    result: { success: false, error: blockedMsg, blocked: true },
+                  };
+                }
+
+                const result = await this.toolExecutor(toolName, params, this.currentUserContext);
+                options?.onToolResult?.(toolName, result);
+                return { call, result };
+              });
+
+              const batchResults = await Promise.all(batchPromises);
+
+              for (const { call, result } of batchResults) {
+                let resultToSave = result;
+                if (this.hookRunner) {
+                  resultToSave = this.hookRunner.runToolResultPersist({
+                    toolName: call.function.name,
+                    result,
+                    toolCallId: call.id,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+
+                this.messages.push({
+                  role: 'tool',
+                  content: JSON.stringify(resultToSave),
+                  tool_call_id: call.id,
+                });
+                this.estimatedTokens += estimateMessageTokens({
+                  role: 'tool',
+                  content: JSON.stringify(resultToSave),
+                  tool_call_id: call.id,
+                });
+              }
+            }
+
+            const elapsed = Date.now() - batchStartTime;
+            if (batch.length > 1) {
+              const toolNames = batch.map(b => b.call.function.name).join(', ');
+              console.log(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
+              console.log(`  Tools: ${toolNames}`);
+            } else {
+              console.log(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
+            }
+          }
+
+          // 执行完剩余工具后 continue
           continue;
         }
 
@@ -1573,7 +1719,15 @@ export class Agent {
 
     if (this.usedSkillsInTurn.size > 0 && !finalContent.includes('📋 Used skill:')) {
       const skillNames = Array.from(this.usedSkillsInTurn).join(', ');
-      metadata.push(`_📋 Used skill: ${skillNames}_`);
+      const skillInfo = `_📋 Used skill: ${skillNames}_`;
+      metadata.push(skillInfo);
+
+      // 【修复 Bug 2】同时通过 onContentBlock 发送技能使用信息，让 Card V2 能看到
+      options?.onContentBlock?.({
+        type: 'text',
+        text: `\n\n---\n${skillInfo}`,
+      });
+      console.log(`[Agent] 📋 Skill attribution added: ${skillNames}`);
     }
 
     if (this.tokenStatsConfig.showTokenStats) {
