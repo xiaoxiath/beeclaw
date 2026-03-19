@@ -182,6 +182,30 @@ export class KnowledgeExtractor {
   }
 
   /**
+   * Convert ExtractionItem[] to ExtractedKnowledge[]
+   */
+  toItems(extractions: ExtractionItem[], source: string): ExtractedKnowledge[] {
+    return extractions.map(item => ({
+      id: this.generateId(),
+      category: item.category,
+      key: item.key,
+      value: item.value,
+      confidence: item.confidence,
+      source: source,
+      timestamp: new Date(),
+      status: 'confirmed' as const,
+      context: item.reason, // Use reason as context
+    }));
+  }
+
+  /**
+   * Generate UUID
+   */
+  private generateId(): string {
+    return 'ext-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+  }
+
+  /**
    * Detect sensitive information
    */
   detectSensitiveInfo(content: string): {

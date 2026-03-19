@@ -55,6 +55,56 @@ describe('KnowledgeExtractor', () => {
     });
   });
 
+  describe('toItems', () => {
+    test('should convert ExtractionItem[] to ExtractedKnowledge[]', () => {
+      const extractions = [
+        {
+          category: 'work' as const,
+          key: 'company',
+          value: 'ByteDance',
+          confidence: 0.9,
+          reason: 'User mentioned their workplace',
+        },
+        {
+          category: 'personal' as const,
+          key: 'name',
+          value: 'Zhang San',
+          confidence: 0.95,
+          reason: 'User introduced themselves',
+        },
+      ];
+
+      const source = 'session_test123';
+      const result = extractor.toItems(extractions, source);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        category: 'work',
+        key: 'company',
+        value: 'ByteDance',
+        confidence: 0.9,
+        source: source,
+        status: 'confirmed',
+      });
+      expect(result[0].id).toBeDefined();
+      expect(result[0].timestamp).toBeInstanceOf(Date);
+
+      expect(result[1]).toMatchObject({
+        category: 'personal',
+        key: 'name',
+        value: 'Zhang San',
+        confidence: 0.95,
+        source: source,
+        status: 'confirmed',
+      });
+    });
+
+    test('should handle empty array', () => {
+      const result = extractor.toItems([], 'test-source');
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('extract', () => {
     test('should return empty array for empty messages', async () => {
       const result = await extractor.extract([]);
