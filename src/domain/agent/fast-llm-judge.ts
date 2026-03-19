@@ -227,7 +227,7 @@ export class FastLLMJudge {
   }
 
   /**
-   * 解析 JSON（处理 markdown 代码块和混合文本）
+   * 解析 JSON（处理 markdown 代码块、模板语法和混合文本）
    */
   private parseJSON(content: string): any {
     try {
@@ -236,6 +236,12 @@ export class FastLLMJudge {
       // 移除可能的 markdown 代码块标记
       if (jsonStr.startsWith('```')) {
         jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+
+      // 移除模板语法中的双花括号 {{ }} (LLM 有时会用这种格式包裹 JSON)
+      if (jsonStr.startsWith('{{') && jsonStr.endsWith('}}')) {
+        logger.debug('[FastLLMJudge] Detected double-brace template syntax, removing outer braces');
+        jsonStr = jsonStr.slice(1, -1); // 移除最外层的 { }
       }
 
       // 尝试直接解析
@@ -252,7 +258,13 @@ export class FastLLMJudge {
         const lastBrace = jsonStr.lastIndexOf('}');
 
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          const extracted = jsonStr.substring(firstBrace, lastBrace + 1);
+          let extracted = jsonStr.substring(firstBrace, lastBrace + 1);
+
+          // 如果提取的内容仍然以 {{ 开头，移除外层
+          if (extracted.startsWith('{{')) {
+            extracted = extracted.slice(1, -1);
+          }
+
           try {
             return JSON.parse(extracted);
           } catch (extractError) {
