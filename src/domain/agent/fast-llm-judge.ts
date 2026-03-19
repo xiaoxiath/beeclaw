@@ -173,15 +173,20 @@ export class FastLLMJudge {
     const prompt = this.buildPrompt(options.promptTemplate, options.promptVariables);
     const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
 
-    // Use maxTokens from options, then instance default, then fallback
-    // IMPORTANT: Cap at 2048 for JSON judgment tasks to avoid truncation with reasoning models
-    let maxTokens = options.maxTokens ?? this.defaultMaxTokens ?? 1024;
-    if (maxTokens > 2048) {
-      logger.warn(
-        `[FastLLMJudge] Capping maxTokens from ${maxTokens} to 2048 for ${options.taskName} ` +
-        `(reasoning models need smaller output for JSON)`
+    // Use maxTokens from options, then instance default, then fallback to reasonable default for JSON
+    // JSON judgment tasks typically need only 200-500 tokens, cap at 1024 for safety
+    let maxTokens = options.maxTokens ?? this.defaultMaxTokens ?? 512;
+
+    // Cap at 1024 for JSON judgment tasks (sufficient for complex JSON structures)
+    // Most judgment tasks only need 100-300 tokens
+    const MAX_JUDGMENT_TOKENS = 1024;
+    if (maxTokens > MAX_JUDGMENT_TOKENS) {
+      const originalMaxTokens = maxTokens;
+      maxTokens = MAX_JUDGMENT_TOKENS;
+      logger.info(
+        `[FastLLMJudge] Capping maxTokens from ${originalMaxTokens} to ${MAX_JUDGMENT_TOKENS} for ${options.taskName} ` +
+        `(JSON judgment tasks don't need large output)`
       );
-      maxTokens = 2048;
     }
 
     logger.info(`[FastLLMJudge] Starting LLM call for ${options.taskName}`, {
