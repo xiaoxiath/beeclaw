@@ -313,18 +313,6 @@ describe('Skill Tools', () => {
     expect(result.success).toBe(true);
   });
 
-  test('skill_search tool', async () => {
-    await executeSkillTool('skill_ensure', {
-      name: 'web-fetcher',
-      description: 'Fetch web pages',
-    });
-
-    const result = await executeSkillTool('skill_search', { query: 'web' });
-    expect(result.success).toBe(true);
-    expect(Array.isArray(result.data)).toBe(true);
-    expect((result.data as any[]).length).toBeGreaterThan(0);
-  });
-
   test('skill_record tool', async () => {
     await executeSkillTool('skill_ensure', {
       name: 'record-test',

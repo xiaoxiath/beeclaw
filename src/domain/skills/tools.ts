@@ -22,10 +22,6 @@ export const SkillDeleteSchema = z.object({
   name: z.string().describe('Skill name'),
 });
 
-export const SkillSearchSchema = z.object({
-  query: z.string().describe('Search query'),
-});
-
 export const SkillRecordSchema = z.object({
   name: z.string().describe('Skill name'),
   success: z.boolean().describe('Whether the usage was successful'),
@@ -128,21 +124,6 @@ Use this tool for all skill creation/updating. The skill-creator workflow ensure
         },
       },
       required: ['name'],
-    },
-  },
-
-  skill_search: {
-    name: 'skill_search',
-    description: 'Search for skills matching a query.',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Search query',
-        },
-      },
-      required: ['query'],
     },
   },
 
@@ -529,45 +510,6 @@ export async function executeSkillTool(name: string, params: Record<string, unkn
         return { success: false, error: parsed.error.message };
       }
       return store.delete(parsed.data.name);
-    }
-
-    case 'skill_search': {
-      const parsed = SkillSearchSchema.safeParse(params);
-      if (!parsed.success) {
-        return { success: false, error: parsed.error.message };
-      }
-
-      try {
-        // Use LLM semantic matching for better results
-        const result = await store.recommendSkillsWithLLM(parsed.data.query, {
-          topK: 5,
-          maxCandidates: 15,
-        });
-
-        return {
-          success: true,
-          data: result.recommendations.map(r => ({
-            name: r.name,
-            description: r.description,
-            confidence: r.confidence,
-            reason: r.reason,
-            tags: r.matched_tags,
-          })),
-        };
-      } catch (error) {
-        // Fallback to simple search if LLM fails
-        console.error('[skill_search] LLM matching failed, using fallback:', error);
-        const skills = store.search(parsed.data.query);
-        return {
-          success: true,
-          data: skills.slice(0, 5).map(s => ({
-            name: s.name,
-            description: s.description,
-            tags: s.tags,
-            maturityScore: s.maturityScore,
-          })),
-        };
-      }
     }
 
     case 'skill_record': {

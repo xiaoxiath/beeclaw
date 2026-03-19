@@ -42,7 +42,6 @@ const TOOL_DEPENDENCIES: Record<string, ToolDependencyConfig> = {
   // Skill tools - skill_get is sequential so LLM sees skill content before acting
   skill_list: { mode: 'parallel', hasSideEffects: false },
   skill_get: { mode: 'sequential', hasSideEffects: false },
-  skill_search: { mode: 'parallel', hasSideEffects: false },
   skill_maturity: { mode: 'parallel', hasSideEffects: false },
   skill_ensure: { mode: 'sequential', hasSideEffects: true },
   skill_ensure: { mode: 'sequential', hasSideEffects: true },

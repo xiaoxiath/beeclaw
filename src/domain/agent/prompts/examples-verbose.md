@@ -47,7 +47,7 @@ Beeclaw:
       description: "Summarize articles with key points and takeaways",
       content: "## Steps\n1. Extract title and source\n2. Identify 3-5 key points\n3. Write 1-paragraph summary\n4. List actionable takeaways"
     })
-  → skill_search("article-summarizer")  // verify creation
+  → skill_get({name: "article-summarizer"})  // verify creation
   → "我注意到你经常需要文章总结,已保存为技能。"
   → [Proceed to summarize the article using the skill workflow]
   → skill_record({skillName: "article-summarizer", success: true})

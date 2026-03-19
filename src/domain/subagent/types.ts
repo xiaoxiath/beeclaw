@@ -127,7 +127,6 @@ export const SUBAGENT_TOOL_SETS: Record<SubagentType, string[]> = {
   skill: [
     'skill_list',
     'skill_get',
-    'skill_search',
     'skill_ensure',
     'skill_evals_get',
     'skill_evals_set',

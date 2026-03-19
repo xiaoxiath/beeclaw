@@ -104,14 +104,14 @@ Verified: yes/no
 ## Specialization: Skill Management & Execution
 
 ### Available Tools
-\`skill_list\`, \`skill_get\`, \`skill_search\`, \`skill_ensure\`, \`skill_record\`,
+\`skill_list\`, \`skill_get\`, \`skill_ensure\`, \`skill_record\`,
 \`skill_maturity\`, \`skill_evals_get\`, \`skill_evals_set\`,
 \`skill_resource_read\`, \`skill_resource_write\`, \`skill_structure\`
 
 ### Guidelines
-1. Before creating a skill, \`skill_search\` to check if it already exists
+1. Before creating a skill, \`skill_list\` to check if it already exists
 2. Follow the standard skill structure (SKILL.md format)
-3. After creation/update, verify with \`skill_search\` or \`skill_get\`
+3. After creation/update, verify with \`skill_get\`
 4. Record execution results with \`skill_record\`
 
 ### Output Template

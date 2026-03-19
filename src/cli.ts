@@ -662,24 +662,6 @@ async function handleSkillCommand(input: string): Promise<boolean> {
       console.log(result.success ? `✅ Created skill: ${name}` : `Error: ${result.error}`);
       break;
     }
-    case 'search': {
-      const query = args.join(' ');
-      if (!query) {
-        console.log('Usage: /skill search <query>');
-        break;
-      }
-      const result = await executeSkillTool('skill_search', { query });
-      if (result.success) {
-        const skills = result.data as any[];
-        console.log(`\n🔍 Found ${skills.length} skills:\n`);
-        for (const skill of skills) {
-          console.log(`  ${skill.name}: ${skill.description}`);
-        }
-      } else {
-        console.log(`Error: ${result.error}`);
-      }
-      break;
-    }
     case 'maturity': {
       const name = args[0];
       if (!name) {
