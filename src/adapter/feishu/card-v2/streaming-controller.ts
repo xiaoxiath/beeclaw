@@ -108,24 +108,35 @@ export class StreamingMessageController {
   async pushContent(block: ContentBlock): Promise<void> {
     // Add block to state
     this.state.blocks.push(block);
+    console.log('[StreamingController] 📥 Pushed content block:', {
+      type: block.type,
+      preview: block.type === 'text' ? block.text?.substring(0, 50) : block.type,
+      totalBlocks: this.state.blocks.length,
+      initialized: this.state.initialized,
+    });
 
     // Send initial message if not done
     if (!this.state.initialized) {
       // If initialization is already in progress, wait for it
       if (this.state.initPromise) {
+        console.log('[StreamingController] ⏳ Waiting for initialization to complete...');
         await this.state.initPromise;
+        console.log('[StreamingController] ✅ Initialization completed, scheduling update');
         // After waiting, schedule update for this new block
         this.scheduleUpdate();
         return;
       }
 
       // Start initialization and store promise
+      console.log('[StreamingController] 🚀 Starting initialization...');
       this.state.initPromise = this.sendInitialMessage();
       await this.state.initPromise;
+      console.log('[StreamingController] ✅ Initialization finished, messageId:', this.state.messageId);
       return;
     }
 
     // Debounce subsequent updates
+    console.log('[StreamingController] 🔄 Scheduling update (already initialized)');
     this.scheduleUpdate();
   }
 
@@ -192,12 +203,24 @@ export class StreamingMessageController {
    * Send card update via message.patch
    */
   private async sendUpdate(isFinal: boolean): Promise<void> {
+    console.log('[StreamingController] 📤 sendUpdate called:', {
+      messageId: this.state.messageId,
+      isFinal,
+      blocksCount: this.state.blocks.length,
+    });
+
     if (!this.state.messageId) {
       // This can happen if:
       // 1. Initial message failed to send
       // 2. Update was scheduled before initialization completed
       // 3. Message was withdrawn before update
-      console.debug('[StreamingController] Skipping update: no message ID (initialization may still be in progress or failed)');
+      console.error('[StreamingController] ❌ Cannot update: no message ID (initialization may still be in progress or failed)');
+      console.error('[StreamingController] State:', {
+        initialized: this.state.initialized,
+        blocksCount: this.state.blocks.length,
+        finished: this.state.finished,
+        hasInitPromise: !!this.state.initPromise,
+      });
       return;
     }
 
@@ -207,10 +230,17 @@ export class StreamingMessageController {
         streaming: !isFinal, // Collapse panels on final update
       });
 
+      console.log('[StreamingController] 📤 Updating card:', {
+        messageId: this.state.messageId,
+        isFinal,
+        cardPreview: JSON.stringify(card).substring(0, 200),
+      });
+
       // Patch message
       await this.options.client.patchCard(this.state.messageId, card);
 
       this.state.lastUpdate = Date.now();
+      console.log('[StreamingController] ✅ Card updated successfully');
     } catch (error: any) {
       // Handle specific errors
       if (this.isMessageRevokedError(error)) {

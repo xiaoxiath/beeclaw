@@ -126,8 +126,10 @@ export function renderStepsPanel(
       stepCount++;
       const stepElement = renderToolUseStep(step, stepCount);
       stepElements.push(stepElement);
+    } else if (step.type === 'thinking') {
+      const thinkingElement = renderThinkingStep(step);
+      stepElements.push(thinkingElement);
     }
-    // TODO: Handle thinking blocks if needed
   });
 
   // Create panel header (following agentara structure)
@@ -173,6 +175,20 @@ export function renderToolUseStep(block: ToolUseBlock, stepNumber: number): DivE
     text: createPlainTextElement(`${stepNumber}. ${label}`),
     icon: createStandardIconElement(iconToken, {
       color: Color.TextPrimary,
+      size: 'small',
+    }),
+  });
+}
+
+/**
+ * Render a thinking step (agent's reasoning process)
+ */
+export function renderThinkingStep(block: ThinkingBlock): DivElement {
+  // Create thinking element with brain icon
+  return createDivElement({
+    text: createPlainTextElement(`💭 ${block.thinking}`),
+    icon: createStandardIconElement('brainstorm_color', {
+      color: Color.TextSecondary,
       size: 'small',
     }),
   });

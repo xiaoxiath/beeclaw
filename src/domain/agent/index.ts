@@ -1053,7 +1053,23 @@ export class Agent {
         totalCompletionTokens += response.usage.completion_tokens;
       }
 
-      const cleanedContent = cleanTokenStats(assistantMessage.content || '');
+      let cleanedContent = cleanTokenStats(assistantMessage.content || '');
+
+      // Extract and emit thinking content if present
+      const thinkingMatch = cleanedContent.match(/<thinking>\n?([\s\S]*?)\n?<\/thinking>/);
+      if (thinkingMatch && options?.onContentBlock) {
+        const thinkingContent = thinkingMatch[1].trim();
+        if (thinkingContent) {
+          // Emit thinking block
+          options.onContentBlock({
+            type: 'thinking',
+            thinking: thinkingContent,
+          });
+          console.log(`[Agent] 💭 Thinking process captured (${thinkingContent.length} chars)`);
+        }
+        // Remove thinking tags from content
+        cleanedContent = cleanedContent.replace(/<thinking>\n?[\s\S]*?\n?<\/thinking>\n*/g, '').trim();
+      }
 
       this.messages.push({
         role: 'assistant',
@@ -1083,6 +1099,16 @@ export class Agent {
           console.log(`  ${idx + 1}. ${tc.function.name}(${paramsPreview})`);
         });
         console.log('='.repeat(80));
+
+        // Emit thinking block for tool selection decision
+        if (options?.onContentBlock) {
+          const toolNames = toolCalls.map(tc => tc.function.name).join(', ');
+          const thinkingText = `Decided to use ${toolCalls.length} tool(s): ${toolNames}`;
+          options.onContentBlock({
+            type: 'thinking',
+            thinking: thinkingText,
+          });
+        }
 
         const skillGetCall = toolCalls.find(tc => tc.function.name === 'skill_get');
         const otherCalls = toolCalls.filter(tc => tc.function.name !== 'skill_get');
