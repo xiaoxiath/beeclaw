@@ -234,7 +234,7 @@ export class FastLLMJudge {
   }
 
   /**
-   * 解析 JSON（处理 markdown 代码块）
+   * 解析 JSON（处理 markdown 代码块和混合文本）
    */
   private parseJSON(content: string): any {
     try {
@@ -245,7 +245,37 @@ export class FastLLMJudge {
         jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
       }
 
-      return JSON.parse(jsonStr);
+      // 尝试直接解析
+      try {
+        return JSON.parse(jsonStr);
+      } catch (directError) {
+        // 如果直接解析失败，尝试从文本中提取 JSON 对象
+        logger.debug('[FastLLMJudge] Direct JSON parse failed, attempting extraction', {
+          contentPreview: jsonStr.substring(0, 200),
+        });
+
+        // 查找第一个 { 和最后一个 } 之间的内容
+        const firstBrace = jsonStr.indexOf('{');
+        const lastBrace = jsonStr.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const extracted = jsonStr.substring(firstBrace, lastBrace + 1);
+          try {
+            return JSON.parse(extracted);
+          } catch (extractError) {
+            // 记录原始内容用于调试
+            logger.error('[FastLLMJudge] JSON extraction also failed', {
+              originalContent: jsonStr.substring(0, 500),
+              extractedPreview: extracted.substring(0, 200),
+              directError: directError instanceof Error ? directError.message : String(directError),
+              extractError: extractError instanceof Error ? extractError.message : String(extractError),
+            });
+            throw directError;
+          }
+        }
+
+        throw directError;
+      }
     } catch (error) {
       throw new Error(`JSON parse error: ${error instanceof Error ? error.message : String(error)}`);
     }

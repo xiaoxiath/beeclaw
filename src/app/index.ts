@@ -254,15 +254,8 @@ export async function initApp(options: InitOptions = {}): Promise<{
                                 (config.feishu?.appId && config.feishu?.appSecret);
 
   if (shouldRegisterFeishu) {
-    try {
-      gateway.registerChannel(new FeishuChannel());
-      console.log('   📨 Feishu channel registered');
-
-      // Feishu tools are now handled by feishu-cli-toolkit skill
-      // No CLI runner initialization needed - skill handles all operations
-    } catch (error) {
-      logger.warn('[App] Failed to register Feishu channel:', error);
-    }
+    // FeishuChannel will be registered by FeishuAdapter (avoid duplicate registration)
+    console.log('   📨 Feishu channel will be registered by adapter');
   } else {
     console.log('   📨 Feishu channel not registered (no credentials or disabled)');
   }

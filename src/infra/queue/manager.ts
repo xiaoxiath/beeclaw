@@ -331,7 +331,8 @@ let taskManagerInstance: TaskManager | null = null;
  * Get or create task manager singleton
  */
 export function getTaskManager(config?: QueueConfig): TaskManager {
-  if (!taskManagerInstance || config) {
+  // Only create instance once; subsequent calls ignore config parameter
+  if (!taskManagerInstance) {
     taskManagerInstance = new TaskManager(config);
   }
   return taskManagerInstance;

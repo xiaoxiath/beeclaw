@@ -102,12 +102,6 @@ async function main() {
     console.log('   ⚠ Weather information unavailable (QWEATHER_TOKEN may not be configured)');
   }
 
-  // Load previous sessions
-  const sessionsLoaded = loadAllSessions();
-  if (sessionsLoaded > 0) {
-    console.log(`📂 Loaded ${sessionsLoaded} previous sessions`);
-  }
-
   // Check Feishu configuration
   if (!config.feishu?.appId || !config.feishu?.appSecret) {
     console.error('❌ Feishu credentials not configured.');

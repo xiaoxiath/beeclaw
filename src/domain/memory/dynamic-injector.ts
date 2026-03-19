@@ -50,10 +50,12 @@ const INJECTION_DECISION_PROMPT = `你是一个上下文管理专家，负责判
 
 用户请求：{task}
 
-请分析并返回 JSON（不要包含 markdown 代码块标记）：
+**重要：必须只返回纯 JSON 对象，不要包含任何其他文字或解释。**
+
+返回格式（JSON）：
 {{
-  "needsContext": true/false,
-  "intent": "recall|continue|compare|summarize|general",
+  "needsContext": true或false,
+  "intent": "recall或continue或compare或summarize或general",
   "reasoning": "简要说明理由"
 }}
 
@@ -64,10 +66,12 @@ const INJECTION_DECISION_PROMPT = `你是一个上下文管理专家，负责判
 - summarize: 总结或回顾（"总结"、"回顾"、"复盘"）
 - general: 一般查询，不需要特殊上下文
 
-重要提示：
+判断规则：
 - 只有明确引用过去内容时才需要上下文
 - 简单的常识问题不需要历史上下文
-- 如果不确定，宁可判断为不需要上下文`;
+- 如果不确定，宁可判断为不需要上下文
+
+**再次强调：只返回 JSON 对象本身，不要添加任何 markdown 标记或解释性文字。**`;
 
 // ---------------------------------------------------------------------------
 // 3. Dynamic Memory Injector 实现
