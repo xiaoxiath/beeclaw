@@ -120,7 +120,7 @@ export async function callAI(options: {
 
   // Handle reasoning content from various providers
   // 1. MiniMax: reasoning_details (array format)
-  // 2. Zhipu: reasoning_content (string format, e.g., glm-4.7-flash)
+  // 2. Zhipu: reasoning_content (string format, e.g., glm-4.7-flashx)
   if (provider.type === 'minimax' || provider.options?.includeReasoning) {
     const reasoningDetails = jsonResponse.choices?.[0]?.message?.reasoning_details;
     if (reasoningDetails && Array.isArray(reasoningDetails)) {
@@ -134,19 +134,19 @@ export async function callAI(options: {
     }
   }
 
-  // Handle Zhipu reasoning_content (glm-4.7-flash and similar reasoning models)
+  // Handle Zhipu reasoning_content (glm-4.7-flashx and similar reasoning models)
+  // IMPORTANT: Don't wrap with <thinking> tags - it breaks JSON parsing in FastLLMJudge
   const reasoningContent = jsonResponse.choices?.[0]?.message?.reasoning_content;
   if (reasoningContent && typeof reasoningContent === 'string') {
     const finalContent = jsonResponse.choices?.[0]?.message?.content || '';
-    // For compression tasks, we only need the reasoning (it contains the answer)
-    // For other tasks, combine reasoning + content
-    if (finalContent) {
-      jsonResponse.choices[0].message.content =
-        `<thinking>\n${reasoningContent}\n</thinking>\n\n${finalContent}`;
-    } else {
+
+    if (!finalContent) {
       // If no content, use reasoning as content (for compression tasks)
+      // Don't add thinking tags - keep it clean for JSON parsing
       jsonResponse.choices[0].message.content = reasoningContent;
     }
+    // If both exist, prefer finalContent (it's the actual answer, not the reasoning)
+    // Don't combine them - that would add thinking tags and break JSON parsing
   }
 
   return jsonResponse;
