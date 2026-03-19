@@ -33,7 +33,7 @@ describe('Pusher', () => {
     initStores({ basePath: TEST_PUSHER_PATH });
 
     // Set up CLI delivery handler
-    setCliDeliveryHandler((message: string) => {
+    setCliDeliveryHandler((message: string, _priority: string) => {
       deliveredMessages.push(message);
     });
   });

@@ -13,6 +13,8 @@ import { getFeishuWSClient } from '../../../adapter/feishu';
 import { sendProactiveMessage } from '../../../domain/session';
 import { getMemoryStore } from '../../../domain/memory';
 import { getSessionSummary } from '../../../domain/session';
+import { renderMessageCard } from '../../../adapter/feishu/card-v2/message-renderer';
+import type { ContentBlock } from '../../../types/content-block';
 
 export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<unknown> {
   const { scheduleId, taskType, params, triggeredAt, triggeredBy } = job.data;
@@ -305,8 +307,21 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
         try {
           const client = getFeishuWSClient();
           if (client) {
-            await client.sendTextMessage(chatId, 'chat_id', result.response);
-            console.log(`[Worker:proactive] Message pushed to Feishu chat: ${chatId}`);
+            // [Card V2] Use Card V2 for proactive messages
+            const textBlock: ContentBlock = {
+              type: 'text',
+              text: result.response,
+            };
+
+            const card = renderMessageCard([textBlock], { streaming: false });
+
+            const messageId = await client.sendCard(
+              chatId,
+              'chat_id',
+              card
+            );
+
+            console.log(`[Worker:proactive] Card V2 message pushed to Feishu chat: ${chatId}, messageId: ${messageId}`);
           } else {
             console.error('[Worker:proactive] Feishu client not available');
           }

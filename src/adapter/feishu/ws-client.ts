@@ -640,10 +640,13 @@ export class FeishuWSClient {
     this.client = new Lark.Client(baseConfig);
 
     // Create event dispatcher
+    console.log('[FeishuWS] Creating event dispatcher...');
     const eventDispatcher = new Lark.EventDispatcher({}).register({
       // Message events
       'im.message.receive_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Message received');
+        console.log('[FeishuWS] 📨 Message received event triggered');
+        console.log('[FeishuWS] Event data type:', typeof data);
+        console.log('[FeishuWS] Event data keys:', data ? Object.keys(data as object) : 'null');
         await this.handleMessage(data as MessageEventData);
       },
       'im.message.message_read_v1': async (data: unknown) => {
@@ -726,6 +729,7 @@ export class FeishuWSClient {
     this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
 
     // Create WebSocket client
+    console.log('[FeishuWS] Creating WebSocket client...');
     this.wsClient = new Lark.WSClient({
       ...baseConfig,
       loggerLevel,
@@ -733,6 +737,7 @@ export class FeishuWSClient {
 
     // Start connection
     try {
+      console.log('[FeishuWS] Starting WebSocket connection...');
       await this.wsClient.start({
         eventDispatcher,
       });
@@ -740,7 +745,12 @@ export class FeishuWSClient {
       // BUG #8 FIX: Reset backoff on successful connection
       this.reconnectState.attempt = 0;
       this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
-      console.log('[FeishuWS] Connected successfully');
+      console.log('[FeishuWS] ✅ Connected successfully');
+      console.log('[FeishuWS] Connection status:', {
+        isConnected: this.isConnected,
+        hasClient: !!this.client,
+        hasWsClient: !!this.wsClient,
+      });
 
       // BUG #8 FIX: Start connection monitor
       this._startConnectionMonitor();
@@ -936,6 +946,15 @@ export class FeishuWSClient {
    * Handle incoming message
    */
   private async handleMessage(data: MessageEventData): Promise<void> {
+    console.log('[FeishuWS] 📨 handleMessage called');
+    console.log('[FeishuWS] Message data:', {
+      chat_id: data.message?.chat_id,
+      message_id: data.message?.message_id,
+      message_type: data.message?.message_type,
+      sender_type: data.sender?.sender_type,
+      create_time: data.message?.create_time,
+    });
+
     // Track last active chat/user for proactive messaging
     if (data.message?.chat_id) {
       this._lastActiveChatId = data.message.chat_id;
@@ -944,9 +963,13 @@ export class FeishuWSClient {
       this._lastActiveUserId = data.sender.sender_id.union_id;
     }
 
+    console.log('[FeishuWS] Calling message handlers, count:', this.messageHandlers.length);
+
     for (const handler of this.messageHandlers) {
       try {
+        console.log('[FeishuWS] Calling handler...');
         await handler(data);
+        console.log('[FeishuWS] Handler completed successfully');
       } catch (error) {
         console.error('[FeishuWS] Message handler error:', error);
       }
@@ -1136,6 +1159,55 @@ export class FeishuWSClient {
       console.error('[FeishuWS] Send message failed:', response.msg);
       throw new Error(`Send message failed: ${response.msg}`);
     }
+  }
+
+  /**
+   * Send a Card Schema 2.0 message (proactive, not a reply)
+   * Used for proactive notifications and scheduled messages
+   *
+   * @param receiveId Target ID (chat_id, open_id, etc.)
+   * @param receiveIdType Type of the receive_id
+   * @param card Card Schema 2.0 configuration or JSON string
+   * @returns The created message ID for potential updates
+   */
+  async sendCard(
+    receiveId: string,
+    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
+    card: CardConfig | string
+  ): Promise<string> {
+    if (!this.client) {
+      throw new Error('[FeishuWS] Client not initialized');
+    }
+
+    const cardContent = typeof card === 'string' ? card : JSON.stringify(card);
+
+    // Debug: Log the card JSON being sent
+    console.log('[FeishuWS] 📤 Sending proactive card:', {
+      receiveId,
+      receiveIdType,
+      cardPreview: cardContent.substring(0, 500),
+    });
+
+    const response = await this.client.im.v1.message.create({
+      params: {
+        receive_id_type: receiveIdType,
+      },
+      data: {
+        receive_id: receiveId,
+        content: cardContent,
+        msg_type: 'interactive',
+      },
+    });
+
+    if (response.code !== 0) {
+      console.error('[FeishuWS] Send card failed:', response.msg);
+      throw new Error(`Send card failed: ${response.msg}`);
+    }
+
+    // Return the message ID for potential streaming updates
+    const messageId = response.data?.message_id || '';
+    console.log('[FeishuWS] ✅ Card sent successfully:', messageId);
+    return messageId;
   }
 
   /**

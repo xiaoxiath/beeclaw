@@ -108,10 +108,19 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
   // FIX: Process messages per chatId sequentially to avoid message ordering issues
   const messageQueue = SessionMessageQueue.getInstance();
 
+  console.log('[FeishuWS] Registering onMessage handler...');
+
   wsClient.onMessage(async (data) => {
+    console.log('[FeishuWS] 📨 onMessage callback triggered');
+    console.log('[FeishuWS] Callback received data:', {
+      hasMessage: !!data.message,
+      hasSender: !!data.sender,
+      messageType: data.message?.message_type,
+    });
+
     const client = getFeishuWSClient();
     if (!client) {
-      console.error('[FeishuWS] Client not initialized');
+      console.error('[FeishuWS] ❌ Client not initialized');
       return;
     }
 
@@ -136,11 +145,19 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     const messageTimeStr = data.message?.create_time;
     const messageTime = messageTimeStr ? parseInt(messageTimeStr, 10) : Date.now();
 
+    console.log('[FeishuWS] Time check:', {
+      messageTime,
+      botStartTime,
+      messageTimeStr,
+      diff: messageTime - botStartTime,
+      willFilter: messageTime < botStartTime,
+    });
+
     // Only process messages sent after bot started
     // This filters out historical messages pushed by Feishu on connection
     if (messageTime < botStartTime) {
       const ageSeconds = Math.round((botStartTime - messageTime) / 1000);
-      console.log(`[FeishuWS:${process.pid}] Ignoring pre-startup message (${ageSeconds}s old): ${messageText.substring(0, 20)}...`);
+      console.log(`[FeishuWS:${process.pid}] ⏭️  Ignoring pre-startup message (${ageSeconds}s old): ${messageText.substring(0, 20)}...`);
       return;
     }
 
@@ -406,11 +423,16 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
 
   // Start WebSocket connection
   try {
-    console.log(`[FeishuWS:${process.pid}] Bot started at ${new Date(botStartTime).toISOString()}`);
+    console.log(`[FeishuWS:${process.pid}] 🚀 Starting WebSocket connection...`);
+    console.log(`[FeishuWS:${process.pid}] Bot start time: ${new Date(botStartTime).toISOString()} (${botStartTime})`);
     await wsClient.start();
-    console.log(`[FeishuWS:${process.pid}] Integration initialized (Long connection mode)`);
+    console.log(`[FeishuWS:${process.pid}] ✅ Integration initialized (Long connection mode)`);
+    console.log(`[FeishuWS:${process.pid}] Connection status:`, {
+      connected: wsClient.connected,
+      enabled: wsClient.isEnabled,
+    });
   } catch (error) {
-    console.error('[FeishuWS] Failed to start:', error);
+    console.error('[FeishuWS] ❌ Failed to start:', error);
     throw error;
   }
 }

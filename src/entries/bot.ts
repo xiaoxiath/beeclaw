@@ -25,6 +25,8 @@ import { initSelfEvolution } from '../domain/agent/evolution/self-evolution';
 import { fetchHolidayInfo } from '../domain/tools/holiday';
 import { fetchWeatherInfo } from '../domain/tools/weather';
 import { initTaskManager } from '../infra/queue';
+import { renderMessageCard } from '../adapter/feishu/card-v2/message-renderer';
+import type { ContentBlock } from '../types/content-block';
 import { initWorkers } from '../app/queue-handlers/workers';
 import { GracefulShutdown } from '../infra/utils/graceful-shutdown';
 import {
@@ -174,7 +176,20 @@ async function main() {
     if (!client) return false;
 
     try {
-      await client.sendTextMessage(chatId, 'chat_id', message);
+      // [Card V2] Use Card V2 for proactive messages
+      const textBlock: ContentBlock = {
+        type: 'text',
+        text: message,
+      };
+
+      const card = renderMessageCard([textBlock], { streaming: false });
+
+      await client.sendCard(
+        chatId,
+        'chat_id',
+        card
+      );
+
       return true;
     } catch (error) {
       console.error('[Bot] Feishu push failed:', error);
