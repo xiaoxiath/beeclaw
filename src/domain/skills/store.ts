@@ -136,6 +136,7 @@ export class SkillStore {
       return this.skillsCache;
     }
 
+    const startTime = Date.now();
     const skills: Skill[] = [];
     const seenNames = new Set<string>();
 
@@ -165,6 +166,27 @@ export class SkillStore {
     // Cache the skills list
     this.skillsCache = skills;
     this.cacheInvalidated = false;
+
+    // Log loading statistics
+    const loadTime = Date.now() - startTime;
+    const builtinCount = skills.filter(s => s.isBuiltin).length;
+    const userCount = skills.filter(s => !s.isBuiltin).length;
+    const avgMaturity = skills.length > 0
+      ? Math.round(skills.reduce((a, s) => a + s.maturityScore, 0) / skills.length)
+      : 0;
+    const totalUsage = skills.reduce((a, s) => a + s.usageCount, 0);
+
+    const maturityDistribution = {
+      seed: skills.filter(s => s.maturityScore < 30).length,
+      growing: skills.filter(s => s.maturityScore >= 30 && s.maturityScore < 70).length,
+      mature: skills.filter(s => s.maturityScore >= 70).length,
+    };
+
+    console.log(`   📚 Skills: ${skills.length} loaded (${builtinCount} builtin, ${userCount} user)`);
+    console.log(`      Avg maturity: ${avgMaturity}% | Total usage: ${totalUsage} | Load time: ${loadTime}ms`);
+    if (skills.length > 0) {
+      console.log(`      Maturity: ${maturityDistribution.seed} seed, ${maturityDistribution.growing} growing, ${maturityDistribution.mature} mature`);
+    }
 
     return skills;
   }
@@ -557,7 +579,8 @@ export class SkillStore {
         lastFailure: metadata.lastFailure,
         maturityScore: metadata.maturityScore,
       };
-    } catch {
+    } catch (error) {
+      logger.warn(`[SkillStore] Failed to load skill from ${skillPath}:`, error instanceof Error ? error.message : 'Unknown error');
       return null;
     }
   }
@@ -690,6 +713,16 @@ export class SkillStore {
     };
   }): void {
     const metadataPath = join(skillPath, '.metadata.json');
+    const skillName = skillPath.split('/').pop() || 'unknown';
+
+    // Log metadata update (debug level to avoid noise)
+    logger.debug(`[SkillStore] 📊 Metadata updated for ${skillName}:`, {
+      usage: metadata.usageCount,
+      success: metadata.successCount,
+      maturity: metadata.maturityScore,
+      avgTime: metadata.performance?.avgExecutionTime,
+    });
+
     writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
   }
 
