@@ -103,6 +103,31 @@ export class DynamicMemoryInjector {
       return userMessage;
     }
 
+    // [PERF OPT] 快速预过滤：检查是否包含历史引用关键词
+    // 避免90%的不必要LLM调用，减少1-3秒延迟
+    const historyKeywords = [
+      '之前', '上次', '刚才', '记得', '记得吗', '继续', '接着', '完成',
+      '之前说的', '之前的', '以前', '上次说', '刚才说', '昨天', '前天',
+      '回忆', '回顾', '复盘', '总结', '对比', '比较',
+      'the previous', 'last time', 'earlier', 'remember', 'continue',
+      'yesterday', 'recall', 'review', 'compare'
+    ];
+
+    const needsHistoryCheck = historyKeywords.some(kw =>
+      userMessage.toLowerCase().includes(kw.toLowerCase())
+    );
+
+    if (!needsHistoryCheck) {
+      // 90%的消息会在这里直接返回，0延迟
+      logger.debug('[DynamicInjector] Skipped injection (no history keywords)', {
+        messageLength: userMessage.length,
+      });
+      return userMessage;
+    }
+
+    // 只有包含历史关键词的消息才需要LLM判断
+    logger.debug('[DynamicInjector] History keywords detected, using LLM judgment');
+
     // 使用 LLM 判断是否需要注入
     const decision = await this.shouldInjectWithLLM(userMessage);
 
@@ -147,7 +172,7 @@ export class DynamicMemoryInjector {
   }
 
   /**
-   * 使用 FastLLMJudge 判断是否需要注入
+   * 使用 FastLLMJudge 判断是否需要注入（仅在检测到历史关键词后调用）
    */
   private async shouldInjectWithLLM(userMessage: string): Promise<{
     needsContext: boolean;

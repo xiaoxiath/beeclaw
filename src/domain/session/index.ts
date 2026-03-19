@@ -661,8 +661,18 @@ async function compressMessages(
     return { summary: '', recentMessages: messages.slice(-keepRecent) };
   }
 
-  const oldMessages = messages.slice(0, -keepRecent);
-  const recentMessages = messages.slice(-keepRecent);
+  // [BUG FIX] Ensure no overlap between old and recent messages
+  const splitIndex = Math.max(0, messages.length - keepRecent);
+  const oldMessages = messages.slice(0, splitIndex);
+  const recentMessages = messages.slice(splitIndex);
+
+  console.log('[Session] 📊 Compression split:', {
+    total: messages.length,
+    oldMessages: oldMessages.length,
+    recentMessages: recentMessages.length,
+    splitIndex,
+    keepRecent,
+  });
 
   if (oldMessages.length === 0) {
     return { summary: '', recentMessages };
@@ -851,10 +861,41 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     return { success: false, error: 'Session manager not initialized' };
   }
 
-  try {
-    const channel = options.channel || 'cli';
-    const sessionId = options.sessionId || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const channel = options.channel || 'cli';
+  const sessionId = options.sessionId || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+  // [PERF OPT] 提前创建 StreamingMessageController，立即显示"正在思考..."
+  // 在所有耗时操作之前，让用户立即看到响应
+  let streamingController: StreamingMessageController | null = null;
+
+  try {
+    const config = getConfig_();
+    const feishuConfig = config?.feishu;
+    const useCardV2 = feishuConfig?.useCardV2 ?? false;
+
+    if (channel === 'feishu' && useCardV2 && options.context?.parentMessageId) {
+      const feishuClient = getFeishuWSClient();
+      if (feishuClient) {
+        streamingController = new StreamingMessageController({
+          client: feishuClient,
+          parentMessageId: options.context.parentMessageId as string,
+          chatId: (options.context.chatId as string) || '',
+          debounceMs: 500,
+        });
+
+        // 立即发送"正在思考..."状态，让用户知道AI已收到消息
+        await streamingController.pushContent({
+          type: 'text',
+          text: '💭 正在思考...',
+        });
+        console.log('[Session] ⚡ Card V2 early initialization - user sees immediate feedback');
+      }
+    }
+  } catch (error) {
+    logger.warn('[Session] Failed to create streaming controller:', error);
+  }
+
+  try {
     // Create or load session
     const session = getOrCreateSession({
       sessionId,
@@ -905,9 +946,15 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             }
 
             // Update session with compressed data
-            latestSession.summary = latestSession.summary
-              ? `${latestSession.summary}\n\n[更早的对话摘要]\n${summary}`
-              : summary;
+            // [BUG FIX] Don't accumulate summaries - replace with latest to avoid duplication
+            latestSession.summary = summary;
+
+            console.log('[Session] 📝 Updated summary:', {
+              summaryLength: summary.length,
+              summaryPreview: summary.substring(0, 100) + '...',
+              recentMessagesKept: recentMessages.length,
+            });
+
             // Preserve messages added during compression
             const newMessagesDuringCompression = latestSession.messages.slice(messageCountAtStart);
             latestSession.messages = [...recentMessages, ...newMessagesDuringCompression];
@@ -939,6 +986,16 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     // Add conversation summary if exists
     if (session.summary) {
+      console.log('[Session] ⚠️ Adding summary to system prompt:', {
+        summaryLength: session.summary.length,
+        summaryPreview: session.summary.substring(0, 100) + '...',
+        messageCount: session.messages.length,
+        recentMessages: session.messages.slice(-3).map(m => ({
+          role: m.role,
+          contentPreview: m.content.substring(0, 50),
+        })),
+      });
+
       systemPrompt += `\n\n## 历史对话摘要\n${session.summary}`;
     }
 
@@ -1078,6 +1135,16 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // [BUG FIX] Load ALL messages except the last one (which will be added by agent.chat)
     // IMPORTANT: This loop assumes session.messages does NOT include the new user message yet
     // The new user message is added AFTER this loop (see line 1043)
+
+    console.log('[Session] ⚠️ Replaying conversation history:', {
+      messageCount: session.messages.length,
+      messages: session.messages.map(m => ({
+        role: m.role,
+        contentPreview: m.content.substring(0, 50),
+        hasSummary: !!session.summary,
+      })),
+    });
+
     for (let i = 0; i < session.messages.length; i++) {  // ← Changed from length-1 to length
       const msg = session.messages[i];
       if (msg.role === 'user') {
@@ -1225,45 +1292,8 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     smartTimeout.start();
 
-    // Create StreamingMessageController if Card V2 is enabled
-    let streamingController: StreamingMessageController | null = null;
-
-    try {
-      const config = getConfig_();
-      const feishuConfig = config?.feishu;
-
-      logger.debug('[Session] Config check:', { config });
-      logger.debug('[Session] Feishu config:', feishuConfig);
-      logger.debug('[Session] useCardV2:', feishuConfig?.useCardV2);
-      logger.debug('[Session] channel:', channel);
-      logger.debug('[Session] parentMessageId:', options.context?.parentMessageId);
-
-      const useCardV2 = feishuConfig?.useCardV2 ?? false;
-
-      if (channel === 'feishu' && useCardV2 && options.context?.parentMessageId) {
-        logger.debug('[Session] Card V2 conditions met, creating StreamingMessageController');
-        const feishuClient = getFeishuWSClient();
-        if (feishuClient) {
-          streamingController = new StreamingMessageController({
-            client: feishuClient,
-            parentMessageId: options.context.parentMessageId as string,
-            chatId: (options.context.chatId as string) || '',
-            debounceMs: 500,
-          });
-          console.log('[Session] 🚀 Card V2 streaming enabled');
-        } else {
-          logger.warn('[Session] FeishuWSClient not initialized, cannot create streaming controller');
-        }
-      } else {
-        logger.debug('[Session] Card V2 NOT enabled', {
-          channel,
-          useCardV2,
-          hasParentMessageId: !!options.context?.parentMessageId,
-        });
-      }
-    } catch (error) {
-      logger.warn('[Session] Failed to create streaming controller:', error);
-    }
+    // [PERF OPT] StreamingMessageController 已经在函数开始时创建
+    // 这里不需要重复创建，直接使用前面创建的 streamingController
 
     try {
       // Wrap agent.chat() with activity monitoring
