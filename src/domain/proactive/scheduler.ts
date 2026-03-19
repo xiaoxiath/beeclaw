@@ -195,9 +195,25 @@ export class Scheduler {
     return this.storage.patterns[id] || null;
   }
 
-  // Create a new schedule
+  // Create a new schedule (with idempotency check)
   createSchedule(options: CreateScheduleOptions): ProactiveToolResult {
     this.init();
+
+    // [IDEMPOTENCY] Check if schedule with same name already exists
+    const existingSchedule = Object.values(this.storage.schedules).find(
+      s => s.name === options.name
+    );
+
+    if (existingSchedule) {
+      console.log(
+        `[Scheduler] Schedule "${options.name}" already exists (ID: ${existingSchedule.id}), skipping creation`
+      );
+      return {
+        success: true,
+        data: existingSchedule,
+        message: `Schedule "${options.name}" already exists. Use proactive_list to view it or proactive_cancel to delete it.`,
+      };
+    }
 
     const id = this.generateId('schedule');
     const now = new Date().toISOString();

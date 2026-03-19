@@ -5,7 +5,7 @@ import {
   getProactiveToolsForAI,
   PROACTIVE_TOOL_NAMES,
 } from '../tools';
-import { initStores, resetStores } from '../../store';
+import { initStores, resetStores } from '../../../infra/db/store';
 import { setCliDeliveryHandler } from '../pusher';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 
@@ -131,6 +131,50 @@ describe('Proactive Tools', () => {
   });
 
   describe('executeProactiveTool', () => {
+    describe('proactive_schedule', () => {
+      test('creates a new schedule', async () => {
+        const result = await executeProactiveTool('proactive_schedule', {
+          name: 'Test Schedule',
+          description: 'A test schedule',
+          cron: '0 9 * * *',
+          taskType: 'send_reminder',
+          taskParams: { message: 'Test reminder' },
+          enabled: true,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toBeDefined();
+        expect(result.data.name).toBe('Test Schedule');
+        expect(result.data.cron).toBe('0 9 * * *');
+        expect(result.data.enabled).toBe(true);
+      });
+
+      test('idempotency: skips duplicate schedule with same name', async () => {
+        // First creation
+        const result1 = await executeProactiveTool('proactive_schedule', {
+          name: 'Daily Test',
+          cron: '0 10 * * *',
+          taskType: 'send_reminder',
+          taskParams: { message: 'Daily test' },
+        });
+
+        expect(result1.success).toBe(true);
+        const firstId = result1.data.id;
+
+        // Second creation with same name (should be idempotent)
+        const result2 = await executeProactiveTool('proactive_schedule', {
+          name: 'Daily Test',
+          cron: '0 10 * * *',
+          taskType: 'send_reminder',
+          taskParams: { message: 'Daily test' },
+        });
+
+        expect(result2.success).toBe(true);
+        expect(result2.data.id).toBe(firstId); // Same ID
+        expect(result2.message).toContain('already exists');
+      });
+    });
+
     describe('proactive_list', () => {
       test('lists all items by default', async () => {
         const result = await executeProactiveTool('proactive_list', {});

@@ -993,9 +993,23 @@ export class Agent {
       logger.info('[Agent] Pattern explicitly set', { pattern: selectedPattern });
     } else if (typeof enrichedMessage === 'string' && !options?.tools) {
       try {
+        // [FIX] Include recent conversation context for better pattern selection
+        const recentMessages = this.messages.slice(-5).filter(m => m.role !== 'system');
+        let contextForSelection = enrichedMessage;
+
+        if (recentMessages.length > 0) {
+          const contextSummary = recentMessages.map(m => {
+            const role = m.role === 'user' ? 'User' : 'Assistant';
+            const content = typeof m.content === 'string' ? m.content : '[multimodal]';
+            return `${role}: ${content}`;
+          }).join('\n');
+
+          contextForSelection = `[Recent conversation]\n${contextSummary}\n\n[Current request]\n${enrichedMessage}`;
+        }
+
         // [FIX] Use PatternSelector with config-based fast model
         const patternSelector = getPatternSelector(this.options.provider);
-        const selection = await patternSelector.selectPattern(enrichedMessage);
+        const selection = await patternSelector.selectPattern(contextForSelection);
         selectedPattern = selection.pattern;
 
         logger.info('[Agent] Pattern selected', {
