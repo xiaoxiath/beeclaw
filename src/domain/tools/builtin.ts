@@ -2261,7 +2261,7 @@ Available chart types:
         items: {
           type: 'object' as const,
         },
-        description: 'Chart data',
+        description: 'Chart data (see chart-best-practices skill)',
       },
       spec: {
         type: 'object' as const,
