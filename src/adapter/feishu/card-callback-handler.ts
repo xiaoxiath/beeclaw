@@ -5,7 +5,7 @@
  * 文档: https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-callback-communication
  */
 
-import type { FeishuWSClient, CardConfig } from './ws-client';
+import type { FeishuWSClient } from './ws-client';
 import { logger } from '../../infra/observability/logger';
 import * as HITLManager from '../../domain/session/hitl-manager';
 
@@ -220,13 +220,35 @@ export class CardCallbackHandler {
   ): Promise<void> {
     const { action, context, token } = event;
     const { open_message_id } = context;
+
+    // 从 action.value (behaviors 中的自定义数据) 提取基础信息
     const callbackData = action?.value || {};
-    const { hitlType, ...data } = callbackData;
+    const { hitlType, ...baseData } = callbackData;
+
+    // 对于 select_static，用户选择的值在 action.option 中
+    // 对于 button，值可能在 action.value.value 或直接在 action.value 中
+    const userValue = action.option || action.input_value || callbackData.value;
+
+    // 合并数据：基础数据 + 用户选择的值
+    const fullData = {
+      ...baseData,
+      value: userValue,
+    };
+
+    logger.info('[CardCallback] HITL callback data:', {
+      hitlType,
+      actionTag: action?.tag,
+      actionOption: action?.option,
+      actionInputValue: action?.input_value,
+      callbackValue: callbackData.value,
+      extractedValue: userValue,
+      fullData,
+    });
 
     if (hitlType === 'confirmation') {
-      await this.handleConfirmationCallback(open_message_id, token, data as any);
+      await this.handleConfirmationCallback(open_message_id, token, fullData as any);
     } else if (hitlType === 'user_input') {
-      await this.handleUserInputCallback(open_message_id, token, data as any);
+      await this.handleUserInputCallback(open_message_id, token, fullData as any);
     } else {
       logger.warn(`[CardCallback] Unknown HITL type: ${hitlType}`);
     }
@@ -254,12 +276,23 @@ export class CardCallbackHandler {
       sessionId,
     });
 
+    // 验证必要字段
+    if (!sessionId) {
+      logger.error('[CardCallback] Missing sessionId');
+      return;
+    }
+    if (!toolCallId) {
+      logger.error('[CardCallback] Missing toolCallId');
+      return;
+    }
+
     // 1. 设置 HITL 决策
     HITLManager.setDecision(sessionId, toolCallId, decision);
 
-    // 2. 更新卡片显示结果
+    // 2. 更新卡片显示结果（Card V2 格式）
     const templateColor = decision === 'APPROVED' ? 'green' : 'red';
-    const updatedCard: CardConfig = {
+    const updatedCard = {
+      schema: '2.0' as const,
       header: {
         title: {
           tag: 'plain_text' as const,
@@ -267,26 +300,28 @@ export class CardCallbackHandler {
         },
         template: templateColor as 'green' | 'red',
       },
-      elements: [
-        {
-          tag: 'markdown' as const,
-          content: `**工具**: ${toolName}\n**决策**: ${decision === 'APPROVED' ? '批准执行' : '拒绝操作'}`,
-        },
-        {
-          tag: 'note' as const,
-          elements: [
-            {
-              tag: 'lark_md' as const,
-              content: decision === 'APPROVED' ? '✅ 操作已批准，正在执行...' : '❌ 操作已取消',
-            },
-          ],
-        },
-      ],
+      body: {
+        elements: [
+          {
+            tag: 'markdown' as const,
+            content: `**工具**: ${toolName}\n**决策**: ${decision === 'APPROVED' ? '批准执行' : '拒绝操作'}`,
+          },
+          {
+            tag: 'note' as const,
+            elements: [
+              {
+                tag: 'plain_text' as const,
+                content: decision === 'APPROVED' ? '✅ 操作已批准，正在执行...' : '❌ 操作已取消',
+              },
+            ],
+          },
+        ],
+      },
     };
 
-    // 3. 发送更新（使用 token 更新）
+    // 3. 发送更新（Card V2 格式）
     try {
-      await this.client.patchCard(messageId, updatedCard);
+      await this.client.patchCard(messageId, JSON.stringify(updatedCard));
       logger.info('[CardCallback] Card updated successfully');
     } catch (error) {
       logger.error('[CardCallback] Failed to update card:', error);
@@ -304,28 +339,40 @@ export class CardCallbackHandler {
   private async handleUserInputCallback(
     messageId: string,
     token: string,
-    data: {
-      inputType: string;
-      value: string | string[];
-      requestId: string;
-      sessionId: string;
-    }
+    data: any
   ): Promise<void> {
-    const { inputType, value, requestId, sessionId } = data;
+    // 从回调数据中提取字段
+    // 注意：select_static 的用户选择在 action.option 中，不在 action.value.value 中
+    const { inputType, requestId, sessionId, value: callbackValue } = data || {};
 
     logger.info('[CardCallback] User input callback:', {
       inputType,
-      value,
+      value: callbackValue,
       requestId,
       sessionId,
+      rawData: data,
     });
 
-    // 1. 设置用户输入
-    HITLManager.setUserInput(sessionId, requestId, value);
+    // 验证必要字段
+    if (!sessionId) {
+      logger.error('[CardCallback] Missing sessionId in callback data');
+      return;
+    }
+    if (!requestId) {
+      logger.error('[CardCallback] Missing requestId in callback data');
+      return;
+    }
 
-    // 2. 更新卡片显示结果
-    const displayValue = Array.isArray(value) ? value.join(', ') : value;
-    const updatedCard: CardConfig = {
+    // 1. 设置用户输入
+    HITLManager.setUserInput(sessionId, requestId, callbackValue);
+
+    // 2. 更新卡片显示结果（Card V2 格式）
+    const displayValue = Array.isArray(callbackValue)
+      ? callbackValue.join(', ')
+      : callbackValue || '已选择';
+
+    const updatedCard = {
+      schema: '2.0' as const,
       header: {
         title: {
           tag: 'plain_text' as const,
@@ -333,26 +380,28 @@ export class CardCallbackHandler {
         },
         template: 'green' as const,
       },
-      elements: [
-        {
-          tag: 'markdown' as const,
-          content: `**您的输入**: ${displayValue}`,
-        },
-        {
-          tag: 'note' as const,
-          elements: [
-            {
-              tag: 'lark_md' as const,
-              content: '✅ 已收到，正在处理...',
-            },
-          ],
-        },
-      ],
+      body: {
+        elements: [
+          {
+            tag: 'markdown' as const,
+            content: `**您的输入**: ${displayValue}`,
+          },
+          {
+            tag: 'note' as const,
+            elements: [
+              {
+                tag: 'plain_text' as const,
+                content: '✅ 已收到，正在处理...',
+              },
+            ],
+          },
+        ],
+      },
     };
 
-    // 3. 发送更新
+    // 3. 发送更新（Card V2 格式）
     try {
-      await this.client.patchCard(messageId, updatedCard);
+      await this.client.patchCard(messageId, JSON.stringify(updatedCard));
       logger.info('[CardCallback] Card updated successfully');
     } catch (error) {
       logger.error('[CardCallback] Failed to update card:', error);
