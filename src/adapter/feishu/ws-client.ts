@@ -715,9 +715,9 @@ export class FeishuWSClient {
         await this.handleP2PChatEntered(data as P2PChatEnteredEventData);
       },
 
-      // Card callback events for interactive buttons
-      'card.callback.trigger': async (data: unknown) => {
-        console.log('[FeishuWS] 🎯 Card callback triggered');
+      // Card callback events for interactive buttons (Card V2)
+      'card.action.trigger': async (data: unknown) => {
+        console.log('[FeishuWS] 🎯 Card action triggered');
         await this.handleCardCallback(data as any);
       },
     });

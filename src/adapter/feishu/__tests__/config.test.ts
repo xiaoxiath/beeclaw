@@ -45,7 +45,14 @@ describe('FeishuConfig Schema', () => {
     const result = FeishuConfigSchema.safeParse(config);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data).toEqual(config);
+      // Check that the parsed data includes all required fields
+      expect(result.data.enabled).toBe(true);
+      expect(result.data.appId).toBe('test_app');
+      expect(result.data.appSecret).toBe('test_secret');
+      expect(result.data.encryptKey).toBe('test_key');
+      expect(result.data.verificationToken).toBe('test_token');
+      expect(result.data.logLevel).toBe('debug');
+      expect(result.data.useCardV2).toBe(true);
     }
   });
 

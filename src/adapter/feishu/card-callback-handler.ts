@@ -2,6 +2,7 @@
  * Card Callback Handler
  *
  * 处理飞书 Card V2 的交互回调（按钮点击、表单提交等）
+ * 文档: https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-callback-communication
  */
 
 import type { FeishuWSClient, CardConfig } from './ws-client';
@@ -9,39 +10,128 @@ import { logger } from '../../infra/observability/logger';
 import * as HITLManager from '../../domain/session/hitl-manager';
 
 /**
- * 卡片回调事件
+ * 卡片回调事件（Card V2 - card.action.trigger）
+ * 参考: https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-callback-communication
  */
 export interface CardCallbackEvent {
   /**
-   * 用户 Open ID
+   * 回调版本
    */
-  open_id: string;
+  schema: '2.0';
 
   /**
-   * 触发 token
+   * 回调头部信息
    */
-  token: string;
-
-  /**
-   * 动作信息
-   */
-  action: {
-    tag: string;
-    value: {
-      action: string;
-      [key: string]: any;
-    };
+  header: {
+    event_id: string;
+    token: string;
+    create_time: string;
+    event_type: 'card.action.trigger';
+    tenant_key: string;
+    app_id: string;
   };
 
   /**
-   * 消息 ID
+   * 回调详细信息
    */
-  open_message_id: string;
+  event: {
+    /**
+     * 回调触发者信息
+     */
+    operator: {
+      tenant_key: string;
+      user_id?: string;
+      open_id: string;
+      union_id?: string;
+    };
 
-  /**
-   * 会话 ID
-   */
-  open_chat_id?: string;
+    /**
+     * 更新卡片用的凭证，有效期为 30 分钟，最多可更新 2 次
+     */
+    token: string;
+
+    /**
+     * 用户操作后回传的数据
+     */
+    action: {
+      /**
+       * 组件标签 (button, select_static, checker, input 等)
+       */
+      tag: string;
+
+      /**
+       * 如果组件配置了 behaviors 参数，则在此处返回自定义的回传交互参数
+       */
+      value?: {
+        [key: string]: any;
+      };
+
+      /**
+       * 下拉选择组件内用户提交的选项的回传数据
+       */
+      option?: string;
+
+      /**
+       * 多选组件内用户提交的选项
+       */
+      options?: string[];
+
+      /**
+       * 输入框组件内用户提交的数据
+       */
+      input_value?: string;
+
+      /**
+       * 勾选器组件的勾选状态
+       */
+      checked?: boolean;
+
+      /**
+       * 表单容器内用户提交的数据
+       */
+      form_value?: { [key: string]: any };
+
+      /**
+       * 按钮组件的表单项标识
+       */
+      name?: string;
+
+      /**
+       * 用户当前所在地区的时区
+       */
+      timezone?: string;
+    };
+
+    /**
+     * 卡片展示场景
+     */
+    host: 'im_message' | 'im_chat' | 'im_p2p' | 'docs' | 'wiki' | 'calendar' | 'mail';
+
+    /**
+     * 卡片展示场景相关信息
+     */
+    context: {
+      /**
+       * 卡片所在的消息 ID
+       */
+      open_message_id: string;
+
+      /**
+       * 卡片所在的会话 ID
+       */
+      open_chat_id?: string;
+
+      /**
+       * 文档 token（仅在文档场景下）
+       */
+      docs_token?: string;
+
+      /**
+       * 文档类型（仅在文档场景下）
+       */
+      docs_file_type?: string;
+    };
+  };
 }
 
 /**
@@ -59,13 +149,20 @@ export class CardCallbackHandler {
    */
   async handleCallback(event: CardCallbackEvent): Promise<void> {
     try {
-      const { action, open_message_id, open_chat_id } = event;
-      const { action: actionType, ...callbackData } = action.value;
+      const { action, context, operator } = event.event;
+      const { open_message_id, open_chat_id } = context;
+
+      // 提取 action.value 中的数据
+      const callbackData = action.value || {};
+      const actionType = callbackData.action;
 
       logger.info('[CardCallback] Received callback:', {
+        eventType: event.header.event_type,
+        actionTag: action.tag,
         actionType,
         messageId: open_message_id,
         chatId: open_chat_id,
+        operatorOpenId: operator.open_id,
         data: callbackData,
       });
 
@@ -84,13 +181,15 @@ export class CardCallbackHandler {
    * 处理 HITL 回调
    */
   private async handleHITLCallback(event: CardCallbackEvent): Promise<void> {
-    const { action, open_message_id } = event;
-    const { hitlType, ...data } = action.value;
+    const { action, context, token } = event.event;
+    const { open_message_id } = context;
+    const callbackData = action.value || {};
+    const { hitlType, ...data } = callbackData;
 
     if (hitlType === 'confirmation') {
-      await this.handleConfirmationCallback(open_message_id, data as any);
+      await this.handleConfirmationCallback(open_message_id, token, data as any);
     } else if (hitlType === 'user_input') {
-      await this.handleUserInputCallback(open_message_id, data as any);
+      await this.handleUserInputCallback(open_message_id, token, data as any);
     } else {
       logger.warn(`[CardCallback] Unknown HITL type: ${hitlType}`);
     }
@@ -101,6 +200,7 @@ export class CardCallbackHandler {
    */
   private async handleConfirmationCallback(
     messageId: string,
+    token: string,
     data: {
       decision: 'APPROVED' | 'DENIED';
       toolCallId: string;
@@ -147,7 +247,7 @@ export class CardCallbackHandler {
       ],
     };
 
-    // 3. 发送更新
+    // 3. 发送更新（使用 token 更新）
     try {
       await this.client.patchCard(messageId, updatedCard);
       logger.info('[CardCallback] Card updated successfully');
