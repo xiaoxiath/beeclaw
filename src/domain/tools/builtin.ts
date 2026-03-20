@@ -2261,15 +2261,7 @@ Available chart types:
         items: {
           type: 'object' as const,
         },
-        description: `Chart data as array of objects. Use DESCRIPTIVE field names for auto-detection:
-- Line/area/bar: [{ week: "周一", steps: 8500 }] or [{ month: "Jan", sales: 1000 }]
-- Pie: [{ name: "Category", value: 100 }]
-- Scatter: [{ height: 170, weight: 65 }]
-- Radar: [{ dimension: "Speed", value: 80 }]
-- Funnel: [{ stage: "Visitors", count: 1000 }]
-- Progress: [{ value: 42, total: 50 }]
-
-Prefer descriptive names (week/steps) over generic (x/y). See 'chart-best-practices' skill for details.`,
+        description: 'Chart data',
       },
       spec: {
         type: 'object' as const,
