@@ -492,10 +492,11 @@ export function renderChartElement(block: ChartDataBlock): any {
   const fieldMappings = inferFieldMappings(block.chartType, block.data);
 
   // Apply field mappings (spec can override auto-detected fields)
-  chartSpec.xField = block.spec?.xField ?? fieldMappings.xField;
-  chartSpec.yField = block.spec?.yField ?? fieldMappings.yField;
-  chartSpec.categoryField = block.spec?.categoryField ?? fieldMappings.categoryField;
-  chartSpec.valueField = block.spec?.valueField ?? fieldMappings.valueField;
+  if (fieldMappings.xField) chartSpec.xField = block.spec?.xField ?? fieldMappings.xField;
+  if (fieldMappings.yField) chartSpec.yField = block.spec?.yField ?? fieldMappings.yField;
+  if (fieldMappings.categoryField) chartSpec.categoryField = block.spec?.categoryField ?? fieldMappings.categoryField;
+  if (fieldMappings.valueField) chartSpec.valueField = block.spec?.valueField ?? fieldMappings.valueField;
+  if (fieldMappings.totalField) chartSpec.totalField = block.spec?.totalField ?? fieldMappings.totalField;
 
   // Merge additional spec options (these can override the above)
   if (block.spec) {
@@ -506,17 +507,6 @@ export function renderChartElement(block: ChartDataBlock): any {
   if (block.title) {
     chartSpec.title = { text: block.title };
   }
-
-  console.log('[MessageRenderer] 🎨 Rendered chart spec:', {
-    type: block.chartType,
-    fieldMappings,
-    finalSpec: {
-      xField: chartSpec.xField,
-      yField: chartSpec.yField,
-      categoryField: chartSpec.categoryField,
-      valueField: chartSpec.valueField,
-    },
-  });
 
   return createChartElement({
     chartSpec,
