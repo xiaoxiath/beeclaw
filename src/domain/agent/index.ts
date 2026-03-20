@@ -115,7 +115,7 @@ export function createDefaultToolExecutor(): ToolExecutor {
 }
 
 // Inner tool execution logic (separated for circuit breaker wrapping)
-async function _executeToolInner(name: string, params: Record<string, unknown>, _userContext?: UserContext): Promise<{ success: boolean; data?: unknown; error?: string }> {
+async function _executeToolInner(name: string, params: Record<string, unknown>, _userContext?: UserContext): Promise<{ success: boolean; data?: unknown; error?: string; _contentBlock?: boolean }> {
     // Plugin tools (highest priority)
     try {
       const registry = getPluginRegistry();

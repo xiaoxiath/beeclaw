@@ -134,6 +134,7 @@ export type ToolExecutor = (name: string, params: Record<string, unknown>, userC
   success: boolean;
   data?: unknown;
   error?: string;
+  _contentBlock?: boolean;
 }>;
 
 // ============================================
