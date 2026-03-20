@@ -301,6 +301,27 @@ export type HrElementSchema = typeof HrElementSchema;
 export type HrElement = z.infer<typeof HrElementSchema>;
 
 // ============================================
+// Chart Element
+// ============================================
+
+/**
+ * Chart element for data visualization (VChart-based)
+ * Supports line, bar, pie, scatter, radar, funnel, word cloud, and more
+ */
+export const ChartElementSchema = z.object({
+  tag: z.literal('chart'),
+  element_id: z.string().optional(),
+  margin: z.string().optional(),
+  aspect_ratio: z.enum(['1:1', '2:1', '4:3', '16:9']).optional(),
+  color_theme: z.enum(['brand', 'rainbow', 'complementary', 'converse', 'primary']).optional(),
+  chart_spec: z.record(z.unknown()), // VChart spec object
+  preview: z.boolean().optional(),
+  height: z.string().optional(),
+});
+
+export type ChartElement = z.infer<typeof ChartElementSchema>;
+
+// ============================================
 // Behaviors (Card V2 callback mechanism)
 // ============================================
 
@@ -402,6 +423,7 @@ export const ElementSchema = z.discriminatedUnion('tag', [
   CollapsiblePanelSchema,
   NoteElementSchema,
   HrElementSchema,
+  ChartElementSchema,
   ButtonElementSchema, // Card V2: Buttons directly in elements
   SelectStaticElementSchema, // Card V2: Selects directly in elements
   ActionElementSchema, // DEPRECATED - keeping for backwards compatibility
@@ -519,6 +541,32 @@ export function createNoteElement(elements: unknown[]): NoteElement {
  */
 export function createHrElement(): HrElement {
   return { tag: 'hr' };
+}
+
+/**
+ * Create a Chart element for data visualization
+ * @param chartSpec - VChart specification object (see https://www.visactor.io/vchart)
+ * @param options - Optional chart configuration
+ */
+export function createChartElement(options: {
+  chartSpec: Record<string, unknown>;
+  aspectRatio?: '1:1' | '2:1' | '4:3' | '16:9';
+  colorTheme?: 'brand' | 'rainbow' | 'complementary' | 'converse' | 'primary';
+  preview?: boolean;
+  height?: string;
+  margin?: string;
+  elementId?: string;
+}): ChartElement {
+  return ChartElementSchema.parse({
+    tag: 'chart',
+    chart_spec: options.chartSpec,
+    aspect_ratio: options.aspectRatio,
+    color_theme: options.colorTheme,
+    preview: options.preview,
+    height: options.height,
+    margin: options.margin,
+    element_id: options.elementId,
+  });
 }
 
 /**

@@ -103,6 +103,34 @@ export const UserInputRequestBlockSchema = z.object({
 export type UserInputRequestBlock = z.infer<typeof UserInputRequestBlockSchema>;
 
 // ============================================
+// Chart Data Block - Data visualization
+// ============================================
+
+export const ChartDataBlockSchema = z.object({
+  type: z.literal('chart_data'),
+  chartType: z.enum([
+    'line',
+    'area',
+    'bar',
+    'pie',
+    'scatter',
+    'radar',
+    'funnel',
+    'wordCloud',
+    'linearProgress',
+    'circularProgress',
+    'common',
+  ]),
+  title: z.string().optional(),
+  data: z.array(z.record(z.unknown())),
+  spec: z.record(z.unknown()).optional(), // Additional VChart spec options
+  aspectRatio: z.enum(['1:1', '2:1', '4:3', '16:9']).optional(),
+  colorTheme: z.enum(['brand', 'rainbow', 'complementary', 'converse', 'primary']).optional(),
+});
+
+export type ChartDataBlock = z.infer<typeof ChartDataBlockSchema>;
+
+// ============================================
 // ContentBlock Union Type
 // ============================================
 
@@ -114,6 +142,7 @@ export const ContentBlockSchema = z.discriminatedUnion('type', [
   ImageBlockSchema,
   ConfirmationRequestBlockSchema,
   UserInputRequestBlockSchema,
+  ChartDataBlockSchema,
 ]);
 
 export type ContentBlock = z.infer<typeof ContentBlockSchema>;
@@ -316,4 +345,21 @@ export function estimateImageTokens(image: ImageBlock): number {
  */
 export function validateContentBlocks(blocks: unknown[]): ContentBlock[] {
   return blocks.map((block) => ContentBlockSchema.parse(block));
+}
+
+/**
+ * Create a ChartDataBlock for data visualization
+ */
+export function createChartDataBlock(options: {
+  chartType: ChartDataBlock['chartType'];
+  title?: string;
+  data: Array<Record<string, unknown>>;
+  spec?: Record<string, unknown>;
+  aspectRatio?: ChartDataBlock['aspectRatio'];
+  colorTheme?: ChartDataBlock['colorTheme'];
+}): ChartDataBlock {
+  return ChartDataBlockSchema.parse({
+    type: 'chart_data',
+    ...options,
+  });
 }

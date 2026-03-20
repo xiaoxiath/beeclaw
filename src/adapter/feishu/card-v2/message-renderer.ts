@@ -5,7 +5,7 @@
  * Supports streaming mode with collapsible step panels.
  */
 
-import type { ContentBlock, ToolUseBlock, TextBlock } from '../../../types/content-block';
+import type { ContentBlock, ToolUseBlock, TextBlock, ChartDataBlock } from '../../../types/content-block';
 import { toolIconRegistry } from './tool-icon-registry';
 import { renderHITLContentBlock } from './hitl-renderer';
 import {
@@ -21,6 +21,7 @@ import {
   createDivElement,
   createCollapsiblePanel,
   createHrElement,
+  createChartElement,
   type CollapsiblePanel,
 } from './types/elements';
 import { IconToken, Color } from './types/styles';
@@ -59,6 +60,7 @@ export function renderMessageCard(
   );
   const finalAnswer = blocks.find((block) => block.type === 'text');
   const images = blocks.filter((block) => block.type === 'image');
+  const charts = blocks.filter((block) => block.type === 'chart_data');
 
   // Build card elements
   const elements: any[] = [];
@@ -98,6 +100,14 @@ export function renderMessageCard(
         text: createPlainTextElement('📷 Image'),
       })
     );
+  });
+
+  // Add charts
+  charts.forEach((chart) => {
+    if (chart.type === 'chart_data') {
+      const chartElement = renderChartElement(chart);
+      elements.push(chartElement);
+    }
   });
 
   // Create card body
@@ -367,6 +377,31 @@ export function updateMessageCard(
 ): Card {
   // Simply re-render with new blocks
   return renderMessageCard(blocks, options);
+}
+
+/**
+ * Render chart element from ChartDataBlock
+ */
+export function renderChartElement(block: ChartDataBlock): any {
+  // Build VChart spec from block data
+  const chartSpec: Record<string, unknown> = {
+    type: block.chartType,
+    data: {
+      values: block.data,
+    },
+    ...block.spec, // Merge additional spec options
+  };
+
+  // Add title if provided
+  if (block.title) {
+    chartSpec.title = { text: block.title };
+  }
+
+  return createChartElement({
+    chartSpec,
+    aspectRatio: block.aspectRatio,
+    colorTheme: block.colorTheme,
+  });
 }
 
 // Re-export Card type for convenience
