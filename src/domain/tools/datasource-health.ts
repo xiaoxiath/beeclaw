@@ -361,7 +361,7 @@ Use this tool PROACTIVELY when:
 - Before executing a complex multi-source research task
 
 Returns a structured health report with per-source status, latency, circuit breaker state, and actionable recommendations.`,
-  input_schema: {
+  parameters: {
     type: 'object' as const,
     properties: {
       probe_web_search: {
