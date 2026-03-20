@@ -147,28 +147,62 @@ export class CardCallbackHandler {
   /**
    * 处理卡片回调
    */
-  async handleCallback(event: CardCallbackEvent): Promise<void> {
+  async handleCallback(rawData: any): Promise<void> {
     try {
-      const { action, context, operator } = event.event;
-      const { open_message_id, open_chat_id } = context;
+      // 添加详细日志，检查实际收到的数据结构
+      logger.info('[CardCallback] Raw data received:', {
+        dataType: typeof rawData,
+        dataKeys: rawData ? Object.keys(rawData) : 'null',
+        hasSchema: !!rawData?.schema,
+        hasHeader: !!rawData?.header,
+        hasEvent: !!rawData?.event,
+        fullData: JSON.stringify(rawData, null, 2),
+      });
+
+      // 判断数据结构：可能是完整回调结构，也可能是已解包的 event 对象
+      let event: CardCallbackEvent['event'];
+      let header: CardCallbackEvent['header'] | undefined;
+
+      if (rawData.schema && rawData.header && rawData.event) {
+        // 完整的回调结构
+        logger.info('[CardCallback] Detected full callback structure');
+        header = rawData.header;
+        event = rawData.event;
+      } else if (rawData.operator && rawData.action && rawData.context) {
+        // SDK 已解包，直接是 event 对象
+        logger.info('[CardCallback] Detected unpacked event structure');
+        event = rawData;
+      } else {
+        logger.error('[CardCallback] Unknown data structure:', rawData);
+        return;
+      }
+
+      // 安全检查事件结构
+      if (!event || !event.action || !event.context) {
+        logger.error('[CardCallback] Invalid event structure:', event);
+        return;
+      }
+
+      const { action, context, operator } = event;
+      const { open_message_id, open_chat_id } = context || {};
 
       // 提取 action.value 中的数据
-      const callbackData = action.value || {};
+      const callbackData = action?.value || {};
       const actionType = callbackData.action;
 
       logger.info('[CardCallback] Received callback:', {
-        eventType: event.header.event_type,
-        actionTag: action.tag,
+        eventType: header?.event_type || 'N/A',
+        actionTag: action?.tag,
         actionType,
         messageId: open_message_id,
         chatId: open_chat_id,
-        operatorOpenId: operator.open_id,
+        operatorOpenId: operator?.open_id,
         data: callbackData,
       });
 
       // 根据 action 类型路由到不同的处理器
       if (actionType === 'hitl_callback') {
-        await this.handleHITLCallback(event);
+        await this.handleHITLCallback(event, rawData);
       } else {
         logger.warn(`[CardCallback] Unknown action type: ${actionType}`);
       }
@@ -180,10 +214,13 @@ export class CardCallbackHandler {
   /**
    * 处理 HITL 回调
    */
-  private async handleHITLCallback(event: CardCallbackEvent): Promise<void> {
-    const { action, context, token } = event.event;
+  private async handleHITLCallback(
+    event: CardCallbackEvent['event'],
+    _rawData: any
+  ): Promise<void> {
+    const { action, context, token } = event;
     const { open_message_id } = context;
-    const callbackData = action.value || {};
+    const callbackData = action?.value || {};
     const { hitlType, ...data } = callbackData;
 
     if (hitlType === 'confirmation') {
@@ -266,6 +303,7 @@ export class CardCallbackHandler {
    */
   private async handleUserInputCallback(
     messageId: string,
+    token: string,
     data: {
       inputType: string;
       value: string | string[];
