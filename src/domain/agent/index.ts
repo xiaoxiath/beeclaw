@@ -1301,6 +1301,15 @@ export class Agent {
                 const result = await this.toolExecutor(toolName, params, this.currentUserContext);
                 options?.onToolResult?.(toolName, result);
 
+                // DEBUG: Log the actual result structure
+                console.log(`[Agent] [DEBUG] Tool ${toolName} result:`, {
+                  hasContentBlock: '_contentBlock' in result,
+                  contentBlockValue: result._contentBlock,
+                  success: result.success,
+                  hasData: !!result.data,
+                  resultKeys: Object.keys(result),
+                });
+
                 // Check if result contains a content block (e.g., chart_data)
                 if (result._contentBlock && result.success && result.data) {
                   console.log(`[Agent] 🎨 [Parallel] Tool ${toolName} returned content block, triggering onContentBlock callback`);
