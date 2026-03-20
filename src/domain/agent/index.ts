@@ -1241,6 +1241,11 @@ export class Agent {
                 const result = await this.toolExecutor(toolName, params, this.currentUserContext);
                 options?.onToolResult?.(toolName, result);
 
+                // Check if result contains a content block (e.g., chart_data)
+                if (result._contentBlock && result.success && result.data) {
+                  options?.onContentBlock?.(result.data);
+                }
+
                 let resultToSave = result;
                 if (this.hookRunner) {
                   resultToSave = this.hookRunner.runToolResultPersist({
@@ -1290,6 +1295,12 @@ export class Agent {
 
                 const result = await this.toolExecutor(toolName, params, this.currentUserContext);
                 options?.onToolResult?.(toolName, result);
+
+                // Check if result contains a content block (e.g., chart_data)
+                if (result._contentBlock && result.success && result.data) {
+                  options?.onContentBlock?.(result.data);
+                }
+
                 return { call, result };
               });
 

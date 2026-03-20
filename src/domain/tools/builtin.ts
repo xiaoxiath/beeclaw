@@ -2191,6 +2191,141 @@ export async function executeStateLockManageTool(params: Record<string, unknown>
 }
 
 // ============================================================================
+// Chart Creation Tool (for Card V2)
+// ============================================================================
+
+const ChartTypeSchema = z.enum([
+  'line',
+  'area',
+  'bar',
+  'pie',
+  'scatter',
+  'radar',
+  'funnel',
+  'wordCloud',
+  'linearProgress',
+  'circularProgress',
+  'common',
+]);
+
+export const createChartTool = {
+  name: 'create_chart',
+  description: `Create a chart visualization for Feishu Card V2 messages. Use this tool to present data visually instead of plain text when:
+- Showing trends over time (use line/area charts)
+- Comparing quantities (use bar/pie charts)
+- Displaying proportions (use pie charts)
+- Showing relationships (use scatter charts)
+- Tracking progress (use progress charts)
+
+IMPORTANT: This tool returns a special content block that will be rendered as an interactive chart in Feishu. Always use this when presenting numerical data, comparisons, or trends.
+
+Available chart types:
+- line: Line chart for trends
+- area: Area chart for cumulative trends
+- bar: Bar chart for comparisons
+- pie: Pie chart for proportions
+- scatter: Scatter plot for correlations
+- radar: Radar chart for multi-dimensional data
+- funnel: Funnel chart for stages/flows
+- wordCloud: Word cloud for text frequency
+- linearProgress: Linear progress bar
+- circularProgress: Circular progress indicator
+- common: Generic chart (for custom VChart specs)`,
+
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      chartType: {
+        type: 'string' as const,
+        enum: [
+          'line',
+          'area',
+          'bar',
+          'pie',
+          'scatter',
+          'radar',
+          'funnel',
+          'wordCloud',
+          'linearProgress',
+          'circularProgress',
+          'common',
+        ],
+        description: 'Type of chart to create',
+      },
+      title: {
+        type: 'string' as const,
+        description: 'Chart title (optional)',
+      },
+      data: {
+        type: 'array' as const,
+        items: {
+          type: 'object' as const,
+        },
+        description: `Chart data as array of objects. Format depends on chart type:
+- For line/area/bar: [{ x: string, y: number }] or [{ date: string, value: number }]
+- For pie: [{ name: string, value: number }]
+- For scatter: [{ x: number, y: number }]
+- For radar: [{ dimension: string, value: number }]
+- For funnel: [{ stage: string, count: number }]
+- For progress: [{ value: number, total: number }]`,
+      },
+      spec: {
+        type: 'object' as const,
+        description: 'Additional VChart spec options (optional). Allows customization of axes, legends, colors, etc.',
+      },
+      aspectRatio: {
+        type: 'string' as const,
+        enum: ['1:1', '2:1', '4:3', '16:9'],
+        description: 'Chart aspect ratio (default: 2:1)',
+      },
+      colorTheme: {
+        type: 'string' as const,
+        enum: ['brand', 'rainbow', 'complementary', 'converse', 'primary'],
+        description: 'Color theme (default: brand)',
+      },
+    },
+    required: ['chartType', 'data'],
+  },
+};
+
+export async function executeCreateChart(params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  try {
+    const chartType = ChartTypeSchema.parse(params.chartType);
+    const data = params.data as Array<Record<string, unknown>>;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return {
+        success: false,
+        error: 'Data must be a non-empty array',
+      };
+    }
+
+    // Build the chart content block
+    const chartBlock = {
+      type: 'chart_data' as const,
+      chartType,
+      data,
+      ...(params.title && { title: String(params.title) }),
+      ...(params.spec && { spec: params.spec as Record<string, unknown> }),
+      ...(params.aspectRatio && { aspectRatio: params.aspectRatio as any }),
+      ...(params.colorTheme && { colorTheme: params.colorTheme as any }),
+    };
+
+    return {
+      success: true,
+      data: chartBlock,
+      // Special marker to indicate this should trigger onContentBlock
+      _contentBlock: true,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create chart',
+    };
+  }
+}
+
+// ============================================================================
 // Tool Registry
 // ============================================================================
 
@@ -2234,6 +2369,7 @@ export const builtinTools = {
   sandbox_status: sandboxTools.sandbox_status,
   datasource_health_check: datasourceHealthCheckTool,
   ask_user_question: askUserQuestionTool,
+  create_chart: createChartTool,
 };
 
 export const builtinToolNames = Object.keys(builtinTools);
@@ -2322,6 +2458,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
         const msg = err instanceof Error ? err.message : String(err);
         return { success: false, error: `Health check failed: ${msg}` };
       }
+    case 'create_chart':
+      return executeCreateChart(params);
     default:
       return { success: false, error: `Unknown builtin tool: ${name}` };
   }
