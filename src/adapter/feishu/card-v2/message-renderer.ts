@@ -453,10 +453,22 @@ function inferFieldMappings(
 
     case 'linearProgress':
     case 'circularProgress': {
-      // Progress charts typically use 'value' and optionally 'total'
+      // Progress charts typically use 'value' and optionally 'total' or 'label'
       const mappings: Record<string, string> = {};
       if (fields.includes('value')) mappings.valueField = 'value';
       if (fields.includes('total')) mappings.totalField = 'total';
+
+      // For circularProgress with multiple progress bars, detect category/label field
+      if (chartType === 'circularProgress') {
+        const categoryField = fields.find(f =>
+          f !== 'value' && f !== 'total' && typeof sample[f] === 'string'
+        );
+        if (categoryField) {
+          mappings.categoryField = categoryField;
+          mappings.seriesField = categoryField;
+        }
+      }
+
       return mappings;
     }
 

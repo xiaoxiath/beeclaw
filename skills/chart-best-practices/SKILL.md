@@ -109,15 +109,18 @@ The chart renderer auto-detects field mappings based on field names. **Use descr
 ```json
 {
   "chartType": "circularProgress",
-  "title": "🎯 年度储蓄目标",
+  "title": "🎯 项目进度",
   "data": [
-    { "value": 15, "total": 100 }
+    { "type": "总进度", "value": 0.15, "text": "15%" }
   ]
 }
 ```
 
-**Data format**: `[{ value: number, total: number }]`
-**IMPORTANT**: Use `value` and `total` fields (NOT `label` or normalized 0-1 values)
+**Data format**: `[{ type: string, value: number (0-1), text?: string }]`
+**IMPORTANT**:
+- `value` should be normalized between 0-1 (e.g., 0.15 = 15%)
+- `type` is required for category/label
+- `text` is optional for display text
 
 ### 6. Scatter Plot (`scatter`) - Correlations
 **Best for**: Showing relationships between two variables
