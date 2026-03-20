@@ -380,6 +380,103 @@ export function updateMessageCard(
 }
 
 /**
+ * Infer field mappings from data based on chart type
+ * This auto-detects which fields should be used for x, y, category, value, etc.
+ */
+function inferFieldMappings(
+  chartType: string,
+  data: Array<Record<string, unknown>>
+): Record<string, string> {
+  if (!data || data.length === 0) return {};
+
+  const sample = data[0];
+  const fields = Object.keys(sample);
+
+  // Common field name patterns
+  const xFieldPatterns = ['week', 'day', 'month', 'year', 'time', 'date', 'x', 'category', 'label', 'name', 'type'];
+  const yFieldPatterns = ['value', 'count', 'amount', 'sales', 'steps', 'y', 'score', 'total'];
+  const categoryPatterns = ['name', 'type', 'category', 'label'];
+  const valuePatterns = ['value', 'count', 'amount', 'sales', 'total'];
+
+  switch (chartType) {
+    case 'bar':
+    case 'line':
+    case 'area':
+    case 'scatter': {
+      // Find x field (categorical/time)
+      let xField = fields.find(f => xFieldPatterns.some(p => f.toLowerCase().includes(p)));
+      if (!xField) xField = fields[0]; // Fallback to first field
+
+      // Find y field (numeric)
+      let yField = fields.find(f =>
+        f !== xField &&
+        yFieldPatterns.some(p => f.toLowerCase().includes(p))
+      );
+      if (!yField) {
+        // Fallback: find first numeric field that's not xField
+        yField = fields.find(f => {
+          if (f === xField) return false;
+          const val = sample[f];
+          return typeof val === 'number';
+        });
+      }
+      if (!yField) yField = fields[1] || fields[0]; // Ultimate fallback
+
+      return { xField, yField };
+    }
+
+    case 'pie':
+    case 'radar': {
+      // Find category field
+      let categoryField = fields.find(f =>
+        categoryPatterns.some(p => f.toLowerCase().includes(p))
+      );
+      if (!categoryField) {
+        // Fallback: first non-numeric field
+        categoryField = fields.find(f => typeof sample[f] !== 'number');
+      }
+      if (!categoryField) categoryField = fields[0];
+
+      // Find value field
+      let valueField = fields.find(f =>
+        f !== categoryField &&
+        valuePatterns.some(p => f.toLowerCase().includes(p))
+      );
+      if (!valueField) {
+        // Fallback: first numeric field
+        valueField = fields.find(f => typeof sample[f] === 'number');
+      }
+      if (!valueField) valueField = fields[1] || fields[0];
+
+      return { categoryField, valueField };
+    }
+
+    case 'linearProgress':
+    case 'circularProgress': {
+      // Progress charts typically use 'value' and optionally 'total'
+      const mappings: Record<string, string> = {};
+      if (fields.includes('value')) mappings.valueField = 'value';
+      if (fields.includes('total')) mappings.totalField = 'total';
+      return mappings;
+    }
+
+    case 'funnel': {
+      // Funnel uses category and value
+      let categoryField = fields.find(f => categoryPatterns.some(p => f.toLowerCase().includes(p)));
+      if (!categoryField) categoryField = fields.find(f => typeof sample[f] === 'string') || fields[0];
+
+      let valueField = fields.find(f => f !== categoryField && valuePatterns.some(p => f.toLowerCase().includes(p)));
+      if (!valueField) valueField = fields.find(f => typeof sample[f] === 'number') || fields[1] || fields[0];
+
+      return { categoryField, valueField };
+    }
+
+    default:
+      return {};
+  }
+}
+
+/**
  * Render chart element from ChartDataBlock
  */
 export function renderChartElement(block: ChartDataBlock): any {
@@ -389,13 +486,37 @@ export function renderChartElement(block: ChartDataBlock): any {
     data: {
       values: block.data,
     },
-    ...block.spec, // Merge additional spec options
   };
+
+  // Auto-infer field mappings if not provided in spec
+  const fieldMappings = inferFieldMappings(block.chartType, block.data);
+
+  // Apply field mappings (spec can override auto-detected fields)
+  chartSpec.xField = block.spec?.xField ?? fieldMappings.xField;
+  chartSpec.yField = block.spec?.yField ?? fieldMappings.yField;
+  chartSpec.categoryField = block.spec?.categoryField ?? fieldMappings.categoryField;
+  chartSpec.valueField = block.spec?.valueField ?? fieldMappings.valueField;
+
+  // Merge additional spec options (these can override the above)
+  if (block.spec) {
+    Object.assign(chartSpec, block.spec);
+  }
 
   // Add title if provided
   if (block.title) {
     chartSpec.title = { text: block.title };
   }
+
+  console.log('[MessageRenderer] 🎨 Rendered chart spec:', {
+    type: block.chartType,
+    fieldMappings,
+    finalSpec: {
+      xField: chartSpec.xField,
+      yField: chartSpec.yField,
+      categoryField: chartSpec.categoryField,
+      valueField: chartSpec.valueField,
+    },
+  });
 
   return createChartElement({
     chartSpec,
