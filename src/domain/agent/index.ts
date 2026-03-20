@@ -1303,7 +1303,12 @@ export class Agent {
 
                 // Check if result contains a content block (e.g., chart_data)
                 if (result._contentBlock && result.success && result.data) {
+                  console.log(`[Agent] 🎨 [Parallel] Tool ${toolName} returned content block, triggering onContentBlock callback`);
+                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
                   options?.onContentBlock?.(result.data);
+                } else if (result._contentBlock) {
+                  console.log(`[Agent] ⚠️ [Parallel] Tool ${toolName} has _contentBlock but missing success or data`);
+                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
                 }
 
                 return { call, result };
