@@ -1313,6 +1313,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
       const chatPromise = agent.chat(messageForAgent, {
         onContentBlock: (block) => {
+          console.log('[Session] 📦 Received content block:', JSON.stringify(block, null, 2));
           streamingController?.pushContent(block).catch(err => {
             // Silently handle message withdrawn errors
             const errorMsg = err instanceof Error ? err.message : String(err);
