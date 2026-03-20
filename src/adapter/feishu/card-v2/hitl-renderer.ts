@@ -221,8 +221,10 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
         },
       ],
     });
-  } else if (hasOptions && (inputType === 'choice' || inputType === 'multi_choice')) {
-    // 选择类型：使用选择菜单
+  } else if (hasOptions && inputType === 'choice') {
+    // 选择类型：使用单选下拉菜单
+    // 注意：飞书 Card V2 的 select_static 不支持 multiple 属性
+    // 多选需要使用 multi_select_static + form_container，暂不支持
     elements.push({
       tag: 'action',
       actions: [
@@ -230,9 +232,8 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
           tag: 'select_static',
           placeholder: {
             tag: 'plain_text',
-            content: inputType === 'multi_choice' ? '请选择（可多选）' : '请选择',
+            content: '请选择',
           },
-          multiple: inputType === 'multi_choice',
           options: ((block as any).options || []).map((opt: string, idx: number) => ({
             text: {
               tag: 'plain_text',
@@ -247,6 +248,18 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
             requestId: (block as any).requestId || '',
             sessionId: (block as any).sessionId || '',
           },
+        },
+      ],
+    });
+  } else if (hasOptions && inputType === 'multi_choice') {
+    // 多选：暂时使用文本提示（需要表单容器支持）
+    // TODO: 实现带 form_container 的 multi_select_static
+    elements.push({
+      tag: 'note',
+      elements: [
+        {
+          tag: 'plain_text',
+          content: `💡 请直接输入您的选择（可多选）: ${(block as any).options?.join('、')}`,
         },
       ],
     });

@@ -141,7 +141,7 @@ describe('HITL Renderer', () => {
       expect(selectElement.options[0].value).toBe('1');
     });
 
-    test('should render multi-select menu for multi_choice input type', () => {
+    test('should render text prompt for multi_choice input type (temporarily)', () => {
       const block: ContentBlock = {
         type: 'user_input_request',
         question: 'Select multiple options',
@@ -153,14 +153,14 @@ describe('HITL Renderer', () => {
 
       const card = renderUserInputRequestCard(block);
 
-      // Find action element
+      // Multi-choice currently uses text prompt (needs form container for proper support)
       const actionElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'action');
-      expect(actionElement).toBeDefined();
+      expect(actionElement).toBeUndefined();
 
-      // Verify multi-select
-      const selectElement = actionElement.actions[0];
-      expect(selectElement.tag).toBe('select_static');
-      expect(selectElement.multiple).toBe(true);
+      // Should have note element with instructions
+      const noteElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'note');
+      expect(noteElement).toBeDefined();
+      expect(noteElement.elements[0].content).toContain('可多选');
     });
 
     test('should render text prompt for text input type', () => {

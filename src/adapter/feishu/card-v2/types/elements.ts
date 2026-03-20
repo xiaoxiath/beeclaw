@@ -338,11 +338,9 @@ export type SelectOption = z.infer<typeof SelectOptionSchema>;
 export const SelectStaticElementSchema = z.object({
   tag: z.literal('select_static'),
   placeholder: z.union([PlainTextElementSchema, MarkdownElementSchema]).optional(),
-  multiple: z.boolean().optional(),
   options: z.array(SelectOptionSchema),
   value: z.record(z.unknown()).optional(),
   initial_option: z.string().optional(),
-  initial_options: z.array(z.string()).optional(),
   enabled: z.boolean().optional(),
   size: z.enum(['tiny', 'small', 'medium', 'large']).optional(),
   width: z.enum(['default', 'fill']).optional(),
@@ -522,15 +520,13 @@ export function createButtonElement(options: {
 }
 
 /**
- * Create a Select Static element
+ * Create a Select Static element (single-select only)
  */
 export function createSelectStaticElement(options: {
   placeholder?: PlainTextElement | MarkdownElement;
-  multiple?: boolean;
   options: SelectOption[];
   value?: Record<string, unknown>;
   initial_option?: string;
-  initial_options?: string[];
   enabled?: boolean;
   size?: 'tiny' | 'small' | 'medium' | 'large';
   width?: 'default' | 'fill';
