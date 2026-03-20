@@ -105,17 +105,17 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
       {
         tag: 'hr',
       },
-      // 【改进】交互按钮替换文本指令
+      // 【改进】交互按钮替换文本指令 - Card V2: 按钮直接放在 elements 中
       {
-        tag: 'action',
-        actions: [
+        tag: 'button',
+        text: {
+          tag: 'plain_text',
+          content: '✅ 批准执行',
+        },
+        type: 'primary',
+        behaviors: [
           {
-            tag: 'button',
-            text: {
-              tag: 'plain_text',
-              content: '✅ 批准执行',
-            },
-            type: 'primary',
+            type: 'callback',
             value: {
               action: 'hitl_callback',
               hitlType: 'confirmation',
@@ -125,13 +125,18 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
               sessionId: (block as any).sessionId || '',
             },
           },
+        ],
+      },
+      {
+        tag: 'button',
+        text: {
+          tag: 'plain_text',
+          content: '❌ 拒绝操作',
+        },
+        type: 'danger',
+        behaviors: [
           {
-            tag: 'button',
-            text: {
-              tag: 'plain_text',
-              content: '❌ 拒绝操作',
-            },
-            type: 'danger',
+            type: 'callback',
             value: {
               action: 'hitl_callback',
               hitlType: 'confirmation',
@@ -181,66 +186,73 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
     },
   ];
 
-  // 【改进】根据输入类型添加不同的交互组件
+  // 【改进】根据输入类型添加不同的交互组件 - Card V2: 组件直接放在 elements 中
   if (inputType === 'confirmation') {
     // 确认类型：使用按钮
-    elements.push({
-      tag: 'action',
-      actions: [
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '✅ 是',
-          },
-          type: 'primary',
-          value: {
-            action: 'hitl_callback',
-            hitlType: 'user_input',
-            inputType: 'confirmation',
-            value: 'YES',
-            requestId: (block as any).requestId || '',
-            sessionId: (block as any).sessionId || '',
-          },
+    elements.push(
+      {
+        tag: 'button',
+        text: {
+          tag: 'plain_text',
+          content: '✅ 是',
         },
-        {
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: '❌ 否',
+        type: 'primary',
+        behaviors: [
+          {
+            type: 'callback',
+            value: {
+              action: 'hitl_callback',
+              hitlType: 'user_input',
+              inputType: 'confirmation',
+              value: 'YES',
+              requestId: (block as any).requestId || '',
+              sessionId: (block as any).sessionId || '',
+            },
           },
-          type: 'default',
-          value: {
-            action: 'hitl_callback',
-            hitlType: 'user_input',
-            inputType: 'confirmation',
-            value: 'NO',
-            requestId: (block as any).requestId || '',
-            sessionId: (block as any).sessionId || '',
-          },
+        ],
+      },
+      {
+        tag: 'button',
+        text: {
+          tag: 'plain_text',
+          content: '❌ 否',
         },
-      ],
-    });
+        type: 'default',
+        behaviors: [
+          {
+            type: 'callback',
+            value: {
+              action: 'hitl_callback',
+              hitlType: 'user_input',
+              inputType: 'confirmation',
+              value: 'NO',
+              requestId: (block as any).requestId || '',
+              sessionId: (block as any).sessionId || '',
+            },
+          },
+        ],
+      }
+    );
   } else if (hasOptions && inputType === 'choice') {
-    // 选择类型：使用单选下拉菜单
+    // 选择类型：使用单选下拉菜单 - Card V2: 使用 behaviors 代替 value
     // 注意：飞书 Card V2 的 select_static 不支持 multiple 属性
     // 多选需要使用 multi_select_static + form_container，暂不支持
     elements.push({
-      tag: 'action',
-      actions: [
+      tag: 'select_static',
+      placeholder: {
+        tag: 'plain_text',
+        content: '请选择',
+      },
+      options: ((block as any).options || []).map((opt: string, idx: number) => ({
+        text: {
+          tag: 'plain_text',
+          content: opt,
+        },
+        value: String(idx + 1),
+      })),
+      behaviors: [
         {
-          tag: 'select_static',
-          placeholder: {
-            tag: 'plain_text',
-            content: '请选择',
-          },
-          options: ((block as any).options || []).map((opt: string, idx: number) => ({
-            text: {
-              tag: 'plain_text',
-              content: opt,
-            },
-            value: String(idx + 1),
-          })),
+          type: 'callback',
           value: {
             action: 'hitl_callback',
             hitlType: 'user_input',

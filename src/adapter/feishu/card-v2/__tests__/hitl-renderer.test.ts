@@ -29,30 +29,25 @@ describe('HITL Renderer', () => {
       expect(card.header).toBeDefined();
       expect(card.header.template).toBe('yellow'); // medium risk
 
-      // Find action element
-      const actionElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'action');
-      expect(actionElement).toBeDefined();
-      expect(actionElement.actions).toHaveLength(2);
+      // Find buttons directly in elements (no action wrapper in Card V2)
+      const buttons = card.elements.filter(Boolean).filter((el: any) => el.tag === 'button');
+      expect(buttons).toHaveLength(2);
 
       // Verify APPROVED button
-      const approveButton = actionElement.actions.find(
-        (btn: any) => btn.type === 'primary'
-      );
+      const approveButton = buttons.find((btn: any) => btn.type === 'primary');
       expect(approveButton).toBeDefined();
       expect(approveButton.text.content).toContain('批准');
-      expect(approveButton.value.action).toBe('hitl_callback');
-      expect(approveButton.value.hitlType).toBe('confirmation');
-      expect(approveButton.value.decision).toBe('APPROVED');
-      expect(approveButton.value.toolCallId).toBe('call_123');
-      expect(approveButton.value.sessionId).toBe('session_456');
+      expect(approveButton.behaviors[0].value.action).toBe('hitl_callback');
+      expect(approveButton.behaviors[0].value.hitlType).toBe('confirmation');
+      expect(approveButton.behaviors[0].value.decision).toBe('APPROVED');
+      expect(approveButton.behaviors[0].value.toolCallId).toBe('call_123');
+      expect(approveButton.behaviors[0].value.sessionId).toBe('session_456');
 
       // Verify DENIED button
-      const denyButton = actionElement.actions.find(
-        (btn: any) => btn.type === 'danger'
-      );
+      const denyButton = buttons.find((btn: any) => btn.type === 'danger');
       expect(denyButton).toBeDefined();
       expect(denyButton.text.content).toContain('拒绝');
-      expect(denyButton.value.decision).toBe('DENIED');
+      expect(denyButton.behaviors[0].value.decision).toBe('DENIED');
     });
 
     test('should use correct colors for risk levels', () => {
@@ -92,27 +87,26 @@ describe('HITL Renderer', () => {
       expect(card.type).toBe('card');
       expect(card.header.template).toBe('blue');
 
-      // Find action element
-      const actionElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'action');
-      expect(actionElement).toBeDefined();
-      expect(actionElement.actions).toHaveLength(2);
+      // Find buttons directly in elements (no action wrapper in Card V2)
+      const buttons = card.elements.filter(Boolean).filter((el: any) => el.tag === 'button');
+      expect(buttons).toHaveLength(2);
 
       // Verify YES button
-      const yesButton = actionElement.actions.find((btn: any) =>
+      const yesButton = buttons.find((btn: any) =>
         btn.text.content.includes('是')
       );
       expect(yesButton).toBeDefined();
-      expect(yesButton.value.action).toBe('hitl_callback');
-      expect(yesButton.value.hitlType).toBe('user_input');
-      expect(yesButton.value.inputType).toBe('confirmation');
-      expect(yesButton.value.value).toBe('YES');
+      expect(yesButton.behaviors[0].value.action).toBe('hitl_callback');
+      expect(yesButton.behaviors[0].value.hitlType).toBe('user_input');
+      expect(yesButton.behaviors[0].value.inputType).toBe('confirmation');
+      expect(yesButton.behaviors[0].value.value).toBe('YES');
 
       // Verify NO button
-      const noButton = actionElement.actions.find((btn: any) =>
+      const noButton = buttons.find((btn: any) =>
         btn.text.content.includes('否')
       );
       expect(noButton).toBeDefined();
-      expect(noButton.value.value).toBe('NO');
+      expect(noButton.behaviors[0].value.value).toBe('NO');
     });
 
     test('should render select menu for choice input type', () => {
@@ -127,18 +121,14 @@ describe('HITL Renderer', () => {
 
       const card = renderUserInputRequestCard(block);
 
-      // Find action element
-      const actionElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'action');
-      expect(actionElement).toBeDefined();
-      expect(actionElement.actions).toHaveLength(1);
-
-      // Verify select element
-      const selectElement = actionElement.actions[0];
-      expect(selectElement.tag).toBe('select_static');
+      // Find select_static directly in elements (no action wrapper in Card V2)
+      const selectElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'select_static');
+      expect(selectElement).toBeDefined();
       expect(selectElement.multiple).toBeFalsy();
       expect(selectElement.options).toHaveLength(3);
       expect(selectElement.options[0].text.content).toBe('Option 1');
       expect(selectElement.options[0].value).toBe('1');
+      expect(selectElement.behaviors[0].value.action).toBe('hitl_callback');
     });
 
     test('should render text prompt for multi_choice input type (temporarily)', () => {
@@ -154,8 +144,8 @@ describe('HITL Renderer', () => {
       const card = renderUserInputRequestCard(block);
 
       // Multi-choice currently uses text prompt (needs form container for proper support)
-      const actionElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'action');
-      expect(actionElement).toBeUndefined();
+      const selectElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'select_static');
+      expect(selectElement).toBeUndefined();
 
       // Should have note element with instructions
       const noteElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'note');
@@ -174,7 +164,7 @@ describe('HITL Renderer', () => {
 
       const card = renderUserInputRequestCard(block);
 
-      // Should not have action element
+      // Should not have action element (text input uses note for prompt)
       const actionElement = card.elements.filter(Boolean).find((el: any) => el.tag === 'action');
       expect(actionElement).toBeUndefined();
 

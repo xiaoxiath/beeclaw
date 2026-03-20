@@ -301,11 +301,27 @@ export type HrElementSchema = typeof HrElementSchema;
 export type HrElement = z.infer<typeof HrElementSchema>;
 
 // ============================================
+// Behaviors (Card V2 callback mechanism)
+// ============================================
+
+/**
+ * Behavior for interactive components in Card V2
+ * Replaces the 'value' property from Card V1
+ */
+export const BehaviorSchema = z.object({
+  type: z.literal('callback'),
+  value: z.record(z.unknown()),
+});
+
+export type Behavior = z.infer<typeof BehaviorSchema>;
+
+// ============================================
 // Button Element
 // ============================================
 
 /**
  * Button element for interactive actions
+ * Card V2: Uses behaviors array instead of value property
  */
 export const ButtonElementSchema = z.object({
   tag: z.literal('button'),
@@ -314,7 +330,7 @@ export const ButtonElementSchema = z.object({
   size: z.enum(['tiny', 'small', 'medium', 'large']).optional(),
   width: z.enum(['default', 'fill']).optional(),
   icon: StandardIconElementSchema.optional(),
-  value: z.record(z.unknown()).optional(),
+  behaviors: z.array(BehaviorSchema).optional(),
   url: z.string().optional(),
   enabled: z.boolean().optional(),
 });
@@ -327,6 +343,7 @@ export type ButtonElement = z.infer<typeof ButtonElementSchema>;
 
 /**
  * Static select dropdown element
+ * Card V2: Uses behaviors array instead of value property
  */
 export const SelectOptionSchema = z.object({
   text: z.union([PlainTextElementSchema, MarkdownElementSchema]),
@@ -339,7 +356,7 @@ export const SelectStaticElementSchema = z.object({
   tag: z.literal('select_static'),
   placeholder: z.union([PlainTextElementSchema, MarkdownElementSchema]).optional(),
   options: z.array(SelectOptionSchema),
-  value: z.record(z.unknown()).optional(),
+  behaviors: z.array(BehaviorSchema).optional(),
   initial_option: z.string().optional(),
   enabled: z.boolean().optional(),
   size: z.enum(['tiny', 'small', 'medium', 'large']).optional(),
@@ -349,11 +366,12 @@ export const SelectStaticElementSchema = z.object({
 export type SelectStaticElement = z.infer<typeof SelectStaticElementSchema>;
 
 // ============================================
-// Action Element
+// Action Element (DEPRECATED - Not supported in Card V2)
 // ============================================
 
 /**
  * Action element container for buttons and selects
+ * @deprecated Card V2 does NOT support the 'action' tag. Place buttons and selects directly in elements array.
  */
 export const ActionElementSchema = z.object({
   tag: z.literal('action'),
@@ -374,6 +392,7 @@ export type ActionElement = z.infer<typeof ActionElementSchema>;
 
 /**
  * All supported Card elements
+ * Note: 'action' tag is NOT supported in Card V2
  */
 export const ElementSchema = z.discriminatedUnion('tag', [
   MarkdownElementSchema,
@@ -383,7 +402,9 @@ export const ElementSchema = z.discriminatedUnion('tag', [
   CollapsiblePanelSchema,
   NoteElementSchema,
   HrElementSchema,
-  ActionElementSchema,
+  ButtonElementSchema, // Card V2: Buttons directly in elements
+  SelectStaticElementSchema, // Card V2: Selects directly in elements
+  ActionElementSchema, // DEPRECATED - keeping for backwards compatibility
 ]);
 
 export type Element = z.infer<typeof ElementSchema>;
@@ -502,11 +523,12 @@ export function createHrElement(): HrElement {
 
 /**
  * Create a Button element
+ * Card V2: Uses behaviors array instead of value property
  */
 export function createButtonElement(options: {
   text: PlainTextElement | MarkdownElement;
   type?: 'primary' | 'default' | 'danger';
-  value?: Record<string, unknown>;
+  behaviors?: Behavior[];
   url?: string;
   icon?: StandardIconElement;
   size?: 'tiny' | 'small' | 'medium' | 'large';
@@ -521,11 +543,12 @@ export function createButtonElement(options: {
 
 /**
  * Create a Select Static element (single-select only)
+ * Card V2: Uses behaviors array instead of value property
  */
 export function createSelectStaticElement(options: {
   placeholder?: PlainTextElement | MarkdownElement;
   options: SelectOption[];
-  value?: Record<string, unknown>;
+  behaviors?: Behavior[];
   initial_option?: string;
   enabled?: boolean;
   size?: 'tiny' | 'small' | 'medium' | 'large';
