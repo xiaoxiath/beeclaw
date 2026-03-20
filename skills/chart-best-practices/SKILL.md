@@ -103,7 +103,23 @@ The chart renderer auto-detects field mappings based on field names. **Use descr
 
 **Data format**: `[{ value: number, total: number }]`
 
-### 5. Scatter Plot (`scatter`) - Correlations
+### 5. Circular Progress (`circularProgress`) - Circular Progress
+**Best for**: Circular progress indicators
+
+```json
+{
+  "chartType": "circularProgress",
+  "title": "🎯 年度储蓄目标",
+  "data": [
+    { "value": 15, "total": 100 }
+  ]
+}
+```
+
+**Data format**: `[{ value: number, total: number }]`
+**IMPORTANT**: Use `value` and `total` fields (NOT `label` or normalized 0-1 values)
+
+### 6. Scatter Plot (`scatter`) - Correlations
 **Best for**: Showing relationships between two variables
 
 ```json
