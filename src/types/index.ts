@@ -30,6 +30,11 @@ export interface ToolResult<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
+  /**
+   * Special marker to indicate this tool result contains a content block
+   * that should be rendered in the message stream (e.g., chart_data)
+   */
+  _contentBlock?: boolean;
 }
 
 // Generic tool result schemas
@@ -37,6 +42,7 @@ export const ToolResultSchema = z.object({
   success: z.boolean(),
   data: z.unknown().optional(),
   error: z.string().optional(),
+  _contentBlock: z.boolean().optional(),
 });
 
 // ============================================================
