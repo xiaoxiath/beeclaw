@@ -1446,6 +1446,25 @@ export class Agent {
               const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
                 const toolElapsed = Date.now() - toolStartTime;
 
+                // DEBUG: Log the actual result structure
+                console.log(`[Agent] [DEBUG] Tool ${call.function.name} result:`, {
+                  hasContentBlock: '_contentBlock' in result,
+                  contentBlockValue: result._contentBlock,
+                  success: result.success,
+                  hasData: !!result.data,
+                  resultKeys: Object.keys(result),
+                });
+
+                // Check if result contains a content block (e.g., chart_data)
+                if (result._contentBlock && result.success && result.data) {
+                  console.log(`[Agent] 🎨 [Batch] Tool ${call.function.name} returned content block, triggering onContentBlock callback`);
+                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
+                  options?.onContentBlock?.(result.data);
+                } else if (result._contentBlock) {
+                  console.log(`[Agent] ⚠️ [Batch] Tool ${call.function.name} has _contentBlock but missing success or data`);
+                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
+                }
+
                 // [HITL] Check if tool result needs user confirmation or input
                 if (result.needsConfirmation) {
                   console.log(`[HITL] Tool ${call.function.name} requires user confirmation`);
