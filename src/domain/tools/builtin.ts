@@ -2261,13 +2261,15 @@ Available chart types:
         items: {
           type: 'object' as const,
         },
-        description: `Chart data as array of objects. Format depends on chart type:
-- For line/area/bar: [{ x: string, y: number }] or [{ date: string, value: number }]
-- For pie: [{ name: string, value: number }]
-- For scatter: [{ x: number, y: number }]
-- For radar: [{ dimension: string, value: number }]
-- For funnel: [{ stage: string, count: number }]
-- For progress: [{ value: number, total: number }]`,
+        description: `Chart data as array of objects. Use DESCRIPTIVE field names for auto-detection:
+- Line/area/bar: [{ week: "周一", steps: 8500 }] or [{ month: "Jan", sales: 1000 }]
+- Pie: [{ name: "Category", value: 100 }]
+- Scatter: [{ height: 170, weight: 65 }]
+- Radar: [{ dimension: "Speed", value: 80 }]
+- Funnel: [{ stage: "Visitors", count: 1000 }]
+- Progress: [{ value: 42, total: 50 }]
+
+Prefer descriptive names (week/steps) over generic (x/y). See 'chart-best-practices' skill for details.`,
       },
       spec: {
         type: 'object' as const,
