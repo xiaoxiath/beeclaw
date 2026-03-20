@@ -28,11 +28,12 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
     return null;
   }
 
-  const riskLevel = (block as any).riskLevel as RiskLevel;
+  const confirmationBlock = block as import('../../../types/content-block').ConfirmationRequestBlock;
+  const riskLevel = confirmationBlock.riskLevel;
   const color = RISK_COLORS[riskLevel] || 'orange';
 
   // 计算剩余时间
-  const expiresAt = (block as any).expiresAt;
+  const expiresAt = confirmationBlock.expiresAt;
   const timeRemaining = expiresAt
     ? Math.max(0, Math.round((expiresAt - Date.now()) / 60000))
     : null;
@@ -55,7 +56,7 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
             is_short: true,
             text: {
               tag: 'lark_md',
-              content: `**🔧 工具**\n${(block as any).toolName}`,
+              content: `**🔧 工具**\n${confirmationBlock.toolName}`,
             },
           },
           {
@@ -74,14 +75,14 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
       // 操作详情
       {
         tag: 'markdown',
-        content: `**📋 操作详情**\n\n${(block as any).message || '即将执行操作'}`,
+        content: `**📋 操作详情**\n\n${confirmationBlock.message || '即将执行操作'}`,
       },
       // 参数（如果有）
-      (block as any).params &&
-      Object.keys((block as any).params).length > 0 && {
+      confirmationBlock.params &&
+      Object.keys(confirmationBlock.params).length > 0 && {
         tag: 'markdown',
         content:
-          '**参数**:\n```\n' + JSON.stringify((block as any).params, null, 2) + '\n```\n',
+          '**参数**:\n```\n' + JSON.stringify(confirmationBlock.params, null, 2) + '\n```\n',
       },
       // 匊险提示
       {
@@ -120,9 +121,9 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
               action: 'hitl_callback',
               hitlType: 'confirmation',
               decision: 'APPROVED',
-              toolCallId: (block as any).toolCallId || '',
-              toolName: (block as any).toolName || '',
-              sessionId: (block as any).sessionId || '',
+              toolCallId: confirmationBlock.toolCallId || '',
+              toolName: confirmationBlock.toolName || '',
+              sessionId: confirmationBlock.sessionId || '',
             },
           },
         ],
@@ -141,9 +142,9 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
               action: 'hitl_callback',
               hitlType: 'confirmation',
               decision: 'DENIED',
-              toolCallId: (block as any).toolCallId || '',
-              toolName: (block as any).toolName || '',
-              sessionId: (block as any).sessionId || '',
+              toolCallId: confirmationBlock.toolCallId || '',
+              toolName: confirmationBlock.toolName || '',
+              sessionId: confirmationBlock.sessionId || '',
             },
           },
         ],
@@ -170,19 +171,20 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
     return null;
   }
 
-  const inputType = (block as any).inputType || 'text';
-  const hasOptions = (block as any).options && (block as any).options.length > 0;
+  const userInputBlock = block as import('../../../types/content-block').UserInputRequestBlock;
+  const inputType = userInputBlock.inputType || 'text';
+  const hasOptions = userInputBlock.options && userInputBlock.options.length > 0;
 
   const elements: any[] = [
     // 问题
     {
       tag: 'markdown',
-      content: `**${(block as any).question}**`,
+      content: `**${userInputBlock.question}**`,
     },
     // 上下文（如果有）
-    (block as any).context && {
+    userInputBlock.context && {
       tag: 'markdown',
-      content: `\n💡 **上下文**: ${(block as any).context}`,
+      content: `\n💡 **上下文**: ${userInputBlock.context}`,
     },
   ];
 
@@ -205,8 +207,8 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
               hitlType: 'user_input',
               inputType: 'confirmation',
               value: 'YES',
-              requestId: (block as any).requestId || '',
-              sessionId: (block as any).sessionId || '',
+              requestId: userInputBlock.requestId || '',
+              sessionId: userInputBlock.sessionId || '',
             },
           },
         ],
@@ -226,8 +228,8 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
               hitlType: 'user_input',
               inputType: 'confirmation',
               value: 'NO',
-              requestId: (block as any).requestId || '',
-              sessionId: (block as any).sessionId || '',
+              requestId: userInputBlock.requestId || '',
+              sessionId: userInputBlock.sessionId || '',
             },
           },
         ],
@@ -243,7 +245,7 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
         tag: 'plain_text',
         content: '请选择',
       },
-      options: ((block as any).options || []).map((opt: string, idx: number) => ({
+      options: (userInputBlock.options || []).map((opt: string, idx: number) => ({
         text: {
           tag: 'plain_text',
           content: opt,
@@ -257,8 +259,8 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
             action: 'hitl_callback',
             hitlType: 'user_input',
             inputType: inputType,
-            requestId: (block as any).requestId || '',
-            sessionId: (block as any).sessionId || '',
+            requestId: userInputBlock.requestId || '',
+            sessionId: userInputBlock.sessionId || '',
           },
         },
       ],
@@ -271,7 +273,7 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
       elements: [
         {
           tag: 'plain_text',
-          content: `💡 请直接输入您的选择（可多选）: ${(block as any).options?.join('、')}`,
+          content: `💡 请直接输入您的选择（可多选）: ${userInputBlock.options?.join('、')}`,
         },
       ],
     });

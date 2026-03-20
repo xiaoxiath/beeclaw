@@ -16,9 +16,10 @@ describe('HITL Renderer', () => {
         type: 'confirmation_request',
         toolName: 'shell_exec',
         toolCallId: 'call_123',
-        sessionId: 'session_456',
+        params: { command: 'ls -la' },
         message: 'Test confirmation',
         riskLevel: 'medium',
+        sessionId: 'session_456',
       };
 
       const card = renderConfirmationRequestCard(block);
@@ -62,6 +63,9 @@ describe('HITL Renderer', () => {
         const block: ContentBlock = {
           type: 'confirmation_request',
           toolName: 'test_tool',
+          toolCallId: 'call_test',
+          params: {},
+          message: 'Test message',
           riskLevel: risk as any,
         };
 

@@ -83,6 +83,7 @@ export const ConfirmationRequestBlockSchema = z.object({
   timeoutMs: z.number().optional(),
   expiresAt: z.number().optional(),
   message: z.string(),
+  sessionId: z.string().optional(),
 });
 
 export type ConfirmationRequestBlock = z.infer<typeof ConfirmationRequestBlockSchema>;
@@ -98,6 +99,8 @@ export const UserInputRequestBlockSchema = z.object({
   context: z.string().optional(),
   inputType: z.enum(['text', 'choice', 'confirmation', 'multi_choice']).optional(),
   timestamp: z.number().optional(),
+  requestId: z.string().optional(),
+  sessionId: z.string().optional(),
 });
 
 export type UserInputRequestBlock = z.infer<typeof UserInputRequestBlockSchema>;
@@ -259,7 +262,8 @@ export function createConfirmationRequestBlock(
   params: Record<string, unknown>,
   riskLevel: 'low' | 'medium' | 'high' | 'critical',
   message: string,
-  timeoutMs?: number
+  timeoutMs?: number,
+  sessionId?: string
 ): ConfirmationRequestBlock {
   const block: ConfirmationRequestBlock = {
     type: 'confirmation_request',
@@ -275,6 +279,10 @@ export function createConfirmationRequestBlock(
     block.expiresAt = Date.now() + timeoutMs;
   }
 
+  if (sessionId !== undefined) {
+    block.sessionId = sessionId;
+  }
+
   return ConfirmationRequestBlockSchema.parse(block);
 }
 
@@ -285,7 +293,9 @@ export function createUserInputRequestBlock(
   question: string,
   options?: string[],
   context?: string,
-  inputType?: 'text' | 'choice' | 'confirmation' | 'multi_choice'
+  inputType?: 'text' | 'choice' | 'confirmation' | 'multi_choice',
+  requestId?: string,
+  sessionId?: string
 ): UserInputRequestBlock {
   const block: UserInputRequestBlock = {
     type: 'user_input_request',
@@ -303,6 +313,14 @@ export function createUserInputRequestBlock(
 
   if (inputType !== undefined) {
     block.inputType = inputType;
+  }
+
+  if (requestId !== undefined) {
+    block.requestId = requestId;
+  }
+
+  if (sessionId !== undefined) {
+    block.sessionId = sessionId;
   }
 
   return UserInputRequestBlockSchema.parse(block);

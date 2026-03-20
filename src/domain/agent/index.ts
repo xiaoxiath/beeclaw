@@ -1430,6 +1430,7 @@ export class Agent {
                     timeoutMs: result.timeoutMs,
                     expiresAt: result.timeoutMs ? Date.now() + result.timeoutMs : undefined,
                     message: result.confirmationMessage || `Tool "${call.function.name}" requires confirmation`,
+                    sessionId: this.currentUserContext?.sessionId,
                   });
 
                   // Inject system message to guide agent
@@ -1469,6 +1470,8 @@ export class Agent {
                     context: result.context,
                     inputType: result.inputType || 'text',
                     timestamp: Date.now(),
+                    requestId: call.id,  // Use tool call ID as request ID
+                    sessionId: this.currentUserContext?.sessionId,
                   });
 
                   // Inject system message to guide agent

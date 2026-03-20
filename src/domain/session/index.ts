@@ -1308,6 +1308,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         chatId,
         messageId,
         userId: options.userId,
+        sessionId,  // Add sessionId for HITL callbacks
       };
 
       const chatPromise = agent.chat(messageForAgent, {

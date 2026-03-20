@@ -186,6 +186,18 @@ export class CardCallbackHandler {
       const { action, context, operator } = event;
       const { open_message_id, open_chat_id } = context || {};
 
+      // 详细记录 action 结构
+      logger.info('[CardCallback] Action details:', {
+        actionTag: action?.tag,
+        hasValue: !!action?.value,
+        valueKeys: action?.value ? Object.keys(action.value) : 'null',
+        actionValue: action?.value,
+        hasOption: !!action?.option,
+        option: action?.option,
+        hasInputValue: !!action?.input_value,
+        inputValue: action?.input_value,
+      });
+
       // 提取 action.value 中的数据
       const callbackData = action?.value || {};
       const actionType = callbackData.action;

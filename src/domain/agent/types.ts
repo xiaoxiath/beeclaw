@@ -51,6 +51,7 @@ export interface UserContext {
   chatId?: string;      // Feishu chat ID
   messageId?: string;   // Feishu message ID
   userId?: string;      // Generic user ID
+  sessionId?: string;   // Session ID for HITL callbacks
 }
 
 /**
