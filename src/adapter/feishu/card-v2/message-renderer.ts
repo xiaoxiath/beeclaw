@@ -460,12 +460,18 @@ function inferFieldMappings(
 
       // For circularProgress with multiple progress bars, detect category/label field
       if (chartType === 'circularProgress') {
-        const categoryField = fields.find(f =>
-          f !== 'value' && f !== 'total' && typeof sample[f] === 'string'
+        // Use category patterns for consistency with other chart types (pie, radar, funnel)
+        let categoryField = fields.find(f =>
+          f !== 'value' && f !== 'total' && categoryPatterns.some(p => f.toLowerCase().includes(p))
         );
+        // Fallback: first string field that's not value/total
+        if (!categoryField) {
+          categoryField = fields.find(f =>
+            f !== 'value' && f !== 'total' && typeof sample[f] === 'string'
+          );
+        }
         if (categoryField) {
           mappings.categoryField = categoryField;
-          mappings.seriesField = categoryField;
         }
       }
 
@@ -504,11 +510,11 @@ export function renderChartElement(block: ChartDataBlock): any {
   const fieldMappings = inferFieldMappings(block.chartType, block.data);
 
   // Apply field mappings (spec can override auto-detected fields)
-  if (fieldMappings.xField) chartSpec.xField = block.spec?.xField ?? fieldMappings.xField;
-  if (fieldMappings.yField) chartSpec.yField = block.spec?.yField ?? fieldMappings.yField;
-  if (fieldMappings.categoryField) chartSpec.categoryField = block.spec?.categoryField ?? fieldMappings.categoryField;
-  if (fieldMappings.valueField) chartSpec.valueField = block.spec?.valueField ?? fieldMappings.valueField;
-  if (fieldMappings.totalField) chartSpec.totalField = block.spec?.totalField ?? fieldMappings.totalField;
+  chartSpec.xField = block.spec?.xField ?? fieldMappings.xField;
+  chartSpec.yField = block.spec?.yField ?? fieldMappings.yField;
+  chartSpec.categoryField = block.spec?.categoryField ?? fieldMappings.categoryField;
+  chartSpec.valueField = block.spec?.valueField ?? fieldMappings.valueField;
+  chartSpec.totalField = block.spec?.totalField ?? fieldMappings.totalField;
 
   // Merge additional spec options (these can override the above)
   if (block.spec) {
