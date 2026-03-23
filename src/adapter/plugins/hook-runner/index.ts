@@ -9,35 +9,7 @@
 
 import type { PluginRegistry } from "../registry";
 import type { PluginHookName, PluginHookHandlerMap } from "../types";
-
-/**
- * Deep merge two objects. Arrays are replaced (not concatenated).
- * Handles nested objects without overwriting sibling keys.
- */
-function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
-  const result = { ...target };
-  for (const key of Object.keys(source) as Array<keyof T>) {
-    const srcVal = source[key];
-    const tgtVal = target[key];
-
-    if (
-      srcVal !== null &&
-      srcVal !== undefined &&
-      typeof srcVal === 'object' &&
-      !Array.isArray(srcVal) &&
-      typeof tgtVal === 'object' &&
-      !Array.isArray(tgtVal) &&
-      tgtVal !== null
-    ) {
-      // Recursively merge nested objects
-      result[key] = deepMerge(tgtVal as any, srcVal as any);
-    } else if (srcVal !== undefined) {
-      result[key] = srcVal as T[keyof T];
-    }
-  }
-  return result;
-}
-
+import { deepMerge } from '../../../infra/utils';
 
 export interface HookRunnerOptions {
   timeout?: number;  // 钩子执行超时（毫秒），默认 30000

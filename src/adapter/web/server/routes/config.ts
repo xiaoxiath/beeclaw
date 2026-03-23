@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { AppConfigSchema } from '@/infra/config/schema';
+import { deepMerge } from '../../../../infra/utils';
 
 const CONFIG_FILE = join(process.cwd(), 'beeclaw.json');
 
@@ -103,19 +104,7 @@ export default new Hono()
       const currentConfig = JSON.parse(configContent);
 
       // Deep merge updates
-      const mergeDeep = (target: any, source: any): any => {
-        const output = Object.assign({}, target);
-        for (const key in source) {
-          if (source[key] instanceof Object && key in target) {
-            output[key] = mergeDeep(target[key], source[key]);
-          } else {
-            output[key] = source[key];
-          }
-        }
-        return output;
-      };
-
-      const newConfig = mergeDeep(currentConfig, updates);
+      const newConfig = deepMerge(currentConfig, updates);
 
       // Validate new config
       const validated = AppConfigSchema.parse(newConfig);

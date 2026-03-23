@@ -1,4 +1,5 @@
 /**
+import { deepMerge } from '../utils';
  * BeeClaw Resilience — Unified Configuration Center
  * 
  * 统一管理所有韧性模块的配置参数，消除 ~79 处硬编码常量。
@@ -368,39 +369,6 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResilienceConfig>> = {
     },
   },
 };
-
-// ────────────────────────────────────────────
-// § 4  Deep Merge Utility
-// ────────────────────────────────────────────
-
-function deepMerge<T extends Record<string, unknown>>(
-  base: T,
-  override: DeepPartial<T>,
-): T {
-  const result = { ...base };
-  for (const key of Object.keys(override) as (keyof T)[]) {
-    const overrideVal = override[key];
-    if (overrideVal === undefined) continue;
-
-    const baseVal = base[key];
-    if (
-      baseVal !== null &&
-      typeof baseVal === 'object' &&
-      !Array.isArray(baseVal) &&
-      typeof overrideVal === 'object' &&
-      !Array.isArray(overrideVal)
-    ) {
-      result[key] = deepMerge(
-        baseVal as Record<string, unknown>,
-        overrideVal as DeepPartial<Record<string, unknown>>,
-      ) as T[keyof T];
-    } else {
-      result[key] = overrideVal as T[keyof T];
-    }
-  }
-  return result;
-}
-
 // ────────────────────────────────────────────
 // § 5  Environment Variable Overrides
 // ────────────────────────────────────────────

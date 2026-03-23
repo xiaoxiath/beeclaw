@@ -15,6 +15,7 @@
  */
 
 import { logger } from '../../../infra/observability/logger';
+import { cosineSimilarity } from '../../../infra/utils';
 
 /**
  * 上下文候选项
@@ -126,7 +127,7 @@ export class ContextSelector {
 
     // 相关性：embedding 余弦相似度
     const relevanceScore = queryEmbedding && item.embedding
-      ? this.cosineSimilarity(queryEmbedding, item.embedding)
+      ? cosineSimilarity(queryEmbedding, item.embedding)
       : 0.5; // 默认中等相关性
 
     // 时效性：时间衰减（对数衰减）
@@ -142,32 +143,6 @@ export class ContextSelector {
       importance * importanceScore;
 
     return totalScore;
-  }
-
-  /**
-   * 计算余弦相似度
-   */
-  private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) {
-      logger.warn(`[ContextSelector] Embedding length mismatch: ${a.length} vs ${b.length}`);
-      return 0;
-    }
-
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    if (normA === 0 || normB === 0) {
-      return 0;
-    }
-
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
   /**
@@ -196,7 +171,7 @@ export class ContextSelector {
       const isDuplicate = result.some(selected => {
         if (!selected.item.embedding) return false;
 
-        const similarity = this.cosineSimilarity(
+        const similarity = cosineSimilarity(
           entry.item.embedding,
           selected.item.embedding
         );

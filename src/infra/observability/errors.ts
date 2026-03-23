@@ -65,7 +65,7 @@ export class BeeclawError extends Error {
     }
 
     const message = error instanceof Error ? error.message : String(error);
-    const detectedCategory = category || detectErrorCategory(error);
+    const detectedCategory = category || ErrorCategory.INTERNAL;
 
     return new BeeclawError(message, {
       category: detectedCategory,
@@ -86,93 +86,6 @@ export class BeeclawError extends Error {
     };
   }
 }
-
-// ============================================================================
-// 错误分类
-// ============================================================================
-
-/**
- * @deprecated Use `classifyError` from `src/infra/resilience/unified-retry.ts` instead.
- * unified-retry's classifier merges this function and error-handler.ts into a single,
- * more comprehensive error classifier.
- */
-export function detectErrorCategory(error: unknown): ErrorCategory {
-  if (error instanceof BeeclawError) {
-    return error.category;
-  }
-
-  if (!(error instanceof Error)) {
-    return ErrorCategory.INTERNAL;
-  }
-
-  const message = error.message.toLowerCase();
-
-  // 网络错误
-  if (
-    message.includes('network') ||
-    message.includes('econnreset') ||
-    message.includes('etimedout') ||
-    message.includes('enotfound') ||
-    message.includes('econnrefused') ||
-    message.includes('fetch failed')
-  ) {
-    return ErrorCategory.NETWORK;
-  }
-
-  // 速率限制
-  if (
-    message.includes('rate limit') ||
-    message.includes('429') ||
-    message.includes('too many requests')
-  ) {
-    return ErrorCategory.RATE_LIMIT;
-  }
-
-  // 超时
-  if (message.includes('timeout') || message.includes('timed out')) {
-    return ErrorCategory.TIMEOUT;
-  }
-
-  // 认证
-  if (
-    message.includes('unauthorized') ||
-    message.includes('401') ||
-    message.includes('403') ||
-    message.includes('forbidden') ||
-    message.includes('invalid api key') ||
-    message.includes('authentication')
-  ) {
-    return ErrorCategory.AUTH;
-  }
-
-  // 验证
-  if (
-    message.includes('validation') ||
-    message.includes('invalid') ||
-    message.includes('required') ||
-    message.includes('400')
-  ) {
-    return ErrorCategory.VALIDATION;
-  }
-
-  // 未找到
-  if (message.includes('not found') || message.includes('404')) {
-    return ErrorCategory.NOT_FOUND;
-  }
-
-  // 权限
-  if (message.includes('permission') || message.includes('access denied')) {
-    return ErrorCategory.PERMISSION;
-  }
-
-  // 取消
-  if (message.includes('cancel') || message.includes('abort')) {
-    return ErrorCategory.CANCELLED;
-  }
-
-  return ErrorCategory.INTERNAL;
-}
-
 export function isRetryableCategory(category: ErrorCategory): boolean {
   return [
     ErrorCategory.NETWORK,
@@ -208,94 +121,6 @@ export const DEFAULT_RETRY_POLICIES: Record<string, RetryPolicy> = {
     retryableErrors: [ErrorCategory.NETWORK, ErrorCategory.TIMEOUT, ErrorCategory.RATE_LIMIT],
   },
 };
-
-// ============================================================================
-// 重试执行器
-// ============================================================================
-
-/**
- * @deprecated Use `withRetry` from `src/infra/resilience/unified-retry.ts` instead.
- * unified-retry provides a more robust retry implementation with jitter, circuit-breaker
- * awareness, and richer error classification.
- */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  policy: Partial<RetryPolicy> = {},
-): Promise<T> {
-  const fullPolicy: RetryPolicy = {
-    ...DEFAULT_RETRY_POLICIES.default,
-    ...policy,
-  };
-
-  let lastError: BeeclawError | null = null;
-
-  for (let attempt = 0; attempt <= fullPolicy.maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      const beeclawError = BeeclawError.fromError(error);
-
-      // 检查是否可重试
-      if (!beeclawError.retryable && !fullPolicy.retryableErrors.includes(beeclawError.category)) {
-        throw beeclawError;
-      }
-
-      // 检查是否是最后一次尝试
-      if (attempt === fullPolicy.maxRetries) {
-        throw beeclawError;
-      }
-
-      lastError = beeclawError;
-
-      // 计算延迟
-      const delay = calculateDelay(attempt, fullPolicy, beeclawError.retryAfter);
-
-      console.warn(
-        `[Retry] Attempt ${attempt + 1}/${fullPolicy.maxRetries + 1} failed: ${beeclawError.message}\n` +
-          `  Retrying in ${Math.round(delay / 1000)}s...`,
-      );
-
-      await sleep(delay);
-    }
-  }
-
-  throw lastError || new BeeclawError('Unknown error');
-}
-
-function calculateDelay(
-  attempt: number,
-  policy: RetryPolicy,
-  retryAfter?: number,
-): number {
-  // 如果服务器指定了 retry-after，使用它
-  if (retryAfter) {
-    return Math.min(retryAfter * 1000, policy.maxDelay);
-  }
-
-  let delay: number;
-
-  switch (policy.backoff) {
-    case 'fixed':
-      delay = policy.baseDelay;
-      break;
-
-    case 'linear':
-      delay = policy.baseDelay * (attempt + 1);
-      break;
-
-    case 'exponential':
-    default:
-      delay = policy.baseDelay * Math.pow(2, attempt);
-      break;
-  }
-
-  return Math.min(delay, policy.maxDelay);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 // ============================================================================
 // 结果类型
 // ============================================================================

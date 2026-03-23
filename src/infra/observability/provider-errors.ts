@@ -333,137 +333,51 @@ export function classifyNetworkError(
 }
 
 // ---------------------------------------------------------------------------
-// 3. Circuit Breaker（熔断器）
+// 3. Circuit Breaker（熔断器）— delegates to canonical implementation
 // ---------------------------------------------------------------------------
 
+import {
+  CircuitBreakerRegistry,
+  CIRCUIT_BREAKER_PRESETS,
+} from '../resilience/circuit-breaker';
+
 export interface CircuitBreakerConfig {
-  /** 进入 OPEN 状态所需的连续失败次数 (default: 5) */
   failureThreshold: number;
-  /** OPEN 持续时间 (ms)，超过后进入 HALF_OPEN (default: 60000) */
   resetTimeoutMs: number;
-  /** HALF_OPEN 状态下允许的试探请求数 (default: 1) */
   halfOpenRequests: number;
 }
 
-const DEFAULT_CB_CONFIG: CircuitBreakerConfig = {
-  failureThreshold: 5,
-  resetTimeoutMs: 60000,
-  halfOpenRequests: 1,
-};
+const _providerRegistry = new CircuitBreakerRegistry({
+  ...CIRCUIT_BREAKER_PRESETS.ai_provider,
+});
 
-type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+/** @deprecated Configure via CircuitBreakerRegistry directly. */
+export function configureCircuitBreaker(_config: Partial<CircuitBreakerConfig>): void {}
 
-interface CircuitBreakerState {
-  state: CircuitState;
-  failureCount: number;
-  lastFailureTime: number;
-  halfOpenAllowed: number;
-}
-
-// 每个 Provider 独立熔断
-const circuitBreakers = new Map<string, CircuitBreakerState>();
-let cbConfig = { ...DEFAULT_CB_CONFIG };
-
-/**
- * 配置 Circuit Breaker 参数。
- */
-export function configureCircuitBreaker(config: Partial<CircuitBreakerConfig>): void {
-  cbConfig = { ...cbConfig, ...config };
-}
-
-/**
- * 获取 Provider 的 Circuit Breaker 状态。
- */
-function getCBState(providerKey: string): CircuitBreakerState {
-  let cb = circuitBreakers.get(providerKey);
-  if (!cb) {
-    cb = { state: 'CLOSED', failureCount: 0, lastFailureTime: 0, halfOpenAllowed: cbConfig.halfOpenRequests };
-    circuitBreakers.set(providerKey, cb);
-  }
-  return cb;
-}
-
-/**
- * 检查 Circuit Breaker 是否允许请求。
- */
 export function isCircuitOpen(providerKey: string): boolean {
-  const cb = getCBState(providerKey);
-  const now = Date.now();
-
-  switch (cb.state) {
-    case 'CLOSED':
-      return false;
-
-    case 'OPEN':
-      // 是否超过 reset timeout？
-      if (now - cb.lastFailureTime > cbConfig.resetTimeoutMs) {
-        cb.state = 'HALF_OPEN';
-        cb.halfOpenAllowed = cbConfig.halfOpenRequests;
-        return false;
-      }
-      return true; // 熔断中
-
-    case 'HALF_OPEN':
-      if (cb.halfOpenAllowed > 0) {
-        cb.halfOpenAllowed--;
-        return false;
-      }
-      return true;
-
-    default:
-      return false;
-  }
+  return _providerRegistry.get(providerKey).getState() === 'open';
 }
 
-/**
- * 记录一次成功调用。
- */
 export function recordSuccess(providerKey: string): void {
-  const cb = getCBState(providerKey);
-  cb.failureCount = 0;
-  cb.state = 'CLOSED';
+  _providerRegistry.get(providerKey).recordSuccess();
 }
 
-/**
- * 记录一次失败调用。
- */
 export function recordFailure(providerKey: string): void {
-  const cb = getCBState(providerKey);
-  cb.failureCount++;
-  cb.lastFailureTime = Date.now();
-
-  if (cb.state === 'HALF_OPEN' || cb.failureCount >= cbConfig.failureThreshold) {
-    cb.state = 'OPEN';
-    logger.warn(
-      `[CircuitBreaker] Provider "${providerKey}" circuit OPENED ` +
-      `(failures: ${cb.failureCount}, threshold: ${cbConfig.failureThreshold}). ` +
-      `Will retry in ${cbConfig.resetTimeoutMs / 1000}s.`
-    );
-  }
+  _providerRegistry.get(providerKey).recordFailure(new Error(`Provider ${providerKey} call failed`));
 }
 
-/**
- * 获取所有 Provider 的 Circuit Breaker 状态（监控用）。
- */
-export function getAllCircuitStates(): Record<string, { state: CircuitState; failureCount: number }> {
-  const result: Record<string, { state: CircuitState; failureCount: number }> = {};
-  for (const [key, cb] of circuitBreakers) {
-    result[key] = { state: cb.state, failureCount: cb.failureCount };
-  }
-  return result;
+export function getAllCircuitStates(): Record<string, { state: string; failureCount: number }> {
+  return _providerRegistry.getStats();
 }
 
-/**
- * 重置指定 Provider 的 Circuit Breaker。
- */
 export function resetCircuitBreaker(providerKey: string): void {
-  circuitBreakers.delete(providerKey);
+  _providerRegistry.get(providerKey).reset();
 }
 
-/** 重置所有 Circuit Breaker（测试用） */
 export function resetAllCircuitBreakers(): void {
-  circuitBreakers.clear();
+  _providerRegistry.resetAll();
 }
+
 
 // ---------------------------------------------------------------------------
 // 4. Fallback Provider 链

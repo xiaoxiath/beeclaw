@@ -6,7 +6,7 @@
  * 方案：Promise.allSettled + 每工具独立 AbortController + 断路器前置检查 + 可选回退
  */
 
-import { CircuitBreaker, CircuitState } from './circuit-breaker';
+import { CircuitBreaker, type CircuitState } from '../resilience/circuit-breaker';
 
 // ─── 工具超时模式匹配 ─────────────────────────────────────────
 
@@ -187,7 +187,7 @@ export class ParallelToolExecutor {
     const preFiltered: ToolCallOutcome[] = [];
     for (const req of requests) {
       const breaker = this.config.circuitBreakers.get(req.name);
-      if (breaker && breaker.getState() === CircuitState.Open) {
+      if (breaker && breaker.getState() === 'open') {
         preFiltered.push({
           id: req.id, name: req.name, status: 'circuit_open',
           error: new Error(`Circuit breaker open for tool: ${req.name}`),

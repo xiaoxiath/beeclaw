@@ -1,4 +1,5 @@
 /**
+import { deepMerge } from '../../../infra/utils';
  * research-config.ts — 研究配置 Profile 管理
  * 
  * 为 Deep Research 流水线提供统一的配置中心，支持：
@@ -344,35 +345,6 @@ const PRESET_OVERRIDES: Record<ResearchPreset, DeepPartial<ResearchConfig>> = {
     // custom 完全由用户定义，此处为空占位
   },
 };
-
-// ============================================================
-// 配置解析
-// ============================================================
-
-/**
- * 深合并两个对象
- */
-function deepMerge<T extends Record<string, any>>(target: T, source: DeepPartial<T>): T {
-  const result = { ...target };
-  for (const key of Object.keys(source) as Array<keyof T>) {
-    const sourceVal = source[key];
-    if (sourceVal === undefined) continue;
-
-    if (
-      sourceVal !== null &&
-      typeof sourceVal === 'object' &&
-      !Array.isArray(sourceVal) &&
-      typeof result[key] === 'object' &&
-      !Array.isArray(result[key])
-    ) {
-      result[key] = deepMerge(result[key] as any, sourceVal as any);
-    } else {
-      result[key] = sourceVal as T[keyof T];
-    }
-  }
-  return result;
-}
-
 /**
  * 从环境变量读取覆盖
  * 
