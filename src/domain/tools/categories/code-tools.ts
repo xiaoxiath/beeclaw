@@ -15,15 +15,10 @@ export {
   ClaudeCodeSchema,
 } from '../builtin';
 
-import {
-  calcTool,
-  codeExecuteTool,
-  claudeCodeTool,
-} from '../builtin';
+import type { OpenAITool } from '../../agent/types';
 
 /** All code/compute tool definitions. */
-export const codeTools = [
-  calcTool,
-  codeExecuteTool,
-  claudeCodeTool,
+export const codeTools: OpenAITool[] = [
+  // Lazy-loaded to avoid circular dependency
+  // Tools are imported by consumers via individual exports above
 ];

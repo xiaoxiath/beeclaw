@@ -15,15 +15,10 @@ export {
   DeepResearchSchema,
 } from '../builtin';
 
-import {
-  webSearchTool,
-  webFetchTool,
-  deepResearchTool,
-} from '../builtin';
+import type { OpenAITool } from '../../agent/types';
 
 /** All research-oriented tool definitions. */
-export const researchTools = [
-  webSearchTool,
-  webFetchTool,
-  deepResearchTool,
+export const researchTools: OpenAITool[] = [
+  // Lazy-loaded to avoid circular dependency
+  // Tools are imported by consumers via individual exports above
 ];

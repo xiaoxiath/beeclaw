@@ -80,6 +80,9 @@ export { ToolDispatcher } from './tool-dispatcher';
 export { TokenBudgetManager, type TokenBudget, type TurnBudgetCheck } from './token-budget';
 export { SkillRunner } from './skill-runner';
 
+// Re-export getAgent from app module for backward compatibility
+export { getAgent } from '../../app';
+
 // Default tool executor that handles plugin, memory, skill, goal, proactive, persona, builtin, and feishu tools
 export function createDefaultToolExecutor(): ToolExecutor {
   // Initialize circuit breaker registry with tool-specific presets

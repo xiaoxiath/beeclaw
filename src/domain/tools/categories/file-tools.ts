@@ -21,19 +21,10 @@ export {
   ShellSchema,
 } from '../builtin';
 
-import {
-  fileReadTool,
-  fileWriteTool,
-  fileListTool,
-  fileDeleteTool,
-  shellTool,
-} from '../builtin';
+import type { OpenAITool } from '../../agent/types';
 
 /** All file-system tool definitions. */
-export const fileTools = [
-  fileReadTool,
-  fileWriteTool,
-  fileListTool,
-  fileDeleteTool,
-  shellTool,
+export const fileTools: OpenAITool[] = [
+  // Lazy-loaded to avoid circular dependency
+  // Tools are imported by consumers via individual exports above
 ];
