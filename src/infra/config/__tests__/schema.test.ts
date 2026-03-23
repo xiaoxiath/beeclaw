@@ -88,12 +88,15 @@ describe('AIProviderSchema', () => {
       type: 'openai',
       apiKey: 'sk-test',
       baseUrl: 'https://api.openai.com',
-      models: ['gpt-4'],
+      models: {
+        'gpt-4': { contextWindow: 128000, maxTokens: 4096 }
+      },
       default: true,
     });
     expect(result.name).toBe('openai-main');
     expect(result.type).toBe('openai');
     expect(result.apiKey).toBe('sk-test');
+    expect(result.models).toHaveProperty('gpt-4');
   });
 
   test('accepts valid Anthropic provider', () => {
@@ -101,18 +104,22 @@ describe('AIProviderSchema', () => {
       name: 'anthropic',
       type: 'anthropic',
       apiKey: 'sk-ant-test',
+      models: {
+        'claude-3-opus': { contextWindow: 200000 }
+      }
     });
     expect(result.type).toBe('anthropic');
+    expect(result.models).toHaveProperty('claude-3-opus');
   });
 
   test('applies default values', () => {
     const result = AIProviderSchema.parse({
       name: 'test',
       apiKey: 'key',
+      models: {},  // models is required but can be empty
     });
     expect(result.type).toBe('openai');
-    // models is now optional and can be array or object
-    expect(result.models).toBeUndefined();
+    expect(result.models).toEqual({});
     expect(result.default).toBe(false);
   });
 
@@ -121,6 +128,9 @@ describe('AIProviderSchema', () => {
       name: 'custom-ai',
       type: 'custom',
       apiKey: 'key',
+      models: {
+        'custom-model': { contextWindow: 8000 }
+      },
       options: { customOption: 'value' },
     });
     expect(result.type).toBe('custom');
