@@ -10,6 +10,24 @@ import { sendCardMessage } from './send';
 const _logger = getLogger('feishu:card');
 
 /**
+ * Sanitize user input for safe interpolation into Feishu card lark_md content.
+ *
+ * SECURITY FIX (P0): Prevents injection attacks by escaping HTML-like
+ * characters that could be interpreted by the Feishu card renderer.
+ * Applied at all [CR-Sec] marked locations.
+ */
+function sanitizeForCard(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
+/**
  * Card builder for creating interactive cards
  */
 export class CardBuilder {
@@ -251,7 +269,7 @@ export function createCard(): CardBuilder {
 /**
  * Build markdown card (Schema 2.0)
  */
-// SECURITY: [CR-Sec] User input (title, markdown) should be sanitized before interpolation into lark_md content
+// SECURITY: [CR-Sec] User input sanitized before interpolation into lark_md content
 export function buildMarkdownCard(
   markdown: string,
   options?: {
@@ -262,21 +280,21 @@ export function buildMarkdownCard(
 ): FeishuCard {
   const elements: CardElement[] = [];
 
-  // Add title if provided
+  // Add title if provided (sanitized)
   if (options?.title) {
     elements.push({
       tag: 'div',
       text: {
         tag: 'lark_md',
-        content: `**${options.title}**`,
+        content: `**${sanitizeForCard(options.title)}**`,
       },
     });
   }
 
-  // Add markdown content
+  // Add markdown content (sanitized)
   elements.push({
     tag: 'markdown',
-    content: markdown,
+    content: sanitizeForCard(markdown),
   });
 
   return {
@@ -292,7 +310,7 @@ export function buildMarkdownCard(
 /**
  * Build simple text card
  */
-// SECURITY: [CR-Sec] User input (title, content) should be sanitized before interpolation into lark_md content
+// SECURITY: [CR-Sec] User input sanitized before interpolation into lark_md content
 export function buildTextCard(
   title: string,
   content: string,
@@ -303,8 +321,9 @@ export function buildTextCard(
 ): FeishuCard {
   const elements: CardElement[] = [];
 
-  // Add title with icon
-  const titleText = options?.icon ? `${options.icon} ${title}` : title;
+  // Add title with icon (sanitized)
+  const safeTitle = sanitizeForCard(title);
+  const titleText = options?.icon ? `${options.icon} ${safeTitle}` : safeTitle;
   elements.push({
     tag: 'div',
     text: {
@@ -313,12 +332,12 @@ export function buildTextCard(
     },
   });
 
-  // Add content
+  // Add content (sanitized)
   elements.push({
     tag: 'div',
     text: {
       tag: 'plain_text',
-      content,
+      content: sanitizeForCard(content),
     },
   });
 
@@ -334,7 +353,7 @@ export function buildTextCard(
 /**
  * Build form card with input fields
  */
-// SECURITY: [CR-Sec] User input (title, field names/placeholders) should be sanitized before interpolation
+// SECURITY: [CR-Sec] User input sanitized before interpolation
 export function buildFormCard(
   title: string,
   fields: Array<{
@@ -348,12 +367,12 @@ export function buildFormCard(
 ): FeishuCard {
   const elements: CardElement[] = [];
 
-  // Add title
+  // Add title (sanitized)
   elements.push({
     tag: 'div',
     text: {
       tag: 'lark_md',
-      content: `**${title}**`,
+      content: `**${sanitizeForCard(title)}**`,
     },
   });
 
@@ -450,7 +469,7 @@ export function buildFormCard(
 /**
  * Build list card
  */
-// SECURITY: [CR-Sec] User input (title, item titles/descriptions) should be sanitized before interpolation
+// SECURITY: [CR-Sec] User input sanitized before interpolation
 export function buildListCard(
   title: string,
   items: Array<{
@@ -462,12 +481,12 @@ export function buildListCard(
 ): FeishuCard {
   const elements: CardElement[] = [];
 
-  // Add title
+  // Add title (sanitized)
   elements.push({
     tag: 'div',
     text: {
       tag: 'lark_md',
-      content: `**${title}**`,
+      content: `**${sanitizeForCard(title)}**`,
     },
   });
 
@@ -477,7 +496,7 @@ export function buildListCard(
 
   // Add items
   for (const item of items) {
-    const content = item.icon ? `${item.icon} ${item.title}` : item.title;
+    const content = item.icon ? `${item.icon} ${sanitizeForCard(item.title)}` : sanitizeForCard(item.title);
     elements.push({
       tag: 'div',
       text: {

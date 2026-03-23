@@ -20,9 +20,24 @@ const RISK_COLORS = {
 type RiskLevel = keyof typeof RISK_COLORS;
 
 /**
+ * Sanitize user input for safe interpolation into card lark_md content.
+ * SECURITY FIX (P0): Applied at [CR-Sec] marked locations.
+ */
+function sanitizeForCard(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
+/**
  * 渲染确认请求卡片
  */
-// SECURITY: [CR-Sec] User input (toolName, message, question, context) should be sanitized before interpolation into lark_md content
+// SECURITY: [CR-Sec] User input sanitized before interpolation into lark_md content
 export function renderConfirmationRequestCard(block: ContentBlock): any {
   if (block.type !== 'confirmation_request') {
     return null;
@@ -30,6 +45,9 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
 
   const confirmationBlock = block as import('../../../types/content-block').ConfirmationRequestBlock;
   const riskLevel = confirmationBlock.riskLevel;
+  // Sanitize user-controlled fields before card interpolation
+  const safeToolName = sanitizeForCard(confirmationBlock.toolName || '');
+  const safeMessage = sanitizeForCard(confirmationBlock.message || '即将执行操作');
   const color = RISK_COLORS[riskLevel] || 'orange';
 
   // 计算剩余时间
@@ -56,7 +74,7 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
             is_short: true,
             text: {
               tag: 'lark_md',
-              content: `**🔧 工具**\n${confirmationBlock.toolName}`,
+              content: `**🔧 工具**\n${safeToolName}`,
             },
           },
           {
@@ -75,7 +93,7 @@ export function renderConfirmationRequestCard(block: ContentBlock): any {
       // 操作详情
       {
         tag: 'markdown',
-        content: `**📋 操作详情**\n\n${confirmationBlock.message || '即将执行操作'}`,
+        content: `**📋 操作详情**\n\n${safeMessage}`,
       },
       // 参数（如果有）
       confirmationBlock.params &&
@@ -174,17 +192,20 @@ export function renderUserInputRequestCard(block: ContentBlock): any {
   const userInputBlock = block as import('../../../types/content-block').UserInputRequestBlock;
   const inputType = userInputBlock.inputType || 'text';
   const hasOptions = userInputBlock.options && userInputBlock.options.length > 0;
+  // Sanitize user-controlled fields
+  const safeQuestion = sanitizeForCard(userInputBlock.question || '');
+  const safeContext = sanitizeForCard(userInputBlock.context || '');
 
   const elements: any[] = [
-    // 问题
+    // 问题 (sanitized)
     {
       tag: 'markdown',
-      content: `**${userInputBlock.question}**`,
+      content: `**${safeQuestion}**`,
     },
-    // 上下文（如果有）
+    // 上下文（如果有, sanitized）
     userInputBlock.context && {
       tag: 'markdown',
-      content: `\n💡 **上下文**: ${userInputBlock.context}`,
+      content: `\n💡 **上下文**: ${safeContext}`,
     },
   ];
 

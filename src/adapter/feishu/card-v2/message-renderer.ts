@@ -27,6 +27,21 @@ import {
 import { IconToken, Color } from './types/styles';
 
 /**
+ * Sanitize user input for safe interpolation into card content.
+ * SECURITY FIX (P0): Applied at [CR-Sec] marked locations.
+ */
+function sanitizeCardInput(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
+/**
  * Render options
  */
 export interface RenderOptions {
@@ -355,11 +370,12 @@ export function renderEmptyCard(message?: string): Card {
 /**
  * Render error card
  */
-// SECURITY: [CR-Sec] Error messages may contain user input; sanitize before interpolation
+// SECURITY: [CR-Sec] Error messages sanitized before interpolation
 export function renderErrorCard(error: string): Card {
+  const safeError = sanitizeCardInput(error);
   const body = createCardBody([
     createDivElement({
-      text: createPlainTextElement(`❌ Error: ${error}`),
+      text: createPlainTextElement(`❌ Error: ${safeError}`),
       icon: createStandardIconElement(IconToken.Error, { color: Color.Red }),
     }),
   ]);

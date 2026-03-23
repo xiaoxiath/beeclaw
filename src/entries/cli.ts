@@ -57,14 +57,21 @@ async function main() {
     console.log('\n✅ Beeclaw CLI started\n');
 
     // 设置优雅关闭
-    const shutdown = new GracefulShutdown();
+    // FIX (P0): Use GracefulShutdown's actual API — register() + installSignalHandlers().
+    // The previous code called .on() and .setupSignalHandlers() which do not exist
+    // on the GracefulShutdown class (it is not an EventEmitter).
+    const shutdown = new GracefulShutdown({ installSignalHandlers: false });
 
-    shutdown.on('shutdown', async () => {
-      console.log('\n\n🛑 Shutting down CLI...');
-      await adapterRegistry.stopAll();
+    shutdown.register({
+      name: 'cli-adapter-shutdown',
+      priority: 10,
+      fn: async () => {
+        console.log('\n\n🛑 Shutting down CLI...');
+        await adapterRegistry.stopAll();
+      },
     });
 
-    shutdown.setupSignalHandlers();
+    shutdown.installSignalHandlers();
 
     // 启动 CLI REPL 循环（导入现有的 cli 逻辑）
     // 注意：实际的 REPL 循环在 src/cli.ts 中

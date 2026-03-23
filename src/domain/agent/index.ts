@@ -1982,62 +1982,100 @@ export class Agent {
       });
 
       // Handle tool calls
+      // [P0 FIX] chatStream now mirrors chat() with parallel tool execution,
+      // loop detection, hookRunner integration, and content block callbacks.
       if (hasToolCalls(response)) {
         const toolCalls = extractToolCalls(response);
 
-        for (const call of toolCalls) {
-          const params = safeJsonParse(call.function.arguments, {});
+        // [P0 FIX] Use batched parallel execution (same as chat())
+        const batches = groupToolCalls(toolCalls.map(tc => ({
+          name: tc.function.name,
+          call: tc,
+        })));
 
-          yield { type: 'tool_call', name: call.function.name, params };
+        // Collect yielded events in order for each batch
+        for (const batch of batches) {
+          const batchPromises = batch.map(async ({ call }) => {
+            const params = safeJsonParse(call.function.arguments, {});
 
-          // Track skill usage
-          if (call.function.name === 'skill_get') {
-            const skillName = params.name as string;
-            if (skillName) {
-              this.usedSkillsInTurn.add(skillName);
+            // Track skill usage
+            if (call.function.name === 'skill_get') {
+              const skillName = params.name as string;
+              if (skillName) {
+                this.usedSkillsInTurn.add(skillName);
+              }
             }
-          }
 
-          // [AUDIT FIX P-2] Check if tool is blocked in current context
-          if (this.isToolBlocked(call.function.name)) {
-            const blockedMsg = `Tool "${call.function.name}" is blocked in this context. ` +
-              `This operation is not allowed in proactive/scheduled tasks to prevent recursion.`;
-            console.warn(`[Agent] ${blockedMsg}`);
-            const blockedResult = { success: false, error: blockedMsg, blocked: true };
-            yield { type: 'tool_result', name: call.function.name, result: blockedResult };
+            // [P0 FIX] Loop detection (same as chat())
+            const loopCheck = this.loopDetector.check(call.function.name, params);
+            if (loopCheck.action === 'warn') {
+              this.messages.push({
+                role: 'system',
+                content: loopCheck.warningMessage || 'Possible loop detected',
+              });
+              this.loopDetector.acknowledgeWarning();
+            } else if (loopCheck.action === 'break') {
+              const errorMsg = `Loop detected: ${loopCheck.details}. Try a different approach.`;
+              return {
+                call,
+                params,
+                result: { success: false, error: errorMsg } as BuiltinToolResult,
+                blocked: true,
+              };
+            }
+            this.loopDetector.recordToolCall(call.function.name, params, iterations);
+
+            // [AUDIT FIX P-2] Check if tool is blocked in current context
+            if (this.isToolBlocked(call.function.name)) {
+              const blockedMsg = `Tool "${call.function.name}" is blocked in this context. ` +
+                `This operation is not allowed in proactive/scheduled tasks to prevent recursion.`;
+              console.warn(`[Agent] ${blockedMsg}`);
+              return {
+                call,
+                params,
+                result: { success: false, error: blockedMsg, blocked: true } as BuiltinToolResult,
+                blocked: true,
+              };
+            }
+
+            // [P0 FIX] Run beforeToolCall hook (same as chat())
+            if (this.hookRunner) {
+              await this.hookRunner.runBeforeToolCall({
+                toolName: call.function.name,
+                params,
+                timestamp: new Date().toISOString(),
+              });
+            }
+
+            const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
+            return { call, params, result, blocked: false };
+          });
+
+          const batchResults = await Promise.all(batchPromises);
+
+          // Yield events sequentially (maintains stream ordering)
+          for (const { call, params, result, blocked } of batchResults) {
+            yield { type: 'tool_call' as const, name: call.function.name, params };
+            yield { type: 'tool_result' as const, name: call.function.name, result };
+
+            let resultToSave = result;
+            if (this.hookRunner) {
+              resultToSave = this.hookRunner.runToolResultPersist({
+                toolName: call.function.name,
+                result,
+                toolCallId: call.id,
+                timestamp: new Date().toISOString(),
+              });
+            }
 
             const toolMsg: ChatMessage = {
               role: 'tool',
-              content: JSON.stringify(blockedResult),
+              content: JSON.stringify(resultToSave),
               tool_call_id: call.id,
             };
             this.messages.push(toolMsg);
             this.estimatedTokens += estimateMessageTokens(toolMsg);
-            continue;
           }
-
-          const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
-
-          yield { type: 'tool_result', name: call.function.name, result };
-
-          let resultToSave = result;
-          if (this.hookRunner) {
-            resultToSave = this.hookRunner.runToolResultPersist({
-              toolName: call.function.name,
-              result,
-              toolCallId: call.id,
-              timestamp: new Date().toISOString(),
-            });
-          }
-
-          const toolMsg: ChatMessage = {
-            role: 'tool',
-            content: JSON.stringify(resultToSave),
-            tool_call_id: call.id,
-          };
-          this.messages.push(toolMsg);
-          // [P0 FIX] Track tool result tokens — was missing from chatStream
-          this.estimatedTokens += estimateMessageTokens(toolMsg);
         }
 
         continue;
@@ -2099,6 +2137,8 @@ export function createAgent(options: {
     thinking?: { type: 'enabled' | 'disabled' };
     [key: string]: any;
   };
+  /** Tools that should be blocked from execution */
+  blockedTools?: string[];
 }): Agent {
   let systemPrompt = options.systemPrompt || SYSTEM_PROMPTS.default;
 
