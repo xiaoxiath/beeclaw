@@ -919,6 +919,13 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       originalMessage: messageString,
     });
 
+    // [SAFETY] Await any in-progress compression before processing new message
+    const pendingCompression = compressionLocks.get(sessionId);
+    if (pendingCompression) {
+      await pendingCompression;
+      compressionLocks.delete(sessionId);
+    }
+
     // [PERF OPT] Async compression - don't block user message processing
     // Check if compression is needed
     if (session.messages.length >= sessionConfig.maxMessages) {
@@ -1126,9 +1133,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       autoRefreshMemory: true,
       tokenStatsConfig: agentConfig.tokenStatsConfig,
       // Pass resolved params from three-layer configuration
-      params: (agentConfig as any).params,
+      params: agentConfig.params,
       ...(options.agentOptions?.blockedTools ? { blockedTools: options.agentOptions.blockedTools } : {}),
-    } as any);
+    });
 
     // Replay conversation history
     // NOTE: Skip the last user message since it was just saved and will be added by agent.chat()

@@ -5,6 +5,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { writeFileAtomic } from '../../infra/utils/atomic-fs';
 import { join } from 'path';
 import { getConfig } from '../../infra/config';
 import type {
@@ -790,7 +791,7 @@ export class Scheduler {
 
   private saveStorage(): void {
     this.storage.lastUpdated = new Date().toISOString();
-    writeFileSync(this.storagePath, JSON.stringify(this.storage, null, 2), 'utf-8');
+    writeFileAtomic(this.storagePath, JSON.stringify(this.storage, null, 2));
   }
 }
 
