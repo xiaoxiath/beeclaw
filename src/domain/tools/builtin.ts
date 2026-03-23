@@ -2599,6 +2599,9 @@ export { researchTools } from './categories/research-tools';
 export { fileTools } from './categories/file-tools';
 export { codeTools } from './categories/code-tools';
 
+// Re-export consolidated state tools for backward compatibility
+export { stateManageTool, stateQueryTool, stateLockManageTool } from '../subagent/state-tools-consolidated';
+
 /**
  * Aggregated tool list from all categories.
  */

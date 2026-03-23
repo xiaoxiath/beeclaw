@@ -1,9 +1,8 @@
 /**
-import { deepMerge } from '../utils';
  * BeeClaw Resilience — Unified Configuration Center
- * 
+ *
  * 统一管理所有韧性模块的配置参数，消除 ~79 处硬编码常量。
- * 
+ *
  * 设计原则：
  *   1. 三层优先级：环境变量 > 用户覆写 > 预设 > 代码默认值
  *   2. 四套预设：quick_task / standard / complex_research / long_running
@@ -11,6 +10,8 @@ import { deepMerge } from '../utils';
  *   4. 交叉校验 —— resolveConfig 时自动检查 L1 < L2 < L3 等约束
  *   5. 热重载友好 —— 纯函数式 resolveConfig，无模块级可变状态
  */
+
+import { deepMerge } from '../utils';
 
 // ────────────────────────────────────────────
 // § 0  Utility Types
