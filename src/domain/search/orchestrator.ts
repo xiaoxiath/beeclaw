@@ -270,16 +270,16 @@ export class SearchOrchestrator {
                 break;
               }
             } catch (_fallbackError) {
-              console.warn(`[Search] Fallback ${fallbackName} also failed`);
+              console.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${query.substring(0, 50)}"`);
             }
           }
         }
       }
     }
 
-    // If all providers failed, throw the first error
+    // If all providers failed, throw an aggregate error
     if (allResults.length === 0 && errors.length > 0) {
-      throw errors[0];
+      throw new AggregateError(errors, `All search providers failed (${errors.length} errors)`);
     }
 
     return allResults;

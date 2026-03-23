@@ -208,7 +208,7 @@ export async function executeSandboxWriteFile(params: Record<string, unknown>): 
 export async function executeSandboxReadFile(params: Record<string, unknown>): Promise<SandboxToolResult> {
   try {
     const parsed = SandboxReadFileSchema.parse(params);
-    const { sandbox, _pathMapper } = await ensureSandbox();
+    const { sandbox } = await ensureSandbox();
 
     let content = await sandbox.readFile(parsed.path);
 
@@ -245,7 +245,7 @@ export async function executeSandboxReadFile(params: Record<string, unknown>): P
 export async function executeSandboxListFiles(params: Record<string, unknown>): Promise<SandboxToolResult> {
   try {
     const parsed = SandboxListFilesSchema.parse(params);
-    const { sandbox, _pathMapper } = await ensureSandbox();
+    const { sandbox } = await ensureSandbox();
 
     const entries = await sandbox.listFiles(parsed.path || '.', {
       recursive: parsed.recursive,

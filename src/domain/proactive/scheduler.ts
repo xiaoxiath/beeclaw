@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from '
 import { writeFileAtomic } from '../../infra/utils/atomic-fs';
 import { join } from 'path';
 import { getConfig } from '../../infra/config';
+import { logger } from '../../infra/observability/logger';
 import type {
   Schedule,
   Pattern,
@@ -87,7 +88,7 @@ export class Scheduler {
           }
 
           if (holderAlive && age < Scheduler.LOCK_STALE_MS) {
-            console.log(
+            logger.info(
               `[Scheduler] Lock for "${scheduleId}" held by PID ${holderPid} ` +
               `(age: ${Math.round(age / 1000)}s) — skipping`
             );
@@ -95,7 +96,7 @@ export class Scheduler {
           }
 
           // Stale lock — clean up
-          console.log(
+          logger.info(
             `[Scheduler] Clearing stale lock for "${scheduleId}" ` +
             `(PID ${holderPid} alive=${holderAlive}, age=${Math.round(age / 1000)}s)`
           );
@@ -115,11 +116,11 @@ export class Scheduler {
     } catch (err: any) {
       if (err?.code === 'EEXIST') {
         // Race condition: another process created the lock between our check and write
-        console.log(`[Scheduler] Lock race for "${scheduleId}" — another process won`);
+        logger.info(`[Scheduler] Lock race for "${scheduleId}" — another process won`);
         return false;
       }
       // Non-critical: fall back to memory-only lock
-      console.warn(`[Scheduler] File lock failed for "${scheduleId}":`, err?.message);
+      logger.warn(`[Scheduler] File lock failed for "${scheduleId}":`, err?.message);
     }
 
     this.executingSchedules.add(scheduleId);
@@ -206,7 +207,7 @@ export class Scheduler {
     );
 
     if (existingSchedule) {
-      console.log(
+      logger.info(
         `[Scheduler] Schedule "${options.name}" already exists (ID: ${existingSchedule.id}), skipping creation`
       );
       return {
@@ -502,7 +503,7 @@ export class Scheduler {
 
       // Store the interval as if it were a timer (for cleanup)
       this.cronTimers.set(schedule.id, checkInterval as unknown as NodeJS.Timeout);
-      console.log(`[Scheduler] Schedule "${schedule.name}" next run is far in the future (${nextRun.toISOString()}), using interval check`);
+      logger.info(`[Scheduler] Schedule "${schedule.name}" next run is far in the future (${nextRun.toISOString()}), using interval check`);
       return;
     }
 
@@ -526,13 +527,13 @@ export class Scheduler {
   private async executeWithLock(schedule: Schedule, callback: ScheduleCallback): Promise<void> {
     // Atomic check-and-set for memory lock
     if (!this.acquireExecutionLock(schedule.id)) {
-      console.log(`[Scheduler] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
+      logger.info(`[Scheduler] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
       return;
     }
 
     // Check storage lock
     if (schedule.isExecuting) {
-      console.log(`[Scheduler] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
+      logger.info(`[Scheduler] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
       this.releaseExecutionLock(schedule.id); // Release memory lock
       return;
     }
@@ -588,58 +589,40 @@ export class Scheduler {
       hour12: false,
     });
 
-    const parseField = (field: string, min: number, max: number): number[] | null => {
-      if (field === '*') {
-        return Array.from({ length: max - min + 1 }, (_, i) => min + i);
-      }
-
-      // Handle */n (step)
-      const stepMatch = field.match(/^\*\/(\d+)$/);
-      if (stepMatch) {
-        const step = parseInt(stepMatch[1], 10);
-        if (step <= 0 || step > max) return null;
-        const values: number[] = [];
-        for (let i = min; i <= max; i += step) {
-          values.push(i);
+    const matchField = (value: number, expr: string, min: number, max: number): boolean => {
+      if (expr === '*') return true;
+      return expr.split(',').some(part => {
+        if (part.includes('/')) {
+          const [range, step] = part.split('/');
+          const stepNum = parseInt(step);
+          if (stepNum <= 0) return false;
+          const start = range === '*' ? min : parseInt(range);
+          for (let i = start; i <= max; i += stepNum) {
+            if (i === value) return true;
+          }
+          return false;
         }
-        return values;
-      }
-
-      // Handle lists (e.g., "1,3,5")
-      if (field.includes(',')) {
-        const values = field.split(',').map(v => parseInt(v, 10));
-        if (values.some(isNaN)) return null;
-        return values.filter(v => v >= min && v <= max);
-      }
-
-      // Handle ranges (e.g., "1-5")
-      const rangeMatch = field.match(/^(\d+)-(\d+)$/);
-      if (rangeMatch) {
-        const start = parseInt(rangeMatch[1], 10);
-        const end = parseInt(rangeMatch[2], 10);
-        if (start > end || start < min || end > max) return null;
-        return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-      }
-
-      // Handle single number
-      const num = parseInt(field, 10);
-      if (isNaN(num) || num < min || num > max) return null;
-      return [num];
+        if (part.includes('-')) {
+          const [from, to] = part.split('-').map(Number);
+          return value >= from && value <= to;
+        }
+        return parseInt(part) === value;
+      });
     };
 
     // Parse each part
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+    const [minExpr, hourExpr, domExpr, monthExpr, dowExpr] = parts;
 
-    const minutes = parseField(minute, 0, 59);
-    const hours = parseField(hour, 0, 23);
-    const daysOfMonth = parseField(dayOfMonth, 1, 31);
-    const months = parseField(month, 1, 12);
-    const daysOfWeek = parseField(dayOfWeek, 0, 6); // 0 = Sunday
-
-    if (!minutes || !hours || !daysOfMonth || !months || !daysOfWeek) {
-      // Fallback for unsupported patterns: 1 hour from now
-      return new Date(now.getTime() + 60 * 60 * 1000);
-    }
+    const matchesCron = (
+      minute: number, hour: number, day: number,
+      month: number, dow: number,
+    ): boolean => {
+      return matchField(minute, minExpr, 0, 59) &&
+             matchField(hour, hourExpr, 0, 23) &&
+             matchField(day, domExpr, 1, 31) &&
+             matchField(month, monthExpr, 1, 12) &&
+             matchField(dow, dowExpr, 0, 6);
+    };
 
     // Helper to get time components in configured timezone from a Date
     const getTzComponents = (date: Date) => {
@@ -717,13 +700,7 @@ export class Scheduler {
       // Check if current search time matches cron expression
       const dow = new Date(searchYear, searchMonth - 1, searchDay).getDay();
 
-      if (
-        minutes.includes(searchMinute) &&
-        hours.includes(searchHour) &&
-        daysOfMonth.includes(searchDay) &&
-        months.includes(searchMonth) &&
-        daysOfWeek.includes(dow)
-      ) {
+      if (matchesCron(searchMinute, searchHour, searchDay, searchMonth, dow)) {
         // Found a match! Create the Date object
         return createFromTzTime(searchYear, searchMonth, searchDay, searchHour, searchMinute);
       }
@@ -772,7 +749,7 @@ export class Scheduler {
             hasChanges = true;
           } else if (schedule.isExecuting === true) {
             schedule.isExecuting = false;
-            console.log(`[Scheduler] Cleared stale execution lock for ${schedule.name}`);
+            logger.info(`[Scheduler] Cleared stale execution lock for ${schedule.name}`);
             hasChanges = true;
           }
         }

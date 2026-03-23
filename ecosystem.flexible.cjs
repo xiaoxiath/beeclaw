@@ -18,7 +18,7 @@ module.exports = {
   apps: [
     {
       name: 'beeclaw',
-      script: 'src/bot.ts',
+      script: 'src/entries/bot.ts',
       interpreter: 'bun',
       cwd: './',
 

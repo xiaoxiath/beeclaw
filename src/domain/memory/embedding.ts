@@ -172,8 +172,12 @@ export function createEmbeddingService(config: EmbeddingConfig, provider?: AIPro
       });
 
     case 'openai':
-      // Fallback to ollama for now
-      console.warn('[Embedding] OpenAI not implemented, falling back to ollama');
+      // Fallback to ollama - warn about dimension mismatch
+      console.warn(
+        '[Embedding] OpenAI provider not implemented. Falling back to ollama (nomic-embed-text). ' +
+        'WARNING: Dimension mismatch - OpenAI text-embedding-3-small produces 1536-d vectors, ' +
+        'but ollama nomic-embed-text produces 768-d vectors. Re-index if switching providers.'
+      );
       return new OllamaEmbedding({
         model: 'nomic-embed-text',
       });
