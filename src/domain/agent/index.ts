@@ -48,6 +48,11 @@ import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 import { getContextSelector } from './context/selector';
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
+
+// Phase 4: Extracted modules from Agent god-object
+import { ToolDispatcher } from './tool-dispatcher';
+import { TokenBudgetManager } from './token-budget';
+import { SkillRunner } from './skill-runner';
 /**
  * Safely parse JSON with fallback
  */
@@ -69,6 +74,14 @@ export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
 export { stripMessageMetadata } from './types';
 export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
 export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects, registerToolDependencyOverride, registerToolDependencyPattern, clearToolDependencyOverrides, getToolDependencyOverrides } from './tool-dependencies';
+
+// Phase 4: Re-export extracted modules for backward compatibility
+export { ToolDispatcher } from './tool-dispatcher';
+export { TokenBudgetManager, type TokenBudget, type TurnBudgetCheck } from './token-budget';
+export { SkillRunner } from './skill-runner';
+
+// Re-export getAgent from app module for backward compatibility
+export { getAgent } from '../../app';
 
 // Default tool executor that handles plugin, memory, skill, goal, proactive, persona, builtin, and feishu tools
 export function createDefaultToolExecutor(): ToolExecutor {
@@ -271,6 +284,11 @@ export class Agent {
   private skillEnforcement?: SkillEnforcementEngine;
   private healthMonitor?: PeriodicHealthMonitor;
 
+  // Phase 4: Extracted focused modules
+  private toolDispatcher: ToolDispatcher;
+  private tokenBudget: TokenBudgetManager;
+  private skillRunner: SkillRunner;
+
   /**
    * Check if a tool is blocked from execution in the current context.
    * Used to prevent recursive tool calls in proactive tasks.
@@ -369,6 +387,19 @@ export class Agent {
     } catch (err) {
       logger.debug('[Agent] PeriodicHealthMonitor not available:', err);
     }
+
+    // Phase 4: Initialize extracted modules
+    this.toolDispatcher = new ToolDispatcher(
+      this.toolExecutor,
+      this.hookRunner,
+      this.loopDetector,
+      this.options.blockedTools,
+    );
+    this.tokenBudget = new TokenBudgetManager(
+      this.contextConfig,
+      this.estimatedTokens,
+    );
+    this.skillRunner = new SkillRunner();
 
     // Trigger before_agent_start hook (async, fire-and-forget)
     if (this.hookRunner) {
@@ -487,7 +518,7 @@ export class Agent {
         this.estimatedTokens += estimateMessageTokens({ role: 'system', content: freshPrompt });
       }
 
-      console.log('[Agent] Memory refreshed - facts/*.md changes applied');
+      logger.info('[Agent] Memory refreshed - facts/*.md changes applied');
     } catch (error) {
       console.warn('[Agent] Failed to refresh memory:', error);
     }
@@ -580,7 +611,7 @@ export class Agent {
       return;
     }
 
-    console.log(`[Agent] Context compression triggered: ${this.estimatedTokens} tokens > ${threshold} threshold`);
+    logger.debug(`[Agent] Context compression triggered: ${this.estimatedTokens} tokens > ${threshold} threshold`);
 
     const systemIndex = this.messages.findIndex(m => m.role === 'system');
     const startIndex = systemIndex >= 0 ? systemIndex + 1 : 0;
@@ -591,7 +622,7 @@ export class Agent {
       if (startIndex < this.messages.length - 2) {
         const removed = this.messages.splice(startIndex, 1);
         this.estimatedTokens -= estimateMessageTokens(removed[0]);
-        console.log(`[Agent] Removed oldest message to free space`);
+        logger.debug(`[Agent] Removed oldest message to free space`);
       }
       return;
     }
@@ -647,13 +678,13 @@ export class Agent {
       if (removeIndex < this.messages.length - keepRecent) {
         const removed = this.messages.splice(removeIndex, 1);
         this.estimatedTokens -= estimateMessageTokens(removed[0]);
-        console.log(`[Agent] Removed message at index ${removeIndex} to free space`);
+        logger.debug(`[Agent] Removed message at index ${removeIndex} to free space`);
       } else {
         break;
       }
     }
 
-    console.log(`[Agent] Context compressed: freed ${tokensFreed} tokens, now at ${this.estimatedTokens}`);
+    logger.debug(`[Agent] Context compressed: freed ${tokensFreed} tokens, now at ${this.estimatedTokens}`);
   }
 
   // Compressed context summary (from LLM compression)
@@ -680,7 +711,7 @@ export class Agent {
     const recentMessages = this.messages.slice(-keepRecent);
     const systemMessage = systemIndex >= 0 ? this.messages[systemIndex] : null;
 
-    console.log(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
+    logger.debug(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
 
     if (this.hookRunner) {
       await this.hookRunner.runBeforeCompaction({
@@ -722,7 +753,7 @@ export class Agent {
         this.messages = newMessages;
         this.estimatedTokens = estimateTotalTokens(newMessages);
 
-        console.log(
+        logger.debug(
           `[Agent] LLM compression complete: ${oldTokens} → ${this.estimatedTokens} tokens ` +
           `(${Math.round((1 - this.estimatedTokens / oldTokens) * 100)}% reduction)`
         );
@@ -1065,7 +1096,7 @@ export class Agent {
             type: 'thinking',
             thinking: thinkingContent,
           });
-          console.log(`[Agent] 💭 Thinking process captured (${thinkingContent.length} chars)`);
+          logger.debug(`[Agent] 💭 Thinking process captured (${thinkingContent.length} chars)`);
         }
         // Remove thinking tags from content
         cleanedContent = cleanedContent.replace(/<thinking>\n?[\s\S]*?\n?<\/thinking>\n*/g, '').trim();
@@ -1090,15 +1121,15 @@ export class Agent {
       if (hasToolCalls(response)) {
         const toolCalls = extractToolCalls(response);
 
-        console.log(`\n${'='.repeat(80)}`);
-        console.log(`[Agent] LLM decided to call ${toolCalls.length} tool(s):`);
+        logger.debug(`\n${'='.repeat(80)}`);
+        logger.debug(`[Agent] LLM decided to call ${toolCalls.length} tool(s):`);
         toolCalls.forEach((tc, idx) => {
           const params = safeJsonParse(tc.function.arguments, {});
           const paramsStr = JSON.stringify(params);
           const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
-          console.log(`  ${idx + 1}. ${tc.function.name}(${paramsPreview})`);
+          logger.debug(`  ${idx + 1}. ${tc.function.name}(${paramsPreview})`);
         });
-        console.log('='.repeat(80));
+        logger.debug('='.repeat(80));
 
         // Emit thinking block for tool selection decision
         if (options?.onContentBlock) {
@@ -1116,7 +1147,7 @@ export class Agent {
         if (skillGetCall && otherCalls.length > 0) {
           // 【修复 Bug 1】先执行 skill_get，但不要 continue，继续执行其他工具
           const params = safeJsonParse(skillGetCall.function.arguments, {});
-          console.log(`\n[Skill] 🎯 Getting skill: ${params.name}`);
+          logger.debug(`\n[Skill] 🎯 Getting skill: ${params.name}`);
           options?.onToolCall?.(skillGetCall.function.name, params);
 
           // Generate ContentBlock for skill_get
@@ -1140,7 +1171,7 @@ export class Agent {
             const skillName = params.name as string;
             if (skillName) {
               this.usedSkillsInTurn.add(skillName);
-              console.log(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
+              logger.debug(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
             }
 
             this.estimatedTokens -= estimateMessageTokens({
@@ -1187,7 +1218,7 @@ export class Agent {
 
           // 【修复】不要 continue！继续处理 otherCalls
           // 将 otherCalls 作为下一批工具调用
-          console.log(`[Skill] ✅ Skill loaded, now executing ${otherCalls.length} other tool(s)`);
+          logger.debug(`[Skill] ✅ Skill loaded, now executing ${otherCalls.length} other tool(s)`);
 
           // 重新赋值 toolCalls 为 otherCalls，继续后续处理
           const remainingToolCalls = otherCalls;
@@ -1199,15 +1230,15 @@ export class Agent {
           })));
 
           const stats = getGroupingStats(remainingToolCalls.map(tc => ({ name: tc.function.name })));
-          console.log(`\n[Tool Execution Plan] (After skill_get)`);
-          console.log(`  Total calls: ${stats.totalCalls}`);
-          console.log(`  Parallel batches: ${stats.parallelBatches}`);
-          console.log(`  Sequential batches: ${stats.sequentialBatches}`);
-          console.log(`  Max parallelism: ${stats.maxParallelism}`);
+          logger.debug(`\n[Tool Execution Plan] (After skill_get)`);
+          logger.debug(`  Total calls: ${stats.totalCalls}`);
+          logger.debug(`  Parallel batches: ${stats.parallelBatches}`);
+          logger.debug(`  Sequential batches: ${stats.sequentialBatches}`);
+          logger.debug(`  Max parallelism: ${stats.maxParallelism}`);
           if (batches.length > 0) {
             batches.forEach((batch, idx) => {
               const toolNames = batch.map(b => b.call.function.name).join(', ');
-              console.log(`  Batch ${idx + 1}: ${toolNames}`);
+              logger.debug(`  Batch ${idx + 1}: ${toolNames}`);
             });
           }
 
@@ -1221,7 +1252,7 @@ export class Agent {
               const params = safeJsonParse(call.function.arguments, {});
               const toolName = call.function.name;
 
-              console.log(`[Sequential Tool] ${toolName}`);
+              logger.debug(`[Sequential Tool] ${toolName}`);
               options?.onToolCall?.(toolName, params);
 
               // Generate ContentBlock
@@ -1243,12 +1274,12 @@ export class Agent {
 
                 // Check if result contains a content block (e.g., chart_data)
                 if (result._contentBlock && result.success && result.data) {
-                  console.log(`[Agent] 🎨 Tool ${toolName} returned content block, triggering onContentBlock callback`);
-                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
+                  logger.debug(`[Agent] 🎨 Tool ${toolName} returned content block, triggering onContentBlock callback`);
+                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
                   options?.onContentBlock?.(result.data);
                 } else if (result._contentBlock) {
-                  console.log(`[Agent] ⚠️ Tool ${toolName} has _contentBlock but missing success or data`);
-                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data });
+                  logger.debug(`[Agent] ⚠️ Tool ${toolName} has _contentBlock but missing success or data`);
+                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data });
                 }
 
                 let resultToSave = result;
@@ -1278,7 +1309,7 @@ export class Agent {
                 const params = safeJsonParse(call.function.arguments, {});
                 const toolName = call.function.name;
 
-                console.log(`[Parallel Tool] ${toolName}`);
+                logger.debug(`[Parallel Tool] ${toolName}`);
                 options?.onToolCall?.(toolName, params);
 
                 // Generate ContentBlock
@@ -1302,7 +1333,7 @@ export class Agent {
                 options?.onToolResult?.(toolName, result);
 
                 // DEBUG: Log the actual result structure
-                console.log(`[Agent] [DEBUG] Tool ${toolName} result:`, {
+                logger.debug(`[Agent] [DEBUG] Tool ${toolName} result:`, {
                   hasContentBlock: '_contentBlock' in result,
                   contentBlockValue: result._contentBlock,
                   success: result.success,
@@ -1312,12 +1343,12 @@ export class Agent {
 
                 // Check if result contains a content block (e.g., chart_data)
                 if (result._contentBlock && result.success && result.data) {
-                  console.log(`[Agent] 🎨 [Parallel] Tool ${toolName} returned content block, triggering onContentBlock callback`);
-                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
+                  logger.debug(`[Agent] 🎨 [Parallel] Tool ${toolName} returned content block, triggering onContentBlock callback`);
+                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
                   options?.onContentBlock?.(result.data);
                 } else if (result._contentBlock) {
-                  console.log(`[Agent] ⚠️ [Parallel] Tool ${toolName} has _contentBlock but missing success or data`);
-                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
+                  logger.debug(`[Agent] ⚠️ [Parallel] Tool ${toolName} has _contentBlock but missing success or data`);
+                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
                 }
 
                 return { call, result };
@@ -1352,10 +1383,10 @@ export class Agent {
             const elapsed = Date.now() - batchStartTime;
             if (batch.length > 1) {
               const toolNames = batch.map(b => b.call.function.name).join(', ');
-              console.log(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
-              console.log(`  Tools: ${toolNames}`);
+              logger.debug(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
+              logger.debug(`  Tools: ${toolNames}`);
             } else {
-              console.log(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
+              logger.debug(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
             }
           }
 
@@ -1369,22 +1400,22 @@ export class Agent {
         })));
 
         const stats = getGroupingStats(toolCalls.map(tc => ({ name: tc.function.name })));
-        console.log(`\n[Tool Execution Plan]`);
-        console.log(`  Total calls: ${stats.totalCalls}`);
-        console.log(`  Parallel batches: ${stats.parallelBatches}`);
-        console.log(`  Sequential batches: ${stats.sequentialBatches}`);
-        console.log(`  Max parallelism: ${stats.maxParallelism}`);
+        logger.debug(`\n[Tool Execution Plan]`);
+        logger.debug(`  Total calls: ${stats.totalCalls}`);
+        logger.debug(`  Parallel batches: ${stats.parallelBatches}`);
+        logger.debug(`  Sequential batches: ${stats.sequentialBatches}`);
+        logger.debug(`  Max parallelism: ${stats.maxParallelism}`);
         if (batches.length > 0) {
           batches.forEach((batch, idx) => {
             const toolNames = batch.map(b => b.call.function.name).join(', ');
-            console.log(`  Batch ${idx + 1}: ${toolNames}`);
+            logger.debug(`  Batch ${idx + 1}: ${toolNames}`);
           });
         }
 
         for (const batch of batches) {
           const batchStartTime = Date.now();
 
-          console.log(`\n[Batch Execution] Starting batch with ${batch.length} tool(s)...`);
+          logger.debug(`\n[Batch Execution] Starting batch with ${batch.length} tool(s)...`);
 
           const batchResults = await Promise.all(
             batch.map(async ({ call }) => {
@@ -1392,7 +1423,7 @@ export class Agent {
 
               const paramsStr = JSON.stringify(params);
               const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
-              console.log(`  [Executing] ${call.function.name}(${paramsPreview})`);
+              logger.debug(`  [Executing] ${call.function.name}(${paramsPreview})`);
 
               options?.onToolCall?.(call.function.name, params);
 
@@ -1447,7 +1478,7 @@ export class Agent {
                 const toolElapsed = Date.now() - toolStartTime;
 
                 // DEBUG: Log the actual result structure
-                console.log(`[Agent] [DEBUG] Tool ${call.function.name} result:`, {
+                logger.debug(`[Agent] [DEBUG] Tool ${call.function.name} result:`, {
                   hasContentBlock: '_contentBlock' in result,
                   contentBlockValue: result._contentBlock,
                   success: result.success,
@@ -1457,17 +1488,17 @@ export class Agent {
 
                 // Check if result contains a content block (e.g., chart_data)
                 if (result._contentBlock && result.success && result.data) {
-                  console.log(`[Agent] 🎨 [Batch] Tool ${call.function.name} returned content block, triggering onContentBlock callback`);
-                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
+                  logger.debug(`[Agent] 🎨 [Batch] Tool ${call.function.name} returned content block, triggering onContentBlock callback`);
+                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
                   options?.onContentBlock?.(result.data);
                 } else if (result._contentBlock) {
-                  console.log(`[Agent] ⚠️ [Batch] Tool ${call.function.name} has _contentBlock but missing success or data`);
-                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
+                  logger.debug(`[Agent] ⚠️ [Batch] Tool ${call.function.name} has _contentBlock but missing success or data`);
+                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
                 }
 
                 // [HITL] Check if tool result needs user confirmation or input
                 if (result.needsConfirmation) {
-                  console.log(`[HITL] Tool ${call.function.name} requires user confirmation`);
+                  logger.debug(`[HITL] Tool ${call.function.name} requires user confirmation`);
 
                   // Generate ConfirmationRequest ContentBlock
                   options?.onContentBlock?.({
@@ -1509,7 +1540,7 @@ export class Agent {
 
                 // [HITL] Check if tool needs user input
                 if (result.needsUserInput) {
-                  console.log(`[HITL] Tool ${call.function.name} requires user input`);
+                  logger.debug(`[HITL] Tool ${call.function.name} requires user input`);
 
                   // Generate UserInputRequest ContentBlock
                   options?.onContentBlock?.({
@@ -1559,7 +1590,7 @@ export class Agent {
 
                 const resultStr = JSON.stringify(result);
                 const resultPreview = resultStr.length > 150 ? resultStr.substring(0, 150) + '...' : resultStr;
-                console.log(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
+                logger.debug(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
 
                 options?.onToolResult?.(call.function.name, result);
 
@@ -1596,14 +1627,14 @@ export class Agent {
               const skillName = params.name as string;
               if (skillName) {
                 this.usedSkillsInTurn.add(skillName);
-                console.log(`[Skill] ✅ Using skill: ${skillName}`);
+                logger.debug(`[Skill] ✅ Using skill: ${skillName}`);
               }
             }
 
             if (call.function.name === 'skill_record') {
               const skillName = params.name as string;
               const success = params.success as boolean;
-              console.log(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
+              logger.debug(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
             }
 
             let resultToSave = result;
@@ -1631,10 +1662,10 @@ export class Agent {
           const elapsed = Date.now() - batchStartTime;
           if (batch.length > 1) {
             const toolNames = batch.map(b => b.call.function.name).join(', ');
-            console.log(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
-            console.log(`  Tools: ${toolNames}`);
+            logger.debug(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
+            logger.debug(`  Tools: ${toolNames}`);
           } else {
-            console.log(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
+            logger.debug(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
           }
         }
 
@@ -1697,7 +1728,7 @@ export class Agent {
           });
           this.estimatedTokens += estimateMessageTokens({ role: 'user', content: retryPrompt });
 
-          console.log('[SkillEnforcement] Requesting more complete output...');
+          logger.debug('[SkillEnforcement] Requesting more complete output...');
 
           // One more LLM call for completeness
           try {
@@ -1723,7 +1754,7 @@ export class Agent {
                 role: 'assistant',
                 content: retryContent,
               });
-              console.log(`[SkillEnforcement] Retry produced longer output (${retryContent.length} > ${previousLength} chars)`);
+              logger.debug(`[SkillEnforcement] Retry produced longer output (${retryContent.length} > ${previousLength} chars)`);
 
               // Update content block for streaming
               options?.onContentBlock?.({
@@ -1738,14 +1769,14 @@ export class Agent {
       }
     }
 
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`[Conversation Summary]`);
-    console.log(`  Iterations: ${iterations}`);
+    logger.debug(`\n${'='.repeat(80)}`);
+    logger.debug(`[Conversation Summary]`);
+    logger.debug(`  Iterations: ${iterations}`);
     if (this.usedSkillsInTurn.size > 0) {
-      console.log(`  Skills used: ${Array.from(this.usedSkillsInTurn).join(', ')}`);
+      logger.debug(`  Skills used: ${Array.from(this.usedSkillsInTurn).join(', ')}`);
     }
-    console.log(`  Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
-    console.log('='.repeat(80) + '\n');
+    logger.debug(`  Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
+    logger.debug('='.repeat(80) + '\n');
 
     if (totalCompletionTokens === 0) {
       totalCompletionTokens = estimateTokens(finalContent);
@@ -1779,7 +1810,7 @@ export class Agent {
         type: 'text',
         text: `\n\n---\n${skillInfo}`,
       });
-      console.log(`[Agent] 📋 Skill attribution added: ${skillNames}`);
+      logger.debug(`[Agent] 📋 Skill attribution added: ${skillNames}`);
     }
 
     if (this.tokenStatsConfig.showTokenStats) {
@@ -2108,7 +2139,7 @@ export class Agent {
     }
 
     // [P0 FIX] Log context usage for monitoring — was missing from chatStream
-    console.log(`[Agent.chatStream] Complete - Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
+    logger.debug(`[Agent.chatStream] Complete - Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
   }
 }
 

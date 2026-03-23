@@ -590,6 +590,13 @@ export class SharedState {
     this.locks.clear();
     this.subscriptions.clear();
   }
+
+  /**
+   * Dispose resources (alias for destroy, implements Disposable pattern)
+   */
+  dispose(): void {
+    this.destroy();
+  }
 }
 
 // ============================================================================

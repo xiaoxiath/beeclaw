@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG } from './defaults';
 import { ProviderResolver } from './provider-resolver';
 import { ParamsMerger } from './params-merger';
 import { logger } from '../observability/logger';
+import { deepMerge } from '../utils';
 
 const CONFIG_FILES = ['beeclaw.json', 'beeclaw.yaml', 'beeclaw.yml'];
 
@@ -110,34 +111,6 @@ async function loadFileConfig(basePath: string): Promise<Record<string, unknown>
   }
   return null;
 }
-
-function deepMerge<T extends Record<string, unknown>>(
-  target: T,
-  source: Record<string, unknown>
-): T {
-  const result = { ...target };
-
-  for (const key of Object.keys(source)) {
-    if (
-      key in source &&
-      typeof source[key] === 'object' &&
-      source[key] !== null &&
-      !Array.isArray(source[key]) &&
-      key in target &&
-      typeof (target as Record<string, unknown>)[key] === 'object'
-    ) {
-      result[key] = deepMerge(
-        (target as Record<string, unknown>)[key] as Record<string, unknown>,
-        source[key] as Record<string, unknown>
-      );
-    } else {
-      result[key] = source[key];
-    }
-  }
-
-  return result;
-}
-
 let cachedConfig: AppConfig | null = null;
 
 export async function loadConfig(basePath: string = process.cwd()): Promise<AppConfig> {

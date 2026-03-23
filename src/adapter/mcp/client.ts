@@ -299,8 +299,8 @@ export class MCPClientManager {
    * 转换 MCP 工具为 OpenAI 格式
    */
   private convertToOpenAITool(serverId: string, tool: Tool): OpenAITool {
-    // 工具名称格式：mcp_{serverId}_{toolName}
-    const openaiName = `mcp_${serverId}_${tool.name}`;
+    // 工具名称格式：mcp_{serverId}__{toolName} (double underscore separator)
+    const openaiName = `mcp_${serverId}__${tool.name}`;
 
     const inputSchema = tool.inputSchema as {
       type: 'object';
@@ -458,13 +458,17 @@ export class MCPClientManager {
    * @returns { serverId, toolName } 或 null
    */
   static parseMCPToolName(name: string): { serverId: string; toolName: string } | null {
-    const match = name.match(/^mcp_([^_]+)_(.+)$/);
-    if (!match) {
+    if (!name.startsWith('mcp_')) {
+      return null;
+    }
+    const withoutPrefix = name.slice(4);
+    const separatorIndex = withoutPrefix.indexOf('__');
+    if (separatorIndex === -1) {
       return null;
     }
     return {
-      serverId: match[1],
-      toolName: match[2],
+      serverId: withoutPrefix.substring(0, separatorIndex),
+      toolName: withoutPrefix.substring(separatorIndex + 2),
     };
   }
 

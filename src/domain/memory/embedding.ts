@@ -1,4 +1,7 @@
 /**
+ * @see ./embeddings.ts for EmbeddingProvider interface (MiniMax, Local, OpenAI providers)
+ * @see ../../infra/utils for shared cosineSimilarity
+ *
  * Embedding Service
  *
  * Provides text embeddings for semantic search.
@@ -6,6 +9,7 @@
  */
 
 import type { AIProvider } from '../../infra/config/schema';
+export { cosineSimilarity } from '../../infra/utils';
 
 // Embedding result
 export interface EmbeddingResult {
@@ -168,8 +172,12 @@ export function createEmbeddingService(config: EmbeddingConfig, provider?: AIPro
       });
 
     case 'openai':
-      // Fallback to ollama for now
-      console.warn('[Embedding] OpenAI not implemented, falling back to ollama');
+      // Fallback to ollama - warn about dimension mismatch
+      console.warn(
+        '[Embedding] OpenAI provider not implemented. Falling back to ollama (nomic-embed-text). ' +
+        'WARNING: Dimension mismatch - OpenAI text-embedding-3-small produces 1536-d vectors, ' +
+        'but ollama nomic-embed-text produces 768-d vectors. Re-index if switching providers.'
+      );
       return new OllamaEmbedding({
         model: 'nomic-embed-text',
       });
@@ -191,35 +199,6 @@ export function initEmbeddingService(config: EmbeddingConfig, provider?: AIProvi
 export function getEmbeddingService(): EmbeddingService | null {
   return embeddingService;
 }
-
-/**
- * Compute cosine similarity between two vectors
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) {
-    throw new Error('Vectors must have same dimension');
-  }
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  normA = Math.sqrt(normA);
-  normB = Math.sqrt(normB);
-
-  if (normA === 0 || normB === 0) {
-    return 0;
-  }
-
-  return dotProduct / (normA * normB);
-}
-
 /**
  * Chunk text for embedding (max 512 tokens per chunk)
  */

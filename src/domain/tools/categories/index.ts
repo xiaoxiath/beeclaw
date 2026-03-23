@@ -14,3 +14,10 @@ export * from './shell';
 export * from './finance';
 export * from './utility';
 export * from './subagent';
+
+// Phase 4: Additional category modules
+export * from './research-tools';
+export * from './file-tools';
+export * from './code-tools';
+export * from './state-tools';
+export * from './memory-tools';

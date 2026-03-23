@@ -1,4 +1,5 @@
 /**
+export { cosineSimilarity } from '../../infra/utils';
  * P3-#9: 向量存储与语义搜索
  * 
  * 原始问题：indexer.ts 中的 MemoryIndex 仅包含 keywords 关键词索引，
@@ -131,31 +132,6 @@ export function setEmbeddingProvider(provider: EmbeddingProvider): void {
 export function getEmbeddingProvider(): EmbeddingProvider | null {
   return currentProvider;
 }
-
-// ─── 向量数学运算 ──────────────────────────────────────────
-
-/**
- * 余弦相似度
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
-
-  return dotProduct / denominator;
-}
-
 /**
  * 欧氏距离
  */

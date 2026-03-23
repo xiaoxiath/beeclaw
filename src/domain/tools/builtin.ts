@@ -2590,3 +2590,24 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
 export function isBuiltinTool(name: string): boolean {
   return builtinToolNames.includes(name);
 }
+
+
+// ============================================================================
+// Phase 4: Category re-exports & aggregator
+// ============================================================================
+export { researchTools } from './categories/research-tools';
+export { fileTools } from './categories/file-tools';
+export { codeTools } from './categories/code-tools';
+
+// Re-export consolidated state tools for backward compatibility
+export { stateManageTool, stateQueryTool, stateLockManageTool } from '../subagent/state-tools-consolidated';
+
+/**
+ * Aggregated tool list from all categories.
+ */
+export function getAllCategoryTools() {
+  const { researchTools } = require('./categories/research-tools');
+  const { fileTools } = require('./categories/file-tools');
+  const { codeTools } = require('./categories/code-tools');
+  return [...researchTools, ...fileTools, ...codeTools];
+}

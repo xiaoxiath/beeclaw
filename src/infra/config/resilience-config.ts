@@ -1,8 +1,8 @@
 /**
  * BeeClaw Resilience — Unified Configuration Center
- * 
+ *
  * 统一管理所有韧性模块的配置参数，消除 ~79 处硬编码常量。
- * 
+ *
  * 设计原则：
  *   1. 三层优先级：环境变量 > 用户覆写 > 预设 > 代码默认值
  *   2. 四套预设：quick_task / standard / complex_research / long_running
@@ -10,6 +10,8 @@
  *   4. 交叉校验 —— resolveConfig 时自动检查 L1 < L2 < L3 等约束
  *   5. 热重载友好 —— 纯函数式 resolveConfig，无模块级可变状态
  */
+
+import { deepMerge } from '../utils';
 
 // ────────────────────────────────────────────
 // § 0  Utility Types
@@ -368,39 +370,6 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResilienceConfig>> = {
     },
   },
 };
-
-// ────────────────────────────────────────────
-// § 4  Deep Merge Utility
-// ────────────────────────────────────────────
-
-function deepMerge<T extends Record<string, unknown>>(
-  base: T,
-  override: DeepPartial<T>,
-): T {
-  const result = { ...base };
-  for (const key of Object.keys(override) as (keyof T)[]) {
-    const overrideVal = override[key];
-    if (overrideVal === undefined) continue;
-
-    const baseVal = base[key];
-    if (
-      baseVal !== null &&
-      typeof baseVal === 'object' &&
-      !Array.isArray(baseVal) &&
-      typeof overrideVal === 'object' &&
-      !Array.isArray(overrideVal)
-    ) {
-      result[key] = deepMerge(
-        baseVal as Record<string, unknown>,
-        overrideVal as DeepPartial<Record<string, unknown>>,
-      ) as T[keyof T];
-    } else {
-      result[key] = overrideVal as T[keyof T];
-    }
-  }
-  return result;
-}
-
 // ────────────────────────────────────────────
 // § 5  Environment Variable Overrides
 // ────────────────────────────────────────────

@@ -1,4 +1,5 @@
 // ============================================================================
+export { cosineSimilarity } from '../../infra/utils';
 // 类型定义
 // ============================================================================
 
@@ -177,6 +178,9 @@ export class MiniMaxEmbeddingProvider implements EmbeddingProvider {
 // ============================================================================
 
 /**
+ * @see ./embedding.ts for EmbeddingService interface (higher-level abstraction)
+ * @see ../../infra/utils for shared cosineSimilarity
+ *
  * 本地 embedding provider
  * 使用简单的 TF-IDF 风格的向量，不依赖外部 API
  * 适用于没有网络或 API 配额的情况
@@ -287,39 +291,6 @@ export function createEmbeddingProvider(config: EmbeddingProviderConfig): Embedd
       );
   }
 }
-
-// ============================================================================
-// 向量工具函数
-// ============================================================================
-
-/**
- * 计算余弦相似度
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) {
-    throw new Error('Vectors must have the same length');
-  }
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  normA = Math.sqrt(normA);
-  normB = Math.sqrt(normB);
-
-  if (normA === 0 || normB === 0) {
-    return 0;
-  }
-
-  return dotProduct / (normA * normB);
-}
-
 /**
  * 计算 MMR (Maximal Marginal Relevance)
  * 用于在搜索结果中增加多样性

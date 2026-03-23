@@ -17,6 +17,16 @@ import { SkillFrontmatterSchema } from './types';
 import { LLMSkillMatcher } from './llm-matcher';
 import { logger } from '../../infra/observability/logger';
 
+// Phase 4: Extracted focused modules
+import { SkillParser, getSkillParser } from './parser';
+import { SkillCache } from './cache';
+import { SkillWatcher } from './watcher';
+
+// Phase 4: Re-export extracted modules for backward compatibility
+export { SkillParser, getSkillParser } from './parser';
+export { SkillCache } from './cache';
+export { SkillWatcher } from './watcher';
+
 export class SkillStore {
   private basePath: string;          // User skills path
   private builtinPath: string;       // Built-in skills path

@@ -1,4 +1,5 @@
 /**
+import { cosineSimilarity } from '../../infra/utils';
  * P2-#13: 去重阈值可配置
  * 
  * 原始问题：scoring.ts 中 findDuplicates() 使用硬编码的相似度阈值 0.8，
@@ -314,22 +315,6 @@ function charJaccardSimilarity(a: string, b: string): number {
   const union = setA.size + setB.size - intersection;
   return union === 0 ? 0 : intersection / union;
 }
-
-/**
- * 余弦相似度（向量）
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
-
 // ─── 核心去重逻辑 ─────────────────────────────────────────
 
 /**

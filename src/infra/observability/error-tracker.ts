@@ -2,6 +2,9 @@
  * Error Tracker - Error Statistics and Health Monitoring
  *
  * Tracks error occurrences and provides health status checks.
+ *
+ * @deprecated This module depends on error-handler.ts which is itself deprecated.
+ * New code should use the unified error handling in `src/infra/resilience/unified-retry.ts`.
  */
 
 import type { ClassifiedError, ErrorType } from './error-handler';

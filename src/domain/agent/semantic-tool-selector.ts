@@ -18,6 +18,7 @@ import { getAllToolsForAI } from './tools';
 import { logger } from '../../infra/observability/logger';
 import { getEmbeddingProvider } from '../memory/vector-store';
 import type { OpenAITool, ChatMessage } from './types';
+import { cosineSimilarity } from '../../infra/utils';
 
 interface ToolEmbedding {
   toolName: string;
@@ -223,7 +224,7 @@ export class SemanticToolSelector {
     const similarities: Array<{ toolName: string; score: number }> = [];
 
     for (const [toolName, toolEmb] of this.toolEmbeddings) {
-      const similarity = this.cosineSimilarity(queryEmbedding, toolEmb.embedding);
+      const similarity = cosineSimilarity(queryEmbedding, toolEmb.embedding);
       similarities.push({ toolName, score: similarity });
     }
 
@@ -288,27 +289,6 @@ export class SemanticToolSelector {
       logger.error('[SemanticSelector] Embedding generation failed', error);
       throw error;
     }
-  }
-
-  /**
-   * 余弦相似度计算
-   */
-  private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
-
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    if (normA === 0 || normB === 0) return 0;
-
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
   /**

@@ -1,0 +1,209 @@
+From 01bc56b832d9f49ba7660aa221028396f15e3526 Mon Sep 17 00:00:00 2001
+From: root <root@g340-cd52-700-c3d1-c735-796-4b9e.byted.org>
+Date: Mon, 23 Mar 2026 14:53:05 +0800
+Subject: [PATCH] fix(phase2): P1 data safety and stability fixes
+
+---
+ src/app/gateway-service.ts        | 12 ++++++++++++
+ src/domain/agent/index.ts         |  2 ++
+ src/domain/memory/store.ts        | 10 ++++++----
+ src/domain/proactive/scheduler.ts |  3 ++-
+ src/domain/session/index.ts       | 11 +++++++++--
+ src/domain/tools/builtin.ts       |  4 ++--
+ src/infra/config/hot-reload.ts    | 28 +++++++++++++++++++++++++++-
+ 7 files changed, 60 insertions(+), 10 deletions(-)
+
+diff --git a/src/app/gateway-service.ts b/src/app/gateway-service.ts
+index e44daf4..dacc714 100644
+--- a/src/app/gateway-service.ts
++++ b/src/app/gateway-service.ts
+@@ -45,6 +45,18 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
+ // Rate limiting middleware (simple in-memory)
+ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+ 
++// Periodic cleanup of expired rate limit entries to prevent memory leaks
++const RATE_LIMIT_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
++
++setInterval(() => {
++  const now = Date.now();
++  for (const [key, entry] of rateLimitStore.entries()) {
++    if (now > entry.resetAt) {
++      rateLimitStore.delete(key);
++    }
++  }
++}, RATE_LIMIT_CLEANUP_INTERVAL);
++
+ export function rateLimitMiddleware(windowMs: number = 60000, maxRequests: number = 100) {
+   return async (c: Context, next: Next): Promise<void> => {
+     const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+diff --git a/src/domain/agent/index.ts b/src/domain/agent/index.ts
+index f57110f..57b0e36 100644
+--- a/src/domain/agent/index.ts
++++ b/src/domain/agent/index.ts
+@@ -2099,6 +2099,8 @@ export function createAgent(options: {
+     thinking?: { type: 'enabled' | 'disabled' };
+     [key: string]: any;
+   };
++  /** Tools that should be blocked from execution */
++  blockedTools?: string[];
+ }): Agent {
+   let systemPrompt = options.systemPrompt || SYSTEM_PROMPTS.default;
+ 
+diff --git a/src/domain/memory/store.ts b/src/domain/memory/store.ts
+index d5af296..7fadc9e 100644
+--- a/src/domain/memory/store.ts
++++ b/src/domain/memory/store.ts
+@@ -192,7 +192,7 @@ export class MemoryStore {
+       const filePath = join(factsPath, file);
+       if (!existsSync(filePath)) {
+         const title = file.replace('.md', '').charAt(0).toUpperCase() + file.replace('.md', '').slice(1);
+-        writeFileSync(filePath, `# ${title}\n\n`, 'utf-8');
++        atomicWriteFileSync(filePath, `# ${title}\n\n`);
+       }
+     }
+   }
+@@ -629,7 +629,7 @@ export class MemoryStore {
+         const content = readFileSync(filePath, 'utf-8');
+ 
+         // 解析对话（简化版，只提取关键信息）
+-        const entries = this.parseConversationFile(content);
++        const entries = this.parseConversationFile(content, filePath);
+         conversations.push(...entries);
+ 
+         if (conversations.length >= limit * 2) {
+@@ -662,8 +662,10 @@ export class MemoryStore {
+    * Parse conversation file to extract entries.
+    * 简化版解析器，用于快速加载最近对话。
+    */
+-  private parseConversationFile(content: string): ConversationEntry[] {
++  private parseConversationFile(content: string, filePath: string): ConversationEntry[] {
+     const entries: ConversationEntry[] = [];
++    const fileStat = statSync(filePath);
++    const dateStr = fileStat.mtime.toISOString().split('T')[0];
+     const sections = content.split('## ').slice(1); // 跳过标题
+ 
+     for (const section of sections) {
+@@ -689,7 +691,7 @@ export class MemoryStore {
+ 
+       if (user || assistant) {
+         entries.push({
+-          timestamp: new Date().toISOString().split('T')[0] + 'T' + time + ':00',
++          timestamp: dateStr + 'T' + time + ':00',
+           source,
+           user,
+           assistant,
+diff --git a/src/domain/proactive/scheduler.ts b/src/domain/proactive/scheduler.ts
+index 4313b3e..1a4cce7 100644
+--- a/src/domain/proactive/scheduler.ts
++++ b/src/domain/proactive/scheduler.ts
+@@ -5,6 +5,7 @@
+  */
+ 
+ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
++import { writeFileAtomic } from '../../infra/utils/atomic-fs';
+ import { join } from 'path';
+ import { getConfig } from '../../infra/config';
+ import type {
+@@ -790,7 +791,7 @@ export class Scheduler {
+ 
+   private saveStorage(): void {
+     this.storage.lastUpdated = new Date().toISOString();
+-    writeFileSync(this.storagePath, JSON.stringify(this.storage, null, 2), 'utf-8');
++    writeFileAtomic(this.storagePath, JSON.stringify(this.storage, null, 2));
+   }
+ }
+ 
+diff --git a/src/domain/session/index.ts b/src/domain/session/index.ts
+index 3d8cc76..56ae553 100644
+--- a/src/domain/session/index.ts
++++ b/src/domain/session/index.ts
+@@ -919,6 +919,13 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions):
+       originalMessage: messageString,
+     });
+ 
++    // [SAFETY] Await any in-progress compression before processing new message
++    const pendingCompression = compressionLocks.get(sessionId);
++    if (pendingCompression) {
++      await pendingCompression;
++      compressionLocks.delete(sessionId);
++    }
++
+     // [PERF OPT] Async compression - don't block user message processing
+     // Check if compression is needed
+     if (session.messages.length >= sessionConfig.maxMessages) {
+@@ -1126,9 +1133,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions):
+       autoRefreshMemory: true,
+       tokenStatsConfig: agentConfig.tokenStatsConfig,
+       // Pass resolved params from three-layer configuration
+-      params: (agentConfig as any).params,
++      params: agentConfig.params,
+       ...(options.agentOptions?.blockedTools ? { blockedTools: options.agentOptions.blockedTools } : {}),
+-    } as any);
++    });
+ 
+     // Replay conversation history
+     // NOTE: Skip the last user message since it was just saved and will be added by agent.chat()
+diff --git a/src/domain/tools/builtin.ts b/src/domain/tools/builtin.ts
+index ae4d40d..2a0675f 100644
+--- a/src/domain/tools/builtin.ts
++++ b/src/domain/tools/builtin.ts
+@@ -2301,8 +2301,8 @@ export async function executeCreateChart(params: Record<string, unknown>): Promi
+       data,
+       ...(params.title && { title: String(params.title) }),
+       ...(params.spec && { spec: params.spec as Record<string, unknown> }),
+-      ...(params.aspectRatio && { aspectRatio: params.aspectRatio as any }),
+-      ...(params.colorTheme && { colorTheme: params.colorTheme as any }),
++      ...(params.aspectRatio && { aspectRatio: params.aspectRatio as string }),
++      ...(params.colorTheme && { colorTheme: params.colorTheme as string }),
+     };
+ 
+     console.log('[create_chart] 🎨 Returning chart block:', {
+diff --git a/src/infra/config/hot-reload.ts b/src/infra/config/hot-reload.ts
+index 42c0cb3..9058bb4 100644
+--- a/src/infra/config/hot-reload.ts
++++ b/src/infra/config/hot-reload.ts
+@@ -56,6 +56,32 @@ export type ConfigChangeListener = (change: ConfigChange, diff?: ConfigDiff) =>
+ // 配置观察器
+ // ============================================================================
+ 
++/**
++ * Deep equality comparison for config values (handles arrays, objects, primitives).
++ */
++function deepEqual(a: unknown, b: unknown): boolean {
++  if (a === b) return true;
++  if (typeof a !== typeof b) return false;
++  if (a === null || b === null) return a === b;
++  if (typeof a !== 'object') return a === b;
++
++  // Handle arrays
++  if (Array.isArray(a) || Array.isArray(b)) {
++    if (!Array.isArray(a) || !Array.isArray(b)) return false;
++    if (a.length !== b.length) return false;
++    return a.every((val, idx) => deepEqual(val, b[idx]));
++  }
++
++  // Handle plain objects
++  const aObj = a as Record<string, unknown>;
++  const bObj = b as Record<string, unknown>;
++  const aKeys = Object.keys(aObj);
++  const bKeys = Object.keys(bObj);
++
++  if (aKeys.length !== bKeys.length) return false;
++  return aKeys.every(key => deepEqual(aObj[key], bObj[key]));
++}
++
+ export class ConfigWatcher {
+   private watcher: FSWatcher | null = null;
+   private configPath: string | null = null;
+@@ -310,7 +336,7 @@ export class ConfigWatcher {
+           changes,
+           timestamp,
+         );
+-      } else if (oldValue !== newValue) {
++      } else if (!deepEqual(oldValue, newValue)) {
+         changes.push({
+           key: fullKey,
+           oldValue,
+-- 
+2.20.1
+

@@ -1,0 +1,793 @@
+From dc0d56d2702af753bffe026b2cd284873dd1d6d6 Mon Sep 17 00:00:00 2001
+From: root <root@g340-cd52-700-60f9-5561-211-6c32.byted.org>
+Date: Mon, 23 Mar 2026 14:58:02 +0800
+Subject: [PATCH] fix(phase5): subsystem improvements and config fixes
+
+---
+ ecosystem.flexible.cjs            |   2 +-
+ src/adapter/mcp/client.ts         |  16 ++--
+ src/domain/agent/index.ts         | 132 +++++++++++++++---------------
+ src/domain/memory/embedding.ts    |   8 +-
+ src/domain/proactive/pusher.ts    |  16 +++-
+ src/domain/proactive/scheduler.ts | 105 ++++++++++--------------
+ src/domain/sandbox/tools.ts       |   4 +-
+ src/domain/search/orchestrator.ts |   6 +-
+ src/domain/subagent/state.ts      |   7 ++
+ tailwind.config.js                |   2 +-
+ 10 files changed, 151 insertions(+), 147 deletions(-)
+
+diff --git a/ecosystem.flexible.cjs b/ecosystem.flexible.cjs
+index 5adc665..7d92432 100644
+--- a/ecosystem.flexible.cjs
++++ b/ecosystem.flexible.cjs
+@@ -18,7 +18,7 @@ module.exports = {
+   apps: [
+     {
+       name: 'beeclaw',
+-      script: 'src/bot.ts',
++      script: 'src/entries/bot.ts',
+       interpreter: 'bun',
+       cwd: './',
+ 
+diff --git a/src/adapter/mcp/client.ts b/src/adapter/mcp/client.ts
+index c376533..55a8646 100644
+--- a/src/adapter/mcp/client.ts
++++ b/src/adapter/mcp/client.ts
+@@ -299,8 +299,8 @@ export class MCPClientManager {
+    * 转换 MCP 工具为 OpenAI 格式
+    */
+   private convertToOpenAITool(serverId: string, tool: Tool): OpenAITool {
+-    // 工具名称格式：mcp_{serverId}_{toolName}
+-    const openaiName = `mcp_${serverId}_${tool.name}`;
++    // 工具名称格式：mcp_{serverId}__{toolName} (double underscore separator)
++    const openaiName = `mcp_${serverId}__${tool.name}`;
+ 
+     const inputSchema = tool.inputSchema as {
+       type: 'object';
+@@ -458,13 +458,17 @@ export class MCPClientManager {
+    * @returns { serverId, toolName } 或 null
+    */
+   static parseMCPToolName(name: string): { serverId: string; toolName: string } | null {
+-    const match = name.match(/^mcp_([^_]+)_(.+)$/);
+-    if (!match) {
++    if (!name.startsWith('mcp_')) {
++      return null;
++    }
++    const withoutPrefix = name.slice(4);
++    const separatorIndex = withoutPrefix.indexOf('__');
++    if (separatorIndex === -1) {
+       return null;
+     }
+     return {
+-      serverId: match[1],
+-      toolName: match[2],
++      serverId: withoutPrefix.substring(0, separatorIndex),
++      toolName: withoutPrefix.substring(separatorIndex + 2),
+     };
+   }
+ 
+diff --git a/src/domain/agent/index.ts b/src/domain/agent/index.ts
+index f57110f..cbb64f2 100644
+--- a/src/domain/agent/index.ts
++++ b/src/domain/agent/index.ts
+@@ -487,7 +487,7 @@ export class Agent {
+         this.estimatedTokens += estimateMessageTokens({ role: 'system', content: freshPrompt });
+       }
+ 
+-      console.log('[Agent] Memory refreshed - facts/*.md changes applied');
++      logger.info('[Agent] Memory refreshed - facts/*.md changes applied');
+     } catch (error) {
+       console.warn('[Agent] Failed to refresh memory:', error);
+     }
+@@ -580,7 +580,7 @@ export class Agent {
+       return;
+     }
+ 
+-    console.log(`[Agent] Context compression triggered: ${this.estimatedTokens} tokens > ${threshold} threshold`);
++    logger.debug(`[Agent] Context compression triggered: ${this.estimatedTokens} tokens > ${threshold} threshold`);
+ 
+     const systemIndex = this.messages.findIndex(m => m.role === 'system');
+     const startIndex = systemIndex >= 0 ? systemIndex + 1 : 0;
+@@ -591,7 +591,7 @@ export class Agent {
+       if (startIndex < this.messages.length - 2) {
+         const removed = this.messages.splice(startIndex, 1);
+         this.estimatedTokens -= estimateMessageTokens(removed[0]);
+-        console.log(`[Agent] Removed oldest message to free space`);
++        logger.debug(`[Agent] Removed oldest message to free space`);
+       }
+       return;
+     }
+@@ -647,13 +647,13 @@ export class Agent {
+       if (removeIndex < this.messages.length - keepRecent) {
+         const removed = this.messages.splice(removeIndex, 1);
+         this.estimatedTokens -= estimateMessageTokens(removed[0]);
+-        console.log(`[Agent] Removed message at index ${removeIndex} to free space`);
++        logger.debug(`[Agent] Removed message at index ${removeIndex} to free space`);
+       } else {
+         break;
+       }
+     }
+ 
+-    console.log(`[Agent] Context compressed: freed ${tokensFreed} tokens, now at ${this.estimatedTokens}`);
++    logger.debug(`[Agent] Context compressed: freed ${tokensFreed} tokens, now at ${this.estimatedTokens}`);
+   }
+ 
+   // Compressed context summary (from LLM compression)
+@@ -680,7 +680,7 @@ export class Agent {
+     const recentMessages = this.messages.slice(-keepRecent);
+     const systemMessage = systemIndex >= 0 ? this.messages[systemIndex] : null;
+ 
+-    console.log(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
++    logger.debug(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
+ 
+     if (this.hookRunner) {
+       await this.hookRunner.runBeforeCompaction({
+@@ -722,7 +722,7 @@ export class Agent {
+         this.messages = newMessages;
+         this.estimatedTokens = estimateTotalTokens(newMessages);
+ 
+-        console.log(
++        logger.debug(
+           `[Agent] LLM compression complete: ${oldTokens} → ${this.estimatedTokens} tokens ` +
+           `(${Math.round((1 - this.estimatedTokens / oldTokens) * 100)}% reduction)`
+         );
+@@ -1065,7 +1065,7 @@ export class Agent {
+             type: 'thinking',
+             thinking: thinkingContent,
+           });
+-          console.log(`[Agent] 💭 Thinking process captured (${thinkingContent.length} chars)`);
++          logger.debug(`[Agent] 💭 Thinking process captured (${thinkingContent.length} chars)`);
+         }
+         // Remove thinking tags from content
+         cleanedContent = cleanedContent.replace(/<thinking>\n?[\s\S]*?\n?<\/thinking>\n*/g, '').trim();
+@@ -1090,15 +1090,15 @@ export class Agent {
+       if (hasToolCalls(response)) {
+         const toolCalls = extractToolCalls(response);
+ 
+-        console.log(`\n${'='.repeat(80)}`);
+-        console.log(`[Agent] LLM decided to call ${toolCalls.length} tool(s):`);
++        logger.debug(`\n${'='.repeat(80)}`);
++        logger.debug(`[Agent] LLM decided to call ${toolCalls.length} tool(s):`);
+         toolCalls.forEach((tc, idx) => {
+           const params = safeJsonParse(tc.function.arguments, {});
+           const paramsStr = JSON.stringify(params);
+           const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
+-          console.log(`  ${idx + 1}. ${tc.function.name}(${paramsPreview})`);
++          logger.debug(`  ${idx + 1}. ${tc.function.name}(${paramsPreview})`);
+         });
+-        console.log('='.repeat(80));
++        logger.debug('='.repeat(80));
+ 
+         // Emit thinking block for tool selection decision
+         if (options?.onContentBlock) {
+@@ -1116,7 +1116,7 @@ export class Agent {
+         if (skillGetCall && otherCalls.length > 0) {
+           // 【修复 Bug 1】先执行 skill_get，但不要 continue，继续执行其他工具
+           const params = safeJsonParse(skillGetCall.function.arguments, {});
+-          console.log(`\n[Skill] 🎯 Getting skill: ${params.name}`);
++          logger.debug(`\n[Skill] 🎯 Getting skill: ${params.name}`);
+           options?.onToolCall?.(skillGetCall.function.name, params);
+ 
+           // Generate ContentBlock for skill_get
+@@ -1140,7 +1140,7 @@ export class Agent {
+             const skillName = params.name as string;
+             if (skillName) {
+               this.usedSkillsInTurn.add(skillName);
+-              console.log(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
++              logger.debug(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
+             }
+ 
+             this.estimatedTokens -= estimateMessageTokens({
+@@ -1187,7 +1187,7 @@ export class Agent {
+ 
+           // 【修复】不要 continue！继续处理 otherCalls
+           // 将 otherCalls 作为下一批工具调用
+-          console.log(`[Skill] ✅ Skill loaded, now executing ${otherCalls.length} other tool(s)`);
++          logger.debug(`[Skill] ✅ Skill loaded, now executing ${otherCalls.length} other tool(s)`);
+ 
+           // 重新赋值 toolCalls 为 otherCalls，继续后续处理
+           const remainingToolCalls = otherCalls;
+@@ -1199,15 +1199,15 @@ export class Agent {
+           })));
+ 
+           const stats = getGroupingStats(remainingToolCalls.map(tc => ({ name: tc.function.name })));
+-          console.log(`\n[Tool Execution Plan] (After skill_get)`);
+-          console.log(`  Total calls: ${stats.totalCalls}`);
+-          console.log(`  Parallel batches: ${stats.parallelBatches}`);
+-          console.log(`  Sequential batches: ${stats.sequentialBatches}`);
+-          console.log(`  Max parallelism: ${stats.maxParallelism}`);
++          logger.debug(`\n[Tool Execution Plan] (After skill_get)`);
++          logger.debug(`  Total calls: ${stats.totalCalls}`);
++          logger.debug(`  Parallel batches: ${stats.parallelBatches}`);
++          logger.debug(`  Sequential batches: ${stats.sequentialBatches}`);
++          logger.debug(`  Max parallelism: ${stats.maxParallelism}`);
+           if (batches.length > 0) {
+             batches.forEach((batch, idx) => {
+               const toolNames = batch.map(b => b.call.function.name).join(', ');
+-              console.log(`  Batch ${idx + 1}: ${toolNames}`);
++              logger.debug(`  Batch ${idx + 1}: ${toolNames}`);
+             });
+           }
+ 
+@@ -1221,7 +1221,7 @@ export class Agent {
+               const params = safeJsonParse(call.function.arguments, {});
+               const toolName = call.function.name;
+ 
+-              console.log(`[Sequential Tool] ${toolName}`);
++              logger.debug(`[Sequential Tool] ${toolName}`);
+               options?.onToolCall?.(toolName, params);
+ 
+               // Generate ContentBlock
+@@ -1243,12 +1243,12 @@ export class Agent {
+ 
+                 // Check if result contains a content block (e.g., chart_data)
+                 if (result._contentBlock && result.success && result.data) {
+-                  console.log(`[Agent] 🎨 Tool ${toolName} returned content block, triggering onContentBlock callback`);
+-                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
++                  logger.debug(`[Agent] 🎨 Tool ${toolName} returned content block, triggering onContentBlock callback`);
++                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
+                   options?.onContentBlock?.(result.data);
+                 } else if (result._contentBlock) {
+-                  console.log(`[Agent] ⚠️ Tool ${toolName} has _contentBlock but missing success or data`);
+-                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data });
++                  logger.debug(`[Agent] ⚠️ Tool ${toolName} has _contentBlock but missing success or data`);
++                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data });
+                 }
+ 
+                 let resultToSave = result;
+@@ -1278,7 +1278,7 @@ export class Agent {
+                 const params = safeJsonParse(call.function.arguments, {});
+                 const toolName = call.function.name;
+ 
+-                console.log(`[Parallel Tool] ${toolName}`);
++                logger.debug(`[Parallel Tool] ${toolName}`);
+                 options?.onToolCall?.(toolName, params);
+ 
+                 // Generate ContentBlock
+@@ -1302,7 +1302,7 @@ export class Agent {
+                 options?.onToolResult?.(toolName, result);
+ 
+                 // DEBUG: Log the actual result structure
+-                console.log(`[Agent] [DEBUG] Tool ${toolName} result:`, {
++                logger.debug(`[Agent] [DEBUG] Tool ${toolName} result:`, {
+                   hasContentBlock: '_contentBlock' in result,
+                   contentBlockValue: result._contentBlock,
+                   success: result.success,
+@@ -1312,12 +1312,12 @@ export class Agent {
+ 
+                 // Check if result contains a content block (e.g., chart_data)
+                 if (result._contentBlock && result.success && result.data) {
+-                  console.log(`[Agent] 🎨 [Parallel] Tool ${toolName} returned content block, triggering onContentBlock callback`);
+-                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
++                  logger.debug(`[Agent] 🎨 [Parallel] Tool ${toolName} returned content block, triggering onContentBlock callback`);
++                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
+                   options?.onContentBlock?.(result.data);
+                 } else if (result._contentBlock) {
+-                  console.log(`[Agent] ⚠️ [Parallel] Tool ${toolName} has _contentBlock but missing success or data`);
+-                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
++                  logger.debug(`[Agent] ⚠️ [Parallel] Tool ${toolName} has _contentBlock but missing success or data`);
++                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
+                 }
+ 
+                 return { call, result };
+@@ -1352,10 +1352,10 @@ export class Agent {
+             const elapsed = Date.now() - batchStartTime;
+             if (batch.length > 1) {
+               const toolNames = batch.map(b => b.call.function.name).join(', ');
+-              console.log(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
+-              console.log(`  Tools: ${toolNames}`);
++              logger.debug(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
++              logger.debug(`  Tools: ${toolNames}`);
+             } else {
+-              console.log(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
++              logger.debug(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
+             }
+           }
+ 
+@@ -1369,22 +1369,22 @@ export class Agent {
+         })));
+ 
+         const stats = getGroupingStats(toolCalls.map(tc => ({ name: tc.function.name })));
+-        console.log(`\n[Tool Execution Plan]`);
+-        console.log(`  Total calls: ${stats.totalCalls}`);
+-        console.log(`  Parallel batches: ${stats.parallelBatches}`);
+-        console.log(`  Sequential batches: ${stats.sequentialBatches}`);
+-        console.log(`  Max parallelism: ${stats.maxParallelism}`);
++        logger.debug(`\n[Tool Execution Plan]`);
++        logger.debug(`  Total calls: ${stats.totalCalls}`);
++        logger.debug(`  Parallel batches: ${stats.parallelBatches}`);
++        logger.debug(`  Sequential batches: ${stats.sequentialBatches}`);
++        logger.debug(`  Max parallelism: ${stats.maxParallelism}`);
+         if (batches.length > 0) {
+           batches.forEach((batch, idx) => {
+             const toolNames = batch.map(b => b.call.function.name).join(', ');
+-            console.log(`  Batch ${idx + 1}: ${toolNames}`);
++            logger.debug(`  Batch ${idx + 1}: ${toolNames}`);
+           });
+         }
+ 
+         for (const batch of batches) {
+           const batchStartTime = Date.now();
+ 
+-          console.log(`\n[Batch Execution] Starting batch with ${batch.length} tool(s)...`);
++          logger.debug(`\n[Batch Execution] Starting batch with ${batch.length} tool(s)...`);
+ 
+           const batchResults = await Promise.all(
+             batch.map(async ({ call }) => {
+@@ -1392,7 +1392,7 @@ export class Agent {
+ 
+               const paramsStr = JSON.stringify(params);
+               const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
+-              console.log(`  [Executing] ${call.function.name}(${paramsPreview})`);
++              logger.debug(`  [Executing] ${call.function.name}(${paramsPreview})`);
+ 
+               options?.onToolCall?.(call.function.name, params);
+ 
+@@ -1447,7 +1447,7 @@ export class Agent {
+                 const toolElapsed = Date.now() - toolStartTime;
+ 
+                 // DEBUG: Log the actual result structure
+-                console.log(`[Agent] [DEBUG] Tool ${call.function.name} result:`, {
++                logger.debug(`[Agent] [DEBUG] Tool ${call.function.name} result:`, {
+                   hasContentBlock: '_contentBlock' in result,
+                   contentBlockValue: result._contentBlock,
+                   success: result.success,
+@@ -1457,17 +1457,17 @@ export class Agent {
+ 
+                 // Check if result contains a content block (e.g., chart_data)
+                 if (result._contentBlock && result.success && result.data) {
+-                  console.log(`[Agent] 🎨 [Batch] Tool ${call.function.name} returned content block, triggering onContentBlock callback`);
+-                  console.log(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
++                  logger.debug(`[Agent] 🎨 [Batch] Tool ${call.function.name} returned content block, triggering onContentBlock callback`);
++                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
+                   options?.onContentBlock?.(result.data);
+                 } else if (result._contentBlock) {
+-                  console.log(`[Agent] ⚠️ [Batch] Tool ${call.function.name} has _contentBlock but missing success or data`);
+-                  console.log(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
++                  logger.debug(`[Agent] ⚠️ [Batch] Tool ${call.function.name} has _contentBlock but missing success or data`);
++                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
+                 }
+ 
+                 // [HITL] Check if tool result needs user confirmation or input
+                 if (result.needsConfirmation) {
+-                  console.log(`[HITL] Tool ${call.function.name} requires user confirmation`);
++                  logger.debug(`[HITL] Tool ${call.function.name} requires user confirmation`);
+ 
+                   // Generate ConfirmationRequest ContentBlock
+                   options?.onContentBlock?.({
+@@ -1509,7 +1509,7 @@ export class Agent {
+ 
+                 // [HITL] Check if tool needs user input
+                 if (result.needsUserInput) {
+-                  console.log(`[HITL] Tool ${call.function.name} requires user input`);
++                  logger.debug(`[HITL] Tool ${call.function.name} requires user input`);
+ 
+                   // Generate UserInputRequest ContentBlock
+                   options?.onContentBlock?.({
+@@ -1559,7 +1559,7 @@ export class Agent {
+ 
+                 const resultStr = JSON.stringify(result);
+                 const resultPreview = resultStr.length > 150 ? resultStr.substring(0, 150) + '...' : resultStr;
+-                console.log(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
++                logger.debug(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
+ 
+                 options?.onToolResult?.(call.function.name, result);
+ 
+@@ -1596,14 +1596,14 @@ export class Agent {
+               const skillName = params.name as string;
+               if (skillName) {
+                 this.usedSkillsInTurn.add(skillName);
+-                console.log(`[Skill] ✅ Using skill: ${skillName}`);
++                logger.debug(`[Skill] ✅ Using skill: ${skillName}`);
+               }
+             }
+ 
+             if (call.function.name === 'skill_record') {
+               const skillName = params.name as string;
+               const success = params.success as boolean;
+-              console.log(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
++              logger.debug(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
+             }
+ 
+             let resultToSave = result;
+@@ -1631,10 +1631,10 @@ export class Agent {
+           const elapsed = Date.now() - batchStartTime;
+           if (batch.length > 1) {
+             const toolNames = batch.map(b => b.call.function.name).join(', ');
+-            console.log(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
+-            console.log(`  Tools: ${toolNames}`);
++            logger.debug(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
++            logger.debug(`  Tools: ${toolNames}`);
+           } else {
+-            console.log(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
++            logger.debug(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
+           }
+         }
+ 
+@@ -1697,7 +1697,7 @@ export class Agent {
+           });
+           this.estimatedTokens += estimateMessageTokens({ role: 'user', content: retryPrompt });
+ 
+-          console.log('[SkillEnforcement] Requesting more complete output...');
++          logger.debug('[SkillEnforcement] Requesting more complete output...');
+ 
+           // One more LLM call for completeness
+           try {
+@@ -1723,7 +1723,7 @@ export class Agent {
+                 role: 'assistant',
+                 content: retryContent,
+               });
+-              console.log(`[SkillEnforcement] Retry produced longer output (${retryContent.length} > ${previousLength} chars)`);
++              logger.debug(`[SkillEnforcement] Retry produced longer output (${retryContent.length} > ${previousLength} chars)`);
+ 
+               // Update content block for streaming
+               options?.onContentBlock?.({
+@@ -1738,14 +1738,14 @@ export class Agent {
+       }
+     }
+ 
+-    console.log(`\n${'='.repeat(80)}`);
+-    console.log(`[Conversation Summary]`);
+-    console.log(`  Iterations: ${iterations}`);
++    logger.debug(`\n${'='.repeat(80)}`);
++    logger.debug(`[Conversation Summary]`);
++    logger.debug(`  Iterations: ${iterations}`);
+     if (this.usedSkillsInTurn.size > 0) {
+-      console.log(`  Skills used: ${Array.from(this.usedSkillsInTurn).join(', ')}`);
++      logger.debug(`  Skills used: ${Array.from(this.usedSkillsInTurn).join(', ')}`);
+     }
+-    console.log(`  Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
+-    console.log('='.repeat(80) + '\n');
++    logger.debug(`  Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
++    logger.debug('='.repeat(80) + '\n');
+ 
+     if (totalCompletionTokens === 0) {
+       totalCompletionTokens = estimateTokens(finalContent);
+@@ -1779,7 +1779,7 @@ export class Agent {
+         type: 'text',
+         text: `\n\n---\n${skillInfo}`,
+       });
+-      console.log(`[Agent] 📋 Skill attribution added: ${skillNames}`);
++      logger.debug(`[Agent] 📋 Skill attribution added: ${skillNames}`);
+     }
+ 
+     if (this.tokenStatsConfig.showTokenStats) {
+@@ -2070,7 +2070,7 @@ export class Agent {
+     }
+ 
+     // [P0 FIX] Log context usage for monitoring — was missing from chatStream
+-    console.log(`[Agent.chatStream] Complete - Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
++    logger.debug(`[Agent.chatStream] Complete - Context: ${this.estimatedTokens} / ${this.contextConfig.maxTokens} tokens (${Math.round(this.estimatedTokens / this.contextConfig.maxTokens * 100)}%)`);
+   }
+ }
+ 
+diff --git a/src/domain/memory/embedding.ts b/src/domain/memory/embedding.ts
+index afe8206..5fcec3c 100644
+--- a/src/domain/memory/embedding.ts
++++ b/src/domain/memory/embedding.ts
+@@ -168,8 +168,12 @@ export function createEmbeddingService(config: EmbeddingConfig, provider?: AIPro
+       });
+ 
+     case 'openai':
+-      // Fallback to ollama for now
+-      console.warn('[Embedding] OpenAI not implemented, falling back to ollama');
++      // Fallback to ollama - warn about dimension mismatch
++      console.warn(
++        '[Embedding] OpenAI provider not implemented. Falling back to ollama (nomic-embed-text). ' +
++        'WARNING: Dimension mismatch - OpenAI text-embedding-3-small produces 1536-d vectors, ' +
++        'but ollama nomic-embed-text produces 768-d vectors. Re-index if switching providers.'
++      );
+       return new OllamaEmbedding({
+         model: 'nomic-embed-text',
+       });
+diff --git a/src/domain/proactive/pusher.ts b/src/domain/proactive/pusher.ts
+index 888a38d..f87bdf7 100644
+--- a/src/domain/proactive/pusher.ts
++++ b/src/domain/proactive/pusher.ts
+@@ -7,13 +7,25 @@
+ import type { PendingNotification, NotificationPriority } from '../proactive/types';
+ import { getNotificationsLazy } from '../../infra/db/store';
+ 
++export type PusherChannel = 'cli' | 'feishu' | 'webhook';
++type StorageChannel = 'cli' | 'websocket' | 'email';
++
++function mapToStorageChannels(channels: PusherChannel[]): StorageChannel[] {
++  const mapping: Record<PusherChannel, StorageChannel> = {
++    cli: 'cli',
++    feishu: 'websocket',
++    webhook: 'websocket',
++  };
++  return channels.map(ch => mapping[ch]);
++}
++
+ export interface PushOptions {
+   message: string;
+   priority?: NotificationPriority;
+   category?: string;
+   scheduledFor?: string;
+   expiresAt?: string;
+-  channels?: ('cli' | 'feishu' | 'webhook')[];
++  channels?: PusherChannel[];
+   metadata?: Record<string, unknown>;
+   // Feishu specific
+   feishuChatId?: string;
+@@ -64,7 +76,7 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
+       category: options.category,
+       scheduledFor: options.scheduledFor,
+       expiresAt: options.expiresAt,
+-      channels: (options.channels as ('cli' | 'websocket' | 'email')[]) || ['cli'],
++      channels: mapToStorageChannels(options.channels || ['cli']),
+       metadata: options.metadata,
+     });
+ 
+diff --git a/src/domain/proactive/scheduler.ts b/src/domain/proactive/scheduler.ts
+index 4313b3e..12c5cc2 100644
+--- a/src/domain/proactive/scheduler.ts
++++ b/src/domain/proactive/scheduler.ts
+@@ -7,6 +7,7 @@
+ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+ import { join } from 'path';
+ import { getConfig } from '../../infra/config';
++import { logger } from '../../infra/observability/logger';
+ import type {
+   Schedule,
+   Pattern,
+@@ -86,7 +87,7 @@ export class Scheduler {
+           }
+ 
+           if (holderAlive && age < Scheduler.LOCK_STALE_MS) {
+-            console.log(
++            logger.info(
+               `[Scheduler] Lock for "${scheduleId}" held by PID ${holderPid} ` +
+               `(age: ${Math.round(age / 1000)}s) — skipping`
+             );
+@@ -94,7 +95,7 @@ export class Scheduler {
+           }
+ 
+           // Stale lock — clean up
+-          console.log(
++          logger.info(
+             `[Scheduler] Clearing stale lock for "${scheduleId}" ` +
+             `(PID ${holderPid} alive=${holderAlive}, age=${Math.round(age / 1000)}s)`
+           );
+@@ -114,11 +115,11 @@ export class Scheduler {
+     } catch (err: any) {
+       if (err?.code === 'EEXIST') {
+         // Race condition: another process created the lock between our check and write
+-        console.log(`[Scheduler] Lock race for "${scheduleId}" — another process won`);
++        logger.info(`[Scheduler] Lock race for "${scheduleId}" — another process won`);
+         return false;
+       }
+       // Non-critical: fall back to memory-only lock
+-      console.warn(`[Scheduler] File lock failed for "${scheduleId}":`, err?.message);
++      logger.warn(`[Scheduler] File lock failed for "${scheduleId}":`, err?.message);
+     }
+ 
+     this.executingSchedules.add(scheduleId);
+@@ -205,7 +206,7 @@ export class Scheduler {
+     );
+ 
+     if (existingSchedule) {
+-      console.log(
++      logger.info(
+         `[Scheduler] Schedule "${options.name}" already exists (ID: ${existingSchedule.id}), skipping creation`
+       );
+       return {
+@@ -501,7 +502,7 @@ export class Scheduler {
+ 
+       // Store the interval as if it were a timer (for cleanup)
+       this.cronTimers.set(schedule.id, checkInterval as unknown as NodeJS.Timeout);
+-      console.log(`[Scheduler] Schedule "${schedule.name}" next run is far in the future (${nextRun.toISOString()}), using interval check`);
++      logger.info(`[Scheduler] Schedule "${schedule.name}" next run is far in the future (${nextRun.toISOString()}), using interval check`);
+       return;
+     }
+ 
+@@ -525,13 +526,13 @@ export class Scheduler {
+   private async executeWithLock(schedule: Schedule, callback: ScheduleCallback): Promise<void> {
+     // Atomic check-and-set for memory lock
+     if (!this.acquireExecutionLock(schedule.id)) {
+-      console.log(`[Scheduler] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
++      logger.info(`[Scheduler] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
+       return;
+     }
+ 
+     // Check storage lock
+     if (schedule.isExecuting) {
+-      console.log(`[Scheduler] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
++      logger.info(`[Scheduler] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
+       this.releaseExecutionLock(schedule.id); // Release memory lock
+       return;
+     }
+@@ -587,58 +588,40 @@ export class Scheduler {
+       hour12: false,
+     });
+ 
+-    const parseField = (field: string, min: number, max: number): number[] | null => {
+-      if (field === '*') {
+-        return Array.from({ length: max - min + 1 }, (_, i) => min + i);
+-      }
+-
+-      // Handle */n (step)
+-      const stepMatch = field.match(/^\*\/(\d+)$/);
+-      if (stepMatch) {
+-        const step = parseInt(stepMatch[1], 10);
+-        if (step <= 0 || step > max) return null;
+-        const values: number[] = [];
+-        for (let i = min; i <= max; i += step) {
+-          values.push(i);
++    const matchField = (value: number, expr: string, min: number, max: number): boolean => {
++      if (expr === '*') return true;
++      return expr.split(',').some(part => {
++        if (part.includes('/')) {
++          const [range, step] = part.split('/');
++          const stepNum = parseInt(step);
++          if (stepNum <= 0) return false;
++          const start = range === '*' ? min : parseInt(range);
++          for (let i = start; i <= max; i += stepNum) {
++            if (i === value) return true;
++          }
++          return false;
+         }
+-        return values;
+-      }
+-
+-      // Handle lists (e.g., "1,3,5")
+-      if (field.includes(',')) {
+-        const values = field.split(',').map(v => parseInt(v, 10));
+-        if (values.some(isNaN)) return null;
+-        return values.filter(v => v >= min && v <= max);
+-      }
+-
+-      // Handle ranges (e.g., "1-5")
+-      const rangeMatch = field.match(/^(\d+)-(\d+)$/);
+-      if (rangeMatch) {
+-        const start = parseInt(rangeMatch[1], 10);
+-        const end = parseInt(rangeMatch[2], 10);
+-        if (start > end || start < min || end > max) return null;
+-        return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+-      }
+-
+-      // Handle single number
+-      const num = parseInt(field, 10);
+-      if (isNaN(num) || num < min || num > max) return null;
+-      return [num];
++        if (part.includes('-')) {
++          const [from, to] = part.split('-').map(Number);
++          return value >= from && value <= to;
++        }
++        return parseInt(part) === value;
++      });
+     };
+ 
+     // Parse each part
+-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+-
+-    const minutes = parseField(minute, 0, 59);
+-    const hours = parseField(hour, 0, 23);
+-    const daysOfMonth = parseField(dayOfMonth, 1, 31);
+-    const months = parseField(month, 1, 12);
+-    const daysOfWeek = parseField(dayOfWeek, 0, 6); // 0 = Sunday
+-
+-    if (!minutes || !hours || !daysOfMonth || !months || !daysOfWeek) {
+-      // Fallback for unsupported patterns: 1 hour from now
+-      return new Date(now.getTime() + 60 * 60 * 1000);
+-    }
++    const [minExpr, hourExpr, domExpr, monthExpr, dowExpr] = parts;
++
++    const matchesCron = (
++      minute: number, hour: number, day: number,
++      month: number, dow: number,
++    ): boolean => {
++      return matchField(minute, minExpr, 0, 59) &&
++             matchField(hour, hourExpr, 0, 23) &&
++             matchField(day, domExpr, 1, 31) &&
++             matchField(month, monthExpr, 1, 12) &&
++             matchField(dow, dowExpr, 0, 6);
++    };
+ 
+     // Helper to get time components in configured timezone from a Date
+     const getTzComponents = (date: Date) => {
+@@ -716,13 +699,7 @@ export class Scheduler {
+       // Check if current search time matches cron expression
+       const dow = new Date(searchYear, searchMonth - 1, searchDay).getDay();
+ 
+-      if (
+-        minutes.includes(searchMinute) &&
+-        hours.includes(searchHour) &&
+-        daysOfMonth.includes(searchDay) &&
+-        months.includes(searchMonth) &&
+-        daysOfWeek.includes(dow)
+-      ) {
++      if (matchesCron(searchMinute, searchHour, searchDay, searchMonth, dow)) {
+         // Found a match! Create the Date object
+         return createFromTzTime(searchYear, searchMonth, searchDay, searchHour, searchMinute);
+       }
+@@ -771,7 +748,7 @@ export class Scheduler {
+             hasChanges = true;
+           } else if (schedule.isExecuting === true) {
+             schedule.isExecuting = false;
+-            console.log(`[Scheduler] Cleared stale execution lock for ${schedule.name}`);
++            logger.info(`[Scheduler] Cleared stale execution lock for ${schedule.name}`);
+             hasChanges = true;
+           }
+         }
+diff --git a/src/domain/sandbox/tools.ts b/src/domain/sandbox/tools.ts
+index 3579bbd..2c52caf 100644
+--- a/src/domain/sandbox/tools.ts
++++ b/src/domain/sandbox/tools.ts
+@@ -208,7 +208,7 @@ export async function executeSandboxWriteFile(params: Record<string, unknown>):
+ export async function executeSandboxReadFile(params: Record<string, unknown>): Promise<SandboxToolResult> {
+   try {
+     const parsed = SandboxReadFileSchema.parse(params);
+-    const { sandbox, _pathMapper } = await ensureSandbox();
++    const { sandbox } = await ensureSandbox();
+ 
+     let content = await sandbox.readFile(parsed.path);
+ 
+@@ -245,7 +245,7 @@ export async function executeSandboxReadFile(params: Record<string, unknown>): P
+ export async function executeSandboxListFiles(params: Record<string, unknown>): Promise<SandboxToolResult> {
+   try {
+     const parsed = SandboxListFilesSchema.parse(params);
+-    const { sandbox, _pathMapper } = await ensureSandbox();
++    const { sandbox } = await ensureSandbox();
+ 
+     const entries = await sandbox.listFiles(parsed.path || '.', {
+       recursive: parsed.recursive,
+diff --git a/src/domain/search/orchestrator.ts b/src/domain/search/orchestrator.ts
+index d0b76d7..2783167 100644
+--- a/src/domain/search/orchestrator.ts
++++ b/src/domain/search/orchestrator.ts
+@@ -270,16 +270,16 @@ export class SearchOrchestrator {
+                 break;
+               }
+             } catch (_fallbackError) {
+-              console.warn(`[Search] Fallback ${fallbackName} also failed`);
++              console.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${query.substring(0, 50)}"`);
+             }
+           }
+         }
+       }
+     }
+ 
+-    // If all providers failed, throw the first error
++    // If all providers failed, throw an aggregate error
+     if (allResults.length === 0 && errors.length > 0) {
+-      throw errors[0];
++      throw new AggregateError(errors, `All search providers failed (${errors.length} errors)`);
+     }
+ 
+     return allResults;
+diff --git a/src/domain/subagent/state.ts b/src/domain/subagent/state.ts
+index c38c59c..b27e3ce 100644
+--- a/src/domain/subagent/state.ts
++++ b/src/domain/subagent/state.ts
+@@ -590,6 +590,13 @@ export class SharedState {
+     this.locks.clear();
+     this.subscriptions.clear();
+   }
++
++  /**
++   * Dispose resources (alias for destroy, implements Disposable pattern)
++   */
++  dispose(): void {
++    this.destroy();
++  }
+ }
+ 
+ // ============================================================================
+diff --git a/tailwind.config.js b/tailwind.config.js
+index 5a0a4f7..9f73e3d 100644
+--- a/tailwind.config.js
++++ b/tailwind.config.js
+@@ -1,7 +1,7 @@
+ /** @type {import('tailwindcss').Config} */
+ export default {
+   content: [
+-    "./src/web/client/**/*.{js,ts,jsx,tsx}",
++    "./src/adapter/web/client/**/*.{js,ts,jsx,tsx}",
+   ],
+   theme: {
+     extend: {},
+-- 
+2.20.1
+

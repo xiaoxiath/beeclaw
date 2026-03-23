@@ -7,13 +7,25 @@
 import type { PendingNotification, NotificationPriority } from '../proactive/types';
 import { getNotificationsLazy } from '../../infra/db/store';
 
+export type PusherChannel = 'cli' | 'feishu' | 'webhook';
+type StorageChannel = 'cli' | 'websocket' | 'email';
+
+function mapToStorageChannels(channels: PusherChannel[]): StorageChannel[] {
+  const mapping: Record<PusherChannel, StorageChannel> = {
+    cli: 'cli',
+    feishu: 'websocket',
+    webhook: 'websocket',
+  };
+  return channels.map(ch => mapping[ch]);
+}
+
 export interface PushOptions {
   message: string;
   priority?: NotificationPriority;
   category?: string;
   scheduledFor?: string;
   expiresAt?: string;
-  channels?: ('cli' | 'feishu' | 'webhook')[];
+  channels?: PusherChannel[];
   metadata?: Record<string, unknown>;
   // Feishu specific
   feishuChatId?: string;
@@ -64,7 +76,7 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
       category: options.category,
       scheduledFor: options.scheduledFor,
       expiresAt: options.expiresAt,
-      channels: (options.channels as ('cli' | 'websocket' | 'email')[]) || ['cli'],
+      channels: mapToStorageChannels(options.channels || ['cli']),
       metadata: options.metadata,
     });
 

@@ -8,6 +8,7 @@
  */
 
 import type { AppConfig } from './schema';
+import { deepMerge } from '../utils';
 
 export const DEFAULT_CONFIG: AppConfig = {
   // Server configuration
@@ -263,35 +264,6 @@ export const DEFAULT_CONFIG: AppConfig = {
 export function mergeWithDefaults(userConfig: Partial<AppConfig>): AppConfig {
   return deepMerge(DEFAULT_CONFIG, userConfig);
 }
-
-/**
- * Deep merge two objects
- */
-function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
-  const result = { ...target };
-
-  for (const key in source) {
-    if (source[key] !== undefined) {
-      if (
-        typeof source[key] === 'object' &&
-        source[key] !== null &&
-        !Array.isArray(source[key]) &&
-        typeof target[key] === 'object' &&
-        target[key] !== null &&
-        !Array.isArray(target[key])
-      ) {
-        // Recursively merge objects
-        result[key] = deepMerge(target[key], source[key] as Partial<T[typeof key]>);
-      } else {
-        // Override with source value
-        result[key] = source[key] as T[typeof key];
-      }
-    }
-  }
-
-  return result;
-}
-
 /**
  * Get default value for a specific config path
  */

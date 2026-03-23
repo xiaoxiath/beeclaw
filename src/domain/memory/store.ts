@@ -192,7 +192,7 @@ export class MemoryStore {
       const filePath = join(factsPath, file);
       if (!existsSync(filePath)) {
         const title = file.replace('.md', '').charAt(0).toUpperCase() + file.replace('.md', '').slice(1);
-        writeFileSync(filePath, `# ${title}\n\n`, 'utf-8');
+        atomicWriteFileSync(filePath, `# ${title}\n\n`);
       }
     }
   }
@@ -629,7 +629,7 @@ export class MemoryStore {
         const content = readFileSync(filePath, 'utf-8');
 
         // 解析对话（简化版，只提取关键信息）
-        const entries = this.parseConversationFile(content);
+        const entries = this.parseConversationFile(content, filePath);
         conversations.push(...entries);
 
         if (conversations.length >= limit * 2) {
@@ -662,8 +662,10 @@ export class MemoryStore {
    * Parse conversation file to extract entries.
    * 简化版解析器，用于快速加载最近对话。
    */
-  private parseConversationFile(content: string): ConversationEntry[] {
+  private parseConversationFile(content: string, filePath: string): ConversationEntry[] {
     const entries: ConversationEntry[] = [];
+    const fileStat = statSync(filePath);
+    const dateStr = fileStat.mtime.toISOString().split('T')[0];
     const sections = content.split('## ').slice(1); // 跳过标题
 
     for (const section of sections) {
@@ -689,7 +691,7 @@ export class MemoryStore {
 
       if (user || assistant) {
         entries.push({
-          timestamp: new Date().toISOString().split('T')[0] + 'T' + time + ':00',
+          timestamp: dateStr + 'T' + time + ':00',
           source,
           user,
           assistant,
