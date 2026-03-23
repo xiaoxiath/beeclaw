@@ -38,6 +38,10 @@ export function initDataConnection(config: DataConnectionConfig): void {
   // Enable WAL mode for better concurrency
   _sqlite.run('PRAGMA journal_mode = WAL');
 
+  // Set busy timeout to 5 seconds to reduce lock errors
+  // This tells SQLite to wait up to 5s when database is locked before throwing error
+  _sqlite.run('PRAGMA busy_timeout = 5000');
+
   // Create drizzle ORM instance
   _db = drizzle(_sqlite, { schema });
 
