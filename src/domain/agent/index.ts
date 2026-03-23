@@ -48,6 +48,11 @@ import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 import { getContextSelector } from './context/selector';
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
+
+// Phase 4: Extracted modules from Agent god-object
+import { ToolDispatcher } from './tool-dispatcher';
+import { TokenBudgetManager } from './token-budget';
+import { SkillRunner } from './skill-runner';
 /**
  * Safely parse JSON with fallback
  */
@@ -69,6 +74,11 @@ export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
 export { stripMessageMetadata } from './types';
 export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
 export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects, registerToolDependencyOverride, registerToolDependencyPattern, clearToolDependencyOverrides, getToolDependencyOverrides } from './tool-dependencies';
+
+// Phase 4: Re-export extracted modules for backward compatibility
+export { ToolDispatcher } from './tool-dispatcher';
+export { TokenBudgetManager, type TokenBudget, type TurnBudgetCheck } from './token-budget';
+export { SkillRunner } from './skill-runner';
 
 // Default tool executor that handles plugin, memory, skill, goal, proactive, persona, builtin, and feishu tools
 export function createDefaultToolExecutor(): ToolExecutor {
@@ -271,6 +281,11 @@ export class Agent {
   private skillEnforcement?: SkillEnforcementEngine;
   private healthMonitor?: PeriodicHealthMonitor;
 
+  // Phase 4: Extracted focused modules
+  private toolDispatcher: ToolDispatcher;
+  private tokenBudget: TokenBudgetManager;
+  private skillRunner: SkillRunner;
+
   /**
    * Check if a tool is blocked from execution in the current context.
    * Used to prevent recursive tool calls in proactive tasks.
@@ -369,6 +384,19 @@ export class Agent {
     } catch (err) {
       logger.debug('[Agent] PeriodicHealthMonitor not available:', err);
     }
+
+    // Phase 4: Initialize extracted modules
+    this.toolDispatcher = new ToolDispatcher(
+      this.toolExecutor,
+      this.hookRunner,
+      this.loopDetector,
+      this.options.blockedTools,
+    );
+    this.tokenBudget = new TokenBudgetManager(
+      this.contextConfig,
+      this.estimatedTokens,
+    );
+    this.skillRunner = new SkillRunner();
 
     // Trigger before_agent_start hook (async, fire-and-forget)
     if (this.hookRunner) {
