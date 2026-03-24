@@ -1634,72 +1634,18 @@ export class SkillStore {
    * Export a skill to a shareable package
    * In production, this would create a tar.gz file with all skill files
    */
-  exportSkill(name: string, outputPath?: string): import('./types').SkillExportResult {
-    this.init();
-
-    const skill = this.get(name);
-    if (!skill) {
-      throw new Error(`Skill not found: ${name}`);
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const exportDir = outputPath || join(this.basePath, 'exports');
-    const exportFile = join(exportDir, `${name}-${timestamp}.tar.gz`);
-
-    // Collect files to include
-    const filesIncluded: string[] = ['SKILL.md'];
-
-    // Add resources if they exist
-    if (skill.hasScripts) filesIncluded.push('scripts/');
-    if (skill.hasReferences) filesIncluded.push('references/');
-    if (skill.hasAssets) filesIncluded.push('assets/');
-    if (skill.hasAgents) filesIncluded.push('agents/');
-    if (skill.hasEvals) filesIncluded.push('evals/evals.json');
-
-    // In production, this would:
-    // 1. Create export directory if needed
-    // 2. Create a tar.gz archive with all files
-    // 3. Calculate checksum
-    // 4. Return result
-
-    // Simulated result for now
-    return {
-      skill_name: name,
-      export_path: exportFile,
-      size_bytes: 15000, // Placeholder - would calculate actual size
-      files_included: filesIncluded,
-      checksum: 'sha256:abc123', // Placeholder - would calculate actual checksum
-      timestamp: new Date().toISOString(),
-    };
+  // TODO: Implement actual tar.gz export with checksum calculation
+  exportSkill(_name: string, _outputPath?: string): import('./types').SkillExportResult {
+    throw new Error('NotImplementedError: exportSkill is not yet implemented');
   }
 
   /**
    * Import a skill from a package file
    * In production, this would extract and validate the skill
    */
-  importSkill(filePath: string): import('./types').SkillImportResult {
-    this.init();
-
-    // Extract skill name from file path
-    const fileName = filePath.split('/').pop() || '';
-    const skillName = fileName.replace('.tar.gz', '').split('-')[0];
-
-    // In production, this would:
-    // 1. Extract the tar.gz archive to a temp directory
-    // 2. Validate SKILL.md exists and has valid frontmatter
-    // 3. Check for conflicts with existing skills
-    // 4. Copy files to skill directory
-    // 5. Clean up temp directory
-
-    // Simulated result for now
-    return {
-      skill_name: skillName,
-      imported_version: '1.0.0',
-      files_imported: ['SKILL.md', 'evals/evals.json'],
-      conflicts_resolved: [],
-      success: true,
-      message: `Successfully imported skill: ${skillName}`,
-    };
+  // TODO: Implement actual tar.gz extraction, validation, and conflict resolution
+  importSkill(_filePath: string): import('./types').SkillImportResult {
+    throw new Error('NotImplementedError: importSkill is not yet implemented');
   }
 }
 

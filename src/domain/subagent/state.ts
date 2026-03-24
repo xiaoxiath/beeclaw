@@ -1,7 +1,9 @@
 /**
  * Shared State Management
  *
- * Provides a thread-safe state store for subagent collaboration.
+ * Provides a state store for subagent collaboration.
+ * **Note:** Not inherently thread-safe — callers must use `acquireLock()`
+ * for concurrent access to shared keys.
  * Supports locking, expiration, and change notifications.
  */
 
@@ -89,7 +91,12 @@ export interface SharedStateOptions {
 /**
  * Shared State Store
  *
- * Thread-safe state management with locking, expiration, and notifications.
+ * **NOT thread-safe.** While this class provides an async locking mechanism
+ * (`acquireLock`), the core `set`/`get`/`delete`/`update` methods do NOT
+ * automatically acquire locks. Callers must explicitly use `acquireLock`
+ * when concurrent access to the same key is possible.
+ *
+ * Supports locking, expiration, and change notifications.
  */
 export class SharedState {
   private store: Map<string, StateEntry> = new Map();
@@ -237,7 +244,7 @@ export class SharedState {
   }
 
   /**
-   * Update a value atomically
+   * Update a value (NOT atomic — see `guardedUpdate` for lock-protected variant)
    *
    * @param key State key
    * @param updater Function that receives current value and returns new value
@@ -251,6 +258,31 @@ export class SharedState {
     const current = await this.get<T>(key);
     const newValue = updater(current);
     await this.set(key, newValue, ttl);
+  }
+
+  /**
+   * Lock-protected update — acquires a lock before reading + writing.
+   *
+   * Use this instead of `update()` when multiple concurrent callers may
+   * modify the same key.
+   *
+   * @param key State key
+   * @param updater Function that receives current value and returns new value
+   * @param ttl Optional new TTL
+   */
+  async guardedUpdate<T = any>(
+    key: string,
+    updater: (current: T | undefined) => T,
+    ttl?: number
+  ): Promise<void> {
+    const release = await this.acquireLock(key);
+    try {
+      const current = await this.get<T>(key);
+      const newValue = updater(current);
+      await this.set(key, newValue, ttl);
+    } finally {
+      release();
+    }
   }
 
   /**

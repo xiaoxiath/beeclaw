@@ -60,28 +60,42 @@ export interface DeepAnalysisContext {
   originalMessage: string;
 }
 
-// Global context for deep analysis (set by the agent when processing messages)
-let currentContext: DeepAnalysisContext | null = null;
+// Per-session context map to avoid race conditions under concurrent requests
+const contextMap: Map<string, DeepAnalysisContext> = new Map();
 
 /**
- * Set the current context for deep analysis tool
+ * Set the context for a specific session's deep analysis
  */
 export function setDeepAnalysisContext(context: DeepAnalysisContext | null): void {
-  currentContext = context;
+  if (context) {
+    contextMap.set(context.sessionId, context);
+  }
 }
 
 /**
- * Clear the current context for deep analysis tool
+ * Clear the context for deep analysis tool.
+ * If sessionId is provided, only that session's context is removed;
+ * otherwise all contexts are cleared (backward-compat).
  */
-export function clearDeepAnalysisContext(): void {
-  currentContext = null;
+export function clearDeepAnalysisContext(sessionId?: string): void {
+  if (sessionId) {
+    contextMap.delete(sessionId);
+  } else {
+    contextMap.clear();
+  }
 }
 
 /**
- * Get the current context for deep analysis tool
+ * Get the context for a specific session (or the most-recently-set context
+ * when no sessionId is provided, for backward compatibility).
  */
-export function getDeepAnalysisContext(): DeepAnalysisContext | null {
-  return currentContext;
+export function getDeepAnalysisContext(sessionId?: string): DeepAnalysisContext | null {
+  if (sessionId) {
+    return contextMap.get(sessionId) ?? null;
+  }
+  // Backward compatibility: return the last inserted entry
+  const values = Array.from(contextMap.values());
+  return values.length > 0 ? values[values.length - 1] : null;
 }
 
 /**

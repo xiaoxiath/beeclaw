@@ -1,8 +1,17 @@
 /**
- * Hook Runner
+ * Hook Runner (Legacy)
  *
- * 参考 OpenClaw 的钩子运行器设计
- * 支持顺序执行（可修改）、并行执行（fire-and-forget）、同步执行（热路径）
+ * @deprecated This standalone hook runner is superseded by the plugin-registry-aware
+ * implementation in `src/adapter/plugins/hook-runner/index.ts` (`createHookRunner`).
+ * That version integrates with the PluginRegistry, supports more hook types
+ * (compaction, sub-agent, gateway, etc.), and offers configurable merge strategies.
+ *
+ * Existing call-sites using `getHookRunner()` / `registerHook()` should migrate to
+ * `createHookRunner(registry)` from `../hook-runner`. This file is retained because
+ * several modules (app/index.ts, unified-init.ts, subagent/registry.ts) still depend
+ * on the singleton pattern.
+ *
+ * Original design: OpenClaw-style hook runner with sequential, parallel, and sync modes.
  */
 
 import type {

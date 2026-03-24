@@ -12,31 +12,9 @@ const logger = getLogger('feishu:media');
 
 // Supported image types
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.tiff', '.bmp', '.ico'];
-const _IMAGE_MIME_TYPES: Record<string, string> = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-  '.tiff': 'image/tiff',
-  '.bmp': 'image/bmp',
-  '.ico': 'image/x-icon',
-};
 
 // Supported file types
 const FILE_EXTENSIONS = ['.opus', '.mp4', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.stream'];
-const _FILE_MIME_TYPES: Record<string, string> = {
-  '.opus': 'audio/opus',
-  '.mp4': 'video/mp4',
-  '.pdf': 'application/pdf',
-  '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xls': 'application/vnd.ms-excel',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.ppt': 'application/vnd.ms-powerpoint',
-  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  '.stream': 'application/octet-stream',
-};
 
 /**
  * Upload image to Feishu

@@ -9,6 +9,7 @@ export {
   checkConsecutiveFailures,
   clearReflectionTracking,
   getReflectionStats,
+  shouldTriggerReflection,
 } from './reflection-trigger';
 
 export {
@@ -28,3 +29,11 @@ export {
   type QueryRecord,
   type QueryPattern,
 } from './query-tracking';
+
+// [P1] Self-evolution exports
+export {
+  initSelfEvolution,
+  getSelfEvolutionStatus,
+  triggerSelfEvolution,
+  type SelfEvolutionConfig,
+} from './self-evolution';

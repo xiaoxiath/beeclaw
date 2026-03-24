@@ -84,3 +84,42 @@ export function getReflectionStats(): {
     failureDetails,
   };
 }
+
+
+/**
+ * [P1] Evaluate whether a reflection cycle should be triggered.
+ *
+ * Checks multiple signals:
+ * - Consecutive skill failures (>=3 in the recent window)
+ * - Specific skill with repeated failures (>=2)
+ *
+ * @returns Object indicating whether to trigger and the reason
+ */
+export function shouldTriggerReflection(): {
+  shouldTrigger: boolean;
+  reason?: string;
+  failingSkills?: string[];
+} {
+  const stats = getReflectionStats();
+
+  // Signal 1: Overall failure volume
+  if (stats.recentFailures >= 3) {
+    return {
+      shouldTrigger: true,
+      reason: `${stats.recentFailures} skill failures in recent window`,
+      failingSkills: stats.failureDetails.map(d => d.skillName),
+    };
+  }
+
+  // Signal 2: Single skill failing repeatedly
+  const repeatedFailures = stats.failureDetails.filter(d => d.count >= 2);
+  if (repeatedFailures.length > 0) {
+    return {
+      shouldTrigger: true,
+      reason: `Repeated failures for: ${repeatedFailures.map(d => d.skillName).join(', ')}`,
+      failingSkills: repeatedFailures.map(d => d.skillName),
+    };
+  }
+
+  return { shouldTrigger: false };
+}

@@ -291,10 +291,13 @@ export function createUserAuthorizedClient(
   client: Client,
   userAccessToken: string
 ): Client {
-  // 使用自定义请求拦截器添加用户授权头
+  // Create a shallow copy to avoid mutating the original client
+  const authorizedClient = { ...client };
+
   const originalRequest = client.request.bind(client);
 
-  client.request = async (config: any) => {
+  // Override request on the copy with user authorization header
+  authorizedClient.request = async (config: any) => {
     config.headers = {
       ...config.headers,
       Authorization: `Bearer ${userAccessToken}`,
@@ -302,7 +305,7 @@ export function createUserAuthorizedClient(
     return originalRequest(config);
   };
 
-  return client;
+  return authorizedClient;
 }
 
 /**

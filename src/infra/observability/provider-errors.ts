@@ -1,20 +1,20 @@
 /**
  * Provider Error Handling & Retry Enhancement  (P2-#3)
  *
- * 原始实现：
- *  - api.ts 中所有 Provider 共用一个通用 retry 逻辑
- *  - 错误信息格式不统一（有的返回 JSON，有的返回纯文本）
- *  - 缺少 Provider 级别的限流检测和回退策略
- *  - 没有 circuit breaker 防止雪崩
+ * @deprecated This module is superseded by the unified error and resilience system.
+ * - Error classification → `src/infra/resilience/unified-retry.ts` (`classifyError`)
+ * - Circuit breaker → `src/infra/resilience/circuit-breaker.ts` (`CircuitBreakerRegistry`)
+ * - Retry logic → `src/infra/resilience/unified-retry.ts` (`UnifiedRetry`)
  *
- * 优化方案：
- *  1. 统一错误分类（ProviderErrorType）+ 结构化错误对象
- *  2. Provider 级别的 Circuit Breaker（熔断器）
- *  3. 自适应重试策略（根据错误类型和 Provider 特性决定延迟）
- *  4. Rate Limit 响应头解析（Retry-After / X-RateLimit-*）
- *  5. 可选 fallback Provider 链
+ * New code should use those modules directly. This file is retained for reference
+ * only and is not imported anywhere in the codebase.
  *
- * ⚡ 新增文件 — 增强层，不替换 api.ts 或 retry.ts
+ * Original description:
+ *  - 统一错误分类（ProviderErrorType）+ 结构化错误对象
+ *  - Provider 级别的 Circuit Breaker（熔断器）
+ *  - 自适应重试策略（根据错误类型和 Provider 特性决定延迟）
+ *  - Rate Limit 响应头解析（Retry-After / X-RateLimit-*）
+ *  - 可选 fallback Provider 链
  */
 
 import type { AIProvider } from '../config/schema';

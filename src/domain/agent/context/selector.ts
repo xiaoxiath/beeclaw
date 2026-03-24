@@ -290,6 +290,5 @@ export function calculateSimilarity(
     return 0;
   }
 
-  const selector = getContextSelector();
-  return selector['cosineSimilarity'](item1.embedding, item2.embedding);
+  return cosineSimilarity(item1.embedding, item2.embedding);
 }

@@ -21,7 +21,9 @@ import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
 import { getPluginRegistry } from '../../adapter/plugins';
 // TODO: [CR-Layer] Move createHookRunner to domain port interface
 import { createHookRunner } from '../../adapter/plugins/hook-runner';
-import { recordSkillFailure } from './evolution';
+import { recordSkillFailure, getReflectionStats, checkConsecutiveFailures } from './evolution';
+import { checkPreferenceTriggers } from './evolution/preference-learning';
+import { triggerSelfEvolution, getSelfEvolutionStatus } from './evolution/self-evolution';
 import {
   estimateMessageTokens,
   estimateTotalTokens,
@@ -38,8 +40,7 @@ import {
   type TokenStatsConfig,
   type TokenStats,
 } from './context';
-import { getTieredCompressor, compressMessages, shouldCompress } from './compression';
-import { hybridCompress, type CompressionResult } from './compressor';
+import { getTieredCompressor, compressMessages, shouldCompress, hybridCompress, type LegacyCompressionResult as CompressionResult } from './compression';
 import { groupToolCalls, getGroupingStats } from './tool-dependencies';
 import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
 import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
@@ -288,6 +289,11 @@ export class Agent {
   private toolDispatcher: ToolDispatcher;
   private tokenBudget: TokenBudgetManager;
   private skillRunner: SkillRunner;
+
+  // [P1] Evolution system: tracks reflection triggers and preference signals
+  private evolutionEnabled: boolean = true;
+  private turnsSinceLastReflection: number = 0;
+  private readonly REFLECTION_TURN_INTERVAL = 5; // Check every N turns
 
   /**
    * Check if a tool is blocked from execution in the current context.
@@ -945,6 +951,11 @@ export class Agent {
         logger.warn('[Agent] Dynamic memory injection failed, using original message', error);
         enrichedMessage = userMessage;
       }
+    }
+
+    // [P1] Collect preference signals from user message
+    if (typeof enrichedMessage === 'string') {
+      this.collectPreferenceSignals(enrichedMessage);
     }
 
     if (this.hookRunner) {
@@ -1862,11 +1873,89 @@ export class Agent {
       });
     }
 
-    // [P1 优化] Reflective 模式：高质量输出反思改进
+    // [P1] Post-turn evolution check (non-blocking, fire-and-forget)
+    this.checkEvolutionTriggers(this.messages).catch(err => {
+      logger.debug('[Evolution] Post-turn check failed (non-fatal):', err);
+    });
+
     return finalContent;
   }
 
+  // ====================================================================
+  // [P1] Evolution System Integration
+  // ====================================================================
+
   /**
+   * Check if evolution triggers should fire after a conversation turn.
+   *
+   * Called after each successful chat() completion. Evaluates:
+   * 1. Skill failure patterns (via reflection-trigger stats)
+   * 2. Turn-count threshold for periodic reflection
+   * 3. Triggers self-evolution when conditions are met
+   *
+   * Runs asynchronously and never blocks the main response path.
+   */
+  private async checkEvolutionTriggers(messages: ChatMessage[]): Promise<void> {
+    if (!this.evolutionEnabled) return;
+
+    this.turnsSinceLastReflection++;
+
+    try {
+      // Check skill failure stats from reflection-trigger module
+      const reflectionStats = getReflectionStats();
+      const hasRecentFailures = reflectionStats.recentFailures >= 3;
+      const reachedTurnThreshold = this.turnsSinceLastReflection >= this.REFLECTION_TURN_INTERVAL;
+
+      // Only trigger reflection if there's a reason to
+      if (!hasRecentFailures && !reachedTurnThreshold) return;
+
+      logger.info('[Evolution] Reflection trigger activated', {
+        reason: hasRecentFailures ? 'skill_failures' : 'turn_threshold',
+        recentFailures: reflectionStats.recentFailures,
+        turnsSinceLastReflection: this.turnsSinceLastReflection,
+        failureDetails: reflectionStats.failureDetails,
+      });
+
+      // Reset turn counter
+      this.turnsSinceLastReflection = 0;
+
+      // Fire self-evolution (non-blocking)
+      const evolutionResult = await triggerSelfEvolution();
+      logger.info('[Evolution] Self-evolution result:', evolutionResult);
+
+    } catch (error) {
+      // Evolution should never crash the main loop
+      logger.warn('[Evolution] checkEvolutionTriggers failed (non-fatal):', error);
+    }
+  }
+
+  /**
+   * Collect preference signals from user messages.
+   *
+   * Called when processing a user message. Detects preference expressions
+   * and feeds them into the preference learning pipeline.
+   *
+   * Currently the preference-learning module delegates to LLM via system prompt,
+   * but this hook ensures we have an explicit code path for future enhancements.
+   */
+  private collectPreferenceSignals(userMessage: string): void {
+    try {
+      const result = checkPreferenceTriggers(userMessage, []);
+      if (result.hasPreference && result.expressions.length > 0) {
+        logger.info('[Evolution] Preference signals detected', {
+          count: result.expressions.length,
+          types: result.expressions.map(e => e.type),
+        });
+        // Future: persist signals for batch analysis
+        // Currently LLM handles preference saving via system prompt
+      }
+    } catch (error) {
+      // Preference collection should never block the main loop
+      logger.debug('[Evolution] collectPreferenceSignals failed (non-fatal):', error);
+    }
+  }
+
+    /**
    * Chat with streaming support.
    *
    * [P0 FIX] Added full context management (token tracking, compression, time refresh)

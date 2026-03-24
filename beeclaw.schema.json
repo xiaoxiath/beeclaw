@@ -4,7 +4,6 @@
   "title": "Beeclaw Configuration",
   "description": "Beeclaw v6 Configuration Schema",
   "type": "object",
-
   "properties": {
     "$schema": {
       "type": "string",
@@ -14,13 +13,16 @@
       "type": "string",
       "description": "Configuration comment"
     },
-
     "providers": {
       "type": "array",
       "description": "AI providers configuration",
       "items": {
         "type": "object",
-        "required": ["name", "type", "apiKey"],
+        "required": [
+          "name",
+          "type",
+          "apiKey"
+        ],
         "properties": {
           "name": {
             "type": "string",
@@ -28,7 +30,14 @@
           },
           "type": {
             "type": "string",
-            "enum": ["openai", "anthropic", "zhipu", "minimax", "deepseek", "custom"],
+            "enum": [
+              "openai",
+              "anthropic",
+              "zhipu",
+              "minimax",
+              "deepseek",
+              "custom"
+            ],
             "description": "Provider type"
           },
           "apiKey": {
@@ -68,13 +77,15 @@
         }
       }
     },
-
     "roles": {
       "type": "object",
       "description": "Model role definitions (reusable configurations)",
       "additionalProperties": {
         "type": "object",
-        "required": ["provider", "model"],
+        "required": [
+          "provider",
+          "model"
+        ],
         "properties": {
           "provider": {
             "type": "string",
@@ -117,7 +128,10 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": ["enabled", "disabled"]
+                    "enum": [
+                      "enabled",
+                      "disabled"
+                    ]
                   }
                 }
               }
@@ -127,7 +141,6 @@
         }
       }
     },
-
     "llmRouter": {
       "type": "object",
       "description": "LLM Router configuration",
@@ -141,7 +154,9 @@
           "description": "Router tier definitions",
           "additionalProperties": {
             "type": "object",
-            "required": ["role"],
+            "required": [
+              "role"
+            ],
             "properties": {
               "role": {
                 "type": "string",
@@ -164,11 +179,12 @@
         }
       }
     },
-
     "agent": {
       "type": "object",
       "description": "Agent configuration",
-      "required": ["role"],
+      "required": [
+        "role"
+      ],
       "properties": {
         "role": {
           "type": "string",
@@ -188,14 +204,15 @@
         }
       }
     },
-
     "toolSelector": {
       "type": "object",
       "description": "Tool selector configuration",
       "properties": {
         "embedding": {
           "type": "object",
-          "required": ["role"],
+          "required": [
+            "role"
+          ],
           "properties": {
             "role": {
               "type": "string",
@@ -205,11 +222,12 @@
         }
       }
     },
-
     "compression": {
       "type": "object",
       "description": "Context compression configuration",
-      "required": ["role"],
+      "required": [
+        "role"
+      ],
       "properties": {
         "role": {
           "type": "string",
@@ -227,7 +245,6 @@
         }
       }
     },
-
     "feishu": {
       "type": "object",
       "description": "Feishu bot configuration",
@@ -243,7 +260,6 @@
         }
       }
     },
-
     "web": {
       "type": "object",
       "description": "Web UI configuration",
@@ -261,7 +277,11 @@
           "properties": {
             "level": {
               "type": "string",
-              "enum": ["none", "token", "basic"],
+              "enum": [
+                "none",
+                "token",
+                "basic"
+              ],
               "default": "none"
             },
             "token": {
@@ -272,10 +292,17 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["username", "password"],
+                "required": [
+                  "username",
+                  "password"
+                ],
                 "properties": {
-                  "username": { "type": "string" },
-                  "password": { "type": "string" }
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -283,7 +310,6 @@
         }
       }
     },
-
     "user": {
       "type": "object",
       "description": "User configuration",
@@ -298,7 +324,6 @@
         }
       }
     },
-
     "weather": {
       "type": "object",
       "description": "Weather configuration",
@@ -308,21 +333,512 @@
         }
       }
     },
-
     "logging": {
       "type": "object",
       "description": "Logging configuration",
       "properties": {
         "level": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error"],
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
           "default": "info"
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "description": "Memory system configuration",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "filesystem"
+          ],
+          "default": "filesystem",
+          "description": "Memory storage backend type"
+        },
+        "path": {
+          "type": "string",
+          "default": "./data/memory",
+          "description": "Path to memory storage directory"
+        },
+        "tools": {
+          "type": "object",
+          "description": "Memory tools configuration",
+          "properties": {
+            "enabled": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [
+                "memory_ls",
+                "memory_grep",
+                "memory_read",
+                "memory_write",
+                "memory_record"
+              ],
+              "description": "Enabled memory tool names"
+            },
+            "autoRecord": {
+              "type": "boolean",
+              "default": true,
+              "description": "Automatically record conversations to memory"
+            }
+          }
+        },
+        "retention": {
+          "type": "object",
+          "description": "Data retention policies",
+          "properties": {
+            "conversations": {
+              "type": "string",
+              "default": "90d",
+              "description": "Conversation retention period (e.g., '90d', 'forever')"
+            },
+            "facts": {
+              "type": "string",
+              "default": "forever",
+              "description": "Fact retention period"
+            },
+            "decisions": {
+              "type": "string",
+              "default": "forever",
+              "description": "Decision retention period"
+            }
+          }
+        },
+        "search": {
+          "type": "object",
+          "description": "Hybrid search configuration for memory",
+          "properties": {
+            "vector": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "provider": {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "zhipu",
+                    "local",
+                    "auto"
+                  ],
+                  "default": "auto"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "dims": {
+                  "type": "integer"
+                }
+              }
+            },
+            "fts": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            },
+            "hybrid": {
+              "type": "object",
+              "properties": {
+                "vectorWeight": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "default": 0.7
+                },
+                "textWeight": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "default": 0.3
+                },
+                "mmr": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "lambda": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.5
+                    }
+                  }
+                },
+                "temporalDecay": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "halfLifeDays": {
+                      "type": "number",
+                      "minimum": 1,
+                      "default": 30
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "description": "MCP (Model Context Protocol) client configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MCP server connections"
+        },
+        "servers": {
+          "type": "array",
+          "default": [],
+          "description": "MCP server definitions",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "transport"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique server identifier"
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable server name"
+              },
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "http",
+                  "sse"
+                ],
+                "description": "Transport protocol"
+              },
+              "command": {
+                "type": "string",
+                "description": "Command to start the server (stdio transport)"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Command arguments (stdio transport)"
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment variables for the server process"
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for the server process"
+              },
+              "url": {
+                "type": "string",
+                "description": "Server URL (http/sse transport)"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "HTTP headers (http/sse transport)"
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether this server is enabled"
+              },
+              "timeout": {
+                "type": "number",
+                "description": "Connection timeout in milliseconds"
+              },
+              "tools": {
+                "type": "object",
+                "description": "Tool filtering",
+                "properties": {
+                  "include": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Allowlist of tool names"
+                  },
+                  "exclude": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Blocklist of tool names"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Hook system configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the hook system"
+        },
+        "directories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Directories to scan for hook modules"
+        },
+        "handlers": {
+          "type": "array",
+          "description": "Explicit hook handler registrations",
+          "items": {
+            "type": "object",
+            "required": [
+              "event",
+              "module"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "description": "Hook event name"
+              },
+              "module": {
+                "type": "string",
+                "description": "Module path for the handler"
+              },
+              "export": {
+                "type": "string",
+                "description": "Named export to use (default: default export)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "search": {
+      "type": "object",
+      "description": "Web search provider configuration",
+      "properties": {
+        "bochaApiKey": {
+          "type": "string",
+          "description": "Bocha AI search API key (supports ${ENV_VAR} syntax)"
+        },
+        "tavilyApiKey": {
+          "type": "string",
+          "description": "Tavily search API key (supports ${ENV_VAR} syntax)"
+        },
+        "googleApiKey": {
+          "type": "string",
+          "description": "Google Custom Search API key"
+        },
+        "googleCx": {
+          "type": "string",
+          "description": "Google Custom Search engine ID"
+        },
+        "bingApiKey": {
+          "type": "string",
+          "description": "Bing Search API key"
+        },
+        "braveApiKey": {
+          "type": "string",
+          "description": "Brave Search API key"
+        }
+      },
+      "additionalProperties": true
+    },
+    "sandbox": {
+      "type": "object",
+      "description": "Code execution sandbox configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the sandbox system"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "local",
+            "docker",
+            "auto"
+          ],
+          "default": "auto",
+          "description": "Default sandbox provider"
+        },
+        "workspaceBase": {
+          "type": "string",
+          "default": "./data/sandbox",
+          "description": "Base directory for sandbox workspaces"
+        },
+        "local": {
+          "type": "object",
+          "description": "Local (Bun subprocess) sandbox provider configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "defaultTimeout": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 300000,
+              "default": 30000,
+              "description": "Default execution timeout in milliseconds"
+            },
+            "maxOutputSize": {
+              "type": "number",
+              "minimum": 1024,
+              "maximum": 10485760,
+              "default": 1048576,
+              "description": "Maximum output size in bytes"
+            },
+            "blockedCommands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Regex patterns for blocked commands"
+            },
+            "allowedCommands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "If set, only these commands are allowed (allowlist mode)"
+            }
+          }
+        },
+        "docker": {
+          "type": "object",
+          "description": "Docker container sandbox provider configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "image": {
+              "type": "string",
+              "default": "beeclaw-sandbox:latest",
+              "description": "Docker image for sandbox containers"
+            },
+            "memoryLimitMb": {
+              "type": "number",
+              "minimum": 64,
+              "maximum": 8192,
+              "default": 512,
+              "description": "Memory limit per container in MB"
+            },
+            "cpuLimit": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 4,
+              "default": 1,
+              "description": "CPU core limit (fraction)"
+            },
+            "networkEnabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Allow network access inside containers"
+            },
+            "defaultTimeout": {
+              "type": "number",
+              "minimum": 1000,
+              "maximum": 600000,
+              "default": 60000,
+              "description": "Default execution timeout in milliseconds"
+            },
+            "maxOutputSize": {
+              "type": "number",
+              "minimum": 1024,
+              "maximum": 10485760,
+              "default": 2097152,
+              "description": "Maximum output size in bytes"
+            },
+            "idleTimeout": {
+              "type": "number",
+              "minimum": 30000,
+              "maximum": 3600000,
+              "default": 300000,
+              "description": "Container idle timeout before recycling in milliseconds"
+            },
+            "socketPath": {
+              "type": "string",
+              "description": "Docker socket path"
+            }
+          }
+        },
+        "pool": {
+          "type": "object",
+          "description": "Container pool (pre-warm) configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "minIdle": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 1,
+              "description": "Minimum idle containers to keep warm"
+            },
+            "maxTotal": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 5,
+              "description": "Maximum total containers"
+            },
+            "healthCheckInterval": {
+              "type": "number",
+              "minimum": 10000,
+              "maximum": 300000,
+              "default": 60000,
+              "description": "Pool health check interval in milliseconds"
+            }
+          }
         }
       }
     }
   },
-
-  "required": ["providers", "roles", "agent"],
-
+  "required": [
+    "providers",
+    "roles",
+    "agent"
+  ],
   "additionalProperties": true
 }

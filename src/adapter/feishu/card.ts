@@ -4,10 +4,8 @@
  * Build interactive card messages for Feishu
  */
 
-import { getLogger } from '../../infra/observability/logger';
 import { sendCardMessage } from './send';
 
-const _logger = getLogger('feishu:card');
 
 /**
  * Sanitize user input for safe interpolation into Feishu card lark_md content.

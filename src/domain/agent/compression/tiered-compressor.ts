@@ -1,4 +1,10 @@
 /**
+ * @deprecated Use ProgressiveCompactor instead. This module will be removed in v2.0.
+ * TieredCompressor is now used internally by ProgressiveCompactor only.
+ * For new code, use ProgressiveCompactor.compact() which handles age-zone-based
+ * compression automatically.
+ *
+ * @see ProgressiveCompactor
  * Tiered Compressor - Three-Tier Compression Orchestrator
  *
  * Intelligently selects and applies compression levels based on:
@@ -24,6 +30,7 @@ import { L3AbstractiveCompressor, getL3Compressor } from './l3-abstractive-compr
 import { estimateTokens } from '../context';
 import { logger } from '../../../infra/observability/logger';
 
+/** @deprecated Use ProgressiveCompactor instead */
 export class TieredCompressor {
   private l1: L1FormatCompressor;
   private l2: L2ExtractiveCompressor;
@@ -260,6 +267,7 @@ export class TieredCompressor {
 let tieredInstance: TieredCompressor | null = null;
 
 /**
+ * @deprecated Use getProgressiveCompactor() instead.
  * Get tiered compressor instance
  */
 export function getTieredCompressor(): TieredCompressor {
@@ -270,6 +278,7 @@ export function getTieredCompressor(): TieredCompressor {
 }
 
 /**
+ * @deprecated Use resetProgressiveCompactor() instead.
  * Reset tiered compressor (for testing)
  */
 export function resetTieredCompressor(): void {
@@ -277,6 +286,7 @@ export function resetTieredCompressor(): void {
 }
 
 /**
+ * @deprecated Configure via ProgressiveCompactor constructor instead.
  * Configure tiered compressor with LLM client
  */
 export function configureTieredCompressor(client: CompressionLLMClient): void {

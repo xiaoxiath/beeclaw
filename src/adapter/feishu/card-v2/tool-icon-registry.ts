@@ -326,7 +326,7 @@ export class ToolIconRegistry {
     // Default for unknown tools
     this.register('default', {
       iconToken: IconToken.Code,
-      label: (_input, toolName) => `Executing ${toolName}`,
+      label: (_input: any) => 'Executing tool',
     });
   }
 }

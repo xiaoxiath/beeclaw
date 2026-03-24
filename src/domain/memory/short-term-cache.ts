@@ -205,6 +205,41 @@ export class ShortTermMemoryCache {
   }
 
   /**
+   * 使指定缓存键失效（memory store 更新时调用）
+   *
+   * 与 clearUser 不同，invalidate 接受原始缓存键（如 userId），
+   * 内部会转换为带前缀的键。在 memory store 执行写入/删除后调用
+   * 以保证缓存一致性。
+   */
+  invalidate(key: string): void {
+    const cacheKey = this.getCacheKey(key);
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      this.stats.currentSize -= cached.size;
+      this.stats.userCount--;
+      this.cache.delete(cacheKey);
+      this.stats.evictions++;
+      this.updateStats();
+      logger.debug(`[ShortTermCache] Invalidated cache for key ${key}`);
+    }
+  }
+
+  /**
+   * 使所有缓存失效（批量 memory store 更新时调用）
+   *
+   * 重置统计中的逐出计数并清空缓存，确保下次访问从持久层重新加载。
+   */
+  invalidateAll(): void {
+    const evicted = this.cache.size;
+    this.cache.clear();
+    this.stats.currentSize = 0;
+    this.stats.userCount = 0;
+    this.stats.evictions += evicted;
+    this.updateStats();
+    logger.info(`[ShortTermCache] Invalidated all cache (${evicted} entries)`);
+  }
+
+  /**
    * 清除所有缓存
    */
   clear(): void {

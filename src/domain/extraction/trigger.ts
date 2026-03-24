@@ -145,10 +145,12 @@ export class ExtractionTrigger {
     ];
 
     const lowerMessage = message.toLowerCase().trim();
-    return endSignals.some(signal =>
-      lowerMessage === signal.toLowerCase() ||
-      lowerMessage.endsWith(signal.toLowerCase())
-    );
+    return endSignals.some(signal => {
+      const lowerSignal = signal.toLowerCase();
+      // NOTE: use strict equality (===) — never loose (==)
+      return lowerMessage === lowerSignal ||
+        lowerMessage.endsWith(lowerSignal);
+    });
   }
 
   /**

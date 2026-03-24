@@ -68,3 +68,6 @@ export {
   getCompressionStats,
   resetCompressionStats,
 } from './agent-integration';
+
+// Legacy compatibility (will be removed in v2.0)
+export { hybridCompress, type LegacyCompressionResult } from './legacy-compat';

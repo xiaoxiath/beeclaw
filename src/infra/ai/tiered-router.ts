@@ -207,6 +207,20 @@ export class TieredLLMRouter {
 
   /**
    * 处理降级
+   *
+   * [P1 FIX] Adjacent-tier fallback strategy.
+   *
+   * Previous behavior: ADVANCED → STANDARD → FAST (always downward),
+   * causing all failing requests to funnel toward the worst model.
+   *
+   * New behavior: Try the closest adjacent tier first, preferring
+   * the HIGHER quality tier when equidistant. This keeps quality
+   * as high as possible while still providing resilience.
+   *
+   * Fallback order per tier:
+   *   ADVANCED  → STANDARD → FAST   (can only go down)
+   *   STANDARD  → ADVANCED → FAST   (try up first, then down)
+   *   FAST      → STANDARD → ADVANCED (can only go up)
    */
   private async handleFallback<T>(
     task: LLMTask,
@@ -214,12 +228,17 @@ export class TieredLLMRouter {
     originalError: any
   ): Promise<T> {
     const currentTier = TASK_TIER_MAP[task];
-    const tierOrder = [LLMTier.ADVANCED, LLMTier.STANDARD, LLMTier.FAST];
-    const currentIndex = tierOrder.indexOf(currentTier);
 
-    // 尝试降级到下一级
-    if (currentIndex < tierOrder.length - 1) {
-      const fallbackTier = tierOrder[currentIndex + 1];
+    // Build fallback order: prefer adjacent higher-quality tier first
+    const fallbackOrder: Record<LLMTier, LLMTier[]> = {
+      [LLMTier.ADVANCED]:  [LLMTier.STANDARD, LLMTier.FAST],
+      [LLMTier.STANDARD]:  [LLMTier.ADVANCED, LLMTier.FAST],
+      [LLMTier.FAST]:      [LLMTier.STANDARD, LLMTier.ADVANCED],
+    };
+
+    const candidates = fallbackOrder[currentTier] || [];
+
+    for (const fallbackTier of candidates) {
       console.warn(`[TieredLLMRouter] Falling back from ${currentTier} to ${fallbackTier}`);
 
       const fallbackConfig = LLM_TIER_CONFIGS[fallbackTier];
@@ -228,11 +247,13 @@ export class TieredLLMRouter {
       try {
         return await executor(fallbackModel, fallbackConfig);
       } catch (fallbackError) {
-        console.error(`[TieredLLMRouter] Fallback failed:`, fallbackError);
-        throw originalError;  // 抛出原始错误
+        console.warn(`[TieredLLMRouter] Fallback to ${fallbackTier} also failed, trying next...`);
+        continue;
       }
     }
 
+    // All fallbacks exhausted
+    console.error(`[TieredLLMRouter] All fallback tiers exhausted for task`);
     throw originalError;
   }
 

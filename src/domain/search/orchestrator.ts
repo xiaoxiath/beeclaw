@@ -13,6 +13,7 @@ import { BraveProvider } from './providers/brave';
 import { GoogleProvider } from './providers/google';
 import { BochaProvider } from './providers/bocha';
 import { TavilyProvider } from './providers/tavily';
+import { DeepResearchV2, createDeepResearchHandler, type DeepResearchV2Config, type ResearchDepth, type SearchFn, type FetchFn, type LLMCallFn, type ProgressCallback, type DeepResearchResult } from './research/deep-research-v2';
 
 // ============================================================================
 // TTL-based LRU Cache for search results
@@ -410,6 +411,62 @@ export class SearchOrchestrator {
     }
 
     return results.sort((a, b) => (b.score || 0) - (a.score || 0));
+  }
+
+  // ===========================================================================
+  // [P1] Deep Research V2 Integration
+  // ===========================================================================
+
+  /**
+   * Execute a deep research pipeline using the configured search providers.
+   *
+   * This is a high-level orchestration method that combines:
+   * - Multi-query search via this orchestrator's providers
+   * - Page content fetching
+   * - LLM-powered synthesis and refinement
+   *
+   * @param topic - The research topic
+   * @param options - Research configuration
+   * @returns Deep research result with report, sources, and metadata
+   */
+  async deepResearch(
+    topic: string,
+    options: {
+      depth?: ResearchDepth;
+      aspects?: string[];
+      fetchFn: FetchFn;
+      llmCall: LLMCallFn;
+      onProgress?: ProgressCallback;
+      abortSignal?: AbortSignal;
+    }
+  ): Promise<DeepResearchResult> {
+    const searchFn: SearchFn = async (query, opts) => {
+      const results = await this.search({
+        query,
+        numResults: opts?.maxResults || 10,
+      });
+      return results.map(r => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet,
+        provider: r.source,
+        score: r.score,
+      }));
+    };
+
+    const handler = createDeepResearchHandler({
+      searchFn,
+      fetchFn: options.fetchFn,
+      llmCall: options.llmCall,
+    });
+
+    return handler({
+      topic,
+      depth: options.depth ?? 'standard',
+      aspects: options.aspects,
+      onProgress: options.onProgress,
+      abortSignal: options.abortSignal,
+    });
   }
 
   /**
