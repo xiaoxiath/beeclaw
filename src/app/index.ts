@@ -34,7 +34,6 @@ import { createEmbeddingProvider } from '../domain/memory/embeddings';
 import { TieredLLMRouter } from '../infra/ai/tiered-router';
 import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
 import { getSkillStore } from '../domain/skills';
-import { callAI } from '../domain/agent/api';
 import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience-config';
 
 // Adapter layer

@@ -99,11 +99,12 @@ export class GoalStore {
   get(id: string): Goal | null {
     // SECURITY: [CR-Sec] Validate id to prevent directory traversal (e.g., id="../../etc/passwd")
     this.init();
+    const safeId = this.sanitizeId(id);
 
     // Search in all state directories
     const states = ['active', 'paused', 'completed', 'cancelled'];
     for (const state of states) {
-      const goalPath = join(this.basePath, state, `${id}.json`);
+      const goalPath = join(this.basePath, state, `${safeId}.json`);
       if (existsSync(goalPath)) {
         return this.loadGoal(goalPath);
       }
@@ -152,10 +153,11 @@ export class GoalStore {
   // Update a goal
   update(id: string, options: UpdateGoalOptions): GoalToolResult {
     this.init();
+    const safeId = this.sanitizeId(id);
 
-    const existingGoal = this.get(id);
+    const existingGoal = this.get(safeId);
     if (!existingGoal) {
-      return { success: false, error: `Goal not found: ${id}` };
+      return { success: false, error: `Goal not found: ${safeId}` };
     }
 
     const now = new Date().toISOString();
@@ -180,8 +182,8 @@ export class GoalStore {
       }
 
       // Move file to new state directory
-      const oldPath = join(this.basePath, existingGoal.state, `${id}.json`);
-      const newPath = join(this.basePath, options.state, `${id}.json`);
+      const oldPath = join(this.basePath, existingGoal.state, `${safeId}.json`);
+      const newPath = join(this.basePath, options.state, `${safeId}.json`);
 
       try {
         // Write to new location
@@ -195,7 +197,7 @@ export class GoalStore {
       }
     } else {
       // Just update in place
-      const goalPath = join(this.basePath, updatedGoal.state, `${id}.json`);
+      const goalPath = join(this.basePath, updatedGoal.state, `${safeId}.json`);
       try {
         writeFileSync(goalPath, JSON.stringify(updatedGoal, null, 2), 'utf-8');
       } catch (error) {
@@ -212,22 +214,23 @@ export class GoalStore {
   // Delete a goal
   delete(id: string): GoalToolResult {
     this.init();
+    const safeId = this.sanitizeId(id);
 
-    const goal = this.get(id);
+    const goal = this.get(safeId);
     if (!goal) {
-      return { success: false, error: `Goal not found: ${id}` };
+      return { success: false, error: `Goal not found: ${safeId}` };
     }
 
-    const goalPath = join(this.basePath, goal.state, `${id}.json`);
+    const goalPath = join(this.basePath, goal.state, `${safeId}.json`);
     try {
       if (existsSync(goalPath)) {
         rmSync(goalPath);
       }
 
       // Remove from index
-      this.removeFromIndex(id);
+      this.removeFromIndex(safeId);
 
-      return { success: true, data: { deleted: id } };
+      return { success: true, data: { deleted: safeId } };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to delete goal' };
     }
@@ -236,10 +239,11 @@ export class GoalStore {
   // Add checkpoint to a goal
   addCheckpoint(goalId: string, title: string, description?: string): GoalToolResult {
     this.init();
+    const safeGoalId = this.sanitizeId(goalId);
 
-    const goal = this.get(goalId);
+    const goal = this.get(safeGoalId);
     if (!goal) {
-      return { success: false, error: `Goal not found: ${goalId}` };
+      return { success: false, error: `Goal not found: ${safeGoalId}` };
     }
 
     const checkpoint: Checkpoint = {
@@ -262,7 +266,7 @@ export class GoalStore {
       updatedAt: now,
     };
 
-    const goalPath = join(this.basePath, goal.state, `${goalId}.json`);
+    const goalPath = join(this.basePath, goal.state, `${safeGoalId}.json`);
     try {
       writeFileSync(goalPath, JSON.stringify(updatedGoal, null, 2), 'utf-8');
       this.updateIndex(updatedGoal);
@@ -275,10 +279,11 @@ export class GoalStore {
   // Complete a checkpoint
   completeCheckpoint(goalId: string, checkpointId: string): GoalToolResult {
     this.init();
+    const safeGoalId = this.sanitizeId(goalId);
 
-    const goal = this.get(goalId);
+    const goal = this.get(safeGoalId);
     if (!goal) {
-      return { success: false, error: `Goal not found: ${goalId}` };
+      return { success: false, error: `Goal not found: ${safeGoalId}` };
     }
 
     const checkpoints = goal.checkpoints || [];
@@ -294,7 +299,7 @@ export class GoalStore {
     const progress = this.calculateProgress(checkpoints);
 
     // Update goal
-    const goalPath = join(this.basePath, goal.state, `${goalId}.json`);
+    const goalPath = join(this.basePath, goal.state, `${safeGoalId}.json`);
     const updatedGoal = {
       ...goal,
       checkpoints,
@@ -314,10 +319,11 @@ export class GoalStore {
   // Decompose goal into sub-goals
   decompose(parentId: string, subGoalTitles: string[]): GoalToolResult {
     this.init();
+    const safeParentId = this.sanitizeId(parentId);
 
-    const parentGoal = this.get(parentId);
+    const parentGoal = this.get(safeParentId);
     if (!parentGoal) {
-      return { success: false, error: `Goal not found: ${parentId}` };
+      return { success: false, error: `Goal not found: ${safeParentId}` };
     }
 
     const subGoalIds: string[] = [];
@@ -357,7 +363,7 @@ export class GoalStore {
       updatedAt: now,
     };
 
-    const parentPath = join(this.basePath, parentGoal.state, `${parentId}.json`);
+    const parentPath = join(this.basePath, parentGoal.state, `${safeParentId}.json`);
     try {
       writeFileSync(parentPath, JSON.stringify(updatedParent, null, 2), 'utf-8');
       this.updateIndex(updatedParent);
@@ -383,6 +389,15 @@ export class GoalStore {
   }
 
   // Private helper methods
+
+  private sanitizeId(id: string): string {
+    // Remove path traversal characters
+    const sanitized = id.replace(/[\/\\\.]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!sanitized || sanitized.length > 255) {
+      throw new Error(`Invalid goal ID: "${id}"`);
+    }
+    return sanitized;
+  }
 
   private loadGoal(path: string): Goal | null {
     try {

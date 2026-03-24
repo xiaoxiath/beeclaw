@@ -1,0 +1,327 @@
+diff --git a/beeclaw.example.json b/beeclaw.example.json
+index d57462d..e21b5ec 100644
+--- a/beeclaw.example.json
++++ b/beeclaw.example.json
+@@ -150,7 +150,7 @@
+       "tavily": {
+         "apiKey": "${TAVILY_API_KEY}"
+       }
+-    }
++    },
+     "defaultProvider": "bocha"
+   }
+ }
+diff --git a/src/app/dispatcher/index.ts b/src/app/dispatcher/index.ts
+index 5c2dc55..6dc74fb 100644
+--- a/src/app/dispatcher/index.ts
++++ b/src/app/dispatcher/index.ts
+@@ -6,7 +6,7 @@
+ import { randomUUID } from 'crypto';
+ import { getDataConnection } from '../../infra/db';
+ import { tasks as tasksTable } from '../../infra/db/schema';
+-import { eq, and, lt, gte, isNull, or } from 'drizzle-orm';
++import { eq, and, lt, gte, isNull, isNotNull, or } from 'drizzle-orm';
+ import type {
+   Task,
+   TaskType,
+@@ -326,7 +326,7 @@ export class TaskDispatcher {
+         })
+         .where(and(
+           lt(tasksTable.lockedAt, timeoutDate),
+-          isNull(tasksTable.lockedBy) === false
++          isNotNull(tasksTable.lockedBy)
+         ))
+         .run();
+     } catch (error) {
+diff --git a/src/app/gateway-service.ts b/src/app/gateway-service.ts
+index dacc714..6e70a7e 100644
+--- a/src/app/gateway-service.ts
++++ b/src/app/gateway-service.ts
+@@ -48,7 +48,7 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+ // Periodic cleanup of expired rate limit entries to prevent memory leaks
+ const RATE_LIMIT_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+ 
+-setInterval(() => {
++const cleanupTimer = setInterval(() => {
+   const now = Date.now();
+   for (const [key, entry] of rateLimitStore.entries()) {
+     if (now > entry.resetAt) {
+@@ -56,6 +56,7 @@ setInterval(() => {
+     }
+   }
+ }, RATE_LIMIT_CLEANUP_INTERVAL);
++cleanupTimer.unref();
+ 
+ export function rateLimitMiddleware(windowMs: number = 60000, maxRequests: number = 100) {
+   return async (c: Context, next: Next): Promise<void> => {
+diff --git a/src/app/index.ts b/src/app/index.ts
+index 6150324..a577c44 100644
+--- a/src/app/index.ts
++++ b/src/app/index.ts
+@@ -34,7 +34,6 @@ import { createEmbeddingProvider } from '../domain/memory/embeddings';
+ import { TieredLLMRouter } from '../infra/ai/tiered-router';
+ import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
+ import { getSkillStore } from '../domain/skills';
+-import { callAI } from '../domain/agent/api';
+ import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience-config';
+ 
+ // Adapter layer
+diff --git a/src/domain/agent/goal/store.ts b/src/domain/agent/goal/store.ts
+index 5014308..6f62d83 100644
+--- a/src/domain/agent/goal/store.ts
++++ b/src/domain/agent/goal/store.ts
+@@ -99,11 +99,12 @@ export class GoalStore {
+   get(id: string): Goal | null {
+     // SECURITY: [CR-Sec] Validate id to prevent directory traversal (e.g., id="../../etc/passwd")
+     this.init();
++    const safeId = this.sanitizeId(id);
+ 
+     // Search in all state directories
+     const states = ['active', 'paused', 'completed', 'cancelled'];
+     for (const state of states) {
+-      const goalPath = join(this.basePath, state, `${id}.json`);
++      const goalPath = join(this.basePath, state, `${safeId}.json`);
+       if (existsSync(goalPath)) {
+         return this.loadGoal(goalPath);
+       }
+@@ -152,10 +153,11 @@ export class GoalStore {
+   // Update a goal
+   update(id: string, options: UpdateGoalOptions): GoalToolResult {
+     this.init();
++    const safeId = this.sanitizeId(id);
+ 
+-    const existingGoal = this.get(id);
++    const existingGoal = this.get(safeId);
+     if (!existingGoal) {
+-      return { success: false, error: `Goal not found: ${id}` };
++      return { success: false, error: `Goal not found: ${safeId}` };
+     }
+ 
+     const now = new Date().toISOString();
+@@ -180,8 +182,8 @@ export class GoalStore {
+       }
+ 
+       // Move file to new state directory
+-      const oldPath = join(this.basePath, existingGoal.state, `${id}.json`);
+-      const newPath = join(this.basePath, options.state, `${id}.json`);
++      const oldPath = join(this.basePath, existingGoal.state, `${safeId}.json`);
++      const newPath = join(this.basePath, options.state, `${safeId}.json`);
+ 
+       try {
+         // Write to new location
+@@ -195,7 +197,7 @@ export class GoalStore {
+       }
+     } else {
+       // Just update in place
+-      const goalPath = join(this.basePath, updatedGoal.state, `${id}.json`);
++      const goalPath = join(this.basePath, updatedGoal.state, `${safeId}.json`);
+       try {
+         writeFileSync(goalPath, JSON.stringify(updatedGoal, null, 2), 'utf-8');
+       } catch (error) {
+@@ -212,22 +214,23 @@ export class GoalStore {
+   // Delete a goal
+   delete(id: string): GoalToolResult {
+     this.init();
++    const safeId = this.sanitizeId(id);
+ 
+-    const goal = this.get(id);
++    const goal = this.get(safeId);
+     if (!goal) {
+-      return { success: false, error: `Goal not found: ${id}` };
++      return { success: false, error: `Goal not found: ${safeId}` };
+     }
+ 
+-    const goalPath = join(this.basePath, goal.state, `${id}.json`);
++    const goalPath = join(this.basePath, goal.state, `${safeId}.json`);
+     try {
+       if (existsSync(goalPath)) {
+         rmSync(goalPath);
+       }
+ 
+       // Remove from index
+-      this.removeFromIndex(id);
++      this.removeFromIndex(safeId);
+ 
+-      return { success: true, data: { deleted: id } };
++      return { success: true, data: { deleted: safeId } };
+     } catch (error) {
+       return { success: false, error: error instanceof Error ? error.message : 'Failed to delete goal' };
+     }
+@@ -236,10 +239,11 @@ export class GoalStore {
+   // Add checkpoint to a goal
+   addCheckpoint(goalId: string, title: string, description?: string): GoalToolResult {
+     this.init();
++    const safeGoalId = this.sanitizeId(goalId);
+ 
+-    const goal = this.get(goalId);
++    const goal = this.get(safeGoalId);
+     if (!goal) {
+-      return { success: false, error: `Goal not found: ${goalId}` };
++      return { success: false, error: `Goal not found: ${safeGoalId}` };
+     }
+ 
+     const checkpoint: Checkpoint = {
+@@ -262,7 +266,7 @@ export class GoalStore {
+       updatedAt: now,
+     };
+ 
+-    const goalPath = join(this.basePath, goal.state, `${goalId}.json`);
++    const goalPath = join(this.basePath, goal.state, `${safeGoalId}.json`);
+     try {
+       writeFileSync(goalPath, JSON.stringify(updatedGoal, null, 2), 'utf-8');
+       this.updateIndex(updatedGoal);
+@@ -275,10 +279,11 @@ export class GoalStore {
+   // Complete a checkpoint
+   completeCheckpoint(goalId: string, checkpointId: string): GoalToolResult {
+     this.init();
++    const safeGoalId = this.sanitizeId(goalId);
+ 
+-    const goal = this.get(goalId);
++    const goal = this.get(safeGoalId);
+     if (!goal) {
+-      return { success: false, error: `Goal not found: ${goalId}` };
++      return { success: false, error: `Goal not found: ${safeGoalId}` };
+     }
+ 
+     const checkpoints = goal.checkpoints || [];
+@@ -294,7 +299,7 @@ export class GoalStore {
+     const progress = this.calculateProgress(checkpoints);
+ 
+     // Update goal
+-    const goalPath = join(this.basePath, goal.state, `${goalId}.json`);
++    const goalPath = join(this.basePath, goal.state, `${safeGoalId}.json`);
+     const updatedGoal = {
+       ...goal,
+       checkpoints,
+@@ -314,10 +319,11 @@ export class GoalStore {
+   // Decompose goal into sub-goals
+   decompose(parentId: string, subGoalTitles: string[]): GoalToolResult {
+     this.init();
++    const safeParentId = this.sanitizeId(parentId);
+ 
+-    const parentGoal = this.get(parentId);
++    const parentGoal = this.get(safeParentId);
+     if (!parentGoal) {
+-      return { success: false, error: `Goal not found: ${parentId}` };
++      return { success: false, error: `Goal not found: ${safeParentId}` };
+     }
+ 
+     const subGoalIds: string[] = [];
+@@ -357,7 +363,7 @@ export class GoalStore {
+       updatedAt: now,
+     };
+ 
+-    const parentPath = join(this.basePath, parentGoal.state, `${parentId}.json`);
++    const parentPath = join(this.basePath, parentGoal.state, `${safeParentId}.json`);
+     try {
+       writeFileSync(parentPath, JSON.stringify(updatedParent, null, 2), 'utf-8');
+       this.updateIndex(updatedParent);
+@@ -384,6 +390,15 @@ export class GoalStore {
+ 
+   // Private helper methods
+ 
++  private sanitizeId(id: string): string {
++    // Remove path traversal characters
++    const sanitized = id.replace(/[\/\\\.]+/g, '_').replace(/^_+|_+$/g, '');
++    if (!sanitized || sanitized.length > 255) {
++      throw new Error(`Invalid goal ID: "${id}"`);
++    }
++    return sanitized;
++  }
++
+   private loadGoal(path: string): Goal | null {
+     try {
+       const content = readFileSync(path, 'utf-8');
+diff --git a/src/domain/sandbox/providers/docker.ts b/src/domain/sandbox/providers/docker.ts
+index 2af9cef..acac1ad 100644
+--- a/src/domain/sandbox/providers/docker.ts
++++ b/src/domain/sandbox/providers/docker.ts
+@@ -30,7 +30,7 @@ class DockerSandbox implements Sandbox {
+   readonly workspacePath: string;
+   readonly sessionId?: string;
+ 
+-  private alive: boolean = false;
++  private _alive: boolean = false;
+   private containerId?: string;
+   private createdAt: Date;
+   private execCount: number = 0;
+@@ -55,7 +55,7 @@ class DockerSandbox implements Sandbox {
+   }
+ 
+   get alive(): boolean {
+-    return this.alive;
++    return this._alive;
+   }
+ 
+   async start(options?: SandboxCreateOptions): Promise<void> {
+@@ -85,7 +85,7 @@ class DockerSandbox implements Sandbox {
+ 
+       // Extract container ID from output
+       this.containerId = result.stdout.trim();
+-      this.alive = true;
++      this._alive = true;
+ 
+       logger.info('[DockerSandbox] Container created', {
+         sandboxId: this.id,
+@@ -389,7 +389,7 @@ class DockerSandbox implements Sandbox {
+         });
+       }
+ 
+-      this.alive = false;
++      this._alive = false;
+ 
+       logger.info('[DockerSandbox] Container stopped', {
+         sandboxId: this.id,
+@@ -416,7 +416,7 @@ class DockerSandbox implements Sandbox {
+         // Ignore errors in force removal
+       }
+ 
+-      this.alive = false;
++      this._alive = false;
+     }
+   }
+ 
+diff --git a/src/domain/sandbox/providers/local.ts b/src/domain/sandbox/providers/local.ts
+index 83d26ec..a1ea509 100644
+--- a/src/domain/sandbox/providers/local.ts
++++ b/src/domain/sandbox/providers/local.ts
+@@ -30,7 +30,7 @@ class LocalSandbox implements Sandbox {
+   readonly workspacePath: string;
+   readonly sessionId?: string;
+ 
+-  private alive: boolean = true;
++  private _alive: boolean = true;
+   private createdAt: Date;
+   private execCount: number = 0;
+   private totalDurationMs: number = 0;
+@@ -56,7 +56,7 @@ class LocalSandbox implements Sandbox {
+   }
+ 
+   get alive(): boolean {
+-    return this.alive;
++    return this._alive;
+   }
+ 
+   async exec(command: string, options?: ExecOptions): Promise<ExecutionResult> {
+@@ -320,7 +320,7 @@ class LocalSandbox implements Sandbox {
+       return;
+     }
+ 
+-    this.alive = false;
++    this._alive = false;
+ 
+     // Clean up workspace directory
+     try {
+diff --git a/src/domain/search/orchestrator.ts b/src/domain/search/orchestrator.ts
+index 2783167..63e2eb3 100644
+--- a/src/domain/search/orchestrator.ts
++++ b/src/domain/search/orchestrator.ts
+@@ -270,7 +270,7 @@ export class SearchOrchestrator {
+                 break;
+               }
+             } catch (_fallbackError) {
+-              console.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${query.substring(0, 50)}"`);
++              console.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${request.query.substring(0, 50)}"`);
+             }
+           }
+         }

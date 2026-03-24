@@ -30,7 +30,7 @@ class DockerSandbox implements Sandbox {
   readonly workspacePath: string;
   readonly sessionId?: string;
 
-  private alive: boolean = false;
+  private _alive: boolean = false;
   private containerId?: string;
   private createdAt: Date;
   private execCount: number = 0;
@@ -55,7 +55,7 @@ class DockerSandbox implements Sandbox {
   }
 
   get alive(): boolean {
-    return this.alive;
+    return this._alive;
   }
 
   async start(options?: SandboxCreateOptions): Promise<void> {
@@ -85,7 +85,7 @@ class DockerSandbox implements Sandbox {
 
       // Extract container ID from output
       this.containerId = result.stdout.trim();
-      this.alive = true;
+      this._alive = true;
 
       logger.info('[DockerSandbox] Container created', {
         sandboxId: this.id,
@@ -389,7 +389,7 @@ class DockerSandbox implements Sandbox {
         });
       }
 
-      this.alive = false;
+      this._alive = false;
 
       logger.info('[DockerSandbox] Container stopped', {
         sandboxId: this.id,
@@ -416,7 +416,7 @@ class DockerSandbox implements Sandbox {
         // Ignore errors in force removal
       }
 
-      this.alive = false;
+      this._alive = false;
     }
   }
 

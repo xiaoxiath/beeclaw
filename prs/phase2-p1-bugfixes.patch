@@ -1,0 +1,129 @@
+diff --git a/src/domain/agent/fast-llm-judge.ts b/src/domain/agent/fast-llm-judge.ts
+index 62bc611..e06978b 100644
+--- a/src/domain/agent/fast-llm-judge.ts
++++ b/src/domain/agent/fast-llm-judge.ts
+@@ -78,6 +78,8 @@ export interface JudgmentResult<T> {
+   result: T;
+   /** 是否失败（使用默认值） */
+   failed: boolean;
++  /** 是否来自缓存 */
++  fromCache?: boolean;
+   /** 错误信息（如果有） */
+   error?: string;
+   /** LLM 原始输出 */
+diff --git a/src/domain/proactive/tools.ts b/src/domain/proactive/tools.ts
+index 114595c..7db3f41 100644
+--- a/src/domain/proactive/tools.ts
++++ b/src/domain/proactive/tools.ts
+@@ -10,8 +10,6 @@ import { getSchedulerLazy } from '../../infra/db/store';
+ import { getNotificationsLazy } from '../../infra/db/store';
+ import { getTaskManager } from '../../infra/queue/manager';
+ import { pushNotification } from './pusher';
+-import { getTaskManager } from '../../infra/queue/manager';
+-import { pushNotification } from './pusher';
+ 
+ // Tool definitions for AI function calling
+ export const proactiveTools = {
+diff --git a/src/domain/proactive/types.ts b/src/domain/proactive/types.ts
+index 882e1e0..850f854 100644
+--- a/src/domain/proactive/types.ts
++++ b/src/domain/proactive/types.ts
+@@ -17,6 +17,7 @@ export type ProactiveTaskType =
+   | 'send_reminder'
+   | 'memory_compress'
+   | 'llm_proactive_chat'  // LLM 主动沟通
++  | 'self_evolution'
+   | 'custom';
+ 
+ // Schedule state
+@@ -31,7 +32,7 @@ export const ScheduleSchema = z.object({
+   enabled: z.boolean().default(true).describe('Whether schedule is active'),
+   state: z.enum(['enabled', 'disabled', 'paused']).default('enabled'),
+   task: z.object({
+-    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
++    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'self_evolution', 'custom']),
+     params: z.record(z.unknown()).optional().default({}),
+   }).describe('Task to execute'),
+   lastRun: z.string().optional().describe('Last execution time'),
+@@ -56,7 +57,7 @@ export const PatternSchema = z.object({
+     condition: z.string().describe('Condition expression'),
+   }).describe('Trigger definition'),
+   action: z.object({
+-    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
++    type: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'self_evolution', 'custom']),
+     params: z.record(z.unknown()).optional().default({}),
+   }).describe('Action to take'),
+   enabled: z.boolean().default(true),
+@@ -151,7 +152,7 @@ export const CreateScheduleOptionsSchema = z.object({
+   name: z.string().min(1),
+   description: z.string().optional(),
+   cron: z.string(),
+-  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
++  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'self_evolution', 'custom']),
+   taskParams: z.record(z.unknown()).optional().default({}),
+   enabled: z.boolean().optional().default(true),
+ });
+@@ -165,7 +166,7 @@ export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptionsSchema>;
+ //   3. Enabling bidirectional context flow between tasks and conversations
+ export const ProactiveJobDataSchema = z.object({
+   scheduleId: z.string(),
+-  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
++  taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'self_evolution', 'custom']),
+   params: z.record(z.unknown()).optional().default({}),
+   triggeredAt: z.string(),
+   triggeredBy: z.enum(['cron', 'pattern', 'manual']),
+diff --git a/src/infra/cache/index.ts b/src/infra/cache/index.ts
+index 56fe08e..9a0c811 100644
+--- a/src/infra/cache/index.ts
++++ b/src/infra/cache/index.ts
+@@ -11,6 +11,11 @@ interface CacheEntry<T> {
+ 
+ class MemoryCache {
+   private store = new Map<string, CacheEntry<any>>();
++  private maxSize: number;
++
++  constructor(maxSize = 10000) {
++    this.maxSize = maxSize;
++  }
+ 
+   /**
+    * Set a value in the cache
+@@ -19,6 +24,9 @@ class MemoryCache {
+    * @param ttlSeconds - Time to live in seconds (optional)
+    */
+   set<T>(key: string, value: T, ttlSeconds?: number): void {
++    if (this.store.size >= this.maxSize) {
++      this.evict();
++    }
+     const entry: CacheEntry<T> = {
+       value,
+       expiresAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined,
+@@ -105,6 +113,28 @@ class MemoryCache {
+ 
+     return cleaned;
+   }
++
++  /**
++   * Evict entries when cache exceeds maxSize.
++   * First removes expired entries, then removes oldest entries if still over limit.
++   */
++  private evict(): void {
++    // First pass: remove expired
++    const now = Date.now();
++    for (const [key, entry] of this.store.entries()) {
++      if (entry.expiresAt && entry.expiresAt < now) {
++        this.store.delete(key);
++      }
++    }
++    // Second pass: if still over limit, remove oldest entries
++    if (this.store.size > this.maxSize) {
++      const excess = this.store.size - this.maxSize;
++      const keys = [...this.store.keys()];
++      for (let i = 0; i < excess; i++) {
++        this.store.delete(keys[i]);
++      }
++    }
++  }
+ }
+ 
+ // Export singleton instance

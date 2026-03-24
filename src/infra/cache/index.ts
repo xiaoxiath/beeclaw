@@ -11,6 +11,11 @@ interface CacheEntry<T> {
 
 class MemoryCache {
   private store = new Map<string, CacheEntry<any>>();
+  private maxSize: number;
+
+  constructor(maxSize = 10000) {
+    this.maxSize = maxSize;
+  }
 
   /**
    * Set a value in the cache
@@ -19,6 +24,9 @@ class MemoryCache {
    * @param ttlSeconds - Time to live in seconds (optional)
    */
   set<T>(key: string, value: T, ttlSeconds?: number): void {
+    if (this.store.size >= this.maxSize) {
+      this.evict();
+    }
     const entry: CacheEntry<T> = {
       value,
       expiresAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined,
@@ -104,6 +112,28 @@ class MemoryCache {
     }
 
     return cleaned;
+  }
+
+  /**
+   * Evict entries when cache exceeds maxSize.
+   * First removes expired entries, then removes oldest entries if still over limit.
+   */
+  private evict(): void {
+    // First pass: remove expired
+    const now = Date.now();
+    for (const [key, entry] of this.store.entries()) {
+      if (entry.expiresAt && entry.expiresAt < now) {
+        this.store.delete(key);
+      }
+    }
+    // Second pass: if still over limit, remove oldest entries
+    if (this.store.size > this.maxSize) {
+      const excess = this.store.size - this.maxSize;
+      const keys = [...this.store.keys()];
+      for (let i = 0; i < excess; i++) {
+        this.store.delete(keys[i]);
+      }
+    }
   }
 }
 

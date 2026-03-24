@@ -1,0 +1,3719 @@
+diff --git a/src/domain/agent/compression/integration-examples.ts b/src/domain/agent/compression/integration-examples.ts
+deleted file mode 100644
+index fa124c1..0000000
+--- a/src/domain/agent/compression/integration-examples.ts
++++ /dev/null
+@@ -1,318 +0,0 @@
+-/**
+- * Integration Example: Context Compression in Beeclaw
+- *
+- * This example demonstrates how to integrate the three-tier compression
+- * system into the existing agent chat flow.
+- */
+-
+-import { getTieredCompressor, getProgressiveCompactor } from './index';
+-import { estimateTotalTokens, type MultimodalContent } from '../context';
+-import { logger } from '../../../infra/observability/logger';
+-
+-/**
+- * Example 1: Integrate compression into agent chat
+- */
+-export async function chatWithCompression(
+-  messages: Array<{
+-    role: string;
+-    content?: string | MultimodalContent[];
+-    tool_calls?: any;
+-    tool_call_id?: string;
+-  }>,
+-  config: {
+-    maxTokens: number;
+-    compressionThreshold: number;
+-    keepRecent: number;
+-    llmClient?: any;
+-  }
+-): Promise<typeof messages> {
+-  const compressor = getTieredCompressor();
+-
+-  // Configure LLM client for L3 compression if provided
+-  if (config.llmClient) {
+-    compressor.setLLMClient(config.llmClient);
+-  }
+-
+-  // Estimate current token usage
+-  const currentTokens = estimateTotalTokens(messages);
+-  const threshold = config.maxTokens * config.compressionThreshold;
+-
+-  logger.debug(
+-    `[Compression] Current: ${currentTokens} tokens, Threshold: ${threshold} tokens`
+-  );
+-
+-  // Check if compression is needed
+-  if (currentTokens <= threshold) {
+-    logger.debug('[Compression] Below threshold, no compression needed');
+-    return messages;
+-  }
+-
+-  logger.info(
+-    `[Compression] Above threshold (${(currentTokens / config.maxTokens * 100).toFixed(1)}%), compressing...`
+-  );
+-
+-  // Separate messages to compress
+-  const keepRecent = config.keepRecent;
+-  const recentMessages = messages.slice(-keepRecent);
+-  const oldMessages = messages.slice(0, -keepRecent);
+-
+-  // Compress old messages
+-  const compressedMessages = await Promise.all(
+-    oldMessages.map(async (msg) => {
+-      // Only compress text content
+-      if (typeof msg.content === 'string' && msg.content.length > 100) {
+-        const result = await compressor.compress(
+-          msg.content,
+-          estimateTotalTokens([msg]),
+-          config.maxTokens * 0.05 // Allocate 5% of budget per message
+-        );
+-
+-        logger.debug(
+-          `[Compression] Compressed message: ${result.originalTokens} → ${result.compressedTokens} tokens (${(result.ratio * 100).toFixed(1)}%)`
+-        );
+-
+-        return { ...msg, content: result.compressed };
+-      }
+-
+-      return msg;
+-    })
+-  );
+-
+-  const finalMessages = [...compressedMessages, ...recentMessages];
+-  const finalTokens = estimateTotalTokens(finalMessages);
+-
+-  logger.info(
+-    `[Compression] Completed: ${currentTokens} → ${finalTokens} tokens (saved ${currentTokens - finalTokens})`
+-  );
+-
+-  return finalMessages;
+-}
+-
+-/**
+- * Example 2: Progressive compaction for long conversations
+- */
+-export async function compactConversationHistory(
+-  messages: Array<{
+-    turn: number;
+-    role: string;
+-    content: string;
+-  }>,
+-  config?: {
+-    zones?: any[];
+-    llmClient?: any;
+-  }
+-): Promise<string[]> {
+-  const compactor = getProgressiveCompactor();
+-
+-  // Configure custom zones if provided
+-  if (config?.zones) {
+-    compactor.setZones(config.zones);
+-  }
+-
+-  // Configure LLM client for cold zone compression
+-  if (config?.llmClient) {
+-    const compressor = compactor['compressor'];
+-    compressor.setLLMClient(config.llmClient);
+-  }
+-
+-  const currentTurn = Math.max(...messages.map(m => m.turn));
+-
+-  logger.info(
+-    `[ProgressiveCompactor] Compacting ${messages.length} messages (turn ${currentTurn})...`
+-  );
+-
+-  const result = await compactor.compact(messages, currentTurn);
+-
+-  // Log zone statistics
+-  for (const [zoneName, stats] of Object.entries(result.byZone)) {
+-    if (stats.count > 0) {
+-      const ratio = 1 - stats.compactedTokens / stats.originalTokens;
+-      logger.debug(
+-        `[ProgressiveCompactor] Zone ${zoneName}: ${stats.count} messages, ${(ratio * 100).toFixed(1)}% compression`
+-      );
+-    }
+-  }
+-
+-  logger.info(
+-    `[ProgressiveCompactor] Completed: ${result.originalTokens} → ${result.compactedTokens} tokens (${(result.ratio * 100).toFixed(1)}% total compression)`
+-  );
+-
+-  return result.messages;
+-}
+-
+-/**
+- * Example 3: Compression middleware for memory system
+- */
+-export function createCompressionMiddleware(config: {
+-  maxMemoryTokens: number;
+-  llmClient?: any;
+-}) {
+-  const compressor = getTieredCompressor();
+-
+-  if (config.llmClient) {
+-    compressor.setLLMClient(config.llmClient);
+-  }
+-
+-  return {
+-    async beforeStore(content: string): Promise<string> {
+-      const tokens = estimateTotalTokens([{ role: 'user', content }]);
+-
+-      if (tokens > config.maxMemoryTokens * 0.5) {
+-        const result = await compressor.compress(
+-          content,
+-          tokens,
+-          config.maxMemoryTokens * 0.3
+-        );
+-
+-        logger.debug(
+-          `[CompressionMiddleware] Compressed memory: ${result.originalTokens} → ${result.compressedTokens} tokens`
+-        );
+-
+-        return result.compressed;
+-      }
+-
+-      return content;
+-    },
+-
+-    async beforeRetrieve(content: string): Promise<string> {
+-      // Could decompress or expand if needed
+-      return content;
+-    },
+-  };
+-}
+-
+-/**
+- * Example 4: Automatic compression in proactive scheduler
+- */
+-export function scheduleMemoryCompression(scheduler: any, config: {
+-  interval: string;
+-  llmClient?: any;
+-}) {
+-  scheduler.createSchedule({
+-    id: 'memory-compression',
+-    cron: config.interval,
+-    handler: async () => {
+-      logger.info('[ScheduledCompression] Starting memory compression...');
+-
+-      const compactor = getProgressiveCompactor();
+-
+-      if (config.llmClient) {
+-        const compressor = compactor['compressor'];
+-        compressor.setLLMClient(config.llmClient);
+-      }
+-
+-      // Get all active sessions (implementation depends on your session manager)
+-      // const sessions = await sessionManager.getActiveSessions();
+-
+-      // for (const session of sessions) {
+-      //   const messages = await loadMessages(session.id);
+-      //   const result = await compactor.compact(messages, messages.length);
+-      //   await saveCompactedMessages(session.id, result.messages);
+-      // }
+-
+-      logger.info('[ScheduledCompression] Memory compression completed');
+-    },
+-  });
+-}
+-
+-/**
+- * Example 5: Usage in agent.ts
+- *
+- * Add this to your agent's chat() method:
+- */
+-/*
+-export async function chat(
+-  this: Agent,
+-  messages: ChatMessage[],
+-  onContentBlock?: (block: ContentBlock) => void
+-): Promise<ChatCompletion> {
+-  // ... existing code ...
+-
+-  // NEW: Apply compression before calling LLM
+-  const compressor = getTieredCompressor();
+-
+-  // Configure LLM client for L3 compression
+-  if (this.provider) {
+-    compressor.setLLMClient({
+-      complete: async (prompt: string, maxTokens: number) => {
+-        const response = await callAI({
+-          provider: this.provider,
+-          model: 'glm-4-flash', // Use fast model for compression
+-          messages: [{ role: 'user', content: prompt }],
+-          maxTokens,
+-        });
+-        return response.choices[0]?.message?.content || '';
+-      },
+-    });
+-  }
+-
+-  // Compress messages if needed
+-  messages = await chatWithCompression(messages, {
+-    maxTokens: this.config.contextConfig.maxTokens,
+-    compressionThreshold: this.config.contextConfig.compressionThreshold,
+-    keepRecent: this.config.contextConfig.keepRecent,
+-    llmClient: this.provider,
+-  });
+-
+-  // ... continue with existing chat logic ...
+-}
+-*/
+-
+-/**
+- * Example 6: CLI command to manually compress memory
+- */
+-export async function compressMemoryCommand(options: {
+-  sessionId?: string;
+-  dryRun?: boolean;
+-  verbose?: boolean;
+-}) {
+-  const compactor = getProgressiveCompactor();
+-
+-  logger.info('Starting memory compression...');
+-
+-  if (options.sessionId) {
+-    // Compress specific session
+-    // const messages = await loadMessages(options.sessionId);
+-    // const result = await compactor.compact(messages, messages.length);
+-
+-    if (options.verbose) {
+-      console.log('Compression result:');
+-      console.log(`  Original: ${result.originalTokens} tokens`);
+-      console.log(`  Compressed: ${result.compactedTokens} tokens`);
+-      console.log(`  Ratio: ${(result.ratio * 100).toFixed(1)}%`);
+-      console.log('\nBy zone:');
+-
+-      for (const [zone, stats] of Object.entries(result.byZone)) {
+-        if (stats.count > 0) {
+-          console.log(`  ${zone}: ${stats.count} messages, ${stats.originalTokens} → ${stats.compactedTokens} tokens`);
+-        }
+-      }
+-    }
+-
+-    if (!options.dryRun) {
+-      // await saveCompactedMessages(options.sessionId, result.messages);
+-      console.log('Memory compressed and saved');
+-    } else {
+-      console.log('Dry run - no changes saved');
+-    }
+-  } else {
+-    // Compress all sessions
+-    console.log('Compressing all sessions...');
+-
+-    // const sessions = await getAllSessions();
+-    // let totalSaved = 0;
+-
+-    // for (const session of sessions) {
+-    //   const messages = await loadMessages(session.id);
+-    //   const result = await compactor.compact(messages, messages.length);
+-    //
+-    //   if (!options.dryRun) {
+-    //     await saveCompactedMessages(session.id, result.messages);
+-    //   }
+-    //
+-    //   totalSaved += result.originalTokens - result.compactedTokens;
+-    // }
+-
+-    // console.log(`Total tokens saved: ${totalSaved}`);
+-  }
+-}
+diff --git a/src/domain/agent/resilience-integration.ts b/src/domain/agent/resilience-integration.ts
+deleted file mode 100644
+index 6e93c38..0000000
+--- a/src/domain/agent/resilience-integration.ts
++++ /dev/null
+@@ -1,341 +0,0 @@
+-/**
+- * resilience-integration.ts — 韧性集成示例
+- *
+- * ⚠️ REFERENCE IMPLEMENTATION - NOT USED IN PRODUCTION
+- *
+- * This file demonstrates how to integrate resilience modules into BeeClaw Agent.
+- * It is for educational purposes only and should not be imported in production code.
+- *
+- * To use resilience features in production:
+- *   1. Copy the patterns from this file
+- *   2. Integrate them into the actual agent code (src/domain/agent/agent.ts)
+- *   3. Remove this file after integration
+- *
+- * 集成要点：
+- *   1. 使用 ResilienceConfig 统一管理所有配置
+- *   2. 创建 TimeoutOrchestrator 管理超时
+- *   3. 使用 LoopDetector 检测循环
+- *   4. 使用 BudgetManager 管理预算
+- *   5. 使用 CircuitBreakerRegistry 管理熔断器
+- *   6. 使用 ParallelToolExecutor 并行执行工具
+- *   7. 使用 ProgressAwareMonitor 监控进度
+- */
+-
+-import { resolveConfig, type ResilienceConfig, type PresetName } from '../../infra/config/resilience-config';
+-import { TimeoutOrchestrator } from '../../infra/utils/timeout-hierarchy';
+-import { LoopDetector } from '../../infra/utils/loop-detector';
+-import { CircuitBreakerRegistry } from '../../infra/resilience/circuit-breaker';
+-import { BudgetManager } from '../../infra/utils/budget-manager';
+-import { CheckpointManager } from '../../infra/utils/checkpoint-manager';
+-import { UnifiedRetryEngine } from '../../infra/resilience/unified-retry';
+-import { ParallelToolExecutor, type ToolCallRequest } from '../../infra/utils/parallel-tool-executor';
+-import { ProgressAwareMonitor } from '../../infra/utils/progress-aware-monitor';
+-
+-// ─── 韧性上下文 ────────────────────────────────────────────
+-
+-export interface ResilienceContext {
+-  config: ResilienceConfig;
+-  timeout: TimeoutOrchestrator;
+-  loopDetector: LoopDetector;
+-  circuitBreakers: CircuitBreakerRegistry;
+-  budget: BudgetManager;
+-  checkpoint: CheckpointManager;
+-  retry: UnifiedRetryEngine;
+-  executor: ParallelToolExecutor;
+-  monitor: ProgressAwareMonitor;
+-}
+-
+-/**
+- * 创建完整的韧性上下文
+- *
+- * @example
+- * ```ts
+- * // 使用标准预设
+- * const ctx = createResilienceContext();
+- *
+- * // 使用复杂研究预设
+- * const ctx = createResilienceContext({ preset: 'complex_research' });
+- *
+- * // 预设 + 自定义覆写
+- * const ctx = createResilienceContext({
+- *   preset: 'standard',
+- *   overrides: {
+- *     timeout: { turnTimeoutMs: 900_000 },
+- *     budget: { maxToolCalls: 50 }
+- *   }
+- * });
+- * ```
+- */
+-export function createResilienceContext(options?: {
+-  preset?: PresetName;
+-  overrides?: Partial<ResilienceConfig>;
+-}): ResilienceContext {
+-  const config = resolveConfig(options?.preset ?? 'standard', options?.overrides);
+-
+-  // 创建各个组件
+-  const timeout = new TimeoutOrchestrator({
+-    turnTimeoutMs: config.timeout.turnTimeoutMs,
+-    requestTimeoutMs: config.timeout.requestTimeoutMs,
+-    streamingRequestTimeoutMs: config.timeout.streamingRequestTimeoutMs,
+-    llmStepTimeoutMs: config.timeout.llmStepTimeoutMs,
+-    toolStepTimeoutMs: config.timeout.toolStepTimeoutMs,
+-    inactivityTimeoutMs: config.timeout.inactivityTimeoutMs,
+-    inactivityCheckIntervalMs: config.timeout.inactivityCheckIntervalMs,
+-  });
+-
+-  const loopDetector = new LoopDetector({
+-    exactDuplicateWindow: config.loopDetector.semanticWindowSize,
+-    maxExactDuplicates: config.loopDetector.exactDuplicateThreshold,
+-    semanticSimilarityThreshold: config.loopDetector.semanticSimilarityThreshold,
+-    maxSemanticDuplicates: 3,
+-    progressStallWindow: config.loopDetector.progressStallRounds,
+-    minInformationGain: config.loopDetector.progressGainThreshold,
+-    injectWarningFirst: true,
+-    maxWarningsBeforeBreak: 2,
+-  });
+-
+-  const circuitBreakers = new CircuitBreakerRegistry({
+-    failureThreshold: config.circuitBreaker.failureThreshold,
+-    resetTimeoutMs: config.circuitBreaker.resetTimeoutMs,
+-    halfOpenMaxAttempts: config.circuitBreaker.halfOpenMaxAttempts,
+-    rollingWindowMs: config.circuitBreaker.rollingWindowMs,
+-    rollingBuckets: config.circuitBreaker.rollingBuckets,
+-    volumeThreshold: config.circuitBreaker.volumeThreshold,
+-  });
+-
+-  const budget = new BudgetManager({
+-    maxInputTokens: Math.floor(config.budget.maxTokens * 0.8),
+-    maxOutputTokens: Math.floor(config.budget.maxTokens * 0.2),
+-    maxTotalTokens: config.budget.maxTokens,
+-    maxLLMCalls: 30,
+-    maxToolCalls: config.budget.maxToolCalls,
+-    maxWallClockMs: config.budget.maxWallTimeMs,
+-    maxCostUSD: config.budget.maxCostDollars,
+-    warningThreshold: config.budget.warningThreshold,
+-    hardLimitThreshold: config.budget.hardLimitThreshold,
+-  });
+-
+-  const checkpoint = new CheckpointManager({
+-    enabled: config.checkpoint.enabled,
+-    storageBackend: 'filesystem',
+-    storagePath: '.beeclaw-checkpoints',
+-    ttlMs: 24 * 60 * 60 * 1000,
+-    saveEveryNIterations: config.checkpoint.intervalSteps,
+-    maxCheckpointsPerTurn: config.checkpoint.maxSnapshots,
+-    saveFullMessages: true,
+-    compress: config.checkpoint.compressionThresholdBytes > 0,
+-  });
+-
+-  const retry = new UnifiedRetryEngine();
+-  retry.setCircuitBreakers(circuitBreakers);
+-
+-  const executor = new ParallelToolExecutor({
+-    defaultTimeoutMs: config.executor.defaultToolTimeoutMs,
+-    maxConcurrency: config.executor.maxConcurrency,
+-    toolTimeouts: new Map(),
+-    criticalTools: new Set(),
+-    circuitBreakers: circuitBreakers.getAllBreakers(),
+-  });
+-
+-  const monitor = new ProgressAwareMonitor({
+-    baseTimeoutMs: config.timeout.toolStepTimeoutMs,
+-    bufferCapacity: config.monitor.healthWindowSize,
+-    rateWindowMs: 60_000,
+-    stallThreshold: config.monitor.healthAlertThreshold,
+-    checkIntervalMs: 30_000,
+-  });
+-
+-  return {
+-    config,
+-    timeout,
+-    loopDetector,
+-    circuitBreakers,
+-    budget,
+-    checkpoint,
+-    retry,
+-    executor,
+-    monitor,
+-  };
+-}
+-
+-// ─── 使用示例 ───────────────────────────────────────────────
+-
+-/**
+- * 基本的 Agent chat 循环示例
+- */
+-export async function exampleChatLoop(
+-  ctx: ResilienceContext,
+-  userMessage: string,
+-): Promise<string> {
+-  // 启动监控
+-  ctx.timeout.start();
+-  ctx.monitor.startPeriodicCheck();
+-
+-  const messages: Array<{ role: string; content: string }> = [
+-    { role: 'user', content: userMessage }
+-  ];
+-
+-  try {
+-    let iterations = 0;
+-
+-    while (true) {
+-      // 1. 检查 Turn 超时
+-      ctx.timeout.checkTurn({ iteration: iterations });
+-
+-      // 2. 检查预算
+-      const budgetStatus = ctx.budget.check();
+-      if (budgetStatus.recommendation === 'abort') {
+-        return 'Budget exhausted. Please simplify your request.';
+-      }
+-
+-      // 3. LLM 调用（示例 - 实际使用时需要替换为真实的 LLM 调用）
+-      const llmResponse = await ctx.timeout.wrapLLMCall(
+-        async (_signal) => {
+-          // 这里应该是实际的 LLM 调用
+-          return {
+-            content: 'This is a sample response',
+-            toolCalls: [] as Array<{ id: string; name: string; arguments: Record<string, unknown> }>,
+-          };
+-        },
+-        { streaming: false }
+-      );
+-
+-      // 4. 记录 LLM 响应
+-      ctx.monitor.recordLLMResponse(llmResponse.content);
+-      ctx.budget.recordLLMCall({
+-        inputTokens: 100,
+-        outputTokens: llmResponse.content.length,
+-        model: 'unknown',
+-        iteration: iterations,
+-      });
+-
+-      // 5. 如果没有工具调用，返回结果
+-      if (!llmResponse.toolCalls || llmResponse.toolCalls.length === 0) {
+-        return llmResponse.content;
+-      }
+-
+-      // 6. 循环检测
+-      for (const toolCall of llmResponse.toolCalls) {
+-        const loopResult = ctx.loopDetector.check(toolCall.name, toolCall.arguments);
+-        if (loopResult.action === 'warn' && loopResult.warningMessage) {
+-          messages.push({ role: 'system', content: loopResult.warningMessage });
+-          ctx.loopDetector.acknowledgeWarning();
+-        } else if (loopResult.action === 'break') {
+-          return `Loop detected: ${loopResult.details}`;
+-        }
+-        ctx.loopDetector.recordToolCall(toolCall.name, toolCall.arguments, iterations);
+-      }
+-
+-      // 7. 执行工具调用
+-      const toolRequests: ToolCallRequest[] = llmResponse.toolCalls.map(tc => ({
+-        id: tc.id,
+-        name: tc.name,
+-        arguments: tc.arguments,
+-      }));
+-
+-      const batchSummary = await ctx.executor.executeBatch(
+-        toolRequests,
+-        async (name, _args, _signal) => {
+-          ctx.monitor.recordToolCall(name);
+-          const startTime = Date.now();
+-
+-          try {
+-            // 这里应该是实际的工具执行
+-            const result = `Result from ${name}`;
+-            ctx.monitor.recordToolResult(name, result, result.length);
+-            ctx.budget.recordToolCall({
+-              toolName: name,
+-              durationMs: Date.now() - startTime,
+-              iteration: iterations,
+-            });
+-            return result;
+-          } catch (error) {
+-            ctx.monitor.recordError(name, (error as Error).message);
+-            throw error;
+-          }
+-        }
+-      );
+-
+-      // 8. 记录工具结果
+-      for (const outcome of batchSummary.outcomes) {
+-        if (outcome.status === 'success') {
+-          ctx.loopDetector.recordToolResult(outcome.result);
+-        }
+-      }
+-
+-      // 9. 更新消息
+-      const toolResultMessage = ParallelToolExecutor.formatForLLM(batchSummary);
+-      messages.push({ role: 'assistant', content: llmResponse.content });
+-      messages.push({ role: 'tool', content: toolResultMessage });
+-
+-      // 10. 保存检查点
+-      iterations++;
+-      if (ctx.config.checkpoint.enabled && iterations % ctx.config.checkpoint.intervalSteps === 0) {
+-        await ctx.checkpoint.save({
+-          turnId: 'example-session',
+-          iteration: iterations,
+-          messages: messages as any,
+-          estimatedTokens: messages.reduce((sum, m) => sum + m.content.length, 0),
+-          userMessage,
+-          model: 'unknown',
+-        });
+-        ctx.monitor.recordCheckpoint();
+-      }
+-
+-      // 11. 检查进度停滞
+-      const stallResult = ctx.monitor.checkStall();
+-      if (stallResult.recommendedAction === 'abort') {
+-        return `Task stalled: ${stallResult.suggestion}`;
+-      }
+-      if (stallResult.recommendedAction === 'inject_guidance') {
+-        messages.push({
+-          role: 'system',
+-          content: `[Guidance] ${stallResult.suggestion}`,
+-        });
+-      }
+-    }
+-  } catch (error) {
+-    const err = error instanceof Error ? error : new Error(String(error));
+-    if (err.message.includes('timeout') || err.message.includes('deadline')) {
+-      return 'Operation timed out. Please try again with a simpler request.';
+-    }
+-    throw error;
+-  } finally {
+-    // 清理资源
+-    ctx.timeout.stop();
+-    ctx.monitor.stopPeriodicCheck();
+-    console.log('\n[Resilience Report]');
+-    console.log(ctx.monitor.generateReport());
+-    console.log(ctx.budget.generateReport());
+-  }
+-}
+-
+-// ─── 导出便捷函数 ─────────────────────────────────────────
+-
+-/**
+- * 快速创建标准配置的韧性上下文
+- */
+-export function createStandardContext(): ResilienceContext {
+-  return createResilienceContext({ preset: 'standard' });
+-}
+-
+-/**
+- * 快速创建复杂研究配置的韧性上下文
+- */
+-export function createComplexResearchContext(): ResilienceContext {
+-  return createResilienceContext({ preset: 'complex_research' });
+-}
+-
+-/**
+- * 快速创建快速任务配置的韧性上下文
+- */
+-export function createQuickTaskContext(): ResilienceContext {
+-  return createResilienceContext({ preset: 'quick_task' });
+-}
+-
+-/**
+- * 快速创建长时运行配置的韧性上下文
+- */
+-export function createLongRunningContext(): ResilienceContext {
+-  return createResilienceContext({ preset: 'long_running' });
+-}
+diff --git a/src/domain/memory/conversation-parser.ts b/src/domain/memory/conversation-parser.ts
+deleted file mode 100644
+index 6e9aba8..0000000
+--- a/src/domain/memory/conversation-parser.ts
++++ /dev/null
+@@ -1,394 +0,0 @@
+-/**
+- * Robust Conversation Record Parser  (P2-#11)
+- *
+- * 原始实现问题：
+- *  - 对话记录以 Markdown 格式存储 (conversations/YYYY-MM/DD.md)
+- *  - recordConversation() 写入格式和 generateSummary() 解析格式耦合但不严格
+- *  - 解析依赖 startsWith('## ') 和 startsWith('**用户**') 等脆弱匹配
+- *  - 多行消息、代码块内的 ## 会导致误切分
+- *  - 缺少格式验证和容错
+- *
+- * 优化方案：
+- *  1. 定义严格的对话记录 schema + 写入/读取对称
+- *  2. 基于状态机的 Markdown 解析器（正确处理代码块嵌套）
+- *  3. 解析容错 + 错误恢复（跳过格式错误的段落而非整个文件失败）
+- *  4. 同时支持旧格式和新格式的读取
+- *
+- * ⚡ 新增文件 — 提供解析器，由 store.ts 和 compression.ts 调用
+- */
+-
+-// ---------------------------------------------------------------------------
+-// 1. 对话记录数据结构
+-// ---------------------------------------------------------------------------
+-
+-/** 单条对话 */
+-export interface ConversationTurn {
+-  /** 时间 (HH:mm 或 ISO string) */
+-  time: string;
+-  /** 来源 (agent, cli, lark:private:xxx 等) */
+-  source: string;
+-  /** 用户消息 */
+-  userMessage: string;
+-  /** 助手回复 */
+-  assistantMessage: string;
+-  /** 关键决策 */
+-  decision?: string;
+-  /** 相关文件 */
+-  relatedFiles?: string[];
+-  /** 技能触发 */
+-  skillTriggered?: string;
+-  /** 额外元数据 */
+-  metadata?: Record<string, string>;
+-}
+-
+-/** 一天的对话记录 */
+-export interface DayConversationRecord {
+-  /** 日期标题 (YYYY-MM-DD) */
+-  date: string;
+-  /** 对话列表 */
+-  turns: ConversationTurn[];
+-  /** 解析警告 */
+-  warnings: string[];
+-}
+-
+-// ---------------------------------------------------------------------------
+-// 2. 状态机解析器
+-// ---------------------------------------------------------------------------
+-
+-type ParserState =
+-  | 'IDLE'            // 等待新段落
+-  | 'HEADER'          // 读到 ## 时间标题
+-  | 'USER'            // 正在读用户消息
+-  | 'ASSISTANT'       // 正在读助手回复
+-  | 'METADATA'        // 正在读元数据（决策/文件/技能）
+-  | 'CODE_BLOCK';     // 在代码块内（不做标题切分）
+-
+-/**
+- * 基于状态机的 Markdown 对话记录解析器。
+- * 正确处理代码块嵌套，避免代码内的 ## 和 ** 触发误切分。
+- */
+-export function parseConversationMarkdown(markdown: string): DayConversationRecord {
+-  const lines = markdown.split('\n');
+-  const turns: ConversationTurn[] = [];
+-  const warnings: string[] = [];
+-
+-  let date = '';
+-  let state: ParserState = 'IDLE';
+-  let codeBlockDepth = 0; // 代码块嵌套计数
+-
+-  // 当前正在构建的 turn
+-  let currentTurn: Partial<ConversationTurn> = {};
+-  let currentContent = '';
+-
+-  function finalizeTurn(): void {
+-    // 保存当前 content 到相应字段
+-    if (state === 'USER' && currentContent.trim()) {
+-      currentTurn.userMessage = currentContent.trim();
+-    } else if (state === 'ASSISTANT' && currentContent.trim()) {
+-      currentTurn.assistantMessage = currentContent.trim();
+-    }
+-
+-    // 如果 turn 有足够数据，保存
+-    if (currentTurn.time && (currentTurn.userMessage || currentTurn.assistantMessage)) {
+-      turns.push({
+-        time: currentTurn.time || '',
+-        source: currentTurn.source || 'unknown',
+-        userMessage: currentTurn.userMessage || '',
+-        assistantMessage: currentTurn.assistantMessage || '',
+-        decision: currentTurn.decision,
+-        relatedFiles: currentTurn.relatedFiles,
+-        skillTriggered: currentTurn.skillTriggered,
+-        metadata: currentTurn.metadata,
+-      });
+-    } else if (currentTurn.time) {
+-      warnings.push(`Incomplete turn at ${currentTurn.time}: missing user or assistant message`);
+-    }
+-
+-    currentTurn = {};
+-    currentContent = '';
+-  }
+-
+-  for (let i = 0; i < lines.length; i++) {
+-    const line = lines[i];
+-
+-    // 代码块状态追踪（在任何其他判断之前）
+-    if (line.trimStart().startsWith('```')) {
+-      if (codeBlockDepth === 0) {
+-        codeBlockDepth++;
+-      } else {
+-        codeBlockDepth--;
+-      }
+-
+-      // 在代码块内，直接追加到当前 content
+-      if (state === 'USER' || state === 'ASSISTANT') {
+-        currentContent += line + '\n';
+-      }
+-      continue;
+-    }
+-
+-    // 在代码块内，所有内容原样追加
+-    if (codeBlockDepth > 0) {
+-      if (state === 'USER' || state === 'ASSISTANT') {
+-        currentContent += line + '\n';
+-      }
+-      continue;
+-    }
+-
+-    // --- 以下是代码块外的正常解析 ---
+-
+-    // 文件标题（# YYYY-MM-DD 或 # YYYY-MM/DD）
+-    const dateMatch = line.match(/^# (\d{4}-\d{2}(?:-\d{2})?)/);
+-    if (dateMatch) {
+-      date = dateMatch[1];
+-      continue;
+-    }
+-
+-    // 段落分隔符
+-    if (line.trim() === '---') {
+-      finalizeTurn();
+-      state = 'IDLE';
+-      continue;
+-    }
+-
+-    // 对话标题（## HH:mm - source）
+-    const turnHeaderMatch = line.match(/^## (\d{1,2}:\d{2})(?:\s*-\s*(.+))?$/);
+-    if (turnHeaderMatch) {
+-      // 保存之前的 turn
+-      if (state !== 'IDLE') {
+-        finalizeTurn();
+-      }
+-
+-      currentTurn = {
+-        time: turnHeaderMatch[1],
+-        source: turnHeaderMatch[2]?.trim() || 'unknown',
+-      };
+-      state = 'HEADER';
+-      continue;
+-    }
+-
+-    // 用户消息标记
+-    const userMatch = line.match(/^\*\*(?:用户|User)\*\*[：:]\s*(.*)/);
+-    if (userMatch) {
+-      if (state === 'ASSISTANT' && currentContent.trim()) {
+-        currentTurn.assistantMessage = currentContent.trim();
+-      }
+-      currentContent = userMatch[1] ? userMatch[1] + '\n' : '';
+-      state = 'USER';
+-      continue;
+-    }
+-
+-    // 助手消息标记
+-    const assistantMatch = line.match(/^\*\*(?:助手|Assistant)\*\*[：:]\s*(.*)/);
+-    if (assistantMatch) {
+-      if (state === 'USER' && currentContent.trim()) {
+-        currentTurn.userMessage = currentContent.trim();
+-      }
+-      currentContent = assistantMatch[1] ? assistantMatch[1] + '\n' : '';
+-      state = 'ASSISTANT';
+-      continue;
+-    }
+-
+-    // 元数据字段
+-    const decisionMatch = line.match(/^\*\*(?:关键决策|Decision)\*\*[：:]\s*(.*)/);
+-    if (decisionMatch) {
+-      if (state === 'ASSISTANT' && currentContent.trim()) {
+-        currentTurn.assistantMessage = currentContent.trim();
+-        currentContent = '';
+-      }
+-      currentTurn.decision = decisionMatch[1].trim();
+-      state = 'METADATA';
+-      continue;
+-    }
+-
+-    const filesMatch = line.match(/^\*\*(?:相关文件|Related Files)\*\*[：:]\s*(.*)/);
+-    if (filesMatch) {
+-      currentTurn.relatedFiles = filesMatch[1].split(',').map(f => f.trim()).filter(Boolean);
+-      state = 'METADATA';
+-      continue;
+-    }
+-
+-    const skillMatch = line.match(/^\*\*(?:技能触发|Skill Triggered)\*\*[：:]\s*(.*)/);
+-    if (skillMatch) {
+-      currentTurn.skillTriggered = skillMatch[1].trim();
+-      state = 'METADATA';
+-      continue;
+-    }
+-
+-    // 普通内容行
+-    if (state === 'USER' || state === 'ASSISTANT') {
+-      currentContent += line + '\n';
+-    }
+-    // HEADER 或 METADATA 状态下的空行忽略
+-  }
+-
+-  // 处理文件末尾的未闭合 turn
+-  if (state !== 'IDLE') {
+-    finalizeTurn();
+-  }
+-
+-  // 未闭合的代码块警告
+-  if (codeBlockDepth > 0) {
+-    warnings.push('Unclosed code block detected at end of file');
+-  }
+-
+-  return { date, turns, warnings };
+-}
+-
+-// ---------------------------------------------------------------------------
+-// 3. 标准化写入格式
+-// ---------------------------------------------------------------------------
+-
+-/**
+- * 将 ConversationTurn 序列化为标准 Markdown。
+- * 与 parseConversationMarkdown 完全对称。
+- */
+-export function serializeConversationTurn(turn: ConversationTurn): string {
+-  const lines: string[] = [];
+-
+-  lines.push(`## ${turn.time} - ${turn.source}`);
+-  lines.push('');
+-
+-  // 用户消息：如果包含多行，保持原始格式
+-  lines.push(`**用户**：${turn.userMessage}`);
+-  lines.push('');
+-
+-  // 助手回复
+-  lines.push(`**助手**：${turn.assistantMessage}`);
+-
+-  // 元数据
+-  if (turn.decision) {
+-    lines.push('');
+-    lines.push(`**关键决策**：${turn.decision}`);
+-  }
+-  if (turn.relatedFiles && turn.relatedFiles.length > 0) {
+-    lines.push('');
+-    lines.push(`**相关文件**：${turn.relatedFiles.join(', ')}`);
+-  }
+-  if (turn.skillTriggered) {
+-    lines.push('');
+-    lines.push(`**技能触发**：${turn.skillTriggered}`);
+-  }
+-
+-  lines.push('');
+-  lines.push('---');
+-  lines.push('');
+-
+-  return lines.join('\n');
+-}
+-
+-/**
+- * 创建一天的对话记录文件头。
+- */
+-export function createDayHeader(date: string): string {
+-  return `# ${date}\n\n`;
+-}
+-
+-// ---------------------------------------------------------------------------
+-// 4. 兼容旧格式读取
+-// ---------------------------------------------------------------------------
+-
+-/**
+- * 尝试解析旧格式的对话记录。
+- * 旧格式可能缺少严格的 ** 标记，或时间格式不同。
+- */
+-export function parseConversationLegacy(markdown: string): DayConversationRecord {
+-  // 先尝试标准解析
+-  const result = parseConversationMarkdown(markdown);
+-
+-  // 如果标准解析有结果，直接返回
+-  if (result.turns.length > 0) return result;
+-
+-  // Fallback: 松散解析
+-  const turns: ConversationTurn[] = [];
+-  const warnings: string[] = ['Using legacy parsing mode'];
+-
+-  // 按 ## 或 --- 切分段落
+-  const sections = markdown.split(/(?=^## |\n---\n)/m).filter(s => s.trim());
+-
+-  for (const section of sections) {
+-    const lines = section.trim().split('\n');
+-
+-    // 提取时间
+-    const timeMatch = lines[0]?.match(/^##\s*(\d{1,2}:\d{2})/);
+-    if (!timeMatch) continue;
+-
+-    let userMsg = '';
+-    let assistantMsg = '';
+-
+-    for (const line of lines.slice(1)) {
+-      const trimmed = line.trim();
+-      if (/^(?:\*\*)?(?:用户|User|Q)(?:\*\*)?[：:]/.test(trimmed)) {
+-        userMsg = trimmed.replace(/^(?:\*\*)?(?:用户|User|Q)(?:\*\*)?[：:]\s*/, '');
+-      } else if (/^(?:\*\*)?(?:助手|Assistant|A|AI)(?:\*\*)?[：:]/.test(trimmed)) {
+-        assistantMsg = trimmed.replace(/^(?:\*\*)?(?:助手|Assistant|A|AI)(?:\*\*)?[：:]\s*/, '');
+-      }
+-    }
+-
+-    if (userMsg || assistantMsg) {
+-      turns.push({
+-        time: timeMatch[1],
+-        source: 'legacy',
+-        userMessage: userMsg,
+-        assistantMessage: assistantMsg,
+-      });
+-    }
+-  }
+-
+-  return { date: '', turns, warnings };
+-}
+-
+-// ---------------------------------------------------------------------------
+-// 5. 对话统计工具
+-// ---------------------------------------------------------------------------
+-
+-export interface ConversationStats {
+-  /** 对话总轮数 */
+-  totalTurns: number;
+-  /** 有决策记录的轮数 */
+-  turnsWithDecisions: number;
+-  /** 触发技能的轮数 */
+-  turnsWithSkills: number;
+-  /** 用户消息平均长度 (字符) */
+-  avgUserMessageLength: number;
+-  /** 助手回复平均长度 (字符) */
+-  avgAssistantMessageLength: number;
+-  /** 按来源分组的轮数 */
+-  turnsBySource: Record<string, number>;
+-  /** 使用的技能列表 */
+-  usedSkills: string[];
+-}
+-
+-/**
+- * 计算对话统计信息。
+- */
+-export function calculateConversationStats(record: DayConversationRecord): ConversationStats {
+-  const { turns } = record;
+-
+-  const turnsBySource: Record<string, number> = {};
+-  const skills = new Set<string>();
+-  let totalUserLen = 0;
+-  let totalAssistantLen = 0;
+-  let decisionsCount = 0;
+-  let skillsCount = 0;
+-
+-  for (const turn of turns) {
+-    turnsBySource[turn.source] = (turnsBySource[turn.source] || 0) + 1;
+-    totalUserLen += turn.userMessage.length;
+-    totalAssistantLen += turn.assistantMessage.length;
+-    if (turn.decision) decisionsCount++;
+-    if (turn.skillTriggered) {
+-      skillsCount++;
+-      skills.add(turn.skillTriggered);
+-    }
+-  }
+-
+-  return {
+-    totalTurns: turns.length,
+-    turnsWithDecisions: decisionsCount,
+-    turnsWithSkills: skillsCount,
+-    avgUserMessageLength: turns.length > 0 ? Math.round(totalUserLen / turns.length) : 0,
+-    avgAssistantMessageLength: turns.length > 0 ? Math.round(totalAssistantLen / turns.length) : 0,
+-    turnsBySource,
+-    usedSkills: Array.from(skills),
+-  };
+-}
+diff --git a/src/domain/memory/dedup-config.ts b/src/domain/memory/dedup-config.ts
+deleted file mode 100644
+index 8dcf590..0000000
+--- a/src/domain/memory/dedup-config.ts
++++ /dev/null
+@@ -1,611 +0,0 @@
+-/**
+-import { cosineSimilarity } from '../../infra/utils';
+- * P2-#13: 去重阈值可配置
+- * 
+- * 原始问题：scoring.ts 中 findDuplicates() 使用硬编码的相似度阈值 0.8，
+- * 无法根据不同场景（事实类记忆 vs 对话摘要 vs 技能文件）灵活调整。
+- * 
+- * 优化方案：
+- * 1. 引入 DedupProfile 配置体系，支持按内容类型分别设定阈值
+- * 2. 支持多维度去重策略（精确匹配 / 模糊匹配 / 语义匹配）
+- * 3. 合并策略可配置（保留最新 / 保留最长 / 合并内容）
+- * 4. 去重日志与统计，便于调优
+- * 
+- * 使用方式：
+- *   import { configureDedupProfile, findDuplicatesEnhanced, DedupDecision } from './dedup-config';
+- *   
+- *   // 使用预设配置
+- *   configureDedupProfile('strict');
+- *   
+- *   // 或自定义
+- *   configureDedupProfile({
+- *     name: 'custom',
+- *     exactMatchEnabled: true,
+- *     fuzzyThreshold: 0.85,
+- *     semanticThreshold: 0.92,
+- *     mergeStrategy: 'keep-longest',
+- *   });
+- *   
+- *   const decisions = findDuplicatesEnhanced(entries, { contentType: 'fact' });
+- */
+-
+-// ─── 类型定义 ─────────────────────────────────────────────
+-
+-/** 去重合并策略 */
+-export type MergeStrategy =
+-  | 'keep-newest'    // 保留最新条目
+-  | 'keep-oldest'    // 保留最早条目
+-  | 'keep-longest'   // 保留内容最长的
+-  | 'keep-shortest'  // 保留内容最短的
+-  | 'merge-append'   // 合并内容（追加）
+-  | 'manual';        // 不自动合并，仅标记
+-
+-/** 内容类型 */
+-export type ContentType = 'fact' | 'conversation' | 'skill' | 'summary' | 'general';
+-
+-/** 去重阈值配置 */
+-export interface DedupThresholds {
+-  /** 精确匹配（归一化后完全相同）是否启用 */
+-  exactMatchEnabled: boolean;
+-  /** 模糊匹配阈值 (0-1)，基于编辑距离或 Jaccard */
+-  fuzzyThreshold: number;
+-  /** 语义匹配阈值 (0-1)，基于向量余弦相似度（如有） */
+-  semanticThreshold: number;
+-  /** 最小内容长度，低于此长度的条目跳过去重 */
+-  minContentLength: number;
+-}
+-
+-/** 按内容类型的阈值覆盖 */
+-export type ContentTypeOverrides = Partial<Record<ContentType, Partial<DedupThresholds>>>;
+-
+-/** 去重配置文件 */
+-export interface DedupProfile {
+-  name: string;
+-  /** 默认阈值 */
+-  defaults: DedupThresholds;
+-  /** 按内容类型覆盖 */
+-  overrides: ContentTypeOverrides;
+-  /** 合并策略 */
+-  mergeStrategy: MergeStrategy;
+-  /** 是否记录去重日志 */
+-  enableLogging: boolean;
+-  /** 最大比较对数上限，防止 O(n²) 爆炸 */
+-  maxComparisons: number;
+-}
+-
+-/** 去重决定 */
+-export interface DedupDecision {
+-  /** 原始条目 ID */
+-  entryId: string;
+-  /** 重复条目 ID */
+-  duplicateOf: string;
+-  /** 匹配方式 */
+-  matchType: 'exact' | 'fuzzy' | 'semantic';
+-  /** 相似度分数 */
+-  similarity: number;
+-  /** 建议动作 */
+-  action: MergeStrategy;
+-  /** 适用的阈值 */
+-  thresholdUsed: number;
+-}
+-
+-/** 去重统计 */
+-export interface DedupStats {
+-  totalEntries: number;
+-  comparisons: number;
+-  exactMatches: number;
+-  fuzzyMatches: number;
+-  semanticMatches: number;
+-  skippedShort: number;
+-  skippedMaxComparisons: boolean;
+-  durationMs: number;
+-}
+-
+-/** 去重结果 */
+-export interface DedupResult {
+-  decisions: DedupDecision[];
+-  stats: DedupStats;
+-  log: string[];
+-}
+-
+-/** 可去重条目接口 */
+-export interface DedupEntry {
+-  id: string;
+-  content: string;
+-  contentType?: ContentType;
+-  timestamp?: number;
+-  embedding?: number[];
+-  metadata?: Record<string, unknown>;
+-}
+-
+-/** 语义相似度提供器（可选注入） */
+-export interface SemanticSimilarityProvider {
+-  computeSimilarity(embeddingA: number[], embeddingB: number[]): number;
+-}
+-
+-// ─── 预设配置 ─────────────────────────────────────────────
+-
+-const PRESET_PROFILES: Record<string, DedupProfile> = {
+-  /** 严格去重：阈值低，更激进地合并 */
+-  strict: {
+-    name: 'strict',
+-    defaults: {
+-      exactMatchEnabled: true,
+-      fuzzyThreshold: 0.70,
+-      semanticThreshold: 0.85,
+-      minContentLength: 10,
+-    },
+-    overrides: {
+-      fact: { fuzzyThreshold: 0.65 },
+-      skill: { fuzzyThreshold: 0.75 },
+-    },
+-    mergeStrategy: 'keep-newest',
+-    enableLogging: true,
+-    maxComparisons: 50000,
+-  },
+-
+-  /** 宽松去重：阈值高，仅去除明显重复 */
+-  relaxed: {
+-    name: 'relaxed',
+-    defaults: {
+-      exactMatchEnabled: true,
+-      fuzzyThreshold: 0.90,
+-      semanticThreshold: 0.95,
+-      minContentLength: 20,
+-    },
+-    overrides: {},
+-    mergeStrategy: 'keep-longest',
+-    enableLogging: false,
+-    maxComparisons: 100000,
+-  },
+-
+-  /** 平衡模式：兼顾去重率和误判 */
+-  balanced: {
+-    name: 'balanced',
+-    defaults: {
+-      exactMatchEnabled: true,
+-      fuzzyThreshold: 0.80,
+-      semanticThreshold: 0.90,
+-      minContentLength: 15,
+-    },
+-    overrides: {
+-      fact: { fuzzyThreshold: 0.75, semanticThreshold: 0.88 },
+-      conversation: { fuzzyThreshold: 0.85 },
+-      summary: { fuzzyThreshold: 0.82 },
+-    },
+-    mergeStrategy: 'keep-newest',
+-    enableLogging: true,
+-    maxComparisons: 80000,
+-  },
+-
+-  /** 兼容模式：模拟原始 scoring.ts 的硬编码行为 */
+-  legacy: {
+-    name: 'legacy',
+-    defaults: {
+-      exactMatchEnabled: true,
+-      fuzzyThreshold: 0.80,
+-      semanticThreshold: 1.0, // 禁用语义匹配
+-      minContentLength: 0,
+-    },
+-    overrides: {},
+-    mergeStrategy: 'keep-newest',
+-    enableLogging: false,
+-    maxComparisons: 100000,
+-  },
+-};
+-
+-// ─── 全局状态 ─────────────────────────────────────────────
+-
+-let activeProfile: DedupProfile = { ...PRESET_PROFILES.balanced };
+-let semanticProvider: SemanticSimilarityProvider | null = null;
+-
+-// ─── 配置 API ─────────────────────────────────────────────
+-
+-/**
+- * 设置去重配置
+- * @param profileOrName 预设名称 ('strict' | 'relaxed' | 'balanced' | 'legacy') 或自定义配置
+- */
+-export function configureDedupProfile(
+-  profileOrName: string | Partial<DedupProfile>
+-): void {
+-  if (typeof profileOrName === 'string') {
+-    const preset = PRESET_PROFILES[profileOrName];
+-    if (!preset) {
+-      throw new Error(
+-        `Unknown dedup profile: "${profileOrName}". Available: ${Object.keys(PRESET_PROFILES).join(', ')}`
+-      );
+-    }
+-    activeProfile = JSON.parse(JSON.stringify(preset));
+-  } else {
+-    // 合并自定义配置到当前激活配置
+-    activeProfile = mergeProfile(activeProfile, profileOrName);
+-  }
+-}
+-
+-/**
+- * 获取当前激活的去重配置（只读副本）
+- */
+-export function getActiveDedupProfile(): Readonly<DedupProfile> {
+-  return JSON.parse(JSON.stringify(activeProfile));
+-}
+-
+-/**
+- * 注册语义相似度提供器
+- */
+-export function setSemanticSimilarityProvider(
+-  provider: SemanticSimilarityProvider
+-): void {
+-  semanticProvider = provider;
+-}
+-
+-/**
+- * 获取指定内容类型的有效阈值
+- */
+-export function getEffectiveThresholds(contentType?: ContentType): DedupThresholds {
+-  const base = { ...activeProfile.defaults };
+-  if (contentType && activeProfile.overrides[contentType]) {
+-    Object.assign(base, activeProfile.overrides[contentType]);
+-  }
+-  return base;
+-}
+-
+-// ─── 相似度计算 ─────────────────────────────────────────────
+-
+-/**
+- * 文本归一化：去除多余空白、统一标点、转小写
+- */
+-function normalizeText(text: string): string {
+-  return text
+-    .toLowerCase()
+-    .replace(/\s+/g, ' ')
+-    .replace(/[，。！？；：、""''（）【】《》]/g, (ch) => {
+-      const map: Record<string, string> = {
+-        '，': ',', '。': '.', '！': '!', '？': '?',
+-        '；': ';', '：': ':', '、': ',',
+-        '\u201c': '"', '\u201d': '"', '\u2018': "'", '\u2019': "'",
+-        '（': '(', '）': ')', '【': '[', '】': ']',
+-        '《': '<', '》': '>',
+-      };
+-      return map[ch] || ch;
+-    })
+-    .trim();
+-}
+-
+-/**
+- * 基于字符级 bigram 的 Jaccard 相似度
+- * 比单字符更抗噪，比词级更通用（不依赖分词）
+- */
+-function bigramJaccardSimilarity(a: string, b: string): number {
+-  if (a === b) return 1.0;
+-  if (a.length < 2 || b.length < 2) {
+-    // 短文本退化为字符级
+-    return charJaccardSimilarity(a, b);
+-  }
+-
+-  const bigramsA = new Set<string>();
+-  const bigramsB = new Set<string>();
+-
+-  for (let i = 0; i < a.length - 1; i++) {
+-    bigramsA.add(a.substring(i, i + 2));
+-  }
+-  for (let i = 0; i < b.length - 1; i++) {
+-    bigramsB.add(b.substring(i, i + 2));
+-  }
+-
+-  let intersection = 0;
+-  for (const bg of bigramsA) {
+-    if (bigramsB.has(bg)) intersection++;
+-  }
+-
+-  const union = bigramsA.size + bigramsB.size - intersection;
+-  return union === 0 ? 0 : intersection / union;
+-}
+-
+-/**
+- * 字符级 Jaccard（短文本 fallback）
+- */
+-function charJaccardSimilarity(a: string, b: string): number {
+-  if (a === b) return 1.0;
+-  const setA = new Set(a);
+-  const setB = new Set(b);
+-  let intersection = 0;
+-  for (const ch of setA) {
+-    if (setB.has(ch)) intersection++;
+-  }
+-  const union = setA.size + setB.size - intersection;
+-  return union === 0 ? 0 : intersection / union;
+-}
+-// ─── 核心去重逻辑 ─────────────────────────────────────────
+-
+-/**
+- * 增强版去重检测
+- * 
+- * 替代原始 scoring.ts 中的 findDuplicates()。
+- * 支持多维度匹配、按内容类型分级阈值、可配置合并策略。
+- * 
+- * @param entries 待去重条目
+- * @param options 可选参数
+- * @returns 去重结果（决定列表 + 统计 + 日志）
+- */
+-export function findDuplicatesEnhanced(
+-  entries: DedupEntry[],
+-  options: {
+-    contentType?: ContentType;
+-    profileOverride?: Partial<DedupProfile>;
+-  } = {}
+-): DedupResult {
+-  const startTime = Date.now();
+-  const log: string[] = [];
+-  const stats: DedupStats = {
+-    totalEntries: entries.length,
+-    comparisons: 0,
+-    exactMatches: 0,
+-    fuzzyMatches: 0,
+-    semanticMatches: 0,
+-    skippedShort: 0,
+-    skippedMaxComparisons: false,
+-    durationMs: 0,
+-  };
+-
+-  const profile = options.profileOverride
+-    ? mergeProfile(activeProfile, options.profileOverride)
+-    : activeProfile;
+-
+-  const decisions: DedupDecision[] = [];
+-  const duplicateIds = new Set<string>();
+-
+-  // 预处理：归一化 + 过滤短内容
+-  const processed: Array<{
+-    entry: DedupEntry;
+-    normalized: string;
+-    thresholds: DedupThresholds;
+-  }> = [];
+-
+-  for (const entry of entries) {
+-    const ct = entry.contentType || options.contentType || 'general';
+-    const thresholds = resolveThresholds(profile, ct);
+-
+-    if (entry.content.length < thresholds.minContentLength) {
+-      stats.skippedShort++;
+-      if (profile.enableLogging) {
+-        log.push(`[SKIP] ${entry.id}: content too short (${entry.content.length} < ${thresholds.minContentLength})`);
+-      }
+-      continue;
+-    }
+-
+-    processed.push({
+-      entry,
+-      normalized: normalizeText(entry.content),
+-      thresholds,
+-    });
+-  }
+-
+-  // 两两比较
+-  const maxComp = profile.maxComparisons;
+-  let compCount = 0;
+-
+-  for (let i = 0; i < processed.length; i++) {
+-    if (duplicateIds.has(processed[i].entry.id)) continue;
+-
+-    for (let j = i + 1; j < processed.length; j++) {
+-      if (duplicateIds.has(processed[j].entry.id)) continue;
+-
+-      if (++compCount > maxComp) {
+-        stats.skippedMaxComparisons = true;
+-        if (profile.enableLogging) {
+-          log.push(`[WARN] Max comparisons reached (${maxComp}), stopping early`);
+-        }
+-        break;
+-      }
+-      stats.comparisons++;
+-
+-      const a = processed[i];
+-      const b = processed[j];
+-
+-      // 使用两者中更严格（更高）的阈值
+-      const thresholds: DedupThresholds = {
+-        exactMatchEnabled: a.thresholds.exactMatchEnabled && b.thresholds.exactMatchEnabled,
+-        fuzzyThreshold: Math.max(a.thresholds.fuzzyThreshold, b.thresholds.fuzzyThreshold),
+-        semanticThreshold: Math.max(a.thresholds.semanticThreshold, b.thresholds.semanticThreshold),
+-        minContentLength: Math.min(a.thresholds.minContentLength, b.thresholds.minContentLength),
+-      };
+-
+-      const decision = compareEntries(a, b, thresholds, profile);
+-
+-      if (decision) {
+-        decisions.push(decision);
+-        duplicateIds.add(decision.duplicateOf);
+-
+-        switch (decision.matchType) {
+-          case 'exact': stats.exactMatches++; break;
+-          case 'fuzzy': stats.fuzzyMatches++; break;
+-          case 'semantic': stats.semanticMatches++; break;
+-        }
+-
+-        if (profile.enableLogging) {
+-          log.push(
+-            `[DUP] ${decision.entryId} ≈ ${decision.duplicateOf} ` +
+-            `(${decision.matchType}, sim=${decision.similarity.toFixed(3)}, ` +
+-            `threshold=${decision.thresholdUsed.toFixed(3)})`
+-          );
+-        }
+-      }
+-    }
+-
+-    if (stats.skippedMaxComparisons) break;
+-  }
+-
+-  stats.durationMs = Date.now() - startTime;
+-
+-  if (profile.enableLogging) {
+-    log.push(
+-      `[DONE] ${stats.comparisons} comparisons in ${stats.durationMs}ms, ` +
+-      `found ${decisions.length} duplicates ` +
+-      `(exact=${stats.exactMatches}, fuzzy=${stats.fuzzyMatches}, semantic=${stats.semanticMatches})`
+-    );
+-  }
+-
+-  return { decisions, stats, log };
+-}
+-
+-/**
+- * 比较两个条目，返回去重决定（如果是重复），否则 null
+- */
+-function compareEntries(
+-  a: { entry: DedupEntry; normalized: string },
+-  b: { entry: DedupEntry; normalized: string },
+-  thresholds: DedupThresholds,
+-  profile: DedupProfile
+-): DedupDecision | null {
+-  // 确定哪个是"主"条目（保留的），哪个是"副"条目（被去重的）
+-  const [primary, duplicate] = resolvePrimaryEntry(a.entry, b.entry, profile.mergeStrategy);
+-
+-  // 第 1 层：精确匹配
+-  if (thresholds.exactMatchEnabled && a.normalized === b.normalized) {
+-    return {
+-      entryId: primary.id,
+-      duplicateOf: duplicate.id,
+-      matchType: 'exact',
+-      similarity: 1.0,
+-      action: profile.mergeStrategy,
+-      thresholdUsed: 1.0,
+-    };
+-  }
+-
+-  // 第 2 层：模糊匹配（bigram Jaccard）
+-  const fuzzySim = bigramJaccardSimilarity(a.normalized, b.normalized);
+-  if (fuzzySim >= thresholds.fuzzyThreshold) {
+-    return {
+-      entryId: primary.id,
+-      duplicateOf: duplicate.id,
+-      matchType: 'fuzzy',
+-      similarity: fuzzySim,
+-      action: profile.mergeStrategy,
+-      thresholdUsed: thresholds.fuzzyThreshold,
+-    };
+-  }
+-
+-  // 第 3 层：语义匹配（需要 embedding）
+-  if (
+-    thresholds.semanticThreshold < 1.0 &&
+-    a.entry.embedding &&
+-    b.entry.embedding
+-  ) {
+-    const semSim = semanticProvider
+-      ? semanticProvider.computeSimilarity(a.entry.embedding, b.entry.embedding)
+-      : cosineSimilarity(a.entry.embedding, b.entry.embedding);
+-
+-    if (semSim >= thresholds.semanticThreshold) {
+-      return {
+-        entryId: primary.id,
+-        duplicateOf: duplicate.id,
+-        matchType: 'semantic',
+-        similarity: semSim,
+-        action: profile.mergeStrategy,
+-        thresholdUsed: thresholds.semanticThreshold,
+-      };
+-    }
+-  }
+-
+-  return null;
+-}
+-
+-/**
+- * 根据合并策略确定主/副条目
+- */
+-function resolvePrimaryEntry(
+-  a: DedupEntry,
+-  b: DedupEntry,
+-  strategy: MergeStrategy
+-): [DedupEntry, DedupEntry] {
+-  switch (strategy) {
+-    case 'keep-newest':
+-      return (a.timestamp ?? 0) >= (b.timestamp ?? 0) ? [a, b] : [b, a];
+-    case 'keep-oldest':
+-      return (a.timestamp ?? Infinity) <= (b.timestamp ?? Infinity) ? [a, b] : [b, a];
+-    case 'keep-longest':
+-      return a.content.length >= b.content.length ? [a, b] : [b, a];
+-    case 'keep-shortest':
+-      return a.content.length <= b.content.length ? [a, b] : [b, a];
+-    default:
+-      return [a, b]; // merge-append, manual: 保持原始顺序
+-  }
+-}
+-
+-// ─── 自动合并执行 ──────────────────────────────────────────
+-
+-/**
+- * 根据去重决定执行合并操作
+- * 返回合并后的条目列表（不含被去重的条目）
+- */
+-export function applyDedupDecisions(
+-  entries: DedupEntry[],
+-  decisions: DedupDecision[]
+-): DedupEntry[] {
+-  const duplicateIds = new Set(decisions.map(d => d.duplicateOf));
+-  const mergeAppendTargets = new Map<string, string[]>();
+-
+-  // 收集 merge-append 的内容
+-  for (const decision of decisions) {
+-    if (decision.action === 'merge-append') {
+-      const dupEntry = entries.find(e => e.id === decision.duplicateOf);
+-      if (dupEntry) {
+-        const existing = mergeAppendTargets.get(decision.entryId) || [];
+-        existing.push(dupEntry.content);
+-        mergeAppendTargets.set(decision.entryId, existing);
+-      }
+-    }
+-  }
+-
+-  // 构建结果
+-  const result: DedupEntry[] = [];
+-  for (const entry of entries) {
+-    if (duplicateIds.has(entry.id)) continue;
+-
+-    // 如果有需要追加合并的内容
+-    const appendContents = mergeAppendTargets.get(entry.id);
+-    if (appendContents && appendContents.length > 0) {
+-      result.push({
+-        ...entry,
+-        content: [entry.content, ...appendContents].join('\n---\n'),
+-        metadata: {
+-          ...entry.metadata,
+-          mergedFrom: appendContents.length,
+-          mergedAt: Date.now(),
+-        },
+-      });
+-    } else {
+-      result.push(entry);
+-    }
+-  }
+-
+-  return result;
+-}
+-
+-// ─── 工具函数 ──────────────────────────────────────────────
+-
+-function resolveThresholds(profile: DedupProfile, contentType: ContentType): DedupThresholds {
+-  const base = { ...profile.defaults };
+-  if (profile.overrides[contentType]) {
+-    Object.assign(base, profile.overrides[contentType]);
+-  }
+-  return base;
+-}
+-
+-function mergeProfile(base: DedupProfile, partial: Partial<DedupProfile>): DedupProfile {
+-  const result = JSON.parse(JSON.stringify(base)) as DedupProfile;
+-
+-  if (partial.name) result.name = partial.name;
+-  if (partial.mergeStrategy) result.mergeStrategy = partial.mergeStrategy;
+-  if (partial.enableLogging !== undefined) result.enableLogging = partial.enableLogging;
+-  if (partial.maxComparisons !== undefined) result.maxComparisons = partial.maxComparisons;
+-
+-  if (partial.defaults) {
+-    Object.assign(result.defaults, partial.defaults);
+-  }
+-  if (partial.overrides) {
+-    result.overrides = { ...result.overrides, ...partial.overrides };
+-  }
+-
+-  return result;
+-}
+diff --git a/src/domain/memory/embedding.ts b/src/domain/memory/embedding.ts
+deleted file mode 100644
+index d530d48..0000000
+--- a/src/domain/memory/embedding.ts
++++ /dev/null
+@@ -1,227 +0,0 @@
+-/**
+- * @see ./embeddings.ts for EmbeddingProvider interface (MiniMax, Local, OpenAI providers)
+- * @see ../../infra/utils for shared cosineSimilarity
+- *
+- * Embedding Service
+- *
+- * Provides text embeddings for semantic search.
+- * Supports multiple providers: ollama (local), zhipu (remote)
+- */
+-
+-import type { AIProvider } from '../../infra/config/schema';
+-export { cosineSimilarity } from '../../infra/utils';
+-
+-// Embedding result
+-export interface EmbeddingResult {
+-  embedding: number[];
+-  tokens: number;
+-}
+-
+-// Embedding config
+-export interface EmbeddingConfig {
+-  provider: 'ollama' | 'zhipu' | 'openai';
+-  model: string;
+-  baseUrl?: string;
+-  apiKey?: string;
+-}
+-
+-// Default config
+-export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
+-  provider: 'ollama',
+-  model: 'nomic-embed-text',
+-  baseUrl: 'http://localhost:11434',
+-};
+-
+-// Embedding service interface
+-export interface EmbeddingService {
+-  embed(text: string): Promise<EmbeddingResult>;
+-  embedBatch(texts: string[]): Promise<EmbeddingResult[]>;
+-  getDimension(): number;
+-}
+-
+-/**
+- * Ollama embedding service (local)
+- */
+-export class OllamaEmbedding implements EmbeddingService {
+-  private baseUrl: string;
+-  private model: string;
+-  private dimension: number = 768; // nomic-embed-text dimension
+-
+-  constructor(config: { model?: string; baseUrl?: string }) {
+-    this.model = config.model || 'nomic-embed-text';
+-    this.baseUrl = config.baseUrl || 'http://localhost:11434';
+-  }
+-
+-  async embed(text: string): Promise<EmbeddingResult> {
+-    const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({
+-        model: this.model,
+-        prompt: text,
+-      }),
+-    });
+-
+-    if (!response.ok) {
+-      throw new Error(`Ollama embedding failed: ${response.statusText}`);
+-    }
+-
+-    const data = await response.json();
+-    return {
+-      embedding: data.embedding,
+-      tokens: Math.ceil(text.length / 4), // Estimate
+-    };
+-  }
+-
+-  async embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
+-    // Ollama doesn't have batch API, so we process sequentially
+-    const results: EmbeddingResult[] = [];
+-    for (const text of texts) {
+-      results.push(await this.embed(text));
+-    }
+-    return results;
+-  }
+-
+-  getDimension(): number {
+-    return this.dimension;
+-  }
+-}
+-
+-/**
+- * Zhipu embedding service (remote)
+- */
+-export class ZhipuEmbedding implements EmbeddingService {
+-  private apiKey: string;
+-  private model: string;
+-  private dimension: number = 1024; // embedding-3 dimension
+-
+-  constructor(config: { apiKey: string; model?: string }) {
+-    this.apiKey = config.apiKey;
+-    this.model = config.model || 'embedding-3';
+-  }
+-
+-  async embed(text: string): Promise<EmbeddingResult> {
+-    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/embeddings', {
+-      method: 'POST',
+-      headers: {
+-        'Content-Type': 'application/json',
+-        'Authorization': `Bearer ${this.apiKey}`,
+-      },
+-      body: JSON.stringify({
+-        model: this.model,
+-        input: text,
+-      }),
+-    });
+-
+-    if (!response.ok) {
+-      throw new Error(`Zhipu embedding failed: ${response.statusText}`);
+-    }
+-
+-    const data = await response.json();
+-    return {
+-      embedding: data.data[0].embedding,
+-      tokens: data.usage?.total_tokens || 0,
+-    };
+-  }
+-
+-  async embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
+-    // Zhipu supports batch embedding
+-    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/embeddings', {
+-      method: 'POST',
+-      headers: {
+-        'Content-Type': 'application/json',
+-        'Authorization': `Bearer ${this.apiKey}`,
+-      },
+-      body: JSON.stringify({
+-        model: this.model,
+-        input: texts,
+-      }),
+-    });
+-
+-    if (!response.ok) {
+-      throw new Error(`Zhipu embedding failed: ${response.statusText}`);
+-    }
+-
+-    const data = await response.json();
+-    return data.data.map((item: any, index: number) => ({
+-      embedding: item.embedding,
+-      tokens: Math.ceil(texts[index].length / 4),
+-    }));
+-  }
+-
+-  getDimension(): number {
+-    return this.dimension;
+-  }
+-}
+-
+-/**
+- * Create embedding service based on config
+- */
+-export function createEmbeddingService(config: EmbeddingConfig, provider?: AIProvider): EmbeddingService {
+-  switch (config.provider) {
+-    case 'ollama':
+-      return new OllamaEmbedding({
+-        model: config.model,
+-        baseUrl: config.baseUrl,
+-      });
+-
+-    case 'zhipu':
+-      return new ZhipuEmbedding({
+-        apiKey: config.apiKey || provider?.apiKey || process.env.ZHIPU_API_KEY || '',
+-        model: config.model,
+-      });
+-
+-    case 'openai':
+-      // Fallback to ollama - warn about dimension mismatch
+-      console.warn(
+-        '[Embedding] OpenAI provider not implemented. Falling back to ollama (nomic-embed-text). ' +
+-        'WARNING: Dimension mismatch - OpenAI text-embedding-3-small produces 1536-d vectors, ' +
+-        'but ollama nomic-embed-text produces 768-d vectors. Re-index if switching providers.'
+-      );
+-      return new OllamaEmbedding({
+-        model: 'nomic-embed-text',
+-      });
+-
+-    default:
+-      return new OllamaEmbedding({
+-        model: 'nomic-embed-text',
+-      });
+-  }
+-}
+-
+-// Singleton instance
+-let embeddingService: EmbeddingService | null = null;
+-
+-export function initEmbeddingService(config: EmbeddingConfig, provider?: AIProvider): void {
+-  embeddingService = createEmbeddingService(config, provider);
+-}
+-
+-export function getEmbeddingService(): EmbeddingService | null {
+-  return embeddingService;
+-}
+-/**
+- * Chunk text for embedding (max 512 tokens per chunk)
+- */
+-export function chunkText(text: string, maxTokens: number = 512): string[] {
+-  const chunks: string[] = [];
+-  const paragraphs = text.split('\n\n');
+-
+-  let currentChunk = '';
+-
+-  for (const paragraph of paragraphs) {
+-    const estimatedTokens = (currentChunk + paragraph).length / 4;
+-
+-    if (estimatedTokens > maxTokens && currentChunk) {
+-      chunks.push(currentChunk.trim());
+-      currentChunk = paragraph;
+-    } else {
+-      currentChunk += '\n\n' + paragraph;
+-    }
+-  }
+-
+-  if (currentChunk.trim()) {
+-    chunks.push(currentChunk.trim());
+-  }
+-
+-  return chunks.filter(c => c.length > 10); // Filter out very short chunks
+-}
+diff --git a/src/domain/memory/summary-engine.ts b/src/domain/memory/summary-engine.ts
+deleted file mode 100644
+index 3239eb2..0000000
+--- a/src/domain/memory/summary-engine.ts
++++ /dev/null
+@@ -1,514 +0,0 @@
+-/**
+- * P3-#12: LLM 辅助摘要引擎
+- * 
+- * 原始问题：compression.ts 中的 generateSummary() 和 extractKeyFacts()
+- * 完全基于正则匹配和字符串截取，无法理解内容语义。而 Agent 层的
+- * compressContextWithLLM() 已经有 LLM 压缩能力，但记忆压缩模块未集成。
+- * 
+- * 优化方案：
+- * 1. LLM 摘要提供者接口 — 可插拔的 AI 摘要后端
+- * 2. 分层摘要策略 — 短对话规则摘要，长对话 LLM 摘要
+- * 3. 结构化信息提取 — 用 LLM 从对话中提取事实、决策、待办
+- * 4. 增量摘要 — 支持将新对话合并到已有摘要
+- * 5. 规则兜底 — LLM 不可用时自动降级到增强版规则摘要
+- */
+-
+-// ─── 类型定义 ─────────────────────────────────────────────
+-
+-/** LLM 摘要提供者 */
+-export interface SummaryLLMProvider {
+-  /** 调用 LLM 生成文本 */
+-  generate(prompt: string, options?: {
+-    maxTokens?: number;
+-    temperature?: number;
+-    model?: string;
+-  }): Promise<string>;
+-  /** Provider 名称 */
+-  name: string;
+-}
+-
+-/** 摘要结果 */
+-export interface SummaryResult {
+-  /** 摘要文本 */
+-  summary: string;
+-  /** 提取的关键事实 */
+-  keyFacts: string[];
+-  /** 提取的决策 */
+-  decisions: string[];
+-  /** 提取的待办事项 */
+-  todos: string[];
+-  /** 参与话题 */
+-  topics: string[];
+-  /** 使用的策略（llm / rule） */
+-  strategy: 'llm' | 'rule' | 'hybrid';
+-  /** 原始内容 Token 数（估计） */
+-  originalTokens: number;
+-  /** 摘要 Token 数（估计） */
+-  summaryTokens: number;
+-  /** 压缩比 */
+-  compressionRatio: number;
+-}
+-
+-/** 摘要引擎配置 */
+-export interface SummaryEngineConfig {
+-  /** LLM 摘要阈值（超过此 Token 数才使用 LLM） */
+-  llmThresholdTokens: number;
+-  /** 最大摘要 Token 数 */
+-  maxSummaryTokens: number;
+-  /** LLM 摘要超时（毫秒） */
+-  llmTimeoutMs: number;
+-  /** 是否在 LLM 失败时降级到规则 */
+-  fallbackToRules: boolean;
+-  /** 摘要语言 */
+-  language: 'zh' | 'en' | 'auto';
+-  /** 摘要风格 */
+-  style: 'concise' | 'detailed' | 'bullet-points';
+-  /** 自定义 LLM prompt 模板 */
+-  promptTemplate?: string;
+-}
+-
+-// ─── 默认配置 ──────────────────────────────────────────────
+-
+-const DEFAULT_CONFIG: SummaryEngineConfig = {
+-  llmThresholdTokens: 500,
+-  maxSummaryTokens: 300,
+-  llmTimeoutMs: 30000,
+-  fallbackToRules: true,
+-  language: 'auto',
+-  style: 'concise',
+-};
+-
+-// ─── Provider 管理 ─────────────────────────────────────────
+-
+-let currentLLMProvider: SummaryLLMProvider | null = null;
+-
+-/** 注册 LLM 摘要提供者 */
+-export function setSummaryLLMProvider(provider: SummaryLLMProvider): void {
+-  currentLLMProvider = provider;
+-}
+-
+-/** 获取当前 LLM 提供者 */
+-export function getSummaryLLMProvider(): SummaryLLMProvider | null {
+-  return currentLLMProvider;
+-}
+-
+-// ─── Prompt 模板 ──────────────────────────────────────────
+-
+-const SUMMARY_PROMPTS: Record<string, string> = {
+-  'zh-concise': `请对以下对话内容进行精炼摘要，用中文回答。
+-
+-要求：
+-1. **摘要**：用 2-3 句话概括对话核心内容
+-2. **关键事实**：提取对话中出现的重要信息/知识点（最多 5 条）
+-3. **决策**：提取对话中做出的关键决定（如有）
+-4. **待办**：提取对话中提到需要后续跟进的事项（如有）
+-5. **话题**：用关键词标注对话涉及的话题（3-5 个）
+-
+-请严格按以下 JSON 格式输出（不要添加其他内容）：
+-{
+-  "summary": "摘要内容",
+-  "keyFacts": ["事实1", "事实2"],
+-  "decisions": ["决策1"],
+-  "todos": ["待办1"],
+-  "topics": ["话题1", "话题2"]
+-}
+-
+-对话内容：
+----
+-{{content}}
+----`,
+-
+-  'en-concise': `Please summarize the following conversation.
+-
+-Requirements:
+-1. **Summary**: Summarize the core content in 2-3 sentences
+-2. **Key Facts**: Extract important information/knowledge (max 5)
+-3. **Decisions**: Extract key decisions made (if any)
+-4. **Todos**: Extract follow-up items mentioned (if any)
+-5. **Topics**: Tag topics with keywords (3-5)
+-
+-Output STRICTLY in this JSON format (no other content):
+-{
+-  "summary": "summary text",
+-  "keyFacts": ["fact1", "fact2"],
+-  "decisions": ["decision1"],
+-  "todos": ["todo1"],
+-  "topics": ["topic1", "topic2"]
+-}
+-
+-Conversation:
+----
+-{{content}}
+----`,
+-
+-  'zh-detailed': `请对以下对话进行详细分析和总结，用中文回答。
+-
+-要求：
+-1. **摘要**：详细描述对话的完整脉络，包括起因、经过和结论（5-10 句话）
+-2. **关键事实**：详细列出对话中出现的所有重要信息，每条信息需要足够具体
+-3. **决策**：列出所有决策，包含决策的背景和理由
+-4. **待办**：列出所有需要跟进的事项，包含优先级和截止时间（如有提及）
+-5. **话题**：用关键词标注对话涉及的所有话题
+-
+-请严格按以下 JSON 格式输出：
+-{
+-  "summary": "详细摘要",
+-  "keyFacts": ["详细事实1", "详细事实2"],
+-  "decisions": ["决策及理由1"],
+-  "todos": ["待办事项1（优先级/截止时间）"],
+-  "topics": ["话题1", "话题2"]
+-}
+-
+-对话内容：
+----
+-{{content}}
+----`,
+-
+-  'zh-incremental': `以下是一段对话的已有摘要和新增内容。请将新内容合并到已有摘要中。
+-
+-已有摘要：
+-{{existingSummary}}
+-
+-新增对话内容：
+----
+-{{content}}
+----
+-
+-请输出更新后的完整摘要（JSON 格式）：
+-{
+-  "summary": "更新后的摘要",
+-  "keyFacts": ["合并后的所有事实"],
+-  "decisions": ["合并后的所有决策"],
+-  "todos": ["合并后的所有待办"],
+-  "topics": ["合并后的所有话题"]
+-}`,
+-};
+-
+-// ─── Token 估算 ──────────────────────────────────────────
+-
+-function estimateTokens(text: string): number {
+-  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+-  const otherChars = text.length - chineseChars;
+-  return Math.ceil(chineseChars * 1.5 + otherChars * 0.25);
+-}
+-
+-// ─── 规则摘要引擎（增强版） ──────────────────────────────────
+-
+-/**
+- * 增强版规则摘要
+- * 比原始 compression.ts 的 generateSummary() 更完善
+- */
+-function ruleSummarize(content: string, language: 'zh' | 'en'): SummaryResult {
+-  const lines = content.split('\n');
+-  const originalTokens = estimateTokens(content);
+-
+-  // 提取对话轮次
+-  const turns: Array<{ role: 'user' | 'assistant'; text: string }> = [];
+-  for (const line of lines) {
+-    if (line.startsWith('**用户**：') || line.startsWith('**User**:')) {
+-      turns.push({ role: 'user', text: line.replace(/^\*\*(用户|User)\*\*[：:]\s*/, '') });
+-    } else if (line.startsWith('**助手**：') || line.startsWith('**Assistant**:')) {
+-      turns.push({ role: 'assistant', text: line.replace(/^\*\*(助手|Assistant)\*\*[：:]\s*/, '') });
+-    }
+-  }
+-
+-  // 摘要：取用户的主要问题 + 助手的关键回答
+-  const userQuestions = turns.filter(t => t.role === 'user').map(t => {
+-    return t.text.length > 100 ? t.text.substring(0, 100) + '...' : t.text;
+-  });
+-  const summary = language === 'zh'
+-    ? `共 ${turns.length} 轮对话。用户主要讨论：${userQuestions.slice(0, 3).join('；')}`
+-    : `${turns.length} turns. User discussed: ${userQuestions.slice(0, 3).join('; ')}`;
+-
+-  // 关键事实提取（增强模式匹配）
+-  const keyFacts: string[] = [];
+-  const factPatterns = [
+-    /(?:\*\*)?(?:关键决策|决策|Decision)(?:\*\*)?[：:]\s*(.+)/,
+-    /(?:\*\*)?(?:重要|Important|注意|Note)(?:\*\*)?[：:]\s*(.+)/,
+-    /(?:\*\*)?(?:结论|Conclusion|总结|Summary)(?:\*\*)?[：:]\s*(.+)/,
+-    /(?:\*\*)?(?:发现|Found|确认|Confirmed)(?:\*\*)?[：:]\s*(.+)/,
+-  ];
+-  for (const line of lines) {
+-    for (const pattern of factPatterns) {
+-      const match = line.match(pattern);
+-      if (match && keyFacts.length < 5) {
+-        keyFacts.push(match[1].trim());
+-      }
+-    }
+-  }
+-
+-  // 决策提取
+-  const decisions: string[] = [];
+-  const decisionPatterns = [
+-    /决定(?:了|：|:)\s*(.+)/,
+-    /(?:chose|decided|selected)\s+(.+)/i,
+-    /采用(?:了)?\s*(.+?)(?:方案|策略|方法)/,
+-  ];
+-  for (const line of lines) {
+-    for (const pattern of decisionPatterns) {
+-      const match = line.match(pattern);
+-      if (match && decisions.length < 3) {
+-        decisions.push(match[1].trim());
+-      }
+-    }
+-  }
+-
+-  // 待办提取
+-  const todos: string[] = [];
+-  const todoPatterns = [
+-    /(?:TODO|待办|需要|要做)[：:]\s*(.+)/,
+-    /(?:下一步|接下来|后续)[：:]\s*(.+)/,
+-    /(?:remember to|need to|should)\s+(.+)/i,
+-  ];
+-  for (const line of lines) {
+-    for (const pattern of todoPatterns) {
+-      const match = line.match(pattern);
+-      if (match && todos.length < 3) {
+-        todos.push(match[1].trim());
+-      }
+-    }
+-  }
+-
+-  // 话题提取
+-  const topics: string[] = [];
+-  if (content.includes('代码') || content.includes('code') || content.includes('编程')) topics.push('编程');
+-  if (content.includes('部署') || content.includes('deploy')) topics.push('部署');
+-  if (content.includes('调试') || content.includes('debug') || content.includes('错误')) topics.push('调试');
+-  if (content.includes('设计') || content.includes('design') || content.includes('架构')) topics.push('设计');
+-  if (content.includes('测试') || content.includes('test')) topics.push('测试');
+-  if (content.includes('文档') || content.includes('document')) topics.push('文档');
+-  if (content.includes('性能') || content.includes('performance') || content.includes('优化')) topics.push('性能优化');
+-  if (topics.length === 0) topics.push('通用对话');
+-
+-  const summaryTokens = estimateTokens(summary + keyFacts.join(' ') + decisions.join(' '));
+-
+-  return {
+-    summary,
+-    keyFacts,
+-    decisions,
+-    todos,
+-    topics: topics.slice(0, 5),
+-    strategy: 'rule',
+-    originalTokens,
+-    summaryTokens,
+-    compressionRatio: originalTokens > 0 ? summaryTokens / originalTokens : 1,
+-  };
+-}
+-
+-// ─── LLM 摘要引擎 ──────────────────────────────────────────
+-
+-/**
+- * 使用 LLM 生成摘要
+- */
+-async function llmSummarize(
+-  content: string,
+-  config: SummaryEngineConfig,
+-  existingSummary?: string
+-): Promise<SummaryResult> {
+-  if (!currentLLMProvider) {
+-    throw new Error('No LLM provider configured');
+-  }
+-
+-  const originalTokens = estimateTokens(content);
+-
+-  // 选择 prompt 模板
+-  const lang = config.language === 'auto'
+-    ? (content.match(/[\u4e00-\u9fff]/g)?.length || 0) > content.length * 0.1 ? 'zh' : 'en'
+-    : config.language;
+-
+-  let promptKey: string;
+-  if (existingSummary) {
+-    promptKey = `${lang}-incremental`;
+-  } else {
+-    promptKey = `${lang}-${config.style}`;
+-  }
+-
+-  let promptTemplate = config.promptTemplate || SUMMARY_PROMPTS[promptKey] || SUMMARY_PROMPTS['zh-concise'];
+-
+-  // 替换变量
+-  promptTemplate = promptTemplate.replace('{{content}}', content);
+-  if (existingSummary) {
+-    promptTemplate = promptTemplate.replace('{{existingSummary}}', existingSummary);
+-  }
+-
+-  // 调用 LLM
+-  const response = await Promise.race([
+-    currentLLMProvider.generate(promptTemplate, {
+-      maxTokens: config.maxSummaryTokens * 3, // JSON 格式开销
+-      temperature: 0.3,
+-    }),
+-    new Promise<never>((_, reject) =>
+-      setTimeout(() => reject(new Error('LLM summary timeout')), config.llmTimeoutMs)
+-    ),
+-  ]);
+-
+-  // 解析 JSON 响应
+-  const parsed = parseJSONResponse(response);
+-
+-  const summaryTokens = estimateTokens(
+-    parsed.summary + (parsed.keyFacts || []).join(' ') + (parsed.decisions || []).join(' ')
+-  );
+-
+-  return {
+-    summary: parsed.summary || '',
+-    keyFacts: parsed.keyFacts || [],
+-    decisions: parsed.decisions || [],
+-    todos: parsed.todos || [],
+-    topics: parsed.topics || [],
+-    strategy: 'llm',
+-    originalTokens,
+-    summaryTokens,
+-    compressionRatio: originalTokens > 0 ? summaryTokens / originalTokens : 1,
+-  };
+-}
+-
+-/**
+- * 解析 LLM 返回的 JSON（容错处理）
+- */
+-function parseJSONResponse(response: string): {
+-  summary?: string;
+-  keyFacts?: string[];
+-  decisions?: string[];
+-  todos?: string[];
+-  topics?: string[];
+-} {
+-  // 尝试直接 parse
+-  try {
+-    return JSON.parse(response);
+-  } catch {
+-    // 尝试提取 JSON 块
+-    const jsonMatch = response.match(/\{[\s\S]*\}/);
+-    if (jsonMatch) {
+-      try {
+-        return JSON.parse(jsonMatch[0]);
+-      } catch {
+-        // fall through
+-      }
+-    }
+-
+-    // 降级：将整个响应作为摘要
+-    return { summary: response.trim() };
+-  }
+-}
+-
+-// ─── 摘要引擎（统一入口） ────────────────────────────────────
+-
+-/**
+- * 智能摘要引擎
+- * 
+- * 根据内容长度和 LLM 可用性自动选择最佳策略
+- */
+-export class SummaryEngine {
+-  private config: SummaryEngineConfig;
+-
+-  constructor(config: Partial<SummaryEngineConfig> = {}) {
+-    this.config = { ...DEFAULT_CONFIG, ...config };
+-  }
+-
+-  /**
+-   * 生成摘要
+-   */
+-  async summarize(content: string, existingSummary?: string): Promise<SummaryResult> {
+-    const tokens = estimateTokens(content);
+-    const lang = this.detectLanguage(content);
+-
+-    // 短内容用规则
+-    if (tokens < this.config.llmThresholdTokens || !currentLLMProvider) {
+-      return ruleSummarize(content, lang);
+-    }
+-
+-    // 长内容用 LLM
+-    try {
+-      return await llmSummarize(content, this.config, existingSummary);
+-    } catch (error) {
+-      console.warn('[SummaryEngine] LLM summarization failed:', error);
+-
+-      if (this.config.fallbackToRules) {
+-        console.info('[SummaryEngine] Falling back to rule-based summarization');
+-        const result = ruleSummarize(content, lang);
+-        result.strategy = 'hybrid'; // 标记为降级
+-        return result;
+-      }
+-
+-      throw error;
+-    }
+-  }
+-
+-  /**
+-   * 批量摘要
+-   */
+-  async summarizeBatch(
+-    items: Array<{ id: string; content: string }>,
+-    options?: { concurrency?: number }
+-  ): Promise<Map<string, SummaryResult>> {
+-    const results = new Map<string, SummaryResult>();
+-    const concurrency = options?.concurrency || 3;
+-
+-    // 简单的并发控制
+-    const queue = [...items];
+-    const running: Promise<void>[] = [];
+-
+-    const processOne = async () => {
+-      while (queue.length > 0) {
+-        const item = queue.shift()!;
+-        const result = await this.summarize(item.content);
+-        results.set(item.id, result);
+-      }
+-    };
+-
+-    for (let i = 0; i < Math.min(concurrency, items.length); i++) {
+-      running.push(processOne());
+-    }
+-
+-    await Promise.all(running);
+-    return results;
+-  }
+-
+-  /**
+-   * 增量合并摘要
+-   */
+-  async mergeSummaries(
+-    existingSummary: SummaryResult,
+-    newContent: string
+-  ): Promise<SummaryResult> {
+-    const existingText = [
+-      `摘要：${existingSummary.summary}`,
+-      `事实：${existingSummary.keyFacts.join('；')}`,
+-      `决策：${existingSummary.decisions.join('；')}`,
+-      `待办：${existingSummary.todos.join('；')}`,
+-    ].join('\n');
+-
+-    return this.summarize(newContent, existingText);
+-  }
+-
+-  /**
+-   * 更新配置
+-   */
+-  updateConfig(config: Partial<SummaryEngineConfig>): void {
+-    Object.assign(this.config, config);
+-  }
+-
+-  private detectLanguage(content: string): 'zh' | 'en' {
+-    if (this.config.language !== 'auto') return this.config.language;
+-    const chineseRatio = (content.match(/[\u4e00-\u9fff]/g)?.length || 0) / content.length;
+-    return chineseRatio > 0.1 ? 'zh' : 'en';
+-  }
+-}
+-
+-// ─── 便捷工厂 ──────────────────────────────────────────────
+-
+-let defaultEngine: SummaryEngine | null = null;
+-
+-export function getSummaryEngine(config?: Partial<SummaryEngineConfig>): SummaryEngine {
+-  if (!defaultEngine || config) {
+-    defaultEngine = new SummaryEngine(config);
+-  }
+-  return defaultEngine;
+-}
+-
+-/**
+- * 快捷摘要（直接调用）
+- */
+-export async function summarize(content: string): Promise<SummaryResult> {
+-  return getSummaryEngine().summarize(content);
+-}
+diff --git a/src/domain/session/recommender.ts b/src/domain/session/recommender.ts
+deleted file mode 100644
+index 910895a..0000000
+--- a/src/domain/session/recommender.ts
++++ /dev/null
+@@ -1,224 +0,0 @@
+-/**
+- * Session Recommender
+- *
+- * Recommends relevant historical sessions based on current context.
+- */
+-
+-import { readdirSync, statSync } from 'fs';
+-import { join, basename } from 'path';
+-import { listSessions, type Session } from '../session';
+-
+-export interface SessionRecommendation {
+-  sessionId: string;
+-  session: Session;
+-  relevanceScore: number;
+-  reasons: string[];
+-}
+-
+-export interface RecommenderContext {
+-  workingDirectory: string;
+-  recentFiles?: string[];
+-  currentTime?: Date;
+-  keywords?: string[];
+-}
+-
+-/**
+- * Get recent files from a directory
+- */
+-function getRecentFiles(dir: string, limit: number = 10): string[] {
+-  try {
+-    const files = readdirSync(dir)
+-      .map(file => ({
+-        name: file,
+-        path: join(dir, file),
+-        time: statSync(join(dir, file)).mtime.getTime(),
+-      }))
+-      .sort((a, b) => b.time - a.time)
+-      .slice(0, limit)
+-      .map(f => f.name);
+-
+-    return files;
+-  } catch {
+-    return [];
+-  }
+-}
+-
+-/**
+- * Extract keywords from a directory path
+- */
+-function extractPathKeywords(path: string): string[] {
+-  const parts = path.split('/').filter(Boolean);
+-  // Filter out common noise words
+-  const noiseWords = ['Users', 'home', 'workspace', 'projects', 'src', 'code'];
+-  return parts.filter(part => !noiseWords.includes(part.toLowerCase()));
+-}
+-
+-/**
+- * Calculate similarity between two strings (simple keyword matching)
+- */
+-function calculateKeywordSimilarity(keywords1: string[], keywords2: string[]): number {
+-  if (keywords1.length === 0 || keywords2.length === 0) return 0;
+-
+-  const set1 = new Set(keywords1.map(k => k.toLowerCase()));
+-  const set2 = new Set(keywords2.map(k => k.toLowerCase()));
+-
+-  let matches = 0;
+-  for (const keyword of set1) {
+-    if (set2.has(keyword)) matches++;
+-  }
+-
+-  return matches / Math.max(set1.size, set2.size);
+-}
+-
+-/**
+- * Calculate time-based relevance (recent sessions are more relevant)
+- */
+-function calculateTimeRelevance(sessionUpdatedAt: string): number {
+-  const sessionTime = new Date(sessionUpdatedAt).getTime();
+-  const now = Date.now();
+-  const hoursAgo = (now - sessionTime) / (1000 * 60 * 60);
+-
+-  // Recent sessions (within 24 hours) get high score
+-  if (hoursAgo < 24) return 1.0;
+-  // This week
+-  if (hoursAgo < 24 * 7) return 0.7;
+-  // This month
+-  if (hoursAgo < 24 * 30) return 0.4;
+-  // Older
+-  return 0.2;
+-}
+-
+-/**
+- * Check if session content matches keywords
+- */
+-function checkContentMatch(session: Session, keywords: string[]): { score: number; matches: string[] } {
+-  const matches: string[] = [];
+-  let totalScore = 0;
+-
+-  // Check session messages for keyword matches
+-  const recentMessages = session.messages.slice(-10); // Check last 10 messages
+-
+-  for (const message of recentMessages) {
+-    const content = message.content.toLowerCase();
+-    for (const keyword of keywords) {
+-      if (content.includes(keyword.toLowerCase())) {
+-        matches.push(keyword);
+-        totalScore += 0.1; // Each match adds 0.1 to score
+-      }
+-    }
+-  }
+-
+-  return {
+-    score: Math.min(totalScore, 1.0), // Cap at 1.0
+-    matches: [...new Set(matches)], // Deduplicate
+-  };
+-}
+-
+-/**
+- * Recommend relevant sessions based on current context
+- */
+-export function recommendSessions(
+-  context: RecommenderContext,
+-  options?: {
+-    maxRecommendations?: number;
+-    minRelevanceScore?: number;
+-  }
+-): SessionRecommendation[] {
+-  const maxRecommendations = options?.maxRecommendations || 5;
+-  const minRelevanceScore = options?.minRelevanceScore || 0.3;
+-
+-  // Get all sessions
+-  const allSessions = listSessions();
+-
+-  // Filter out CLI sessions from today (we're already in that session)
+-  const today = new Date().toISOString().split('T')[0];
+-  const candidateSessions = allSessions.filter(s =>
+-    !(s.channel === 'cli' && s.id.includes(today))
+-  );
+-
+-  // Extract keywords from context
+-  const contextKeywords = [
+-    ...extractPathKeywords(context.workingDirectory),
+-    ...(context.keywords || []),
+-  ];
+-
+-  // Get recent files as additional context
+-  const recentFiles = context.recentFiles || getRecentFiles(context.workingDirectory, 5);
+-  const fileKeywords = recentFiles.map(f => basename(f, '.ts').replace(/[-_]/g, ' '));
+-
+-  const allKeywords = [...contextKeywords, ...fileKeywords];
+-
+-  // Score each session
+-  const recommendations: SessionRecommendation[] = [];
+-
+-  for (const session of candidateSessions) {
+-    const reasons: string[] = [];
+-    let totalScore = 0;
+-
+-    // 1. Time relevance (weight: 30%)
+-    const timeRelevance = calculateTimeRelevance(session.updatedAt);
+-    totalScore += timeRelevance * 0.3;
+-    if (timeRelevance > 0.7) {
+-      reasons.push('🕐 Recent session');
+-    }
+-
+-    // 2. Path similarity (weight: 40%)
+-    // Extract keywords from session metadata or ID
+-    const sessionKeywords = session.id.split('-').filter(Boolean);
+-    const pathSimilarity = calculateKeywordSimilarity(allKeywords, sessionKeywords);
+-    totalScore += pathSimilarity * 0.4;
+-    if (pathSimilarity > 0.3) {
+-      reasons.push('📁 Related to current directory');
+-    }
+-
+-    // 3. Content match (weight: 30%)
+-    const contentMatch = checkContentMatch(session, allKeywords);
+-    totalScore += contentMatch.score * 0.3;
+-    if (contentMatch.matches.length > 0) {
+-      reasons.push(`💬 Discusses: ${contentMatch.matches.slice(0, 3).join(', ')}`);
+-    }
+-
+-    // Normalize score to 0-1 range
+-    const normalizedScore = Math.min(totalScore, 1.0);
+-
+-    if (normalizedScore >= minRelevanceScore) {
+-      recommendations.push({
+-        sessionId: session.id,
+-        session,
+-        relevanceScore: normalizedScore,
+-        reasons,
+-      });
+-    }
+-  }
+-
+-  // Sort by relevance score and return top recommendations
+-  return recommendations
+-    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+-    .slice(0, maxRecommendations);
+-}
+-
+-/**
+- * Format session recommendation for display
+- */
+-export function formatRecommendation(rec: SessionRecommendation, index: number): string {
+-  const sessionDate = new Date(rec.session.updatedAt).toLocaleDateString('zh-CN', {
+-    month: 'short',
+-    day: 'numeric',
+-    hour: '2-digit',
+-    minute: '2-digit',
+-  });
+-
+-  const messageCount = rec.session.messages.length;
+-  const score = (rec.relevanceScore * 100).toFixed(0);
+-
+-  const lines = [
+-    `${index + 1}. ${rec.session.id}`,
+-    `   📅 ${sessionDate} | 💬 ${messageCount} messages | 🎯 ${score}% match`,
+-  ];
+-
+-  if (rec.reasons.length > 0) {
+-    lines.push(`   ${rec.reasons.join(' | ')}`);
+-  }
+-
+-  return lines.join('\n');
+-}
+diff --git a/src/domain/skills/triggers.ts b/src/domain/skills/triggers.ts
+deleted file mode 100644
+index 0b067f7..0000000
+--- a/src/domain/skills/triggers.ts
++++ /dev/null
+@@ -1,506 +0,0 @@
+-/**
+- * Skill Trigger System
+- *
+- * 增强版技能触发规则系统
+- * 支持：关键词、正则、意图检测、组合触发、链式调用
+- */
+-
+-import type { Skill } from './types';
+-
+-// ============================================================================
+-// 触发器类型定义
+-// ============================================================================
+-
+-export type TriggerType = 'keyword' | 'regex' | 'intent' | 'llm' | 'composite' | 'scheduled';
+-
+-export interface BaseTrigger {
+-  type: TriggerType;
+-  priority: number;  // 优先级，越高越先匹配
+-  enabled: boolean;
+-}
+-
+-export interface KeywordTrigger extends BaseTrigger {
+-  type: 'keyword';
+-  keywords: string[];
+-  matchAll?: boolean;  // true = 所有关键词都要匹配
+-  caseSensitive?: boolean;
+-}
+-
+-export interface RegexTrigger extends BaseTrigger {
+-  type: 'regex';
+-  pattern: string;
+-  flags?: string;
+-}
+-
+-export interface IntentTrigger extends BaseTrigger {
+-  type: 'intent';
+-  intents: string[];  // 例如：['create', 'update', 'delete', 'search']
+-  confidence?: number; // 置信度阈值
+-}
+-
+-export interface LLMTrigger extends BaseTrigger {
+-  type: 'llm';
+-  prompt: string;  // 用于 LLM 判断的提示
+-  model?: string;  // 可选指定模型
+-}
+-
+-export interface CompositeTrigger extends BaseTrigger {
+-  type: 'composite';
+-  operator: 'and' | 'or' | 'not';
+-  triggers: Trigger[];
+-}
+-
+-export interface ScheduledTrigger extends BaseTrigger {
+-  type: 'scheduled';
+-  cron: string;  // cron 表达式
+-  timezone?: string;
+-}
+-
+-export type Trigger =
+-  | KeywordTrigger
+-  | RegexTrigger
+-  | IntentTrigger
+-  | LLMTrigger
+-  | CompositeTrigger
+-  | ScheduledTrigger;
+-
+-// ============================================================================
+-// 技能链定义
+-// ============================================================================
+-
+-export interface SkillChain {
+-  name: string;
+-  description: string;
+-  skills: Array<{
+-    name: string;
+-    condition?: (context: TriggerContext) => boolean;
+-    timeout?: number;
+-  }>;
+-  orchestration: 'sequential' | 'parallel' | 'conditional';
+-  stopOnFailure: boolean;
+-}
+-
+-// ============================================================================
+-// 触发上下文
+-// ============================================================================
+-
+-export interface TriggerContext {
+-  message: string;
+-  userId?: string;
+-  sessionId?: string;
+-  channel?: string;
+-  history?: Array<{ role: string; content: string }>;
+-  metadata?: Record<string, unknown>;
+-}
+-
+-export interface TriggerResult {
+-  skillName: string;
+-  confidence: number;
+-  matchedTrigger: Trigger;
+-  extractedParams?: Record<string, unknown>;
+-}
+-
+-// ============================================================================
+-// 触发器匹配器
+-// ============================================================================
+-
+-export class TriggerMatcher {
+-  /**
+-   * 匹配关键词触发器
+-   */
+-  matchKeyword(trigger: KeywordTrigger, context: TriggerContext): { matched: boolean; confidence: number } {
+-    const message = trigger.caseSensitive ? context.message : context.message.toLowerCase();
+-    const keywords = trigger.caseSensitive
+-      ? trigger.keywords
+-      : trigger.keywords.map(k => k.toLowerCase());
+-
+-    if (trigger.matchAll) {
+-      const matched = keywords.every(kw => message.includes(kw));
+-      return { matched, confidence: matched ? 1.0 : 0 };
+-    } else {
+-      const matchedCount = keywords.filter(kw => message.includes(kw)).length;
+-      const confidence = keywords.length > 0 ? matchedCount / keywords.length : 0;
+-      return { matched: matchedCount > 0, confidence };
+-    }
+-  }
+-
+-  /**
+-   * 匹配正则触发器
+-   */
+-  matchRegex(trigger: RegexTrigger, context: TriggerContext): { matched: boolean; confidence: number; params?: Record<string, unknown> } {
+-    try {
+-      const regex = new RegExp(trigger.pattern, trigger.flags || 'i');
+-      const match = context.message.match(regex);
+-
+-      if (match) {
+-        // 提取命名捕获组作为参数
+-        const params: Record<string, unknown> = {};
+-        if (match.groups) {
+-          Object.assign(params, match.groups);
+-        }
+-
+-        return { matched: true, confidence: 1.0, params };
+-      }
+-    } catch (error) {
+-      console.error('[TriggerMatcher] Invalid regex:', trigger.pattern, error);
+-    }
+-
+-    return { matched: false, confidence: 0 };
+-  }
+-
+-  /**
+-   * 匹配意图触发器
+-   */
+-  matchIntent(trigger: IntentTrigger, context: TriggerContext): { matched: boolean; confidence: number } {
+-    const message = context.message.toLowerCase();
+-
+-    // 简单的意图检测（基于关键词）
+-    const intentPatterns: Record<string, string[]> = {
+-      create: ['创建', '新建', '添加', 'create', 'add', 'new'],
+-      update: ['更新', '修改', '编辑', 'update', 'modify', 'edit'],
+-      delete: ['删除', '移除', 'delete', 'remove'],
+-      search: ['搜索', '查找', '寻找', 'search', 'find', 'look'],
+-      analyze: ['分析', '评估', 'analyze', 'evaluate'],
+-      summarize: ['总结', '摘要', 'summarize', 'summary'],
+-      translate: ['翻译', 'translate'],
+-      explain: ['解释', '说明', 'explain', 'describe'],
+-    };
+-
+-    for (const intent of trigger.intents) {
+-      const patterns = intentPatterns[intent] || [intent];
+-      const matched = patterns.some(p => message.includes(p));
+-      if (matched) {
+-        return { matched: true, confidence: trigger.confidence ?? 0.8 };
+-      }
+-    }
+-
+-    return { matched: false, confidence: 0 };
+-  }
+-
+-  /**
+-   * 匹配组合触发器
+-   */
+-  matchComposite(trigger: CompositeTrigger, context: TriggerContext): { matched: boolean; confidence: number } {
+-    const results = trigger.triggers.map(t => this.match(t, context));
+-    const confidences = results.map(r => r.confidence);
+-
+-    switch (trigger.operator) {
+-      case 'and':
+-        return {
+-          matched: results.every(r => r.matched),
+-          confidence: results.every(r => r.matched)
+-            ? confidences.reduce((a, b) => a * b, 1)
+-            : 0,
+-        };
+-
+-      case 'or':
+-        return {
+-          matched: results.some(r => r.matched),
+-          confidence: Math.max(...confidences),
+-        };
+-
+-      case 'not':
+-        return {
+-          matched: !results[0]?.matched,
+-          confidence: results[0]?.matched ? 0 : 1,
+-        };
+-
+-      default:
+-        return { matched: false, confidence: 0 };
+-    }
+-  }
+-
+-  /**
+-   * 通用匹配方法
+-   */
+-  match(trigger: Trigger, context: TriggerContext): { matched: boolean; confidence: number; params?: Record<string, unknown> } {
+-    if (!trigger.enabled) {
+-      return { matched: false, confidence: 0 };
+-    }
+-
+-    switch (trigger.type) {
+-      case 'keyword':
+-        return this.matchKeyword(trigger, context);
+-
+-      case 'regex':
+-        return this.matchRegex(trigger, context);
+-
+-      case 'intent':
+-        return this.matchIntent(trigger, context);
+-
+-      case 'composite':
+-        return this.matchComposite(trigger, context);
+-
+-      case 'llm':
+-        // LLM 触发需要异步处理，这里返回 false
+-        return { matched: false, confidence: 0 };
+-
+-      case 'scheduled':
+-        // 定时触发器不通过消息匹配
+-        return { matched: false, confidence: 0 };
+-
+-      default:
+-        return { matched: false, confidence: 0 };
+-    }
+-  }
+-}
+-
+-// ============================================================================
+-// 技能触发引擎
+-// ============================================================================
+-
+-export class SkillTriggerEngine {
+-  private matcher: TriggerMatcher;
+-  private skillTriggers: Map<string, Trigger[]> = new Map();
+-  private chains: Map<string, SkillChain> = new Map();
+-  private llmEvaluator: ((prompt: string, context: TriggerContext) => Promise<boolean>) | null = null;
+-
+-  constructor() {
+-    this.matcher = new TriggerMatcher();
+-  }
+-
+-  /**
+-   * 设置 LLM 评估器
+-   */
+-  setLLMEvaluator(evaluator: (prompt: string, context: TriggerContext) => Promise<boolean>): void {
+-    this.llmEvaluator = evaluator;
+-  }
+-
+-  /**
+-   * 注册技能触发器
+-   */
+-  registerSkillTriggers(skillName: string, triggers: Trigger[]): void {
+-    // 按优先级排序
+-    const sorted = [...triggers].sort((a, b) => b.priority - a.priority);
+-    this.skillTriggers.set(skillName, sorted);
+-  }
+-
+-  /**
+-   * 注册技能链
+-   */
+-  registerChain(chain: SkillChain): void {
+-    this.chains.set(chain.name, chain);
+-  }
+-
+-  /**
+-   * 从技能定义加载触发器
+-   */
+-  loadFromSkill(skill: Skill): void {
+-    const triggers: Trigger[] = [];
+-
+-    // 解析 tags 作为关键词触发器
+-    if (skill.tags.length > 0) {
+-      triggers.push({
+-        type: 'keyword',
+-        keywords: skill.tags,
+-        priority: 5,
+-        enabled: true,
+-      } as KeywordTrigger);
+-    }
+-
+-    // 解析 triggers 字段
+-    for (const triggerStr of skill.triggers) {
+-      // 检查是否是正则表达式（以 / 开头和结尾）
+-      if (triggerStr.startsWith('/') && triggerStr.endsWith('/')) {
+-        const pattern = triggerStr.slice(1, -1);
+-        triggers.push({
+-          type: 'regex',
+-          pattern,
+-          priority: 8,
+-          enabled: true,
+-        } as RegexTrigger);
+-      }
+-      // 检查是否是意图（以 @ 开头）
+-      else if (triggerStr.startsWith('@')) {
+-        const intent = triggerStr.slice(1);
+-        triggers.push({
+-          type: 'intent',
+-          intents: [intent],
+-          priority: 7,
+-          enabled: true,
+-        } as IntentTrigger);
+-      }
+-      // 默认作为关键词
+-      else {
+-        triggers.push({
+-          type: 'keyword',
+-          keywords: [triggerStr],
+-          priority: 5,
+-          enabled: true,
+-        } as KeywordTrigger);
+-      }
+-    }
+-
+-    this.registerSkillTriggers(skill.name, triggers);
+-  }
+-
+-  /**
+-   * 匹配最佳技能
+-   */
+-  async matchBest(
+-    context: TriggerContext,
+-    options?: {
+-      maxResults?: number;
+-      minConfidence?: number;
+-      excludeSkills?: string[];
+-    },
+-  ): Promise<TriggerResult[]> {
+-    const results: TriggerResult[] = [];
+-    const maxResults = options?.maxResults ?? 3;
+-    const minConfidence = options?.minConfidence ?? 0.3;
+-    const excludeSkills = new Set(options?.excludeSkills || []);
+-
+-    for (const [skillName, triggers] of this.skillTriggers.entries()) {
+-      if (excludeSkills.has(skillName)) continue;
+-
+-      for (const trigger of triggers) {
+-        // 处理 LLM 触发器
+-        if (trigger.type === 'llm' && this.llmEvaluator) {
+-          try {
+-            const matched = await this.llmEvaluator(trigger.prompt, context);
+-            if (matched) {
+-              results.push({
+-                skillName,
+-                confidence: trigger.priority / 10,
+-                matchedTrigger: trigger,
+-              });
+-            }
+-          } catch (error) {
+-            console.error('[SkillTriggerEngine] LLM evaluation failed:', error);
+-          }
+-          continue;
+-        }
+-
+-        // 常规匹配
+-        const matchResult = this.matcher.match(trigger, context);
+-
+-        if (matchResult.matched && matchResult.confidence >= minConfidence) {
+-          results.push({
+-            skillName,
+-            confidence: matchResult.confidence * (trigger.priority / 10),
+-            matchedTrigger: trigger,
+-            extractedParams: matchResult.params,
+-          });
+-          break; // 每个技能只取第一个匹配的触发器
+-        }
+-      }
+-    }
+-
+-    // 按置信度排序并返回 top N
+-    return results
+-      .sort((a, b) => b.confidence - a.confidence)
+-      .slice(0, maxResults);
+-  }
+-
+-  /**
+-   * 获取技能链
+-   */
+-  getChain(name: string): SkillChain | undefined {
+-    return this.chains.get(name);
+-  }
+-
+-  /**
+-   * 列出所有技能链
+-   */
+-  listChains(): SkillChain[] {
+-    return Array.from(this.chains.values());
+-  }
+-
+-  /**
+-   * 清除所有触发器
+-   */
+-  clear(): void {
+-    this.skillTriggers.clear();
+-    this.chains.clear();
+-  }
+-}
+-
+-// ============================================================================
+-// 预定义触发器模板
+-// ============================================================================
+-
+-export const TriggerTemplates = {
+-  // 日期时间相关
+-  datePattern: (): RegexTrigger => ({
+-    type: 'regex',
+-    pattern: '(\\d{4}[-/]\\d{1,2}[-/]\\d{1,2})|(今天|明天|后天|昨天|前天)',
+-    priority: 5,
+-    enabled: true,
+-  }),
+-
+-  // 时间相关
+-  timePattern: (): RegexTrigger => ({
+-    type: 'regex',
+-    pattern: '(\\d{1,2}:\\d{2})|(上午|下午|晚上|早上|中午)',
+-    priority: 5,
+-    enabled: true,
+-  }),
+-
+-  // 股票代码
+-  stockPattern: (): RegexTrigger => ({
+-    type: 'regex',
+-    pattern: '([0-9]{6}|sh[0-9]{6}|sz[0-9]{6}|\\$[A-Z]+)',
+-    priority: 6,
+-    enabled: true,
+-  }),
+-
+-  // URL
+-  urlPattern: (): RegexTrigger => ({
+-    type: 'regex',
+-    pattern: 'https?://[^\\s]+',
+-    priority: 5,
+-    enabled: true,
+-  }),
+-
+-  // 邮箱
+-  emailPattern: (): RegexTrigger => ({
+-    type: 'regex',
+-    pattern: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}',
+-    priority: 5,
+-    enabled: true,
+-  }),
+-
+-  // 创建意图
+-  createIntent: (): IntentTrigger => ({
+-    type: 'intent',
+-    intents: ['create'],
+-    priority: 7,
+-    enabled: true,
+-  }),
+-
+-  // 搜索意图
+-  searchIntent: (): IntentTrigger => ({
+-    type: 'intent',
+-    intents: ['search'],
+-    priority: 7,
+-    enabled: true,
+-  }),
+-
+-  // 分析意图
+-  analyzeIntent: (): IntentTrigger => ({
+-    type: 'intent',
+-    intents: ['analyze'],
+-    priority: 7,
+-    enabled: true,
+-  }),
+-};
+-
+-// ============================================================================
+-// 单例
+-// ============================================================================
+-
+-let triggerEngine: SkillTriggerEngine | null = null;
+-
+-export function getSkillTriggerEngine(): SkillTriggerEngine {
+-  if (!triggerEngine) {
+-    triggerEngine = new SkillTriggerEngine();
+-  }
+-  return triggerEngine;
+-}
+-
+-export function resetSkillTriggerEngine(): void {
+-  if (triggerEngine) {
+-    triggerEngine.clear();
+-  }
+-  triggerEngine = null;
+-}
+diff --git a/src/domain/subagent/subagent-types-patch.ts b/src/domain/subagent/subagent-types-patch.ts
+deleted file mode 100644
+index 315824c..0000000
+--- a/src/domain/subagent/subagent-types-patch.ts
++++ /dev/null
+@@ -1,530 +0,0 @@
+-/**
+- * subagent-types-patch.ts — 研究子 Agent 能力扩展补丁
+- * 
+- * 扩展 BeeClaw 现有 SubAgentType 定义，为 research 类型子 Agent 增加：
+- * 1. 写入能力 (memory_write, memory_record)
+- * 2. 状态管理 (state_get, state_set)
+- * 3. 目标检查点 (goal_checkpoint)
+- * 4. 递归研究 (deep_research) —— 子 Agent 可发起子研究
+- * 5. 制品管理 (artifact_save, artifact_load)
+- * 
+- * 与 BeeClaw 现有架构的集成点：
+- * - src/subagent/types.ts      → 扩展 SubAgentType 接口
+- * - src/subagent/factory.ts    → 扩展工厂创建逻辑
+- * - src/subagent/scheduler.ts  → 保持兼容（无需修改）
+- * - src/tools/builtin.ts       → 注册新工具
+- * 
+- * 设计原则：
+- * - 最小侵入：使用 TypeScript 模块扩充（module augmentation）
+- * - 向后兼容：现有 research 子 Agent 无需修改即可运行
+- * - 渐进启用：新能力通过 capability flags 控制
+- * 
+- * @module subagent-types-patch
+- */
+-
+-// ============================================================
+-// 能力标志位
+-// ============================================================
+-
+-/**
+- * 研究子 Agent 能力标志
+- * 
+- * 与 BeeClaw 的 SubAgentConfig 扩展集成
+- */
+-export interface ResearchCapabilities {
+-  /** 是否允许写入 memory */
+-  canWriteMemory: boolean;
+-  /** 是否允许管理制品 */
+-  canManageArtifacts: boolean;
+-  /** 是否允许发起子研究 */
+-  canRecurseResearch: boolean;
+-  /** 子研究最大深度 */
+-  maxRecursionDepth: number;
+-  /** 是否允许状态管理 */
+-  canManageState: boolean;
+-  /** 是否允许设置目标检查点 */
+-  canSetCheckpoints: boolean;
+-  /** 最大工具调用次数（覆盖默认值） */
+-  maxToolCalls?: number;
+-}
+-
+-/** 默认能力配置 */
+-export const DEFAULT_RESEARCH_CAPABILITIES: ResearchCapabilities = {
+-  canWriteMemory: false,
+-  canManageArtifacts: false,
+-  canRecurseResearch: false,
+-  maxRecursionDepth: 1,
+-  canManageState: false,
+-  canSetCheckpoints: false,
+-};
+-
+-/** 增强型研究能力（显式启用后） */
+-export const ENHANCED_RESEARCH_CAPABILITIES: ResearchCapabilities = {
+-  canWriteMemory: true,
+-  canManageArtifacts: true,
+-  canRecurseResearch: true,
+-  maxRecursionDepth: 2,
+-  canManageState: true,
+-  canSetCheckpoints: true,
+-  maxToolCalls: 50,
+-};
+-
+-// ============================================================
+-// 扩展的子 Agent 类型
+-// ============================================================
+-
+-/**
+- * 扩展的研究子 Agent 配置
+- * 
+- * 与 BeeClaw 现有 SubAgentConfig 合并使用：
+- * 
+- * ```ts
+- * // 在 types.ts 中
+- * export interface SubAgentConfig {
+- *   type: SubAgentType;
+- *   name: string;
+- *   tools: string[];
+- *   // ... 现有字段
+- *   researchCapabilities?: ResearchCapabilities; // ← 新增
+- * }
+- * ```
+- */
+-export interface ExtendedResearchSubAgentConfig {
+-  type: 'research';
+-  name: string;
+-
+-  /** 原有工具（只读） */
+-  baseTools: string[];
+-
+-  /** 新增工具（根据 capabilities 动态注入） */
+-  extendedTools: string[];
+-
+-  /** 研究能力配置 */
+-  capabilities: ResearchCapabilities;
+-
+-  /** 研究上下文 */
+-  researchContext?: {
+-    parentSessionId?: string;
+-    assignedAspect?: string;
+-    maxContentPerSource?: number;
+-    synthesisGuidelines?: string;
+-  };
+-}
+-
+-// ============================================================
+-// 新增工具定义
+-// ============================================================
+-
+-/**
+- * 研究子 Agent 新增工具的规范定义
+- * 
+- * 这些定义用于生成工具 schema，注册到 builtin.ts
+- */
+-export const RESEARCH_EXTENDED_TOOLS = {
+-  // ── 写入能力 ──
+-  memory_write: {
+-    name: 'memory_write',
+-    description: 'Write a key-value pair to the agent memory system for later retrieval',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        key: { type: 'string', description: 'Memory key (hierarchical path, e.g., "research/findings/topic1")' },
+-        value: { type: 'string', description: 'Content to store' },
+-        tags: {
+-          type: 'array',
+-          items: { type: 'string' },
+-          description: 'Optional tags for categorization',
+-        },
+-      },
+-      required: ['key', 'value'],
+-    },
+-    requiresCapability: 'canWriteMemory' as keyof ResearchCapabilities,
+-  },
+-
+-  memory_record: {
+-    name: 'memory_record',
+-    description: 'Record a structured research finding with metadata',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        category: {
+-          type: 'string',
+-          enum: ['finding', 'source', 'contradiction', 'gap', 'insight'],
+-          description: 'Type of research record',
+-        },
+-        title: { type: 'string', description: 'Brief title of the record' },
+-        content: { type: 'string', description: 'Detailed content' },
+-        confidence: { type: 'number', description: 'Confidence score 0.0-1.0' },
+-        sources: {
+-          type: 'array',
+-          items: { type: 'string' },
+-          description: 'Source URLs or references',
+-        },
+-      },
+-      required: ['category', 'title', 'content'],
+-    },
+-    requiresCapability: 'canWriteMemory' as keyof ResearchCapabilities,
+-  },
+-
+-  // ── 状态管理 ──
+-  state_get: {
+-    name: 'state_get',
+-    description: 'Get a value from the shared research state',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        key: { type: 'string', description: 'State key' },
+-      },
+-      required: ['key'],
+-    },
+-    requiresCapability: 'canManageState' as keyof ResearchCapabilities,
+-  },
+-
+-  state_set: {
+-    name: 'state_set',
+-    description: 'Set a value in the shared research state (visible to other sub-agents)',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        key: { type: 'string', description: 'State key' },
+-        value: { type: 'string', description: 'State value (JSON-serializable string)' },
+-        merge: {
+-          type: 'boolean',
+-          description: 'If true, merge with existing value (for objects/arrays)',
+-        },
+-      },
+-      required: ['key', 'value'],
+-    },
+-    requiresCapability: 'canManageState' as keyof ResearchCapabilities,
+-  },
+-
+-  // ── 目标检查点 ──
+-  goal_checkpoint: {
+-    name: 'goal_checkpoint',
+-    description: 'Report progress toward the assigned research goal. Used by parent agent to track sub-agent completion.',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        goalId: { type: 'string', description: 'The assigned goal/aspect ID' },
+-        status: {
+-          type: 'string',
+-          enum: ['in_progress', 'blocked', 'completed'],
+-          description: 'Current status',
+-        },
+-        progress: { type: 'number', description: 'Progress percentage 0-100' },
+-        summary: { type: 'string', description: 'Brief summary of what has been accomplished' },
+-        blockers: {
+-          type: 'array',
+-          items: { type: 'string' },
+-          description: 'List of blockers (if status is "blocked")',
+-        },
+-      },
+-      required: ['goalId', 'status', 'progress'],
+-    },
+-    requiresCapability: 'canSetCheckpoints' as keyof ResearchCapabilities,
+-  },
+-
+-  // ── 递归研究 ──
+-  deep_research: {
+-    name: 'deep_research_sub',
+-    description: 'Launch a sub-research task on a specific sub-topic. Use when the current aspect requires deeper investigation.',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        topic: { type: 'string', description: 'Sub-topic to research' },
+-        depth: {
+-          type: 'string',
+-          enum: ['quick', 'standard'],
+-          description: 'Research depth (sub-research cannot use "comprehensive")',
+-        },
+-        maxSources: { type: 'number', description: 'Maximum sources to collect (default: 5)' },
+-        parentContext: { type: 'string', description: 'Context from parent research to guide sub-research' },
+-      },
+-      required: ['topic'],
+-    },
+-    requiresCapability: 'canRecurseResearch' as keyof ResearchCapabilities,
+-  },
+-
+-  // ── 制品管理 ──
+-  artifact_save: {
+-    name: 'artifact_save',
+-    description: 'Save a research artifact (finding, chart data, intermediate analysis) for persistence',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        type: {
+-          type: 'string',
+-          enum: ['finding', 'data', 'analysis', 'chart', 'table', 'reference_list'],
+-          description: 'Artifact type',
+-        },
+-        title: { type: 'string', description: 'Artifact title' },
+-        content: { type: 'string', description: 'Artifact content (text, JSON, markdown)' },
+-        format: {
+-          type: 'string',
+-          enum: ['text', 'json', 'markdown', 'csv'],
+-          description: 'Content format',
+-        },
+-      },
+-      required: ['type', 'title', 'content'],
+-    },
+-    requiresCapability: 'canManageArtifacts' as keyof ResearchCapabilities,
+-  },
+-
+-  artifact_load: {
+-    name: 'artifact_load',
+-    description: 'Load a previously saved research artifact by its ID',
+-    parameters: {
+-      type: 'object' as const,
+-      properties: {
+-        artifactId: { type: 'string', description: 'Artifact ID to load' },
+-      },
+-      required: ['artifactId'],
+-    },
+-    requiresCapability: 'canManageArtifacts' as keyof ResearchCapabilities,
+-  },
+-} as const;
+-
+-// ============================================================
+-// 工具注册辅助
+-// ============================================================
+-
+-/**
+- * 根据能力配置生成该子 Agent 可用的工具列表
+- * 
+- * @example
+- * ```ts
+- * // 在 subagent factory 中
+- * const baseTools = ['web_search', 'web_fetch', 'memory_read', 'memory_grep', 'memory_ls'];
+- * const capabilities = ENHANCED_RESEARCH_CAPABILITIES;
+- * const allTools = getResearchTools(baseTools, capabilities);
+- * // → ['web_search', 'web_fetch', 'memory_read', 'memory_grep', 'memory_ls',
+- * //    'memory_write', 'memory_record', 'state_get', 'state_set', 
+- * //    'goal_checkpoint', 'deep_research_sub', 'artifact_save', 'artifact_load']
+- * ```
+- */
+-export function getResearchTools(
+-  baseTools: string[],
+-  capabilities: ResearchCapabilities
+-): string[] {
+-  const tools = [...baseTools];
+-
+-  for (const [, toolDef] of Object.entries(RESEARCH_EXTENDED_TOOLS)) {
+-    const cap = toolDef.requiresCapability;
+-    if (capabilities[cap]) {
+-      if (!tools.includes(toolDef.name)) {
+-        tools.push(toolDef.name);
+-      }
+-    }
+-  }
+-
+-  return tools;
+-}
+-
+-/**
+- * 获取工具 schema（用于 LLM function calling）
+- */
+-export function getResearchToolSchemas(capabilities: ResearchCapabilities): Array<{
+-  name: string;
+-  description: string;
+-  parameters: Record<string, unknown>;
+-}> {
+-  const schemas: Array<{ name: string; description: string; parameters: Record<string, unknown> }> = [];
+-
+-  for (const [, toolDef] of Object.entries(RESEARCH_EXTENDED_TOOLS)) {
+-    const cap = toolDef.requiresCapability;
+-    if (capabilities[cap]) {
+-      schemas.push({
+-        name: toolDef.name,
+-        description: toolDef.description,
+-        parameters: toolDef.parameters,
+-      });
+-    }
+-  }
+-
+-  return schemas;
+-}
+-
+-// ============================================================
+-// 子 Agent 工厂补丁
+-// ============================================================
+-
+-/**
+- * 创建增强型研究子 Agent 配置
+- * 
+- * 补丁方式：在现有 SubAgentFactory.create('research', ...) 的基础上
+- * 附加增强能力。
+- * 
+- * @example
+- * ```ts
+- * // 在 factory.ts 中的修改
+- * import { createEnhancedResearchConfig } from './subagent-types-patch';
+- * 
+- * class SubAgentFactory {
+- *   create(type: string, options: any) {
+- *     if (type === 'research' && options.enhanced) {
+- *       return createEnhancedResearchConfig(options);
+- *     }
+- *     // ... 原有逻辑
+- *   }
+- * }
+- * ```
+- */
+-export function createEnhancedResearchConfig(options: {
+-  name: string;
+-  aspect?: string;
+-  parentSessionId?: string;
+-  capabilities?: Partial<ResearchCapabilities>;
+-  maxToolCalls?: number;
+-}): ExtendedResearchSubAgentConfig {
+-  const capabilities: ResearchCapabilities = {
+-    ...DEFAULT_RESEARCH_CAPABILITIES,
+-    ...options.capabilities,
+-  };
+-
+-  if (options.maxToolCalls) {
+-    capabilities.maxToolCalls = options.maxToolCalls;
+-  }
+-
+-  const baseTools = [
+-    'web_search',
+-    'web_fetch',
+-    'memory_read',
+-    'memory_grep',
+-    'memory_ls',
+-  ];
+-
+-  const extendedTools = getResearchTools([], capabilities);
+-
+-  return {
+-    type: 'research',
+-    name: options.name,
+-    baseTools,
+-    extendedTools,
+-    capabilities,
+-    researchContext: {
+-      parentSessionId: options.parentSessionId,
+-      assignedAspect: options.aspect,
+-    },
+-  };
+-}
+-
+-// ============================================================
+-// 共享状态管理器
+-// ============================================================
+-
+-/**
+- * 子 Agent 间的共享状态管理
+- * 
+- * 允许多个研究子 Agent 共享发现：
+- * - 避免重复搜索相同内容
+- * - 共享已发现的高质量源
+- * - 协调覆盖不同方面
+- */
+-export class SharedResearchState {
+-  private state: Map<string, string> = new Map();
+-  private listeners: Map<string, Array<(value: string) => void>> = new Map();
+-
+-  get(key: string): string | null {
+-    return this.state.get(key) ?? null;
+-  }
+-
+-  set(key: string, value: string, merge: boolean = false): void {
+-    if (merge && this.state.has(key)) {
+-      try {
+-        const existing = JSON.parse(this.state.get(key)!);
+-        const incoming = JSON.parse(value);
+-
+-        if (Array.isArray(existing) && Array.isArray(incoming)) {
+-          this.state.set(key, JSON.stringify([...existing, ...incoming]));
+-        } else if (typeof existing === 'object' && typeof incoming === 'object') {
+-          this.state.set(key, JSON.stringify({ ...existing, ...incoming }));
+-        } else {
+-          this.state.set(key, value);
+-        }
+-      } catch {
+-        this.state.set(key, value);
+-      }
+-    } else {
+-      this.state.set(key, value);
+-    }
+-
+-    // 通知监听者
+-    const keyListeners = this.listeners.get(key);
+-    if (keyListeners) {
+-      const finalValue = this.state.get(key)!;
+-      for (const listener of keyListeners) {
+-        listener(finalValue);
+-      }
+-    }
+-  }
+-
+-  /**
+-   * 监听某个 key 的变更
+-   */
+-  watch(key: string, callback: (value: string) => void): () => void {
+-    if (!this.listeners.has(key)) {
+-      this.listeners.set(key, []);
+-    }
+-    this.listeners.get(key)!.push(callback);
+-
+-    // 返回取消监听函数
+-    return () => {
+-      const arr = this.listeners.get(key);
+-      if (arr) {
+-        const idx = arr.indexOf(callback);
+-        if (idx >= 0) arr.splice(idx, 1);
+-      }
+-    };
+-  }
+-
+-  /**
+-   * 获取所有状态的快照
+-   */
+-  snapshot(): Record<string, string> {
+-    return Object.fromEntries(this.state);
+-  }
+-
+-  /**
+-   * 从快照恢复
+-   */
+-  restore(snapshot: Record<string, string>): void {
+-    this.state.clear();
+-    for (const [key, value] of Object.entries(snapshot)) {
+-      this.state.set(key, value);
+-    }
+-  }
+-
+-  /**
+-   * 已访问 URL 的共享集合
+-   * 
+-   * 防止多个子 Agent 重复抓取相同页面
+-   */
+-  markUrlVisited(url: string): void {
+-    const visited = this.getVisitedUrls();
+-    visited.add(url);
+-    this.state.set('__visited_urls__', JSON.stringify([...visited]));
+-  }
+-
+-  isUrlVisited(url: string): boolean {
+-    return this.getVisitedUrls().has(url);
+-  }
+-
+-  getVisitedUrls(): Set<string> {
+-    try {
+-      const raw = this.state.get('__visited_urls__');
+-      return raw ? new Set(JSON.parse(raw)) : new Set();
+-    } catch {
+-      return new Set();
+-    }
+-  }
+-
+-  /**
+-   * 清理资源，释放内存
+-   *
+-   * 在研究会话结束时调用，防止内存泄漏
+-   */
+-  dispose(): void {
+-    this.listeners.clear();
+-    this.state.clear();
+-  }
+-}

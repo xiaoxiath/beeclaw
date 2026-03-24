@@ -30,7 +30,7 @@ class LocalSandbox implements Sandbox {
   readonly workspacePath: string;
   readonly sessionId?: string;
 
-  private alive: boolean = true;
+  private _alive: boolean = true;
   private createdAt: Date;
   private execCount: number = 0;
   private totalDurationMs: number = 0;
@@ -56,7 +56,7 @@ class LocalSandbox implements Sandbox {
   }
 
   get alive(): boolean {
-    return this.alive;
+    return this._alive;
   }
 
   async exec(command: string, options?: ExecOptions): Promise<ExecutionResult> {
@@ -320,7 +320,7 @@ class LocalSandbox implements Sandbox {
       return;
     }
 
-    this.alive = false;
+    this._alive = false;
 
     // Clean up workspace directory
     try {

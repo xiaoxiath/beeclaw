@@ -270,7 +270,7 @@ export class SearchOrchestrator {
                 break;
               }
             } catch (_fallbackError) {
-              console.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${query.substring(0, 50)}"`);
+              console.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${request.query.substring(0, 50)}"`);
             }
           }
         }

@@ -6,7 +6,7 @@
 import { randomUUID } from 'crypto';
 import { getDataConnection } from '../../infra/db';
 import { tasks as tasksTable } from '../../infra/db/schema';
-import { eq, and, lt, gte, isNull, or } from 'drizzle-orm';
+import { eq, and, lt, gte, isNull, isNotNull, or } from 'drizzle-orm';
 import type {
   Task,
   TaskType,
@@ -326,7 +326,7 @@ export class TaskDispatcher {
         })
         .where(and(
           lt(tasksTable.lockedAt, timeoutDate),
-          isNull(tasksTable.lockedBy) === false
+          isNotNull(tasksTable.lockedBy)
         ))
         .run();
     } catch (error) {

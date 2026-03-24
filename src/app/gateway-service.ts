@@ -48,7 +48,7 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 // Periodic cleanup of expired rate limit entries to prevent memory leaks
 const RATE_LIMIT_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of rateLimitStore.entries()) {
     if (now > entry.resetAt) {
@@ -56,6 +56,7 @@ setInterval(() => {
     }
   }
 }, RATE_LIMIT_CLEANUP_INTERVAL);
+cleanupTimer.unref();
 
 export function rateLimitMiddleware(windowMs: number = 60000, maxRequests: number = 100) {
   return async (c: Context, next: Next): Promise<void> => {

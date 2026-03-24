@@ -78,6 +78,8 @@ export interface JudgmentResult<T> {
   result: T;
   /** 是否失败（使用默认值） */
   failed: boolean;
+  /** 是否来自缓存 */
+  fromCache?: boolean;
   /** 错误信息（如果有） */
   error?: string;
   /** LLM 原始输出 */

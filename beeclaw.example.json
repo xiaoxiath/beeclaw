@@ -150,7 +150,7 @@
       "tavily": {
         "apiKey": "${TAVILY_API_KEY}"
       }
-    }
+    },
     "defaultProvider": "bocha"
   }
 }

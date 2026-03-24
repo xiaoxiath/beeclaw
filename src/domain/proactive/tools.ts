@@ -10,8 +10,6 @@ import { getSchedulerLazy } from '../../infra/db/store';
 import { getNotificationsLazy } from '../../infra/db/store';
 import { getTaskManager } from '../../infra/queue/manager';
 import { pushNotification } from './pusher';
-import { getTaskManager } from '../../infra/queue/manager';
-import { pushNotification } from './pusher';
 
 // Tool definitions for AI function calling
 export const proactiveTools = {
