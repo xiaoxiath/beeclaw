@@ -4,6 +4,7 @@
  * Handles proactive scheduled jobs
  */
 
+import { logger } from '../../../infra/observability/logger';
 import type { Job } from 'bunqueue/client';
 import type { ProactiveJobData } from '../../../infra/queue/types';
 import { getGoalStore } from '../../../domain/agent/goal/store';
@@ -19,8 +20,8 @@ import type { ContentBlock } from '../../../types/content-block';
 export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<unknown> {
   const { scheduleId, taskType, params, triggeredAt, triggeredBy } = job.data;
 
-  console.log(`[Worker:proactive] Processing job for schedule ${scheduleId}`);
-  console.log(`  Task: ${taskType}, Triggered: ${triggeredBy} at ${triggeredAt}`);
+  logger.debug(`[Worker:proactive] Processing job for schedule ${scheduleId}`);
+  logger.debug(`  Task: ${taskType}, Triggered: ${triggeredBy} at ${triggeredAt}`);
 
   await job.updateProgress(25);
 
@@ -64,7 +65,7 @@ export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<un
 
     await job.updateProgress(100);
 
-    console.log(`[Worker:proactive] Job completed for schedule ${scheduleId}`);
+    logger.info(`[Worker:proactive] Job completed for schedule ${scheduleId}`);
 
     return {
       success: true,
@@ -74,7 +75,7 @@ export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<un
       completedAt: new Date().toISOString(),
     };
   } catch (error) {
-    console.error(`[Worker:proactive] Job failed for schedule ${scheduleId}:`, error);
+    logger.error(`[Worker:proactive] Job failed for schedule ${scheduleId}:`, error);
 
     return {
       success: false,
@@ -131,7 +132,7 @@ async function handleRunSkill(params?: Record<string, unknown>): Promise<unknown
 
   // This would integrate with the skill execution system
   // For now, just log the intent
-  console.log(`[Worker:proactive] Would run skill: ${skillName}`, skillParams);
+  logger.debug(`[Worker:proactive] Would run skill: ${skillName}`, skillParams);
 
   return {
     skillName,
@@ -159,7 +160,7 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
       if (client?.lastActiveChatId) {
         channels = ['feishu'];
         metadata.feishuChatId = client.lastActiveChatId;
-        console.log(`[Worker:proactive] Using Feishu channel, chatId: ${client.lastActiveChatId}`);
+        logger.debug(`[Worker:proactive] Using Feishu channel, chatId: ${client.lastActiveChatId}`);
       }
     } catch {
       // Feishu not available
@@ -187,7 +188,7 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
       throw new Error(result.error || 'Failed to push notification');
     }
   } catch (error) {
-    console.error('[Worker:proactive] send_reminder failed:', error);
+    logger.error('[Worker:proactive] send_reminder failed:', error);
     return {
       error: error instanceof Error ? error.message : 'Unknown error',
     };
@@ -196,7 +197,7 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
 
 async function handleMemoryCompress(_params?: Record<string, unknown>): Promise<unknown> {
   // This will be implemented in Phase 3
-  console.log('[Worker:proactive] Memory compression not yet implemented');
+  logger.debug('[Worker:proactive] Memory compression not yet implemented');
 
   return {
     executed: false,
@@ -211,7 +212,7 @@ async function handleCustomTask(params?: Record<string, unknown>): Promise<unkno
     throw new Error('action parameter required for custom task');
   }
 
-  console.log(`[Worker:proactive] Custom task: ${action}`, params);
+  logger.debug(`[Worker:proactive] Custom task: ${action}`, params);
 
   return {
     action,
@@ -232,15 +233,15 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
       const client = getFeishuWSClient();
       if (client?.lastActiveChatId) {
         chatId = client.lastActiveChatId;
-        console.log(`[Worker:proactive] Using last active chatId: ${chatId}`);
+        logger.debug(`[Worker:proactive] Using last active chatId: ${chatId}`);
       }
     } catch {
       // Feishu client not available
     }
   }
 
-  console.log(`[Worker:proactive] LLM proactive chat: ${prompt.substring(0, 50)}...`);
-  console.log(`[Worker:proactive] chatId: ${chatId || '(not available)'}, userId: ${userId}`);
+  logger.debug(`[Worker:proactive] LLM proactive chat: ${prompt.substring(0, 50)}...`);
+  logger.debug(`[Worker:proactive] chatId: ${chatId || '(not available)'}, userId: ${userId}`);
 
   try {
     // Get context
@@ -262,7 +263,7 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
       ? `${context}\n\n${prompt}`
       : prompt;
 
-    console.log(`[Worker:proactive] Calling LLM with prompt length: ${fullPrompt.length}`);
+    logger.debug(`[Worker:proactive] Calling LLM with prompt length: ${fullPrompt.length}`);
 
     // Add system instruction to prevent recursive task creation
     // [AUDIT FIX P-2] Stronger anti-recursion: explicit blocked tool list instead of text hint
@@ -282,10 +283,10 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
         const summary = getSessionSummary(associatedSessionId, 5, userId);
         if (summary) {
           sessionContext = `\n\n<session-context>\n用户最近的对话记录:\n${summary}\n</session-context>\n`;
-          console.log(`[Worker:proactive] Injected session context from ${associatedSessionId} (${summary.length} chars)`);
+          logger.debug(`[Worker:proactive] Injected session context from ${associatedSessionId} (${summary.length} chars)`);
         }
       } catch (error) {
-        console.warn(`[Worker:proactive] Failed to load session context for ${associatedSessionId}:`, error);
+        logger.warn(`[Worker:proactive] Failed to load session context for ${associatedSessionId}:`, error);
       }
     }
 
@@ -299,7 +300,7 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
       sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
     });
 
-    console.log(`[Worker:proactive] LLM result: success=${result.success}, response length=${result.response?.length || 0}`);
+    logger.info(`[Worker:proactive] LLM result: success=${result.success}, response length=${result.response?.length || 0}`);
 
     if (result.success && result.response) {
       // Push to Feishu if chatId available
@@ -321,16 +322,16 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
               card
             );
 
-            console.log(`[Worker:proactive] Card V2 message pushed to Feishu chat: ${chatId}, messageId: ${messageId}`);
+            logger.debug(`[Worker:proactive] Card V2 message pushed to Feishu chat: ${chatId}, messageId: ${messageId}`);
           } else {
-            console.error('[Worker:proactive] Feishu client not available');
+            logger.error('[Worker:proactive] Feishu client not available');
           }
         } catch (pushError) {
-          console.error('[Worker:proactive] Failed to push to Feishu:', pushError);
+          logger.error('[Worker:proactive] Failed to push to Feishu:', pushError);
         }
       } else {
-        console.warn('[Worker:proactive] No chatId provided, message not pushed to Feishu');
-        console.log(`[Worker:proactive] Generated response: ${result.response.substring(0, 100)}...`);
+        logger.warn('[Worker:proactive] No chatId provided, message not pushed to Feishu');
+        logger.debug(`[Worker:proactive] Generated response: ${result.response.substring(0, 100)}...`);
       }
 
       return {
@@ -340,14 +341,14 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
         responseLength: result.response.length,
       };
     } else {
-      console.error('[Worker:proactive] LLM failed:', result.error);
+      logger.error('[Worker:proactive] LLM failed:', result.error);
       return {
         generated: false,
         error: result.error || 'LLM returned empty response',
       };
     }
   } catch (error) {
-    console.error('[Worker:proactive] LLM proactive chat failed:', error);
+    logger.error('[Worker:proactive] LLM proactive chat failed:', error);
     return {
       generated: false,
       error: error instanceof Error ? error.message : 'Unknown error',

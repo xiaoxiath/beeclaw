@@ -116,12 +116,12 @@ export async function handleRunSkillJob(
                     || {};
 
   if (!skillName) {
-    console.error('[Daemon] run_skill task missing skillName parameter');
+    logger.error('[Daemon] run_skill task missing skillName parameter');
     return;
   }
 
-  console.log(`[Daemon] Executing skill: ${skillName}`);
-  console.log(`[Daemon] Skill params:`, JSON.stringify(skillParams).substring(0, 100));
+  logger.info(`[Daemon] Executing skill: ${skillName}`);
+  logger.debug(`[Daemon] Skill params:`, { params: JSON.stringify(skillParams).substring(0, 100) });
 
   try {
     // Get the skill content
@@ -129,7 +129,7 @@ export async function handleRunSkillJob(
     const skill = skillStore.get(skillName);
 
     if (!skill) {
-      console.error(`[Daemon] Skill not found: ${skillName}`);
+      logger.error(`[Daemon] Skill not found: ${skillName}`);
       return;
     }
 
@@ -154,7 +154,7 @@ ${historyContext}
     const client = options?.getFeishuClient?.();
     const { channel, chatId, userId } = getPushTarget(job.params, client);
 
-    console.log(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
+    logger.debug(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
 
     // [AUDIT FIX M-06] Execute through the agent with blocked tools
     const result = await sendProactiveMessage({
@@ -169,8 +169,8 @@ ${historyContext}
     });
 
     if (result.success && result.response) {
-      console.log(`[Daemon] ✅ Skill ${skillName} executed successfully`);
-      console.log(`[Daemon] Response: ${result.response.substring(0, 200)}...`);
+      logger.info(`[Daemon] ✅ Skill ${skillName} executed successfully`);
+      logger.debug(`[Daemon] Response: ${result.response.substring(0, 200)}...`);
 
       // [AUDIT FIX M-02] Inject result back into user's active session
       if (job.associatedSessionId) {
@@ -183,7 +183,7 @@ ${historyContext}
       // Push to Feishu if we have chatId
       if (channel === 'feishu' && chatId && client) {
         await client.sendMarkdownMessage(chatId, 'chat_id', result.response);
-        console.log(`[Daemon] 📤 Skill result pushed to Feishu chat: ${chatId}`);
+        logger.info(`[Daemon] 📤 Skill result pushed to Feishu chat: ${chatId}`);
       } else if (!chatId) {
         // Fallback: push as notification if no chatId
         await pushNotification({
@@ -191,13 +191,13 @@ ${historyContext}
           priority: 'normal',
           category: 'skill-execution',
         });
-        console.log(`[Daemon] 📤 Skill result pushed as notification (no chatId)`);
+        logger.info(`[Daemon] 📤 Skill result pushed as notification (no chatId)`);
       }
     } else {
-      console.error(`[Daemon] ❌ Skill ${skillName} execution failed:`, result.error);
+      logger.error(`[Daemon] ❌ Skill ${skillName} execution failed:`, { error: result.error });
     }
   } catch (error) {
-    console.error('[Daemon] Failed to execute skill:', error instanceof Error ? error.message : 'Unknown error');
+    logger.error('[Daemon] Failed to execute skill:', { error: error instanceof Error ? error.message : 'Unknown error' });
   }
 }
 
@@ -215,7 +215,7 @@ export async function handleLlmProactiveChatJob(
     getFeishuClient?: () => any;
   }
 ): Promise<void> {
-  console.log('[Daemon] LLM proactive chat triggered...');
+  logger.info('[Daemon] LLM proactive chat triggered...');
 
   try {
     // 获取用户上下文
@@ -249,7 +249,7 @@ export async function handleLlmProactiveChatJob(
     const client = options?.getFeishuClient?.();
     const { channel, chatId, userId } = getPushTarget(job.params, client);
 
-    console.log(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
+    logger.debug(`[Daemon] Push target: channel=${channel}, chatId=${chatId || '(none)'}, userId=${userId}`);
 
     // [AUDIT FIX M-06] 调用 LLM 生成内容 with blocked tools
     const result = await sendProactiveMessage({
@@ -264,7 +264,7 @@ export async function handleLlmProactiveChatJob(
     });
 
     if (result.success && result.response) {
-      console.log(`[Daemon] LLM generated: ${result.response.substring(0, 100)}...`);
+      logger.debug(`[Daemon] LLM generated: ${result.response.substring(0, 100)}...`);
 
       // [AUDIT FIX M-02] Inject result back into user's active session
       if (job.associatedSessionId) {
@@ -277,22 +277,22 @@ export async function handleLlmProactiveChatJob(
       // 推送到飞书（需要 chatId)
       if (chatId && client) {
         await client.sendMarkdownMessage(chatId, 'chat_id', result.response);
-        console.log(`[Daemon] 📤 Message pushed to Feishu chat: ${chatId}`);
+        logger.info(`[Daemon] 📤 Message pushed to Feishu chat: ${chatId}`);
       } else if (!chatId) {
-        console.warn('[Daemon] No chatId available, message not pushed to Feishu');
+        logger.warn('[Daemon] No chatId available, message not pushed to Feishu');
         // Fallback to notification
         await pushNotification({
           message: result.response,
           priority: 'normal',
           category: 'llm-proactive',
         });
-        console.log(`[Daemon] 📤 Message pushed as notification (no chatId)`);
+        logger.info(`[Daemon] 📤 Message pushed as notification (no chatId)`);
       }
     } else {
-      console.error('[Daemon] LLM generation failed:', result.error);
+      logger.error('[Daemon] LLM generation failed:', { error: result.error });
     }
   } catch (error) {
-    console.error('[Daemon] LLM proactive chat error:', error);
+    logger.error('[Daemon] LLM proactive chat error:', { error });
   }
 }
 
@@ -300,7 +300,7 @@ export async function handleLlmProactiveChatJob(
  * Handle self-evolution task
  */
 export async function handleSelfEvolutionJob(_job: ProactiveJobData): Promise<void> {
-  console.log('[Daemon] Self-evolution triggered...');
+  logger.info('[Daemon] Self-evolution triggered...');
 
   try {
     // Get current memory context
@@ -339,12 +339,12 @@ ${context}
     });
 
     if (result.success && result.response) {
-      console.log(`[Daemon] Self-evolution completed: ${result.response.substring(0, 200)}...`);
+      logger.info(`[Daemon] Self-evolution completed: ${result.response.substring(0, 200)}...`);
     } else {
-      console.error('[Daemon] Self-evolution failed:', result.error);
+      logger.error('[Daemon] Self-evolution failed:', { error: result.error });
     }
   } catch (error) {
-    console.error('[Daemon] Self-evolution failed:', error);
+    logger.error('[Daemon] Self-evolution failed:', { error });
   }
 }
 
@@ -352,15 +352,15 @@ ${context}
  * Handle memory compression task
  */
 export async function handleMemoryCompressJob(): Promise<void> {
-  console.log('[Daemon] Running memory compression...');
+  logger.debug('[Daemon] Running memory compression...');
 
   try {
     const store = getMemoryStore();
     const engine = getCompressionEngine(store.getBasePath());
     const result = await engine.compress();
-    console.log(`[Daemon] Compression complete: processed=${result.processed}, summarized=${result.summarized}, archived=${result.archived}`);
+    logger.info(`[Daemon] Compression complete: processed=${result.processed}, summarized=${result.summarized}, archived=${result.archived}`);
   } catch (error) {
-    console.error('[Daemon] Memory compression failed:', error);
+    logger.error('[Daemon] Memory compression failed:', error);
   }
 }
 
@@ -368,7 +368,7 @@ export async function handleMemoryCompressJob(): Promise<void> {
  * Handle goal progress check
  */
 export async function handleGoalProgressCheckJob(): Promise<void> {
-  console.log('[Daemon] Checking goal progress...');
+  logger.debug('[Daemon] Checking goal progress...');
   // Implementation can be expanded based on needs
 }
 
@@ -376,8 +376,8 @@ export async function handleGoalProgressCheckJob(): Promise<void> {
  * Handle custom task
  */
 export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
-  console.log('[Daemon] Running custom task...');
-  console.log('[Daemon] Custom task params:', job.params);
+  logger.debug('[Daemon] Running custom task...');
+  logger.debug('[Daemon] Custom task params:', job.params);
 
   const action = job.params?.action as string;
 
@@ -386,14 +386,14 @@ export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
     try {
       const engine = getReflectionEngine();
 
-      console.log('[Daemon] Running daily reflection...');
+      logger.debug('[Daemon] Running daily reflection...');
 
       // Get recent conversations from memory store
       const store = getMemoryStore();
       const conversationEntries = await store.getRecentConversations('default', 50);
 
       if (conversationEntries.length === 0) {
-        console.log('[Daemon] No conversations to reflect on');
+        logger.debug('[Daemon] No conversations to reflect on');
         return;
       }
 
@@ -409,9 +409,9 @@ export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
       const result = await engine.reflect(conversations);
 
       if (result && (result.patterns || result.strategyUpdates)) {
-        console.log('[Daemon] Reflection complete:');
-        console.log(`  - Patterns found: ${result.patterns?.length || 0}`);
-        console.log(`  - Strategy updates: ${result.strategyUpdates?.length || 0}`);
+        logger.info('[Daemon] Reflection complete:');
+        logger.debug(`  - Patterns found: ${result.patterns?.length || 0}`);
+        logger.debug(`  - Strategy updates: ${result.strategyUpdates?.length || 0}`);
 
         // Store patterns as facts in memory
         if (result.patterns && result.patterns.length > 0) {
@@ -419,16 +419,16 @@ export async function handleCustomJob(job: ProactiveJobData): Promise<void> {
             const patternText = `${pattern.description}${pattern.suggestion ? ` Suggestion: ${pattern.suggestion}` : ''}`;
             await store.record('lessons', patternText);
           }
-          console.log(`[Daemon] Stored ${result.patterns.length} patterns as lessons`);
+          logger.debug(`[Daemon] Stored ${result.patterns.length} patterns as lessons`);
         }
       }
     } catch (error) {
-      console.error('[Daemon] Daily reflection failed:', error);
+      logger.error('[Daemon] Daily reflection failed:', error);
     }
     return;
   }
 
-  console.warn('[Daemon] Unknown custom action:', action);
+  logger.warn('[Daemon] Unknown custom action:', action);
 }
 
 /**
@@ -451,7 +451,7 @@ export async function handleSendReminderJob(
         job.params.message as string,
         { title: '⏰ 提醒' }
       );
-      console.log(`[Daemon] 📤 Reminder sent to chat: ${chatId}`);
+      logger.debug(`[Daemon] 📤 Reminder sent to chat: ${chatId}`);
 
       // [AUDIT FIX M-02] Inject reminder into user's session if associated
       if (job.associatedSessionId) {
@@ -468,6 +468,6 @@ export async function handleSendReminderJob(
       priority: (job.params?.priority as 'low' | 'normal' | 'high' | 'urgent') || 'normal',
       category: 'reminder',
     });
-    console.log(`[Daemon] 📤 Reminder pushed as notification`);
+    logger.debug(`[Daemon] 📤 Reminder pushed as notification`);
   }
 }

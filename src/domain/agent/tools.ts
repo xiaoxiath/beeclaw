@@ -201,7 +201,7 @@ let _cachedTaggedExamples: TaggedExample[] | null = null;
 function getTaggedExamples(): TaggedExample[] {
   if (!_cachedTaggedExamples) {
     _cachedTaggedExamples = parseExamplesIntoTagged(EXAMPLES_VERBOSE);
-    console.log(`[PromptBudget] Parsed ${_cachedTaggedExamples.length} tagged examples from examples-verbose.md`);
+    logger.debug(`[PromptBudget] Parsed ${_cachedTaggedExamples.length} tagged examples from examples-verbose.md`);
   }
   return _cachedTaggedExamples;
 }
@@ -445,9 +445,9 @@ export function buildSystemPromptWithBudget(
   });
 
   if (result.droppedLayers.length > 0 || result.truncatedLayers.length > 0) {
-    console.log(`[PromptBudget] System prompt: ${result.totalTokens} tokens (budget: ${budgetConfig.maxSystemPromptTokens})`);
+    logger.debug(`[PromptBudget] System prompt: ${result.totalTokens} tokens (budget: ${budgetConfig.maxSystemPromptTokens})`);
     if (result.droppedLayers.length > 0) {
-      console.log(`[PromptBudget] Dropped layers: ${result.droppedLayers.join(', ')}`);
+      logger.debug(`[PromptBudget] Dropped layers: ${result.droppedLayers.join(', ')}`);
     }
   }
 

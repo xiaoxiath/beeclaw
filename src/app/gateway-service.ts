@@ -1,3 +1,4 @@
+import { logger } from '../infra/observability/logger';
 import { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { AppConfig } from '../infra/config/schema';
@@ -87,6 +88,6 @@ export function requestLoggerMiddleware(c: Context, next: Next): Promise<void> {
 
   return next().then(() => {
     const duration = Date.now() - start;
-    console.log(`${c.req.method} ${c.req.path} - ${c.res.status} (${duration}ms)`);
+    logger.debug(`${c.req.method} ${c.req.path} - ${c.res.status} (${duration}ms)`);
   });
 }

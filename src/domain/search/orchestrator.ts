@@ -4,6 +4,7 @@
  * Core orchestration layer: routing, fallback, merging, dedup, ranking
  */
 
+import { logger } from '../../infra/observability/logger';
 import { SearchRegion } from './types';
 import type { SearchRequest, SearchResult, SearchConfig } from './types';
 import { SearchProvider } from './base';
@@ -150,7 +151,7 @@ export class SearchOrchestrator {
     const cacheKey = SearchCache.key(request);
     const cached = this.cache.get(cacheKey);
     if (cached) {
-      console.log(`[Search] Cache hit for: "${request.query.substring(0, 50)}..." (${cached.length} results)`);
+      logger.debug(`[Search] Cache hit for: "${request.query.substring(0, 50)}..." (${cached.length} results)`);
       return cached;
     }
 
@@ -166,7 +167,7 @@ export class SearchOrchestrator {
       throw new Error('No search providers configured');
     }
 
-    console.log(`[Search] Region: ${request.region}, Providers: ${candidates.map(p => p.name).join(', ')}`);
+    logger.debug(`[Search] Region: ${request.region}, Providers: ${candidates.map(p => p.name).join(', ')}`);
 
     // Step 3: Execute search with fallback
     const results = await this.executeWithFallback(candidates, request);
@@ -256,7 +257,7 @@ export class SearchOrchestrator {
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.warn(`[Search] ${provider.name} failed: ${errorMsg}`);
+        logger.warn(`[Search] ${provider.name} failed: ${errorMsg}`);
         errors.push(error instanceof Error ? error : new Error(errorMsg));
 
         // Try fallback providers
@@ -271,7 +272,7 @@ export class SearchOrchestrator {
                 break;
               }
             } catch (_fallbackError) {
-              console.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${request.query.substring(0, 50)}"`);
+              logger.warn(`[Search] Fallback provider ${fallbackName} also failed for query: "${request.query.substring(0, 50)}"`);
             }
           }
         }

@@ -7,6 +7,7 @@
  * - 提供全局单例访问（避免跨模块冲突）
  */
 
+import { logger } from '../../../infra/observability/logger';
 import { resolve, relative, isAbsolute } from "path";
 import type { PluginHookName, PluginHookHandlerMap } from "../types";
 
@@ -138,7 +139,7 @@ function createPluginApi(
 
     registerTool(tool: any) {
       if (registry.tools.has(tool.name)) {
-        console.warn(
+        logger.warn(
           `[Registry] Tool "${tool.name}" already registered, overwriting (plugin: ${pluginId})`
         );
       }
@@ -152,7 +153,7 @@ function createPluginApi(
 
     registerChannel(channel: any) {
       if (registry.channels.has(channel.id)) {
-        console.warn(
+        logger.warn(
           `[Registry] Channel "${channel.id}" already registered, overwriting (plugin: ${pluginId})`
         );
       }
@@ -161,7 +162,7 @@ function createPluginApi(
 
     registerCommand(command: any) {
       if (registry.commands.has(command.name)) {
-        console.warn(
+        logger.warn(
           `[Registry] Command "${command.name}" already registered, overwriting (plugin: ${pluginId})`
         );
       }
@@ -171,14 +172,14 @@ function createPluginApi(
     registerHttpRoute(route: any) {
       const key = `${route.method.toUpperCase()}:${route.path}`;
       if (registry.httpRoutes.has(key)) {
-        console.warn(`[Registry] HTTP route "${key}" replaced by plugin: ${pluginId}`);
+        logger.warn(`[Registry] HTTP route "${key}" replaced by plugin: ${pluginId}`);
       }
       registry.httpRoutes.set(key, { ...route, pluginId });
     },
 
     registerProvider(provider: any) {
       if (registry.providers.has(provider.id)) {
-        console.warn(
+        logger.warn(
           `[Registry] Provider "${provider.id}" already registered, overwriting (plugin: ${pluginId})`
         );
       }
@@ -191,7 +192,7 @@ function createPluginApi(
 
     registerService(service: any) {
       if (registry.services.has(service.id)) {
-        console.warn(
+        logger.warn(
           `[Registry] Service "${service.id}" already registered, overwriting (plugin: ${pluginId})`
         );
       }
@@ -245,7 +246,7 @@ function createPluginApi(
       // 安全检查：确保解析后的路径仍在插件目录内（防止路径遍历攻击）
       const relativePath = relative(rootDir, resolvedPath);
       if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
-        console.warn(
+        logger.warn(
           `[Registry] Plugin "${pluginId}" attempted to access path outside its directory: ${inputPath}`
         );
         return inputPath; // 返回原始路径，拒绝访问
@@ -258,9 +259,9 @@ function createPluginApi(
 
 function createPluginLogger(pluginId: string) {
   return {
-    info: (...args: any[]) => console.log(`[${pluginId}]`, ...args),
-    warn: (...args: any[]) => console.warn(`[${pluginId}]`, ...args),
-    error: (...args: any[]) => console.error(`[${pluginId}]`, ...args),
+    info: (...args: any[]) => logger.debug(`[${pluginId}]`, ...args),
+    warn: (...args: any[]) => logger.warn(`[${pluginId}]`, ...args),
+    error: (...args: any[]) => logger.error(`[${pluginId}]`, ...args),
     debug: (...args: any[]) => console.debug(`[${pluginId}]`, ...args),
   };
 }

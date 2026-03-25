@@ -4,6 +4,7 @@
  * Handles multiline input, paste detection, and loading states
  */
 
+import { logger } from '../../infra/observability/logger';
 import * as readline from 'readline';
 import { EventEmitter } from 'events';
 
@@ -206,7 +207,7 @@ export class InputHandler extends EventEmitter {
       this.isInMultilineMode = true;
       this.multilineDelimiter = endDelimiter;
 
-      console.log(`(Enter ${endDelimiter} on a new line to finish, or Ctrl+D)`);
+      logger.debug(`(Enter ${endDelimiter} on a new line to finish, or Ctrl+D)`);
 
       const promptLine = () => {
         this.rl.question(query, (line) => {
@@ -239,7 +240,7 @@ export class InputHandler extends EventEmitter {
 
     if (trigger && !firstLine.slice(trigger.length).includes(trigger)) {
       // Started a multiline block
-      console.log('(Continue typing, end with ' + trigger + ')');
+      logger.debug('(Continue typing, end with ' + trigger + ')');
       this.inputBuffer = [firstLine];
 
       while (true) {
@@ -275,11 +276,11 @@ export class InputHandler extends EventEmitter {
    * Select from a list of options
    */
   async select(query: string, options: string[]): Promise<number> {
-    console.log(`\n${query}\n`);
+    logger.debug(`\n${query}\n`);
     options.forEach((opt, i) => {
-      console.log(`  ${i + 1}. ${opt}`);
+      logger.debug(`  ${i + 1}. ${opt}`);
     });
-    console.log('');
+    logger.debug('');
 
     while (true) {
       const answer = await this.prompt('Select (1-' + options.length + '): ');
@@ -289,7 +290,7 @@ export class InputHandler extends EventEmitter {
         return num - 1;
       }
 
-      console.log('Invalid selection. Please try again.');
+      logger.debug('Invalid selection. Please try again.');
     }
   }
 

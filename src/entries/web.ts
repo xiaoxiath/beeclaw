@@ -9,13 +9,14 @@
  * Note: Bun automatically loads .env file
  */
 
+import { logger } from '../infra/observability/logger';
 import { initApp } from '../app';
 import { WebAdapter } from '../adapter/web/adapter';
 import { adapterRegistry } from '../infra/entry';
 import { GracefulShutdown } from '../infra/utils/graceful-shutdown';
 
 function showHelp(): void {
-  console.log(`
+  logger.debug(`
 🐝 Beeclaw Web - Web UI Mode
 
 Usage:
@@ -42,7 +43,7 @@ async function main() {
     showHelp();
   }
 
-  console.log('🐝 Starting Beeclaw Web...\n');
+  logger.info('🐝 Starting Beeclaw Web...\n');
 
   try {
     // 初始化应用
@@ -57,7 +58,7 @@ async function main() {
     await webAdapter.initialize(context);
     await webAdapter.start();
 
-    console.log('\n✅ Beeclaw Web started');
+    logger.info('\n✅ Beeclaw Web started');
 
     // 设置优雅关闭
     const shutdown = new GracefulShutdown();
@@ -66,7 +67,7 @@ async function main() {
       name: 'Stop all adapters',
       priority: 20,
       fn: async () => {
-        console.log('\n\n🛑 Shutting down Web server...');
+        logger.debug('\n\n🛑 Shutting down Web server...');
         await adapterRegistry.stopAll();
       },
     });
@@ -74,7 +75,7 @@ async function main() {
     // Keep process alive
     await new Promise(() => {}); // Never resolve
   } catch (error) {
-    console.error('❌ Failed to start Beeclaw Web:', error);
+    logger.error('❌ Failed to start Beeclaw Web:', error);
     process.exit(1);
   }
 }

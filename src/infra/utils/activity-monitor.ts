@@ -50,11 +50,11 @@ export interface ActivityStats {
  *
  * // Check if timed out
  * if (monitor.isInactive(60000)) {
- *   console.log('Agent inactive for 60s');
+ *   logger.debug('Agent inactive for 60s');
  * }
  *
  * // Get stats
- * console.log(monitor.getStats());
+ * logger.debug(monitor.getStats());
  * ```
  */
 export class ActivityMonitor {

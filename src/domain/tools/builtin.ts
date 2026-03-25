@@ -2410,7 +2410,7 @@ export async function executeCreateChart(params: Record<string, unknown>): Promi
       ...(params.colorTheme && { colorTheme: params.colorTheme as string }),
     };
 
-    console.log('[create_chart] 🎨 Returning chart block:', {
+    logger.debug('[create_chart] 🎨 Returning chart block:', {
       hasContentBlock: true,
       success: true,
       dataType: chartBlock.type,
@@ -2424,7 +2424,7 @@ export async function executeCreateChart(params: Record<string, unknown>): Promi
       _contentBlock: true,
     };
   } catch (error) {
-    console.error('[create_chart] ❌ Error:', error);
+    logger.error('[create_chart] ❌ Error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create chart',

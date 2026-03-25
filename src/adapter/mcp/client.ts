@@ -5,6 +5,7 @@
  * 支持连接外部 MCP 服务器，并将其工具转换为 Agent 可用的工具
  */
 
+import { logger } from '../../infra/observability/logger';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Tool, Resource, Prompt } from '@modelcontextprotocol/sdk/types.js';
@@ -106,7 +107,7 @@ export class MCPClientManager {
       transport = await this.createTransport(config);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[MCP] Failed to create transport for ${config.name}:`, message);
+      logger.error(`[MCP] Failed to create transport for ${config.name}:`, message);
       throw new Error(`Failed to create transport: ${message}`);
     }
 
@@ -115,7 +116,7 @@ export class MCPClientManager {
       await client.connect(transport);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[MCP] Failed to connect to ${config.name}:`, message);
+      logger.error(`[MCP] Failed to connect to ${config.name}:`, message);
       throw new Error(`Failed to connect: ${message}`);
     }
 
@@ -128,21 +129,21 @@ export class MCPClientManager {
       const toolsResult = await client.listTools();
       tools = toolsResult.tools || [];
     } catch (error) {
-      console.warn(`[MCP] Failed to list tools from ${config.name}:`, error);
+      logger.warn(`[MCP] Failed to list tools from ${config.name}:`, error);
     }
 
     try {
       const resourcesResult = await client.listResources();
       resources = resourcesResult.resources || [];
     } catch (error) {
-      console.warn(`[MCP] Failed to list resources from ${config.name}:`, error);
+      logger.warn(`[MCP] Failed to list resources from ${config.name}:`, error);
     }
 
     try {
       const promptsResult = await client.listPrompts();
       prompts = promptsResult.prompts || [];
     } catch (error) {
-      console.warn(`[MCP] Failed to list prompts from ${config.name}:`, error);
+      logger.warn(`[MCP] Failed to list prompts from ${config.name}:`, error);
     }
 
     const connection: MCPConnection = {
@@ -158,7 +159,7 @@ export class MCPClientManager {
 
     this.connections.set(config.id, connection);
 
-    console.log(
+    logger.debug(
       `[MCP] Connected to ${config.name} (${config.id}): ` +
         `${tools.length} tools, ${resources.length} resources, ${prompts.length} prompts`,
     );
@@ -228,11 +229,11 @@ export class MCPClientManager {
     try {
       await connection.client.close();
     } catch (error) {
-      console.warn(`[MCP] Error closing connection ${id}:`, error);
+      logger.warn(`[MCP] Error closing connection ${id}:`, error);
     }
 
     this.connections.delete(id);
-    console.log(`[MCP] Disconnected from ${connection.name} (${id})`);
+    logger.info(`[MCP] Disconnected from ${connection.name} (${id})`);
   }
 
   /**

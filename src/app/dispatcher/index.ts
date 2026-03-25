@@ -3,6 +3,7 @@
  * RFC-02: TaskDispatcher implementation
  */
 
+import { logger } from '../../infra/observability/logger';
 import { randomUUID } from 'crypto';
 import { getDataConnection } from '../../infra/db';
 import { tasks as tasksTable } from '../../infra/db/schema';
@@ -52,7 +53,7 @@ export class TaskDispatcher {
    */
   registerHandler(type: TaskType, handler: TaskHandler): void {
     this.handlers.set(type, handler);
-    console.log(`[Dispatcher] Registered handler for task type: ${type}`);
+    logger.debug(`[Dispatcher] Registered handler for task type: ${type}`);
   }
 
   /**
@@ -60,7 +61,7 @@ export class TaskDispatcher {
    */
   unregisterHandler(type: TaskType): void {
     this.handlers.delete(type);
-    console.log(`[Dispatcher] Unregistered handler for task type: ${type}`);
+    logger.debug(`[Dispatcher] Unregistered handler for task type: ${type}`);
   }
 
   /**
@@ -89,7 +90,7 @@ export class TaskDispatcher {
       createdAt: new Date(),
     }).run();
 
-    console.log(`[Dispatcher] Submitted task ${taskId} (type: ${type}, session: ${sessionId})`);
+    logger.debug(`[Dispatcher] Submitted task ${taskId} (type: ${type}, session: ${sessionId})`);
     return taskId;
   }
 
@@ -98,23 +99,23 @@ export class TaskDispatcher {
    */
   start(): void {
     if (this.isRunning) {
-      console.warn('[Dispatcher] Already running');
+      logger.warn('[Dispatcher] Already running');
       return;
     }
 
     this.isRunning = true;
-    console.log(`[Dispatcher] Starting task polling (interval: ${this.config.pollIntervalMs}ms)`);
+    logger.info(`[Dispatcher] Starting task polling (interval: ${this.config.pollIntervalMs}ms)`);
 
     // Start polling
     this.pollTimer = setInterval(() => {
       this.pollAndProcess().catch(error => {
-        console.error('[Dispatcher] Poll error:', error);
+        logger.error('[Dispatcher] Poll error:', error);
       });
     }, this.config.pollIntervalMs);
 
     // Run initial poll immediately
     this.pollAndProcess().catch(error => {
-      console.error('[Dispatcher] Initial poll error:', error);
+      logger.error('[Dispatcher] Initial poll error:', error);
     });
   }
 
@@ -130,7 +131,7 @@ export class TaskDispatcher {
       this.pollTimer = undefined;
     }
 
-    console.log('[Dispatcher] Stopped task polling');
+    logger.debug('[Dispatcher] Stopped task polling');
   }
 
   /**
@@ -160,7 +161,7 @@ export class TaskDispatcher {
       // Acquire lock and process
       if (await this.acquireLock(task)) {
         this.processTask(task).catch(error => {
-          console.error(`[Dispatcher] Task ${task.id} failed:`, error);
+          logger.error(`[Dispatcher] Task ${task.id} failed:`, error);
         });
       }
     }
@@ -220,7 +221,7 @@ export class TaskDispatcher {
 
       return false;
     } catch (error) {
-      console.error(`[Dispatcher] Failed to acquire lock for task ${task.id}:`, error);
+      logger.error(`[Dispatcher] Failed to acquire lock for task ${task.id}:`, error);
       return false;
     }
   }
@@ -233,7 +234,7 @@ export class TaskDispatcher {
     const db = getDataConnection();
 
     try {
-      console.log(`[Dispatcher] Processing task ${task.id} (type: ${task.type})`);
+      logger.debug(`[Dispatcher] Processing task ${task.id} (type: ${task.type})`);
 
       // Update status to running
       await db.update(tasksTable)
@@ -265,10 +266,10 @@ export class TaskDispatcher {
         .where(eq(tasksTable.id, task.id))
         .run();
 
-      console.log(`[Dispatcher] Task ${task.id} completed`);
+      logger.info(`[Dispatcher] Task ${task.id} completed`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Dispatcher] Task ${task.id} failed (attempt ${task.attempts + 1}/${task.maxAttempts}):`, errorMsg);
+      logger.error(`[Dispatcher] Task ${task.id} failed (attempt ${task.attempts + 1}/${task.maxAttempts}):`, errorMsg);
 
       // Check if we should retry
       if (task.attempts + 1 < task.maxAttempts) {
@@ -287,7 +288,7 @@ export class TaskDispatcher {
           .where(eq(tasksTable.id, task.id))
           .run();
 
-        console.log(`[Dispatcher] Task ${task.id} rescheduled for retry at ${scheduledAt.toISOString()}`);
+        logger.debug(`[Dispatcher] Task ${task.id} rescheduled for retry at ${scheduledAt.toISOString()}`);
       } else {
         // Max attempts reached - mark as failed
         await db.update(tasksTable)
@@ -301,7 +302,7 @@ export class TaskDispatcher {
           .where(eq(tasksTable.id, task.id))
           .run();
 
-        console.error(`[Dispatcher] Task ${task.id} failed permanently after ${task.maxAttempts} attempts`);
+        logger.error(`[Dispatcher] Task ${task.id} failed permanently after ${task.maxAttempts} attempts`);
       }
     } finally {
       // Release lock
@@ -332,9 +333,9 @@ export class TaskDispatcher {
     } catch (error) {
       // Database lock is acceptable - we'll try again next poll
       if (error instanceof Error && error.message?.includes('locked')) {
-        console.warn('[Dispatcher] Database locked while releasing expired locks, will retry next poll');
+        logger.warn('[Dispatcher] Database locked while releasing expired locks, will retry next poll');
       } else {
-        console.error('[Dispatcher] Error releasing expired locks:', error);
+        logger.error('[Dispatcher] Error releasing expired locks:', error);
       }
     }
   }

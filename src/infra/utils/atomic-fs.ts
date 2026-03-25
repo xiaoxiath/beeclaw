@@ -8,6 +8,7 @@
  * Also maintains .bak files for crash recovery.
  */
 
+import { logger } from '../../infra/observability/logger';
 import { writeFileSync, readFileSync, renameSync, unlinkSync, existsSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { mkdirSync } from 'fs';
@@ -32,7 +33,7 @@ export function writeFileAtomic(filePath: string, content: string): void {
       writeFileSync(bakPath, currentContent, 'utf-8');
     }
   } catch (error) {
-    console.warn(`[AtomicFS] Backup creation failed for ${filePath}:`, error);
+    logger.warn(`[AtomicFS] Backup creation failed for ${filePath}:`, error);
   }
 
   // Step 3: Atomic rename
@@ -53,13 +54,13 @@ export function readFileWithRecovery<T>(
       const data = JSON.parse(content);
       if (validator) {
         if (validator(data)) return data;
-        console.warn(`[AtomicFS] Primary file validation failed: ${filePath}`);
+        logger.warn(`[AtomicFS] Primary file validation failed: ${filePath}`);
       } else {
         return data as T;
       }
     }
   } catch (error) {
-    console.warn(`[AtomicFS] Primary file corrupted: ${filePath}`, error);
+    logger.warn(`[AtomicFS] Primary file corrupted: ${filePath}`, error);
   }
 
   // Attempt 2: Read backup file
@@ -70,19 +71,19 @@ export function readFileWithRecovery<T>(
       const data = JSON.parse(content);
       if (validator) {
         if (validator(data)) {
-          console.log(`[AtomicFS] Recovered from backup: ${bakPath}`);
+          logger.debug(`[AtomicFS] Recovered from backup: ${bakPath}`);
           writeFileSync(filePath, content, 'utf-8');
           return data;
         }
-        console.warn(`[AtomicFS] Backup file validation also failed: ${bakPath}`);
+        logger.warn(`[AtomicFS] Backup file validation also failed: ${bakPath}`);
       } else {
-        console.log(`[AtomicFS] Recovered from backup: ${bakPath}`);
+        logger.debug(`[AtomicFS] Recovered from backup: ${bakPath}`);
         writeFileSync(filePath, content, 'utf-8');
         return data as T;
       }
     }
   } catch (error) {
-    console.warn(`[AtomicFS] Backup file also corrupted: ${bakPath}`, error);
+    logger.warn(`[AtomicFS] Backup file also corrupted: ${bakPath}`, error);
   }
 
   return undefined;
@@ -106,10 +107,10 @@ export function cleanupTempFiles(dirPath: string): number {
       }
     }
     if (cleaned > 0) {
-      console.log(`[AtomicFS] Cleaned up ${cleaned} leftover temp file(s) in ${dirPath}`);
+      logger.debug(`[AtomicFS] Cleaned up ${cleaned} leftover temp file(s) in ${dirPath}`);
     }
   } catch (error) {
-    console.warn(`[AtomicFS] Cleanup failed for ${dirPath}:`, error);
+    logger.warn(`[AtomicFS] Cleanup failed for ${dirPath}:`, error);
   }
   return cleaned;
 }

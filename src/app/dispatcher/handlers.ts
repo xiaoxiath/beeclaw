@@ -3,6 +3,7 @@
  * RFC-02: TaskDispatcher default handlers
  */
 
+import { logger } from '../../infra/observability/logger';
 import type { Task } from './types';
 import type { ProactiveJobData } from '../../domain/proactive/types';
 import { sendProactiveMessage, confirmDelivery } from '../../domain/session';
@@ -27,7 +28,7 @@ export function registerDefaultHandlers(): void {
   dispatcher.registerHandler('message', async (task: Task) => {
     const { message, userId, channel, sessionId, context } = task.payload;
 
-    console.log(`[Handler:message] Processing message for session ${sessionId}`);
+    logger.debug(`[Handler:message] Processing message for session ${sessionId}`);
 
     // Process message through session manager
     const result = await sendProactiveMessage({
@@ -64,14 +65,14 @@ export function registerDefaultHandlers(): void {
       }
     }
 
-    console.log(`[Handler:message] Message processed successfully for session ${sessionId}`);
+    logger.info(`[Handler:message] Message processed successfully for session ${sessionId}`);
   });
 
   // Cron handler - executes scheduled tasks
   dispatcher.registerHandler('cron', async (task: Task) => {
     const { handlerName, params } = task.payload;
 
-    console.log(`[Handler:cron] Executing cron task: ${handlerName}`);
+    logger.debug(`[Handler:cron] Executing cron task: ${handlerName}`);
 
     // Build ProactiveJobData from task payload
     const jobData: ProactiveJobData = {
@@ -114,13 +115,13 @@ export function registerDefaultHandlers(): void {
           break;
 
         default:
-          console.warn(`[Handler:cron] Unknown handler: ${handlerName}`);
+          logger.warn(`[Handler:cron] Unknown handler: ${handlerName}`);
           throw new Error(`Unknown cron handler: ${handlerName}`);
       }
 
-      console.log(`[Handler:cron] ✅ Cron task completed: ${handlerName}`);
+      logger.info(`[Handler:cron] ✅ Cron task completed: ${handlerName}`);
     } catch (error) {
-      console.error(`[Handler:cron] ❌ Cron task failed: ${handlerName}`, error);
+      logger.error(`[Handler:cron] ❌ Cron task failed: ${handlerName}`, error);
       throw error;
     }
   });
@@ -129,7 +130,7 @@ export function registerDefaultHandlers(): void {
   dispatcher.registerHandler('reminder', async (task: Task) => {
     const { userId, channel, message, chatId } = task.payload;
 
-    console.log(`[Handler:reminder] Sending reminder to user ${userId}`);
+    logger.debug(`[Handler:reminder] Sending reminder to user ${userId}`);
 
     const gateway = getMessageGateway();
 
@@ -143,10 +144,10 @@ export function registerDefaultHandlers(): void {
       throw new Error(result.error || 'Failed to send reminder');
     }
 
-    console.log(`[Handler:reminder] Reminder sent to user ${userId}`);
+    logger.debug(`[Handler:reminder] Reminder sent to user ${userId}`);
   });
 
-  console.log('[Dispatcher] Default handlers registered');
+  logger.debug('[Dispatcher] Default handlers registered');
 }
 
 // Import at the end to avoid circular dependency

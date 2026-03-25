@@ -5,6 +5,7 @@
  * blocked-tool checks, and hook-runner integration.
  */
 
+import { logger } from '../../infra/observability/logger';
 import type { ToolExecutor, ToolCall, UserContext } from './types';
 import type { LoopDetector } from '../../infra/resilience/loop-detector';
 import { groupToolCalls, getGroupingStats } from './tool-dependencies';
@@ -95,7 +96,7 @@ export class ToolDispatcher {
   ): Promise<ToolBatchResult[]> {
     const batches = groupToolCalls(toolCalls.map(tc => ({ name: tc.function.name, call: tc })));
     const stats = getGroupingStats(toolCalls.map(tc => ({ name: tc.function.name })));
-    console.log(`\n[ToolDispatcher] Plan: ${stats.totalCalls} calls, ${stats.parallelBatches} parallel batches`);
+    logger.debug(`\n[ToolDispatcher] Plan: ${stats.totalCalls} calls, ${stats.parallelBatches} parallel batches`);
     const allResults: ToolBatchResult[] = [];
     for (const batch of batches) {
       const batchResults = await Promise.all(

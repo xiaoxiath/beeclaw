@@ -4,6 +4,7 @@
  * Execute subagent tools from the builtin tools system
  */
 
+import { logger } from '../../infra/observability/logger';
 import { spawnSubagent, spawnParallelSubagents } from './runtime';
 import { formatSubagentResult, formatParallelResults } from './tools';
 import type { SpawnSubagentParams, SpawnParallelParams } from './tools';
@@ -16,8 +17,8 @@ export async function executeSpawnSubagent(
   params: SpawnSubagentParams
 ): Promise<BuiltinToolResult> {
   try {
-    console.log(`[SubagentTool] Spawning ${params.type} subagent`);
-    console.log(`[SubagentTool] Task: ${params.task.substring(0, 100)}...`);
+    logger.debug(`[SubagentTool] Spawning ${params.type} subagent`);
+    logger.debug(`[SubagentTool] Task: ${params.task.substring(0, 100)}...`);
 
     const result = await spawnSubagent({
       type: params.type,
@@ -28,7 +29,7 @@ export async function executeSpawnSubagent(
     });
 
     if (result.success) {
-      console.log(`[SubagentTool] Success in ${result.duration}ms`);
+      logger.info(`[SubagentTool] Success in ${result.duration}ms`);
 
       return {
         success: true,
@@ -40,7 +41,7 @@ export async function executeSpawnSubagent(
         ? result.error
         : JSON.stringify(result.error);
 
-      console.error(`[SubagentTool] Failed: ${errorStr}`);
+      logger.error(`[SubagentTool] Failed: ${errorStr}`);
 
       return {
         success: false,
@@ -62,7 +63,7 @@ export async function executeSpawnSubagent(
       }
     }
 
-    console.error('[SubagentTool] Error:', errorMsg);
+    logger.error('[SubagentTool] Error:', errorMsg);
 
     return {
       success: false,
@@ -78,7 +79,7 @@ export async function executeSpawnParallel(
   params: SpawnParallelParams
 ): Promise<BuiltinToolResult> {
   try {
-    console.log(`[SubagentTool] Spawning ${params.tasks.length} subagents in parallel`);
+    logger.debug(`[SubagentTool] Spawning ${params.tasks.length} subagents in parallel`);
 
     const configs = params.tasks.map(task => ({
       type: task.type,
@@ -92,7 +93,7 @@ export async function executeSpawnParallel(
     const successful = results.filter(r => r.success).length;
     const total = results.length;
 
-    console.log(`[SubagentTool] Completed: ${successful}/${total} successful`);
+    logger.info(`[SubagentTool] Completed: ${successful}/${total} successful`);
 
     const taskDescriptions = params.tasks.map(t => t.task);
 
@@ -115,7 +116,7 @@ export async function executeSpawnParallel(
       }
     }
 
-    console.error('[SubagentTool] Error:', errorMsg);
+    logger.error('[SubagentTool] Error:', errorMsg);
 
     return {
       success: false,

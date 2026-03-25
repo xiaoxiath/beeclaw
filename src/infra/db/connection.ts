@@ -3,6 +3,7 @@
  * RFC-03: SQLite + Drizzle ORM foundation
  */
 
+import { logger } from '../../infra/observability/logger';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { Database } from 'bun:sqlite';
 import { existsSync } from 'fs';
@@ -50,7 +51,7 @@ export function initDataConnection(config: DataConnectionConfig): void {
     runMigrations(_sqlite);
   }
 
-  console.log(`✅ DataConnection initialized: ${config.path}`);
+  logger.info(`✅ DataConnection initialized: ${config.path}`);
 }
 
 /**
@@ -158,7 +159,7 @@ function runMigrations(db: Database): void {
   // Run pending migrations
   for (const migration of migrations) {
     if (!runMigrationNames.has(migration.name)) {
-      console.log(`  Running migration: ${migration.name}`);
+      logger.debug(`  Running migration: ${migration.name}`);
 
       // Run migration in transaction
       const tx = db.transaction(() => {
@@ -167,7 +168,7 @@ function runMigrations(db: Database): void {
       });
       tx();
 
-      console.log(`  ✓ Migration complete: ${migration.name}`);
+      logger.info(`  ✓ Migration complete: ${migration.name}`);
     }
   }
 }

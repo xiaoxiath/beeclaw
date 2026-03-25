@@ -4,6 +4,7 @@
  * Initializes and manages workers for each queue
  */
 
+import { logger } from '../../../infra/observability/logger';
 import type { Job } from 'bunqueue/client';
 import { getTaskManager } from '../../../infra/queue/manager';
 import type { QueueConfig } from '../../../infra/queue/types';
@@ -23,7 +24,7 @@ export async function initWorkers(config?: QueueConfig): Promise<void> {
     concurrency: config?.workers?.proactive?.concurrency ?? 3,
   });
 
-  console.log('[Queue] All workers initialized');
+  logger.info('[Queue] All workers initialized');
 }
 
 /**

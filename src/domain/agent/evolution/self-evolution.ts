@@ -14,6 +14,7 @@
  * - Rollback mechanism for SOUL.md changes that degrade performance
  */
 
+import { logger } from '../../../infra/observability/logger';
 import { getScheduler } from '../../proactive';
 import { join } from 'path';
 
@@ -57,7 +58,7 @@ export function initSelfEvolution(
   );
 
   if (!hasSelfEvolution) {
-    console.log('   Creating daily self-evolution schedule...');
+    logger.debug('   Creating daily self-evolution schedule...');
     scheduler.createSchedule({
       name: 'Daily Self-Evolution',
       description: 'Review lessons and update SOUL.md principles',
@@ -72,9 +73,9 @@ export function initSelfEvolution(
       },
       enabled: true,
     });
-    console.log(`   ✓ Self-evolution scheduled at cron: ${mergedConfig.cron}`);
+    logger.debug(`   ✓ Self-evolution scheduled at cron: ${mergedConfig.cron}`);
   } else {
-    console.log('   ✓ Self-evolution schedule already exists');
+    logger.debug('   ✓ Self-evolution schedule already exists');
   }
 }
 

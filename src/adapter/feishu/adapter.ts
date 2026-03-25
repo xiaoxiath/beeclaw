@@ -47,7 +47,7 @@ export class FeishuAdapter implements EntryAdapter {
       this.running = true;
       this.startTime = Date.now();
 
-      console.log('   📨 Feishu bot connected');
+      logger.info('   📨 Feishu bot connected');
       logger.info('[FeishuAdapter] Feishu bot started');
     } catch (error) {
       logger.error('[FeishuAdapter] Failed to start:', error);

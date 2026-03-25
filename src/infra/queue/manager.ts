@@ -4,6 +4,7 @@
  * Manages job queues using Bunqueue in embedded mode
  */
 
+import { logger } from '../../infra/observability/logger';
 import { Queue, Worker, type Job } from 'bunqueue/client';
 import type {
   QueueName,
@@ -50,7 +51,7 @@ class TaskManager {
     }
 
     this.initialized = true;
-    console.log('[Queue] Task manager initialized');
+    logger.info('[Queue] Task manager initialized');
   }
 
   /**
@@ -247,7 +248,7 @@ class TaskManager {
     });
 
     this.workers.set(queue, worker);
-    console.log(`[Queue] Worker registered for ${queue}`);
+    logger.debug(`[Queue] Worker registered for ${queue}`);
   }
 
   /**
@@ -275,7 +276,7 @@ class TaskManager {
     this.queues.clear();
     this.workers.clear();
     this.initialized = false;
-    console.log('[Queue] Task manager shut down');
+    logger.debug('[Queue] Task manager shut down');
   }
 
   /**

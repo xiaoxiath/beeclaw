@@ -140,7 +140,7 @@ export function registerToolDependencyOverride(
   const existing = TOOL_DEPENDENCIES[toolName] || { mode: 'parallel' as const, hasSideEffects: false };
   const merged: ToolDependencyConfig = { ...existing, ...config };
   runtimeOverrides.set(toolName, merged);
-  console.log(`[ToolDeps] Override registered for "${toolName}" by ${source}: mode=${merged.mode}`);
+  logger.debug(`[ToolDeps] Override registered for "${toolName}" by ${source}: mode=${merged.mode}`);
 }
 
 /**
@@ -156,7 +156,7 @@ export function registerToolDependencyPattern(
   source: string = 'unknown',
 ): void {
   patternOverrides.push({ pattern, config, source });
-  console.log(`[ToolDeps] Pattern override registered: ${pattern.source} by ${source}`);
+  logger.debug(`[ToolDeps] Pattern override registered: ${pattern.source} by ${source}`);
 }
 
 /**

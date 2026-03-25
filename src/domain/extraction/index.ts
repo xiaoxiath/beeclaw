@@ -64,6 +64,7 @@ export {
   type StoreResult,
 } from './store';
 
+import { logger } from '../../infra/observability/logger';
 import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
 import { type ExtractionConfig, DEFAULT_EXTRACTION_CONFIG } from './types';
@@ -157,7 +158,7 @@ export class ExtractionManager {
       );
 
       if (sensitiveCheck.shouldSkip) {
-        console.log('[ExtractionManager] Skipped due to sensitive info:', sensitiveCheck.patterns);
+        logger.debug('[ExtractionManager] Skipped due to sensitive info:', sensitiveCheck.patterns);
         result.reason = 'Skipped: sensitive information detected';
         return result;
       }
@@ -216,10 +217,10 @@ export class ExtractionManager {
       // 10. 重置触发计数器
       this.trigger.resetCounter();
 
-      console.log(`[ExtractionManager] Extraction complete: +${result.added} ~${result.updated} ?${result.pending}`);
+      logger.info(`[ExtractionManager] Extraction complete: +${result.added} ~${result.updated} ?${result.pending}`);
 
     } catch (error) {
-      console.error('[ExtractionManager] Extraction failed:', error);
+      logger.error('[ExtractionManager] Extraction failed:', error);
       result.reason = `Extraction failed: ${error}`;
     }
 

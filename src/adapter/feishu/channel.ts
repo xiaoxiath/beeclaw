@@ -6,6 +6,7 @@
  * instead of simply replacing all images with '[图片]' placeholder.
  */
 
+import { logger } from '../../infra/observability/logger';
 import type {
   MessageChannel,
   ChannelType,
@@ -101,7 +102,7 @@ export class FeishuChannel implements MessageChannel {
   async updateMessageContent(options: UpdateMessageOptions): Promise<void> {
     // Note: Card V2 streaming updates are handled by StreamingMessageController directly
     // via FeishuWSClient.patchCard(), not through this channel
-    console.log(`[Feishu] Message update requested for ${options.messageId} (not supported for text messages)`);
+    logger.debug(`[Feishu] Message update requested for ${options.messageId} (not supported for text messages)`);
   }
 
   supportsUpdates(): boolean {

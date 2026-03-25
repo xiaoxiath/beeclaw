@@ -8,6 +8,7 @@
  * Solution: Ordered shutdown with configurable grace period.
  */
 
+import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../resilience/session-lock';
 
 export interface ShutdownCleanupFn {
@@ -58,11 +59,11 @@ export class GracefulShutdown {
 
   installSignalHandlers(): void {
     const handler = (signal: string) => {
-      console.log(`\n[Shutdown] Received ${signal}, starting graceful shutdown...`);
+      logger.info(`\n[Shutdown] Received ${signal}, starting graceful shutdown...`);
       this.shutdown().then(() => {
         process.exit(0);
       }).catch((error) => {
-        console.error('[Shutdown] Error during shutdown:', error);
+        logger.error('[Shutdown] Error during shutdown:', error);
         process.exit(1);
       });
     };
@@ -75,22 +76,22 @@ export class GracefulShutdown {
 
   async shutdown(): Promise<void> {
     if (this._shuttingDown) {
-      console.log('[Shutdown] Already shutting down, ignoring duplicate signal.');
+      logger.debug('[Shutdown] Already shutting down, ignoring duplicate signal.');
       return;
     }
     this._shuttingDown = true;
 
-    console.log('[Shutdown] Phase 1: Draining in-flight message queues...');
+    logger.debug('[Shutdown] Phase 1: Draining in-flight message queues...');
     const queue = SessionMessageQueue.getInstance();
     const drainTimeout = Math.floor(this.gracePeriodMs * 0.6);
     try {
       await queue.drainAll(drainTimeout);
-      console.log('[Shutdown] Message queues drained.');
+      logger.debug('[Shutdown] Message queues drained.');
     } catch (error) {
-      console.warn('[Shutdown] Queue drain error:', error);
+      logger.warn('[Shutdown] Queue drain error:', error);
     }
 
-    console.log('[Shutdown] Phase 2: Running cleanup functions...');
+    logger.debug('[Shutdown] Phase 2: Running cleanup functions...');
     const sorted = [...this.cleanupFns].sort(
       (a, b) => (a.priority ?? 100) - (b.priority ?? 100)
     );
@@ -100,23 +101,23 @@ export class GracefulShutdown {
 
     for (const entry of sorted) {
       if (Date.now() >= cleanupDeadline) {
-        console.warn(`[Shutdown] Cleanup timeout reached, skipping remaining: ${entry.name}`);
+        logger.warn(`[Shutdown] Cleanup timeout reached, skipping remaining: ${entry.name}`);
         break;
       }
       try {
-        console.log(`[Shutdown]   Running: ${entry.name}...`);
+        logger.debug(`[Shutdown]   Running: ${entry.name}...`);
         await Promise.race([
           Promise.resolve(entry.fn()),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Cleanup timeout')), 5000)
           ),
         ]);
-        console.log(`[Shutdown]   ✓ ${entry.name} done`);
+        logger.debug(`[Shutdown]   ✓ ${entry.name} done`);
       } catch (error) {
-        console.error(`[Shutdown]   ✗ ${entry.name} failed:`, error);
+        logger.error(`[Shutdown]   ✗ ${entry.name} failed:`, error);
       }
     }
 
-    console.log('[Shutdown] Graceful shutdown complete. 👋');
+    logger.info('[Shutdown] Graceful shutdown complete. 👋');
   }
 }

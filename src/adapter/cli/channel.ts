@@ -3,6 +3,7 @@
  * RFC-01: MessageChannel implementation
  */
 
+import { logger } from '../../infra/observability/logger';
 import type {
   MessageChannel,
   ChannelType,
@@ -25,7 +26,7 @@ export class CLIChannel implements MessageChannel {
   ): Promise<MessageResult> {
     try {
       const text = this.contentToString(content);
-      console.log(`\n${text}\n`);
+      logger.debug(`\n${text}\n`);
 
       return {
         messageId: `cli-${Date.now()}`,
@@ -50,7 +51,7 @@ export class CLIChannel implements MessageChannel {
 
   async updateMessageContent(options: UpdateMessageOptions): Promise<void> {
     // CLI doesn't support message updates
-    console.log(`[CLI] Message update requested for ${options.messageId} (not supported)`);
+    logger.debug(`[CLI] Message update requested for ${options.messageId} (not supported)`);
   }
 
   supportsUpdates(): boolean {

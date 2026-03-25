@@ -18,6 +18,7 @@ import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { Session } from './index';
 import { confirmDelivery, MAX_RECOVERY_ATTEMPTS } from './index';
+import { logger } from '../../infra/observability/logger';
 
 export interface RecoveryConfig {
   /** Enable recovery feature (default: true) */
@@ -97,7 +98,7 @@ export async function detectUnansweredSessions(
         const session = JSON.parse(content) as Session;
         sessions.push(session);
       } catch (error) {
-        console.error('[Recovery] Failed to load session file:', file, error);
+        logger.error('[Recovery] Failed to load session file:', { file, error });
       }
     }
   }
@@ -123,7 +124,7 @@ export async function detectUnansweredSessions(
     // BUG #7 FIX: Check recovery attempt limit
     const attempts = session.recoveryAttempts ?? 0;
     if (isPendingRecovery && attempts >= MAX_RECOVERY_ATTEMPTS) {
-      console.warn(
+      logger.warn(
         `[Recovery] Session ${session.id} exceeded max recovery attempts ` +
         `(${attempts}/${MAX_RECOVERY_ATTEMPTS}). Marking as failed.`
       );
@@ -139,7 +140,7 @@ export async function detectUnansweredSessions(
       // Last message is from assistant - already answered
       // Clear stale pendingRecovery flag if exists
       if (isPendingRecovery) {
-        console.log(`[Recovery] 🧹 Clearing stale pendingRecovery flag for answered session ${session.id}`);
+        logger.debug(`[Recovery] 🧹 Clearing stale pendingRecovery flag for answered session ${session.id}`);
         session.pendingRecovery = false;
         // Note: Caller (bot.ts or daemon.ts) will save the session after recovery completes
       }
@@ -155,7 +156,7 @@ export async function detectUnansweredSessions(
       for (let i = lastUserIndex + 1; i < session.messages.length; i++) {
         if (session.messages[i].role === 'assistant') {
           // Found assistant response after last user message - already answered
-          console.log(`[Recovery] 🧹 Session ${session.id} has assistant response, clearing pendingRecovery`);
+          logger.debug(`[Recovery] 🧹 Session ${session.id} has assistant response, clearing pendingRecovery`);
           if (isPendingRecovery) {
             session.pendingRecovery = false;
             // Note: Caller will save the session
@@ -183,7 +184,7 @@ export async function detectUnansweredSessions(
     // Found an unanswered session
     // Add recovery status to the log
     if (isPendingRecovery) {
-      console.log(`[Recovery] 🔄 Session ${session.id} marked as pending recovery (bot restarted during processing)`);
+      logger.debug(`[Recovery] 🔄 Session ${session.id} marked as pending recovery (bot restarted during processing)`);
     }
 
     // BUG #2 FIX: Detect if this is a delivery-only recovery
@@ -230,11 +231,11 @@ export async function recoverUnansweredSessions(
   };
 
   if (!config.enabled) {
-    console.log('[Recovery] Disabled in configuration');
+    logger.debug('[Recovery] Disabled in configuration');
     return result;
   }
 
-  console.log('[Recovery] 🔍 Scanning for unanswered sessions...');
+  logger.info('[Recovery] 🔍 Scanning for unanswered sessions...');
 
   // Detect unanswered sessions
   const unanswered = await detectUnansweredSessions(config, {
@@ -242,11 +243,11 @@ export async function recoverUnansweredSessions(
   });
 
   if (unanswered.length === 0) {
-    console.log('[Recovery] ✓ No unanswered sessions found');
+    logger.info('[Recovery] ✓ No unanswered sessions found');
     return result;
   }
 
-  console.log(`[Recovery] 📨 Found ${unanswered.length} unanswered session(s)`);
+  logger.info(`[Recovery] 📨 Found ${unanswered.length} unanswered session(s)`);
 
   // Process in batches
   const batches = [];
@@ -258,10 +259,10 @@ export async function recoverUnansweredSessions(
     for (const item of batch) {
       const { session, lastMessageAge, lastMessageContent, pendingDeliveryOnly, existingResponse, recoveryAttempts } = item;
 
-      console.log(`[Recovery] 🔄 Recovering session ${session.id}`);
-      console.log(`[Recovery]    Last message: "${lastMessageContent.substring(0, 100)}..."`);
-      console.log(`[Recovery]    Age: ${Math.round(lastMessageAge / 1000)}s`);
-      console.log(`[Recovery]    Delivery-only: ${pendingDeliveryOnly}, Attempts: ${recoveryAttempts}`);
+      logger.info(`[Recovery] 🔄 Recovering session ${session.id}`);
+      logger.debug(`[Recovery]    Last message: "${lastMessageContent.substring(0, 100)}..."`);
+      logger.debug(`[Recovery]    Age: ${Math.round(lastMessageAge / 1000)}s`);
+      logger.debug(`[Recovery]    Delivery-only: ${pendingDeliveryOnly}, Attempts: ${recoveryAttempts}`);
 
       // Increment recovery attempts
       session.recoveryAttempts = recoveryAttempts + 1;
@@ -275,7 +276,7 @@ export async function recoverUnansweredSessions(
 
         if (pendingDeliveryOnly && existingResponse) {
           // BUG #2 FIX: Phase 1 - Re-deliver cached response
-          console.log(`[Recovery] Phase 1: Re-delivering cached response...`);
+          logger.debug(`[Recovery] Phase 1: Re-delivering cached response...`);
           responseToSend = existingResponse;
         } else {
           // BUG #2 FIX: Phase 2 - Full reprocessing
@@ -284,10 +285,10 @@ export async function recoverUnansweredSessions(
           if (item.wasMultimodal && item.visionDescription) {
             // Reconstruct context from vision description instead of raw text
             recoveryMessage = `[恢复上下文 - 原始消息包含图片] 图片描述：${item.visionDescription}\n用户消息：${lastMessageContent}`;
-            console.log('[Recovery] Phase 2: Reprocessing multimodal message with vision context...');
+            logger.debug('[Recovery] Phase 2: Reprocessing multimodal message with vision context...');
           } else {
             recoveryMessage = lastMessageContent;
-            console.log('[Recovery] Phase 2: Reprocessing text message...');
+            logger.debug('[Recovery] Phase 2: Reprocessing text message...');
           }
 
           // Send proactive message to reprocess
@@ -325,17 +326,17 @@ export async function recoverUnansweredSessions(
                 responseToSend,
                 { title: pendingDeliveryOnly ? '🔄 重新投递' : '🔄 恢复处理结果' }
               );
-              console.log('[Recovery] 📤 Response sent to Feishu');
+              logger.info('[Recovery] 📤 Response sent to Feishu');
 
               // BUG #2 FIX: Use confirmDelivery() instead of clearRecoveryFlag()
               confirmDelivery(session.id);
             } catch (error) {
-              console.error('[Recovery] Failed to send response:', error);
+              logger.error('[Recovery] Failed to send response:', error);
               // BUG #2 FIX: Save AI response for Phase 1 retry next time
               if (!pendingDeliveryOnly && responseToSend) {
                 session.pendingDelivery = true;
                 session.lastAiResponse = responseToSend;
-                console.warn(
+                logger.warn(
                   `[Recovery] ✗ AI responded but delivery failed for session ${session.id}. ` +
                   `Will attempt re-delivery on next recovery.`
                 );
@@ -350,7 +351,7 @@ export async function recoverUnansweredSessions(
           status: 'recovered',
         });
 
-        console.log(`[Recovery] ✅ Session recovered`);
+        logger.info(`[Recovery] ✅ Session recovered`);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         result.failed++;
@@ -360,7 +361,7 @@ export async function recoverUnansweredSessions(
           error: errorMsg,
         });
 
-        console.error(`[Recovery] ❌ Failed to recover session:`, errorMsg);
+        logger.error(`[Recovery] ❌ Failed to recover session:`, { errorMsg });
       }
 
       // Delay between messages
@@ -370,7 +371,7 @@ export async function recoverUnansweredSessions(
     }
   }
 
-  console.log(
+  logger.info(
     `[Recovery] 📊 Done: ${result.recovered} recovered, ${result.failed} failed, ${result.skipped} skipped`
   );
 

@@ -467,7 +467,7 @@ export class SharedState {
             toRemove.push(sub);
           }
         } catch (error) {
-          console.error(`[SharedState] Error in subscription callback for ${key}:`, error);
+          logger.error(`[SharedState] Error in subscription callback for ${key}:`, error);
         }
       }
 
@@ -496,7 +496,7 @@ export class SharedState {
             toRemove.push(sub);
           }
         } catch (error) {
-          console.error(`[SharedState] Error in wildcard subscription callback:`, error);
+          logger.error(`[SharedState] Error in wildcard subscription callback:`, error);
         }
       }
 
@@ -540,7 +540,7 @@ export class SharedState {
   private startAutoCleanup(): void {
     this.cleanupTimer = setInterval(() => {
       this.cleanup().catch(error => {
-        console.error('[SharedState] Cleanup error:', error);
+        logger.error('[SharedState] Cleanup error:', error);
       });
     }, this.options.cleanupInterval);
   }
@@ -662,12 +662,12 @@ let sharedStateInstance: SharedState | null = null;
  */
 export function initSharedState(options?: SharedStateOptions): SharedState {
   if (sharedStateInstance) {
-    console.warn('[SharedState] Instance already initialized, destroying old instance');
+    logger.warn('[SharedState] Instance already initialized, destroying old instance');
     sharedStateInstance.destroy();
   }
 
   sharedStateInstance = new SharedState(options);
-  console.log('[SharedState] Initialized');
+  logger.info('[SharedState] Initialized');
 
   return sharedStateInstance;
 }

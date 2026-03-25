@@ -5,6 +5,7 @@
  * Now supports cooperative cancellation via AbortController.
  */
 
+import { logger } from '../../infra/observability/logger';
 import type { AIProvider } from '../../infra/config/schema';
 import { decomposeTask } from './decompose';
 import { DAGScheduler } from './scheduler';
@@ -83,7 +84,7 @@ export class TaskOrchestrator {
     task: string,
     context?: string
   ): Promise<TaskDecomposition> {
-    console.log(`[Orchestrator] Decomposing task: ${task.substring(0, 100)}...`);
+    logger.debug(`[Orchestrator] Decomposing task: ${task.substring(0, 100)}...`);
 
     try {
       const decomposition = await decomposeTask({
@@ -93,15 +94,15 @@ export class TaskOrchestrator {
         context,
       });
 
-      console.log(`[Orchestrator] Decomposed into ${decomposition.subtasks.length} subtasks`);
-      console.log(`[Orchestrator] Strategy: ${decomposition.strategy}`);
-      console.log(`[Orchestrator] Max parallelism: ${decomposition.maxParallelism}`);
+      logger.debug(`[Orchestrator] Decomposed into ${decomposition.subtasks.length} subtasks`);
+      logger.debug(`[Orchestrator] Strategy: ${decomposition.strategy}`);
+      logger.debug(`[Orchestrator] Max parallelism: ${decomposition.maxParallelism}`);
 
       return decomposition;
     } catch (error) {
-      console.error('[Orchestrator] Decomposition failed:', error);
+      logger.error('[Orchestrator] Decomposition failed:', error);
 
-      console.log('[Orchestrator] Using fallback decomposition');
+      logger.debug('[Orchestrator] Using fallback decomposition');
 
       return {
         originalTask: task,
@@ -144,8 +145,8 @@ export class TaskOrchestrator {
     const abortController = new AbortController();
     const { signal } = abortController;
 
-    console.log(`[Orchestrator] Starting execution of ${decomposition.subtasks.length} subtasks`);
-    console.log(`[Orchestrator] Max parallelism: ${opts.maxParallelism}`);
+    logger.info(`[Orchestrator] Starting execution of ${decomposition.subtasks.length} subtasks`);
+    logger.debug(`[Orchestrator] Max parallelism: ${opts.maxParallelism}`);
 
     // Initialize scheduler
     const scheduler = new DAGScheduler(opts.maxParallelism);
@@ -170,7 +171,7 @@ export class TaskOrchestrator {
      */
     const launchTask = (task: SubTask): Promise<void> => {
       scheduler.startTask(task.id);
-      console.log(`[Orchestrator] Starting subtask ${task.id}: ${task.description.substring(0, 50)}...`);
+      logger.info(`[Orchestrator] Starting subtask ${task.id}: ${task.description.substring(0, 50)}...`);
 
       const subtaskTimeout = computeSubtaskTimeout(task, opts.subtaskTimeout);
 
@@ -188,15 +189,15 @@ export class TaskOrchestrator {
             scheduler.completeTask(task.id, result);
             results.set(task.id, result);
 
-            console.log(`[Orchestrator] Subtask ${task.id} completed successfully`);
+            logger.info(`[Orchestrator] Subtask ${task.id} completed successfully`);
             opts.onSubtaskComplete?.(task.id, result);
           } else {
             const errorMsg = result.error || 'Unknown error';
-            console.error(`[Orchestrator] Subtask ${task.id} failed:`, errorMsg);
+            logger.error(`[Orchestrator] Subtask ${task.id} failed:`, errorMsg);
 
             const state = scheduler.getTaskState(task.id);
             if (state && state.retryCount < opts.maxRetries!) {
-              console.log(`[Orchestrator] Retrying subtask ${task.id} (attempt ${state.retryCount + 1}/${opts.maxRetries})`);
+              logger.debug(`[Orchestrator] Retrying subtask ${task.id} (attempt ${state.retryCount + 1}/${opts.maxRetries})`);
               scheduler.retryTask(task.id);
             } else {
               scheduler.failTask(task.id, errorMsg);
@@ -211,7 +212,7 @@ export class TaskOrchestrator {
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`[Orchestrator] Subtask ${task.id} error:`, errorMsg);
+          logger.error(`[Orchestrator] Subtask ${task.id} error:`, errorMsg);
 
           const state = scheduler.getTaskState(task.id);
           if (state && state.status === 'running') {
@@ -242,7 +243,7 @@ export class TaskOrchestrator {
     while (!scheduler.isComplete()) {
       // Global timeout check — abort all running subagents
       if (Date.now() - startTime > globalTimeout) {
-        console.error('[Orchestrator] Global timeout reached — aborting running subagents');
+        logger.error('[Orchestrator] Global timeout reached — aborting running subagents');
         abortController.abort();
 
         for (const state of scheduler.getTaskStates().values()) {
@@ -259,7 +260,7 @@ export class TaskOrchestrator {
       if (readyTasks.length === 0) {
         const failedTasks = scheduler.getFailedTasks();
         if (failedTasks.length > 0 && scheduler.getRunningTasks().length === 0) {
-          console.error('[Orchestrator] Execution stuck due to failed tasks');
+          logger.error('[Orchestrator] Execution stuck due to failed tasks');
 
           for (const state of scheduler.getTaskStates().values()) {
             if (state.status === 'pending') {
@@ -292,7 +293,7 @@ export class TaskOrchestrator {
     const duration = Date.now() - startTime;
     const success = scheduler.isSuccessful();
 
-    console.log(`[Orchestrator] Execution ${success ? 'completed' : 'finished with errors'} in ${duration}ms`);
+    logger.info(`[Orchestrator] Execution ${success ? 'completed' : 'finished with errors'} in ${duration}ms`);
 
     const output = this.aggregateOutput(decomposition, results);
     const stats = this.calculateStats(results, duration, scheduler);

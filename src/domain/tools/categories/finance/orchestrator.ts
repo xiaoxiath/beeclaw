@@ -4,6 +4,7 @@
  * Core orchestration layer: routing, fallback, and caching
  */
 
+import { logger } from '../../../../infra/observability/logger';
 import { FinanceDataProvider } from './base';
 import { TushareProvider } from './providers/tushare';
 import { SinaProvider } from './providers/sina';
@@ -111,7 +112,7 @@ export class FinanceOrchestrator {
     // Check cache first
     const cached = this.getFromCache<T>(cacheKey);
     if (cached !== null) {
-      console.log(`[Finance] Cache hit for ${cacheKey}`);
+      logger.debug(`[Finance] Cache hit for ${cacheKey}`);
       return cached;
     }
 
@@ -132,7 +133,7 @@ export class FinanceOrchestrator {
       }
 
       try {
-        console.log(`[Finance] Trying ${source} for ${type}`);
+        logger.debug(`[Finance] Trying ${source} for ${type}`);
         const result = await executor(provider);
 
         // Cache the result
@@ -143,7 +144,7 @@ export class FinanceOrchestrator {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         // Log as info since fallback is expected and working as designed
         // Common errors: socket closed, timeout, rate limit - all handled by fallback chain
-        console.log(`[Finance] ${source} unavailable (${errorMsg}), trying next source...`);
+        logger.debug(`[Finance] ${source} unavailable (${errorMsg}), trying next source...`);
         errors.push(error instanceof Error ? error : new Error(errorMsg));
       }
     }

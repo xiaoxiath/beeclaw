@@ -3,6 +3,7 @@
  * RFC-01: MessageChannel/Gateway abstraction
  */
 
+import { logger } from '../infra/observability/logger';
 import type {
   MessageChannel,
   ChannelType,
@@ -34,7 +35,7 @@ export class MultiChannelMessageGateway {
    */
   registerChannel(channel: MessageChannel): void {
     this.channels.set(channel.type, channel);
-    console.log(`[Gateway] Registered channel: ${channel.type}`);
+    logger.debug(`[Gateway] Registered channel: ${channel.type}`);
   }
 
   /**
@@ -42,7 +43,7 @@ export class MultiChannelMessageGateway {
    */
   unregisterChannel(channelType: ChannelType): void {
     this.channels.delete(channelType);
-    console.log(`[Gateway] Unregistered channel: ${channelType}`);
+    logger.debug(`[Gateway] Unregistered channel: ${channelType}`);
   }
 
   /**
@@ -159,7 +160,7 @@ export class MultiChannelMessageGateway {
       try {
         return await channel.sendMultimodal(content, options);
       } catch (error) {
-        console.warn(`[Gateway] Multimodal send failed for ${channelType}, falling back to text:`, error);
+        logger.warn(`[Gateway] Multimodal send failed for ${channelType}, falling back to text:`, error);
       }
     }
 

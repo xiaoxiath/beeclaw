@@ -216,7 +216,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
     };
   }
 
-  console.log('🐝 Initializing Beeclaw...');
+  logger.debug('🐝 Initializing Beeclaw...');
 
   // 1. Load configuration
   const config = await loadConfig();
@@ -231,12 +231,12 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 3. Initialize memory stores
   const memoryPath = options.memoryPath || config.memory.path;
   initStores({ basePath: memoryPath, autoInit: true });
-  console.log(`   📁 Memory: ${memoryPath}`);
+  logger.debug(`   📁 Memory: ${memoryPath}`);
 
   // 4.6. Initialize DataConnection (RFC-03: SQLite + Drizzle ORM)
   const dbPath = join(memoryPath, 'beeclaw.db');
   initDataConnection({ path: dbPath, migrate: true });
-  console.log(`   🗄️  Database: ${dbPath}`);
+  logger.debug(`   🗄️  Database: ${dbPath}`);
 
   // 4.7. Initialize MessageGateway (RFC-01: MessageChannel/Gateway)
   const gateway = getMessageGateway();
@@ -250,13 +250,13 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
   if (shouldRegisterFeishu) {
     // FeishuChannel will be registered by FeishuAdapter (avoid duplicate registration)
-    console.log('   📨 Feishu channel will be registered by adapter');
+    logger.debug('   📨 Feishu channel will be registered by adapter');
   } else {
-    console.log('   📨 Feishu channel not registered (no credentials or disabled)');
+    logger.debug('   📨 Feishu channel not registered (no credentials or disabled)');
   }
 
   const channels = gateway.getRegisteredChannels();
-  console.log(`   📨 Gateway: ${channels.join(', ')} channels`);
+  logger.debug(`   📨 Gateway: ${channels.join(', ')} channels`);
 
   // 4.8. Initialize TaskDispatcher (RFC-02: TaskDispatcher)
   const dispatcher = getTaskDispatcher({
@@ -268,11 +268,11 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
   // Start dispatcher
   dispatcher.start();
-  console.log(`   ⚡ Dispatcher: Task processing started`);
+  logger.info(`   ⚡ Dispatcher: Task processing started`);
 
   // 4.5. Check for onboarding (SOUL.md and USER.md)
   if (needsOnboarding(memoryPath)) {
-    console.log('\n🎬 First-time setup detected!');
+    logger.debug('\n🎬 First-time setup detected!');
 
     // Check if running in interactive mode (TTY)
     const isInteractive = process.stdin.isTTY && process.stdout.isTTY;
@@ -284,7 +284,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
       // Non-interactive mode (e.g., daemon, bot): use quick setup
       logger.info('Non-interactive mode, using quick setup for onboarding');
       await quickSetup(memoryPath);
-      console.log('   📝 Created default SOUL.md and USER.md (quick setup)');
+      logger.info('   📝 Created default SOUL.md and USER.md (quick setup)');
     }
   }
 
@@ -310,13 +310,13 @@ export async function initApp(options: InitOptions = {}): Promise<{
   appState.provider = defaultProvider;
   appState.model = model;
 
-  console.log(`   🤖 Provider: ${defaultProvider.name} (${defaultProvider.type})`);
-  console.log(`   🎯 Model: ${model}`);
+  logger.debug(`   🤖 Provider: ${defaultProvider.name} (${defaultProvider.type})`);
+  logger.debug(`   🎯 Model: ${model}`);
 
   // Merge role params with agent params (agent overrides role)
   const resolvedParams = { ...roleDef.params, ...agentConfig.params };
   if (resolvedParams && Object.keys(resolvedParams).length > 0) {
-    console.log(`   ⚙️  Resolved params:`, resolvedParams);
+    logger.debug(`   ⚙️  Resolved params:`, resolvedParams);
   }
 
   // Resolve vision configuration (v6: role reference pattern)
@@ -326,7 +326,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   if (agentConfig.visionConfig) {
     // 1. Explicit visionConfig (highest priority)
     resolvedVisionConfig = agentConfig.visionConfig;
-    console.log(`   👁️  Vision config: explicit configuration`);
+    logger.debug(`   👁️  Vision config: explicit configuration`);
   } else if (agentConfig.visionRole && config.roles[agentConfig.visionRole]) {
     // 2. Vision role reference
     const visionRoleDef = config.roles[agentConfig.visionRole];
@@ -338,7 +338,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
         textModel: model, // Use agent's model for intent detection
         visionSystemPrompt: undefined, // Use default
       };
-      console.log(`   👁️  Vision role: ${agentConfig.visionRole} (${visionRoleDef.model})`);
+      logger.debug(`   👁️  Vision role: ${agentConfig.visionRole} (${visionRoleDef.model})`);
     }
   }
   // 3. Default: use agent's model for both vision and text (handled in session/index.ts)
@@ -363,7 +363,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 8. Load all persisted sessions
   const sessionCount = loadAllSessions();
   if (sessionCount > 0) {
-    console.log(`   📬 Sessions: ${sessionCount} loaded from disk`);
+    logger.info(`   📬 Sessions: ${sessionCount} loaded from disk`);
   }
 
   // 9. Initialize subagent runtime
@@ -389,11 +389,11 @@ export async function initApp(options: InitOptions = {}): Promise<{
   if (config.mcp?.enabled && config.mcp.servers?.length > 0) {
     const mcpResult = await initializeMCP(config.mcp);
     if (mcpResult.success > 0) {
-      console.log(`   🔌 MCP: ${mcpResult.success} server(s) connected`);
+      logger.info(`   🔌 MCP: ${mcpResult.success} server(s) connected`);
     }
     if (mcpResult.errors.length > 0) {
       mcpResult.errors.forEach(e => {
-        console.warn(`   ⚠️  MCP ${e.serverId}: ${e.error}`);
+        logger.warn(`   ⚠️  MCP ${e.serverId}: ${e.error}`);
       });
     }
   }
@@ -415,11 +415,11 @@ export async function initApp(options: InitOptions = {}): Promise<{
     });
 
     if (pluginResult.loaded.length > 0) {
-      console.log(`   🔌 Plugins: ${pluginResult.loaded.length} loaded (${pluginResult.loaded.join(', ')})`);
+      logger.info(`   🔌 Plugins: ${pluginResult.loaded.length} loaded (${pluginResult.loaded.join(', ')})`);
     }
     if (pluginResult.failed.length > 0) {
       pluginResult.failed.forEach(f => {
-        console.warn(`   ⚠️  Plugin ${f.id}: ${f.error}`);
+        logger.warn(`   ⚠️  Plugin ${f.id}: ${f.error}`);
       });
     }
   }
@@ -428,11 +428,11 @@ export async function initApp(options: InitOptions = {}): Promise<{
   await initializeTimezoneCache();
   const resolvedLocation = resolveUserLocation();
   const resolvedTimezone = resolveUserTimezone();
-  console.log(`   📍 Location: ${resolvedLocation} | Timezone: ${resolvedTimezone}`);
+  logger.debug(`   📍 Location: ${resolvedLocation} | Timezone: ${resolvedTimezone}`);
 
   // 9.11. [V2 FIX] Bootstrap health check system
   bootstrapHealthCheck();
-  console.log(`   🏥 Health Check: Initialized and monitoring data sources`);
+  logger.info(`   🏥 Health Check: Initialized and monitoring data sources`);
 
   // 9.12. Initialize Tiered LLM Router
   if (config.llmRouter?.enabled !== false) {
@@ -496,15 +496,15 @@ export async function initApp(options: InitOptions = {}): Promise<{
       const standardModel = router.selectModelForTier('standard');
       const advancedModel = router.selectModelForTier('advanced');
 
-      console.log(`   🎚️  LLM Router: Tiered system enabled`);
-      console.log(`      FAST: ${fastModel} | STANDARD: ${standardModel} | ADVANCED: ${advancedModel}`);
-      console.log(`      Skill matching: LLM-enhanced matching enabled`);
+      logger.debug(`   🎚️  LLM Router: Tiered system enabled`);
+      logger.debug(`      FAST: ${fastModel} | STANDARD: ${standardModel} | ADVANCED: ${advancedModel}`);
+      logger.debug(`      Skill matching: LLM-enhanced matching enabled`);
     } catch (error) {
       logger.warn('[App] Failed to initialize LLM Router, falling back to default:', error);
-      console.log(`   ⚠️  LLM Router: Using default model for all tasks`);
+      logger.debug(`   ⚠️  LLM Router: Using default model for all tasks`);
     }
   } else {
-    console.log(`   ℹ️  LLM Router: Disabled (using default model for all tasks)`);
+    logger.debug(`   ℹ️  LLM Router: Disabled (using default model for all tasks)`);
   }
 
   // 10. Create agent (singleton)
@@ -643,7 +643,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
         config.extraction
       );
       appState.extractionManager = extractionManager;
-      console.log(`   🧠 Extraction: enabled (interval: ${config.extraction.periodicInterval || 10} rounds)`);
+      logger.debug(`   🧠 Extraction: enabled (interval: ${config.extraction.periodicInterval || 10} rounds)`);
     } catch (error) {
       logger.error('[App] Failed to initialize extraction manager', error);
     }
@@ -667,7 +667,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
       });
 
       if (result.success) {
-        console.log(`   🔍 Daily reflection task created (runs at 3:00 AM)`);
+        logger.info(`   🔍 Daily reflection task created (runs at 3:00 AM)`);
       }
     } catch (error) {
       logger.error('[App] Failed to create reflection schedule', error);
@@ -675,7 +675,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   }
 
   appState.initialized = true;
-  console.log('   ✅ Beeclaw initialized\n');
+  logger.info('   ✅ Beeclaw initialized\n');
 
   // 11.5. Web server is now started by WebAdapter (not here)
   // See: src/adapter/web/adapter.ts and src/entries/web.ts
@@ -697,7 +697,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   //   };
   //
   //   if (recoveryConfig.enabled) {
-  //     console.log(`   ⏰ Session recovery enabled (delay: ${recoveryConfig.startupDelay / 1000}s)`);
+  //     logger.debug(`   ⏰ Session recovery enabled (delay: ${recoveryConfig.startupDelay / 1000}s)`);
   //
   //     setTimeout(async () => {
   //       await recoverUnansweredSessions(recoveryConfig, {
@@ -716,7 +716,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
     const sandboxManager = SandboxManager.getInstance();
     await sandboxManager.initialize(sandboxConfig);
     const stats = sandboxManager.getStats();
-    console.log(`   🔒 Sandbox: ${stats.providers.join(', ')} provider(s) ready`);
+    logger.debug(`   🔒 Sandbox: ${stats.providers.join(', ')} provider(s) ready`);
   }
 
   return {

@@ -4,6 +4,7 @@
  * Tool for LLM to request background deep analysis for complex questions
  */
 
+import { logger } from '../../infra/observability/logger';
 import { z } from 'zod';
 import { getTaskManager } from '../../infra/queue/manager';
 import type { AnalysisJobData } from '../queue/types';
@@ -130,7 +131,7 @@ export async function executeRequestDeepAnalysis(
     const client = getFeishuWSClient();
     if (client && chatId) {
       await client.sendTextMessage(chatId, 'chat_id', quick_response);
-      console.log(`[DeepAnalysis] Quick reply sent to chat: ${chatId}`);
+      logger.debug(`[DeepAnalysis] Quick reply sent to chat: ${chatId}`);
     }
 
     // 2. Create analysis job
@@ -155,9 +156,9 @@ export async function executeRequestDeepAnalysis(
 
     const { jobId } = await manager.addJob('analysis-jobs', 'deep-analysis', jobData);
 
-    console.log(`[DeepAnalysis] Created analysis job: ${jobId}`);
-    console.log(`[DeepAnalysis] Reason: ${reason}`);
-    console.log(`[DeepAnalysis] Tasks: ${jobData.analysisTasks.join(', ')}`);
+    logger.info(`[DeepAnalysis] Created analysis job: ${jobId}`);
+    logger.debug(`[DeepAnalysis] Reason: ${reason}`);
+    logger.debug(`[DeepAnalysis] Tasks: ${jobData.analysisTasks.join(', ')}`);
 
     return {
       success: true,
@@ -167,7 +168,7 @@ export async function executeRequestDeepAnalysis(
       },
     };
   } catch (error) {
-    console.error('[DeepAnalysis] Failed to create analysis job:', error);
+    logger.error('[DeepAnalysis] Failed to create analysis job:', error);
     return {
       success: false,
       error: `Failed to create analysis job: ${error instanceof Error ? error.message : 'Unknown error'}`,

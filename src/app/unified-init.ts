@@ -4,6 +4,7 @@
  * 统一初始化模块，包含钩子、MCP、子代理注册表等
  */
 
+import { logger } from '../infra/observability/logger';
 import { getHookRunner, resetHookRunner, type HookName, type HookHandler } from '../adapter/plugins/hooks';
 import { getMCPManager, resetMCPManager, type MCPServerConfig } from '../adapter/mcp';
 import { getSubagentRegistry, resetSubagentRegistry, type SubagentRegistryConfig } from '../domain/subagent/registry';
@@ -88,7 +89,7 @@ export async function initializeUnified(config: UnifiedInitConfig = {}): Promise
     }
 
     result.hooks.enabled = true;
-    console.log(`[Init] Hooks initialized: ${result.hooks.registered} handlers`);
+    logger.info(`[Init] Hooks initialized: ${result.hooks.registered} handlers`);
   }
 
   // 2. 初始化 MCP
@@ -108,12 +109,12 @@ export async function initializeUnified(config: UnifiedInitConfig = {}): Promise
           serverId: serverConfig.id,
           error: message,
         });
-        console.error(`[Init] MCP ${serverConfig.id} failed:`, message);
+        logger.error(`[Init] MCP ${serverConfig.id} failed:`, message);
       }
     }
 
     result.mcp.enabled = true;
-    console.log(`[Init] MCP initialized: ${result.mcp.connected} connected, ${result.mcp.failed} failed`);
+    logger.info(`[Init] MCP initialized: ${result.mcp.connected} connected, ${result.mcp.failed} failed`);
   }
 
   // 3. 初始化子代理注册表
@@ -121,7 +122,7 @@ export async function initializeUnified(config: UnifiedInitConfig = {}): Promise
     const registry = getSubagentRegistry(config.subagent?.config);
     result.subagent.enabled = true;
     result.subagent.restored = registry.getStats().totalRuns;
-    console.log(`[Init] Subagent registry initialized: ${result.subagent.restored} records`);
+    logger.info(`[Init] Subagent registry initialized: ${result.subagent.restored} records`);
   }
 
   // 4. 初始化混合搜索
@@ -131,7 +132,7 @@ export async function initializeUnified(config: UnifiedInitConfig = {}): Promise
     const status = manager.getStatus();
     result.hybridSearch.enabled = true;
     result.hybridSearch.vectorAvailable = status.vector.available;
-    console.log(`[Init] Hybrid search initialized: vector=${status.vector.available}, fts=${status.fts.available}`);
+    logger.info(`[Init] Hybrid search initialized: vector=${status.vector.available}, fts=${status.fts.available}`);
   }
 
   return result;
@@ -158,7 +159,7 @@ export async function resetUnified(): Promise<void> {
   // 重置混合搜索
   resetHybridSearchManager();
 
-  console.log('[Init] Unified modules reset');
+  logger.debug('[Init] Unified modules reset');
 }
 
 // ============================================================================

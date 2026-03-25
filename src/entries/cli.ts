@@ -9,13 +9,14 @@
  * Note: Bun automatically loads .env file
  */
 
+import { logger } from '../infra/observability/logger';
 import { CLIAdapter } from '../adapter/cli/adapter';
 import { adapterRegistry } from '../infra/entry';
 import { initApp } from '../app';
 import { GracefulShutdown } from '../infra/utils/graceful-shutdown';
 
 function showHelp(): void {
-  console.log(`
+  logger.debug(`
 🐝 Beeclaw CLI - Interactive AI Assistant
 
 Usage:
@@ -39,7 +40,7 @@ async function main() {
     showHelp();
   }
 
-  console.log('🐝 Starting Beeclaw CLI...\n');
+  logger.info('🐝 Starting Beeclaw CLI...\n');
 
   try {
     // 初始化应用
@@ -54,7 +55,7 @@ async function main() {
     await cliAdapter.initialize(context);
     await cliAdapter.start();
 
-    console.log('\n✅ Beeclaw CLI started\n');
+    logger.info('\n✅ Beeclaw CLI started\n');
 
     // 设置优雅关闭
     // FIX (P0): Use GracefulShutdown's actual API — register() + installSignalHandlers().
@@ -66,7 +67,7 @@ async function main() {
       name: 'cli-adapter-shutdown',
       priority: 10,
       fn: async () => {
-        console.log('\n\n🛑 Shutting down CLI...');
+        logger.debug('\n\n🛑 Shutting down CLI...');
         await adapterRegistry.stopAll();
       },
     });
@@ -77,7 +78,7 @@ async function main() {
     // 注意：实际的 REPL 循环在 src/cli.ts 中
     await import('../cli');
   } catch (error) {
-    console.error('❌ Failed to start Beeclaw CLI:', error);
+    logger.error('❌ Failed to start Beeclaw CLI:', error);
     process.exit(1);
   }
 }

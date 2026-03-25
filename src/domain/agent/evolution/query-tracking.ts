@@ -9,6 +9,7 @@
  * @module evolution/query-tracking
  */
 
+import { logger } from '../../../infra/observability/logger';
 import { getMemoryStore } from '../../memory';
 
 /**
@@ -96,12 +97,12 @@ export function recordQuery(
 
   // Persist to memory store (async, non-blocking)
   persistQueryRecord(record).catch((error) => {
-    console.error('[QueryTracking] Failed to persist query record:', error);
+    logger.error('[QueryTracking] Failed to persist query record:', error);
   });
 
   // Check for patterns (async, non-blocking)
   detectPatternsAsync().catch((error) => {
-    console.error('[QueryTracking] Pattern detection failed:', error);
+    logger.error('[QueryTracking] Pattern detection failed:', error);
   });
 }
 
@@ -198,11 +199,11 @@ async function detectPatternsAsync(): Promise<void> {
     const patterns = detectPatterns();
 
     if (patterns.length > 0) {
-      console.log(`[QueryTracking] Detected ${patterns.length} query patterns`);
+      logger.debug(`[QueryTracking] Detected ${patterns.length} query patterns`);
 
       // Store patterns as facts
       storePatterns(patterns).catch((error) => {
-        console.error('[QueryTracking] Failed to store patterns:', error);
+        logger.error('[QueryTracking] Failed to store patterns:', error);
       });
     }
   }, 100);
@@ -324,11 +325,11 @@ async function storePatterns(patterns: QueryPattern[]): Promise<void> {
           },
         });
 
-        console.log(`[QueryTracking] Stored pattern: ${pattern.pattern} (${pattern.frequency}x)`);
+        logger.debug(`[QueryTracking] Stored pattern: ${pattern.pattern} (${pattern.frequency}x)`);
       }
     }
   } catch (error) {
-    console.error('[QueryTracking] Failed to store patterns:', error);
+    logger.error('[QueryTracking] Failed to store patterns:', error);
   }
 }
 

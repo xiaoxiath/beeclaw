@@ -192,10 +192,10 @@ export class SkillStore {
       mature: skills.filter(s => s.maturityScore >= 70).length,
     };
 
-    console.log(`   📚 Skills: ${skills.length} loaded (${builtinCount} builtin, ${userCount} user)`);
-    console.log(`      Avg maturity: ${avgMaturity}% | Total usage: ${totalUsage} | Load time: ${loadTime}ms`);
+    logger.info(`   📚 Skills: ${skills.length} loaded (${builtinCount} builtin, ${userCount} user)`);
+    logger.debug(`      Avg maturity: ${avgMaturity}% | Total usage: ${totalUsage} | Load time: ${loadTime}ms`);
     if (skills.length > 0) {
-      console.log(`      Maturity: ${maturityDistribution.seed} seed, ${maturityDistribution.growing} growing, ${maturityDistribution.mature} mature`);
+      logger.debug(`      Maturity: ${maturityDistribution.seed} seed, ${maturityDistribution.growing} growing, ${maturityDistribution.mature} mature`);
     }
 
     return skills;
@@ -1418,7 +1418,7 @@ export class SkillStore {
           };
         }
       } catch (error) {
-        console.error('[SkillStore] LLM matching failed, falling back to keyword matching:', error);
+        logger.error('[SkillStore] LLM matching failed, falling back to keyword matching:', error);
         // 降级：继续使用关键词匹配
       }
     }

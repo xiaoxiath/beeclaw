@@ -162,14 +162,14 @@ class StdoutLogExporter implements LogExporter {
       const msg = `${prefix}${moduleTag}${traceTag} ${entry.message}`;
 
       switch (entry.level) {
-        case 'error': console.error(msg); break;
-        case 'warn': console.warn(msg); break;
+        case 'error': logger.error(msg); break;
+        case 'warn': logger.warn(msg); break;
         case 'debug': console.debug(msg); break;
-        default: console.log(msg);
+        default: logger.debug(msg);
       }
 
       if (entry.error?.stack) {
-        console.error(entry.error.stack);
+        logger.error(entry.error.stack);
       }
     }
   }
@@ -178,7 +178,7 @@ class StdoutLogExporter implements LogExporter {
 /** 标准输出 Trace Exporter */
 class StdoutTraceExporter implements TraceExporter {
   export(span: Span): void {
-    console.log(JSON.stringify({
+    logger.debug(JSON.stringify({
       type: 'span',
       traceId: span.traceId,
       spanId: span.spanId,

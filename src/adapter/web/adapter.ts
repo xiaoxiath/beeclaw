@@ -58,7 +58,7 @@ export class WebAdapter implements EntryAdapter {
       this.startTime = Date.now();
 
       const displayHost = host === '0.0.0.0' ? 'localhost' : host;
-      console.log(`   🌐 Web UI: http://${displayHost}:${port}`);
+      logger.debug(`   🌐 Web UI: http://${displayHost}:${port}`);
 
       logger.info(`[WebAdapter] Server started on ${host}:${port}`);
     } catch (error) {

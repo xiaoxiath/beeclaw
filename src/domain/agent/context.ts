@@ -9,6 +9,7 @@
  * - Whitespace/punctuation: varies
  */
 
+import { logger } from '../../infra/observability/logger';
 import type { MultimodalContent } from './types';
 
 // Token estimation ratios
@@ -33,7 +34,7 @@ function _loadTiktoken(): ((text: string) => number) | null {
     const tiktoken = require('tiktoken');
     const enc = tiktoken.encoding_for_model('gpt-4o');
     _tiktokenEncode = (text: string) => enc.encode(text).length;
-    console.log('[TokenEstimation] tiktoken loaded — using precise token counting');
+    logger.info('[TokenEstimation] tiktoken loaded — using precise token counting');
     return _tiktokenEncode;
   } catch {
     try {
@@ -41,11 +42,11 @@ function _loadTiktoken(): ((text: string) => number) | null {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { encode } = require('gpt-tokenizer');
       _tiktokenEncode = (text: string) => encode(text).length;
-      console.log('[TokenEstimation] gpt-tokenizer loaded — using precise token counting');
+      logger.info('[TokenEstimation] gpt-tokenizer loaded — using precise token counting');
       return _tiktokenEncode;
     } catch {
       _tiktokenEncode = null;
-      console.log('[TokenEstimation] No tokenizer library found — using heuristic estimation');
+      logger.debug('[TokenEstimation] No tokenizer library found — using heuristic estimation');
       return null;
     }
   }

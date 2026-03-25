@@ -70,7 +70,7 @@ export async function prepareProactiveContext(
         });
 
         await controller.pushContent({ type: 'thinking', thinking: 'Thinking...' });
-        console.log('[ProactiveSteps] Card V2 initialized with Thinking placeholder');
+        logger.info('[ProactiveSteps] Card V2 initialized with Thinking placeholder');
       }
     }
   } catch (error) {

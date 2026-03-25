@@ -311,9 +311,9 @@ export function initSessionManager(config: {
         config.memoryDir || './data/memory',
         config.extractionConfig || {}
       );
-      console.log('[Session] Extraction manager initialized');
+      logger.info('[Session] Extraction manager initialized');
     } catch (error) {
-      console.error('[Session] Failed to initialize extraction manager:', error);
+      logger.error('[Session] Failed to initialize extraction manager:', error);
     }
   }
 }
@@ -328,7 +328,7 @@ export function clearRecoveryFlag(sessionId: string): void {
     session.responseDelivered = true;
     session.updatedAt = new Date().toISOString();
     saveSession(session);
-    console.log(`[Session] 📤 Response delivered, recovery flag cleared for ${sessionId}`);
+    logger.info(`[Session] 📤 Response delivered, recovery flag cleared for ${sessionId}`);
   }
 }
 
@@ -351,7 +351,7 @@ export function confirmDelivery(sessionId: string): void {
     session.responseDelivered = true;
     session.updatedAt = new Date().toISOString();
     saveSession(session);
-    console.log(`[Session] Delivery confirmed for session ${sessionId}`);
+    logger.info(`[Session] Delivery confirmed for session ${sessionId}`);
   }
 }
 
@@ -388,7 +388,7 @@ export function isMessageProcessed(sessionId: string, messageId: string): boolea
   if (state.status === 'processing') {
     const elapsed = Date.now() - state.startedAt;
     if (elapsed > PROCESSING_STALE_TIMEOUT_MS) {
-      console.warn(`[Session] Stale processing detected for message ${messageId} (elapsed: ${Math.round(elapsed / 1000)}s). Allowing retry.`);
+      logger.warn(`[Session] Stale processing detected for message ${messageId} (elapsed: ${Math.round(elapsed / 1000)}s). Allowing retry.`);
       return false; // Allow re-processing
     }
     return true; // Still actively processing, skip duplicate
@@ -397,7 +397,7 @@ export function isMessageProcessed(sessionId: string, messageId: string): boolea
   // Failed → allow retry if under limit
   if (state.status === 'failed') {
     if (state.retryCount >= MAX_MESSAGE_RETRY_COUNT) {
-      console.warn(`[Session] Message ${messageId} permanently failed after ${state.retryCount} retries. Skipping.`);
+      logger.warn(`[Session] Message ${messageId} permanently failed after ${state.retryCount} retries. Skipping.`);
       return true; // Exhausted retries
     }
     return false; // Allow retry
@@ -446,7 +446,7 @@ export function markMessageProcessing(sessionId: string, messageId: string): voi
   session.updatedAt = new Date().toISOString();
   saveSession(session);
 
-  console.log(`[Session] ⏳ Message marked as processing: ${messageId} (retry #${prevRetryCount})`);
+  logger.debug(`[Session] ⏳ Message marked as processing: ${messageId} (retry #${prevRetryCount})`);
 }
 
 /**
@@ -492,7 +492,7 @@ export function markMessageCompleted(
   session.updatedAt = new Date().toISOString();
   saveSession(session);
 
-  console.log(`[Session] ✅ Message marked as completed: ${messageId}`);
+  logger.info(`[Session] ✅ Message marked as completed: ${messageId}`);
 }
 
 /**
@@ -530,7 +530,7 @@ export function markMessageFailed(
   session.updatedAt = new Date().toISOString();
   saveSession(session);
 
-  console.warn(`[Session] ❌ Message marked as failed: ${messageId} (retry #${prevRetryCount + 1}, error: ${error})`);
+  logger.warn(`[Session] ❌ Message marked as failed: ${messageId} (retry #${prevRetryCount + 1}, error: ${error})`);
 }
 
 /**
@@ -568,7 +568,7 @@ export function calculateRecoveryBackoff(sessionId: string): number {
   const MAX_FAILURES = 5;
   
   if (failures >= MAX_FAILURES) {
-    console.warn(`[Session] Recovery permanently failed for ${sessionId} after ${failures} attempts`);
+    logger.warn(`[Session] Recovery permanently failed for ${sessionId} after ${failures} attempts`);
     return -1;
   }
   
@@ -578,7 +578,7 @@ export function calculateRecoveryBackoff(sessionId: string): number {
   saveSession(session);
   
   const delayMs = 1000 * Math.pow(4, failures); // 1s, 4s, 16s, 64s, 256s
-  console.log(`[Session] Recovery backoff for ${sessionId}: attempt ${failures + 1}/${MAX_FAILURES}, delay ${delayMs}ms`);
+  logger.debug(`[Session] Recovery backoff for ${sessionId}: attempt ${failures + 1}/${MAX_FAILURES}, delay ${delayMs}ms`);
   return delayMs;
 }
 
@@ -601,7 +601,7 @@ export function getSessionSummary(
 
   // [AUDIT FIX P-3] Permission check: verify requester has access to this session
   if (requesterId && session.userId && requesterId !== session.userId) {
-    console.warn(
+    logger.warn(
       `[Session] Access denied: user ${requesterId} cannot access session ${sessionId} ` +
       `(owner: ${session.userId})`
     );
@@ -624,7 +624,7 @@ export function markResponseDelivered(sessionId: string): void {
     session.responseDelivered = true;
     session.updatedAt = new Date().toISOString();
     saveSession(session);
-    console.log(`[Session] 📤 Response delivered to user for ${sessionId}`);
+    logger.info(`[Session] 📤 Response delivered to user for ${sessionId}`);
   }
 }
 
@@ -681,7 +681,7 @@ export function saveSession(session: Session): void {
     // Save to SQLite if enabled (dual-mode)
     saveSessionToSQLite(session);
   } catch (error) {
-    console.error('[Session] Failed to save session:', error);
+    logger.error('[Session] Failed to save session:', error);
   }
 }
 
@@ -693,7 +693,7 @@ function loadSession(sessionId: string): Session | null {
   if (USE_SQLITE) {
     const sqliteSession = loadSessionFromSQLite(sessionId);
     if (sqliteSession) {
-      console.log(`[Session] Loaded from SQLite: ${sessionId}`);
+      logger.info(`[Session] Loaded from SQLite: ${sessionId}`);
       return sqliteSession;
     }
   }
@@ -706,13 +706,13 @@ function loadSession(sessionId: string): Session | null {
     const data = readFileWithRecovery<Session>(filePath, isValidSession);
 
     if (!data) {
-      console.warn(`[Session] Failed to load session ${sessionId} (corrupted or missing)`);
+      logger.warn(`[Session] Failed to load session ${sessionId} (corrupted or missing)`);
       return null;
     }
 
     return data;
   } catch (error) {
-    console.error('[Session] Failed to load session:', error);
+    logger.error('[Session] Failed to load session:', error);
     return null;
   }
 }
@@ -760,7 +760,7 @@ function loadSessionFromSQLite(sessionId: string): Session | null {
 
     return session;
   } catch (error) {
-    console.error('[Session] Failed to load from SQLite:', error);
+    logger.error('[Session] Failed to load from SQLite:', error);
     return null;
   }
 }
@@ -811,7 +811,7 @@ function saveSessionToSQLite(session: Session): void {
         .run();
     }
   } catch (error) {
-    console.error('[Session] Failed to save to SQLite:', error);
+    logger.error('[Session] Failed to save to SQLite:', error);
   }
 }
 
@@ -826,7 +826,7 @@ function deleteSessionFile(sessionId: string): void {
       unlinkSync(filePath);
     }
   } catch (error) {
-    console.error('[Session] Failed to delete session file:', error);
+    logger.error('[Session] Failed to delete session file:', error);
   }
 
   // Delete from SQLite if enabled
@@ -837,7 +837,7 @@ function deleteSessionFile(sessionId: string): void {
         .where(eq(sessionsTable.id, sessionId))
         .run();
     } catch (error) {
-      console.error('[Session] Failed to delete session from SQLite:', error);
+      logger.error('[Session] Failed to delete session from SQLite:', error);
     }
   }
 }
@@ -863,7 +863,7 @@ async function compressMessages(
   const oldMessages = messages.slice(0, splitIndex);
   const recentMessages = messages.slice(splitIndex);
 
-  console.log('[Session] 📊 Compression split:', {
+  logger.debug('[Session] 📊 Compression split:', {
     total: messages.length,
     oldMessages: oldMessages.length,
     recentMessages: recentMessages.length,
@@ -887,7 +887,7 @@ async function compressMessages(
     const compressionModel = fastModelConfig?.model || agentConfig.model;
     const compressionMaxTokens = fastModelConfig?.maxTokens || 200;
 
-    console.log(`[Session] 🗜️ Compressing ${oldMessages.length} messages using ${compressionModel}...`);
+    logger.info(`[Session] 🗜️ Compressing ${oldMessages.length} messages using ${compressionModel}...`);
 
     const response = await callAI({
       provider: agentConfig.provider,
@@ -910,14 +910,14 @@ async function compressMessages(
     const summary = response.choices?.[0]?.message?.content || '';
 
     if (summary) {
-      console.log(`[Session] ✅ Compressed ${oldMessages.length} messages into ${summary.length} chars summary`);
+      logger.info(`[Session] ✅ Compressed ${oldMessages.length} messages into ${summary.length} chars summary`);
     } else {
-      console.warn('[Session] ⚠️ Compression returned empty summary');
+      logger.warn('[Session] ⚠️ Compression returned empty summary');
     }
 
     return { summary, recentMessages };
   } catch (error) {
-    console.error('[Session] ❌ Failed to compress messages:', error);
+    logger.error('[Session] ❌ Failed to compress messages:', error);
     // Fallback: keep all messages if compression fails
     return { summary: '', recentMessages: messages };
   }
@@ -938,7 +938,7 @@ export function getOrCreateSession(options: SessionOptions): Session {
   const loaded = loadSession(options.sessionId);
   if (loaded) {
     sessions.set(options.sessionId, loaded);
-    console.log('[Session] Loaded from disk:', options.sessionId, `(${loaded.messages.length} messages)`);
+    logger.info('[Session] Loaded from disk:', options.sessionId, `(${loaded.messages.length} messages)`);
     return loaded;
   }
 
@@ -1086,7 +1086,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           type: 'thinking',
           thinking: 'Thinking...',
         });
-        console.log('[Session] ⚡ Card V2 initialized with early "Thinking..." placeholder');
+        logger.info('[Session] ⚡ Card V2 initialized with early "Thinking..." placeholder');
       }
     }
   } catch (error) {
@@ -1128,12 +1128,12 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     if (session.messages.length >= sessionConfig.maxMessages) {
       // Skip if already compressing this session
       if (compressionLocks.has(sessionId)) {
-        console.log(`[Session] ⏭️ Compression already in progress for ${sessionId}, skipping`);
+        logger.debug(`[Session] ⏭️ Compression already in progress for ${sessionId}, skipping`);
       } else {
         // Start async compression (fire-and-forget)
         const compressionPromise = (async () => {
           try {
-            console.log(`[Session] 🗜️ Starting background compression for ${sessionId} (${session.messages.length} messages)`);
+            logger.info(`[Session] 🗜️ Starting background compression for ${sessionId} (${session.messages.length} messages)`);
 
             // Record message count before compression to detect messages added during async work
             const messageCountAtStart = session.messages.length;
@@ -1146,7 +1146,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             // Reload session to get latest state (might have changed during compression)
             const latestSession = sessions.get(sessionId) || loadSession(sessionId);
             if (!latestSession) {
-              console.warn(`[Session] Session ${sessionId} disappeared during compression`);
+              logger.warn(`[Session] Session ${sessionId} disappeared during compression`);
               return;
             }
 
@@ -1154,7 +1154,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             // [BUG FIX] Don't accumulate summaries - replace with latest to avoid duplication
             latestSession.summary = summary;
 
-            console.log('[Session] 📝 Updated summary:', {
+            logger.debug('[Session] 📝 Updated summary:', {
               summaryLength: summary.length,
               summaryPreview: summary.substring(0, 100) + '...',
               recentMessagesKept: recentMessages.length,
@@ -1169,9 +1169,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             saveSession(latestSession);
             sessions.set(sessionId, latestSession);
 
-            console.log(`[Session] ✅ Background compression completed for ${sessionId}`);
+            logger.info(`[Session] ✅ Background compression completed for ${sessionId}`);
           } catch (error) {
-            console.error(`[Session] ❌ Background compression failed for ${sessionId}:`, error);
+            logger.error(`[Session] ❌ Background compression failed for ${sessionId}:`, error);
           } finally {
             // Always clean up lock
             compressionLocks.delete(sessionId);
@@ -1191,7 +1191,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     // Add conversation summary if exists
     if (session.summary) {
-      console.log('[Session] ⚠️ Adding summary to system prompt:', {
+      logger.debug('[Session] ⚠️ Adding summary to system prompt:', {
         summaryLength: session.summary.length,
         summaryPreview: session.summary.substring(0, 100) + '...',
         messageCount: session.messages.length,
@@ -1269,7 +1269,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       // STAGE 1: Pure vision recognition (no tools, no skill context)
       // [AUDIT FIX M-03] Now uses configurable model and prompt
       // ========================================
-      console.log(`[Session] 🖼️ Stage 1: Vision recognition using ${visionConfig.visionModel}`);
+      logger.info(`[Session] 🖼️ Stage 1: Vision recognition using ${visionConfig.visionModel}`);
       
       let retries = 0;
       while (retries <= visionConfig.maxRetries) {
@@ -1283,11 +1283,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           });
 
           imageDescription = await visionAgent.chat(options.message);
-          console.log('[Session] 📝 Vision result:', imageDescription?.substring(0, 100));
+          logger.debug('[Session] 📝 Vision result:', imageDescription?.substring(0, 100));
           break; // Success
         } catch (error) {
           retries++;
-          console.error(`[Session] Vision model attempt ${retries} failed:`, error instanceof Error ? error.message : error);
+          logger.error(`[Session] Vision model attempt ${retries} failed:`, error instanceof Error ? error.message : error);
           if (retries > visionConfig.maxRetries) {
             // [AUDIT FIX M-03] Structured fallback on vision failure
             if (visionConfig.fallbackOnError === 'placeholder') {
@@ -1295,7 +1295,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             } else if (visionConfig.fallbackOnError === 'description') {
               imageDescription = '[图片] 无法识别内容，请用文字描述图片中的内容。';
             }
-            console.error('[Session] Vision processing exhausted retries, using fallback');
+            logger.error('[Session] Vision processing exhausted retries, using fallback');
           }
         }
       }
@@ -1309,11 +1309,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       // ========================================
       selectedModel = visionConfig.textModel;
       options.message = imageDescription || '[图片识别失败]';
-      console.log(`[Session] 🧠 Stage 2: Intent detection with ${selectedModel}`);
+      logger.info(`[Session] 🧠 Stage 2: Intent detection with ${selectedModel}`);
     } else {
       // Text-only message — use agent's configured model
       selectedModel = agentConfig.model;
-      console.log(`[Session] 📝 Using text model (${selectedModel}) for text message`);
+      logger.info(`[Session] 📝 Using text model (${selectedModel}) for text message`);
     }
 
     // Check if this is a recovery - don't duplicate the user message
@@ -1341,7 +1341,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // IMPORTANT: This loop assumes session.messages does NOT include the new user message yet
     // The new user message is added AFTER this loop (see line 1043)
 
-    console.log('[Session] ⚠️ Replaying conversation history:', {
+    logger.debug('[Session] ⚠️ Replaying conversation history:', {
       messageCount: session.messages.length,
       messages: session.messages.map(m => ({
         role: m.role,
@@ -1379,7 +1379,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       const lastUserMessage = session.messages[session.messages.length - 1];
       userContentString = lastUserMessage?.content || '';
 
-      console.log('[Session] 🔄 Recovery mode - skipping user message save');
+      logger.debug('[Session] 🔄 Recovery mode - skipping user message save');
     } else if (originalMultimodalMessage) {
       // Image was processed in two stages - will be updated after response
       const textPart = originalMultimodalMessage.find(p => p.type === 'text');
@@ -1401,7 +1401,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     const hitlResult = await handleHITLResponse(sessionId, userContentString);
 
     if (hitlResult !== null) {
-      console.log('[Session] 🔄 HITL response detected, resuming conversation');
+      logger.info('[Session] 🔄 HITL response detected, resuming conversation');
       return {
         success: true,
         response: hitlResult,
@@ -1431,7 +1431,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       session.updatedAt = new Date().toISOString();
       saveSession(session);
 
-      console.log('[Session] 📨 User message saved (recovery-ready)');
+      logger.debug('[Session] 📨 User message saved (recovery-ready)');
     } else {
       // Recovery mode: message already exists in session
       // Ensure pendingRecovery is still true (might have been cleared if response was partially sent)
@@ -1439,7 +1439,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       session.updatedAt = new Date().toISOString();
       saveSession(session);
 
-      console.log('[Session] 🔄 Recovery mode - using existing user message');
+      logger.debug('[Session] 🔄 Recovery mode - using existing user message');
     }
 
     // Get response with smart timeout (inactivity-based)
@@ -1473,7 +1473,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       checkIntervalMs: 30000,  // Check every 30 seconds
       onTimeout: (inactiveMs) => {
         const stats = smartTimeout.getMonitor().getStats();
-        console.error(
+        logger.error(
           `[Session] Agent inactive for ${Math.round(inactiveMs / 1000)}s\n` +
           `  Total runtime: ${Math.round(smartTimeout.getRuntimeMs() / 1000)}s\n` +
           `  Total events: ${stats.totalEvents}\n` +
@@ -1490,7 +1490,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           process.env.DEBUG_SESSION_ACTIVITY === 'true' &&
           (type === 'tool_call' || type === 'subagent')
         ) {
-          console.log(`[Session] Agent activity: ${type}${details ? ` (${details})` : ''}`);
+          logger.debug(`[Session] Agent activity: ${type}${details ? ` (${details})` : ''}`);
         }
       },
     });
@@ -1517,7 +1517,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
       const chatPromise = agent.chat(messageForAgent, {
         onContentBlock: (block) => {
-          console.log('[Session] 📦 Received content block:', JSON.stringify(block, null, 2));
+          logger.debug('[Session] 📦 Received content block:', JSON.stringify(block, null, 2));
           streamingController?.pushContent(block).catch(err => {
             // Silently handle message withdrawn errors
             const errorMsg = err instanceof Error ? err.message : String(err);
@@ -1546,7 +1546,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       if (streamingController) {
         try {
           await streamingController.finish();
-          console.log('[Session] ✅ Card V2 streaming completed');
+          logger.info('[Session] ✅ Card V2 streaming completed');
         } catch (error) {
           logger.warn('[Session] Failed to finish streaming:', error);
         }
@@ -1558,7 +1558,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       // Success
       const runtime = Math.round(smartTimeout.getRuntimeMs() / 1000);
       if (runtime > 30) {
-        console.log(
+        logger.info(
           `[Session] Agent completed in ${runtime}s\n` +
           smartTimeout.getMonitor().formatReport()
         );
@@ -1593,7 +1593,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     // Validate response
     if (!response || response.trim().length === 0) {
-      console.error('[Session] Agent returned empty response');
+      logger.error('[Session] Agent returned empty response');
       return { success: false, error: 'AI 返回了空响应' };
     }
 
@@ -1611,7 +1611,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       const lastUserMessage = session.messages[session.messages.length - 1];
       if (lastUserMessage && lastUserMessage.role === 'user') {
         lastUserMessage.content = `[图片] ${userText || '(图片)'}\n[识别结果]: ${imageDescription}`;
-        console.log('[Session] 📷 User message updated with image recognition result');
+        logger.debug('[Session] 📷 User message updated with image recognition result');
       }
 
       assistantContentString = response;
@@ -1621,7 +1621,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     // Get tool calls from agent if available
     const lastToolCalls = agent.getLastToolCalls?.() || [];
-    console.log('[Session] Tool calls from agent:', lastToolCalls.length, lastToolCalls);
+    logger.debug('[Session] Tool calls from agent:', lastToolCalls.length, lastToolCalls);
 
     // Save assistant response with tool calls
     session.messages.push({
@@ -1636,14 +1636,14 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // and can be re-delivered on next recovery without reprocessing
     session.pendingDelivery = true;
     session.lastAiResponse = assistantContentString;
-    console.log('[Session] ✓ AI responded, set pendingDelivery=true for safe recovery');
+    logger.debug('[Session] ✓ AI responded, set pendingDelivery=true for safe recovery');
 
     // CRITICAL FIX #2: Clear pendingRecovery flag immediately after AI responds
     // This prevents recovery from reprocessing already-answered messages
     // (Previously this was only cleared after Feishu delivery, which caused race conditions)
     if (session.pendingRecovery) {
       session.pendingRecovery = false;
-      console.log('[Session] ✓ Cleared pendingRecovery flag');
+      logger.debug('[Session] ✓ Cleared pendingRecovery flag');
     }
 
     // NOTE: responseDelivered flag is for tracking Feishu delivery status
@@ -1677,10 +1677,10 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : '';
-    console.error('[Session] ❌ sendProactiveMessage failed:', errorMessage);
-    console.error('[Session] Stack:', errorStack);
-    console.error('[Session] SessionId:', options.sessionId);
-    console.error('[Session] Message:', typeof options.message === 'string'
+    logger.error('[Session] ❌ sendProactiveMessage failed:', errorMessage);
+    logger.error('[Session] Stack:', errorStack);
+    logger.error('[Session] SessionId:', options.sessionId);
+    logger.error('[Session] Message:', typeof options.message === 'string'
       ? options.message.substring(0, 100)
       : '[Multimodal content]');
     return {
@@ -1752,11 +1752,11 @@ export function loadAllSessions(): number {
       sessions.set(session.id, session);
       loaded++;
     } catch (error) {
-      console.error('[Session] Failed to load', file, error);
+      logger.error('[Session] Failed to load', file, error);
     }
   }
 
-  console.log(`[Session] Loaded ${loaded} sessions from disk`);
+  logger.info(`[Session] Loaded ${loaded} sessions from disk`);
   return loaded;
 }
 
@@ -1801,12 +1801,12 @@ async function runExtractionInBackground(session: Session): Promise<void> {
     });
 
     if (result.triggered && result.notifications.length > 0) {
-      console.log('[Session] Extraction notifications:', result.notifications);
+      logger.debug('[Session] Extraction notifications:', result.notifications);
       // TODO: Send notifications to user via channel handler
     }
   } catch (error) {
     // Extraction errors should not affect the main conversation
-    console.error('[Session] Background extraction failed:', error);
+    logger.error('[Session] Background extraction failed:', error);
   }
 }
 
@@ -1838,10 +1838,10 @@ export function saveAllSessions(): void {
       saveSession(session);
       saved++;
     } catch (error) {
-      console.error(`[Session] Failed to save session ${session.id}:`, error);
+      logger.error(`[Session] Failed to save session ${session.id}:`, error);
     }
   }
-  console.log(`[Session] Saved ${saved} sessions to disk`);
+  logger.info(`[Session] Saved ${saved} sessions to disk`);
 }
 
 // Export recovery module
@@ -1860,7 +1860,7 @@ export function injectProactiveResult(
 ): boolean {
   const session = sessions.get(targetSessionId);
   if (!session) {
-    console.warn(`[Session] Cannot inject proactive result: session ${targetSessionId} not found`);
+    logger.warn(`[Session] Cannot inject proactive result: session ${targetSessionId} not found`);
     return false;
   }
 
@@ -1878,7 +1878,7 @@ export function injectProactiveResult(
   session.updatedAt = ts;
   saveSession(session);
 
-  console.log(`[Session] 📥 Proactive result injected into session ${targetSessionId} from ${result.source}`);
+  logger.info(`[Session] 📥 Proactive result injected into session ${targetSessionId} from ${result.source}`);
   return true;
 }
 

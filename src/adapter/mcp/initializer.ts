@@ -4,6 +4,7 @@
  * 在应用启动时初始化 MCP 连接
  */
 
+import { logger } from '../../infra/observability/logger';
 import { getMCPManager, type MCPServerConfig } from './client';
 import type { MCPConfig } from '../../infra/config/schema';
 
@@ -22,22 +23,22 @@ export async function initializeMCP(config: MCPConfig): Promise<{
   };
 
   if (!config.enabled) {
-    console.log('[MCP] MCP is disabled');
+    logger.debug('[MCP] MCP is disabled');
     return result;
   }
 
   if (!config.servers || config.servers.length === 0) {
-    console.log('[MCP] No MCP servers configured');
+    logger.debug('[MCP] No MCP servers configured');
     return result;
   }
 
   const manager = getMCPManager();
 
-  console.log(`[MCP] Initializing ${config.servers.length} MCP server(s)...`);
+  logger.debug(`[MCP] Initializing ${config.servers.length} MCP server(s)...`);
 
   for (const serverConfig of config.servers) {
     if (serverConfig.enabled === false) {
-      console.log(`[MCP] Skipping disabled server: ${serverConfig.name}`);
+      logger.debug(`[MCP] Skipping disabled server: ${serverConfig.name}`);
       continue;
     }
 
@@ -51,11 +52,11 @@ export async function initializeMCP(config: MCPConfig): Promise<{
         serverId: serverConfig.id,
         error: message,
       });
-      console.error(`[MCP] Failed to connect to ${serverConfig.name} (${serverConfig.id}):`, message);
+      logger.error(`[MCP] Failed to connect to ${serverConfig.name} (${serverConfig.id}):`, message);
     }
   }
 
-  console.log(`[MCP] Initialized: ${result.success} connected, ${result.failed} failed`);
+  logger.info(`[MCP] Initialized: ${result.success} connected, ${result.failed} failed`);
 
   return result;
 }
@@ -66,7 +67,7 @@ export async function initializeMCP(config: MCPConfig): Promise<{
 export async function shutdownMCP(): Promise<void> {
   const manager = getMCPManager();
   await manager.disconnectAll();
-  console.log('[MCP] All MCP connections closed');
+  logger.debug('[MCP] All MCP connections closed');
 }
 
 /**

@@ -8,6 +8,7 @@
  * - 管理 memory 插件独占槽位
  */
 
+import { logger } from '../../../infra/observability/logger';
 import { join } from "path";
 import { createJiti } from "jiti";
 import { fileURLToPath } from "url";
@@ -77,7 +78,7 @@ export async function loadPlugins(options: LoadPluginsOptions = {}): Promise<Loa
 
   // 1. ─── 发现插件 ───
   const candidates = discoverPlugins(options.discovery || {});
-  console.log(`[Loader] Discovered ${candidates.length} plugins`);
+  logger.debug(`[Loader] Discovered ${candidates.length} plugins`);
 
   // 2. ─── 过滤禁用的插件 ───
   const filtered = candidates.filter(
@@ -97,7 +98,7 @@ export async function loadPlugins(options: LoadPluginsOptions = {}): Promise<Loa
       // 3b. 独占槽位检查（memory 类型）
       if (manifest.kind === "memory") {
         if (memorySlotOccupied) {
-          console.warn(
+          logger.warn(
             `[Loader] Skipping memory plugin "${manifest.id}" — ` +
               `slot occupied by "${memorySlotOccupied}"`
           );
@@ -143,10 +144,10 @@ export async function loadPlugins(options: LoadPluginsOptions = {}): Promise<Loa
       }
 
       loaded.push(manifest.id);
-      console.log(`[Loader] ✅ Loaded: ${manifest.id} (${manifest.kind ?? "general"})`);
+      logger.info(`[Loader] ✅ Loaded: ${manifest.id} (${manifest.kind ?? "general"})`);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[Loader] ❌ Failed: "${candidate.id}" — ${errMsg}`);
+      logger.error(`[Loader] ❌ Failed: "${candidate.id}" — ${errMsg}`);
       failed.push({ id: candidate.id, error: errMsg });
       registry.diagnostics.push({
         pluginId: candidate.id,
@@ -159,7 +160,7 @@ export async function loadPlugins(options: LoadPluginsOptions = {}): Promise<Loa
   // 4. ─── 创建 Hook Runner ───
   const hookRunner = createHookRunner(registry);
 
-  console.log(`[Loader] Done. Loaded: ${loaded.length}, Failed: ${failed.length}`);
+  logger.info(`[Loader] Done. Loaded: ${loaded.length}, Failed: ${failed.length}`);
 
   return { registry, hookRunner, loaded, failed };
 }

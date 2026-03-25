@@ -274,13 +274,13 @@ export async function executeToolCalls(
 ): Promise<ToolResult[]> {
   const results: ToolResult[] = [];
 
-  console.log(`\n[Tool Execution] Executing ${toolCalls.length} tool call(s)...`);
+  logger.debug(`\n[Tool Execution] Executing ${toolCalls.length} tool call(s)...`);
 
   for (const call of toolCalls) {
     try {
       const params = JSON.parse(call.function.arguments);
-      console.log(`[Tool Call] ${call.function.name}`);
-      console.log(`  Parameters:`, JSON.stringify(params, null, 2).split('\n').map((line, i) => i === 0 ? line : '  ' + line).join('\n'));
+      logger.debug(`[Tool Call] ${call.function.name}`);
+      logger.debug(`  Parameters:`, JSON.stringify(params, null, 2).split('\n').map((line, i) => i === 0 ? line : '  ' + line).join('\n'));
 
       const startTime = Date.now();
       const result = await executor(call.function.name, params);
@@ -290,8 +290,8 @@ export async function executeToolCalls(
         ? JSON.stringify(result).substring(0, 200) + (JSON.stringify(result).length > 200 ? '...' : '')
         : String(result);
 
-      console.log(`[Tool Result] ${call.function.name} (${elapsed}ms)`);
-      console.log(`  Result:`, resultPreview);
+      logger.debug(`[Tool Result] ${call.function.name} (${elapsed}ms)`);
+      logger.debug(`  Result:`, resultPreview);
 
       results.push({
         tool_call_id: call.id,
@@ -299,7 +299,7 @@ export async function executeToolCalls(
       });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Tool Error] ${call.function.name}:`, errorMsg);
+      logger.error(`[Tool Error] ${call.function.name}:`, errorMsg);
 
       results.push({
         tool_call_id: call.id,

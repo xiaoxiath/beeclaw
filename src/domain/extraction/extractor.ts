@@ -4,6 +4,7 @@
  * Uses FastLLMJudge for intelligent knowledge extraction from conversations
  */
 
+import { logger } from '../../infra/observability/logger';
 import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
@@ -195,12 +196,12 @@ export class KnowledgeExtractor {
 
     if (result.failed) {
       this.stats.errors++;
-      console.error('[Extractor] Extraction failed:', result.error);
+      logger.error('[Extractor] Extraction failed:', result.error);
       return [];
     }
 
     this.stats.successfulExtractions++;
-    console.log(`[Extractor] Extracted ${result.result.length} items from ${messages.length} messages`);
+    logger.debug(`[Extractor] Extracted ${result.result.length} items from ${messages.length} messages`);
 
     return result.result;
   }

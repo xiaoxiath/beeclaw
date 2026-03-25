@@ -4,6 +4,7 @@
  * AI tool definitions for proactive scheduling
  */
 
+import { logger } from '../../infra/observability/logger';
 import { z } from 'zod';
 import type { ProactiveToolResult, CreateScheduleOptions } from './types';
 import { getSchedulerLazy } from '../../infra/db/store';
@@ -462,7 +463,7 @@ export async function executeProactiveTool(name: string, params: Record<string, 
           );
 
           const delayDesc = formatDelay(parsed.data.delay_seconds);
-          console.log(`[schedule_once] Created one-time task "${jobName}" (${parsed.data.taskType}) to run in ${delayDesc}`);
+          logger.info(`[schedule_once] Created one-time task "${jobName}" (${parsed.data.taskType}) to run in ${delayDesc}`);
 
           return {
             success: true,

@@ -5,6 +5,7 @@
  * 支持持久化、生命周期管理、深度限制
  */
 
+import { logger } from '../../infra/observability/logger';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 
@@ -163,7 +164,7 @@ export class SubagentRegistry {
     // 触发钩子
     await this.triggerHook('subagent_spawned', record);
 
-    console.log(`[SubagentRegistry] Registered: ${options.runId} (${options.type || 'general'})`);
+    logger.debug(`[SubagentRegistry] Registered: ${options.runId} (${options.type || 'general'})`);
     return record;
   }
 
@@ -208,7 +209,7 @@ export class SubagentRegistry {
     // 触发结束钩子
     await this.triggerHook('subagent_ended', record);
 
-    console.log(
+    logger.debug(
       `[SubagentRegistry] Completed: ${runId} (${outcome}) in ${record.duration}ms`,
     );
 
@@ -239,7 +240,7 @@ export class SubagentRegistry {
     record.cleanupCompletedAt = Date.now();
     this.persist();
 
-    console.log(`[SubagentRegistry] Cleaned up: ${runId}`);
+    logger.debug(`[SubagentRegistry] Cleaned up: ${runId}`);
   }
 
   // ============================================================================
@@ -359,7 +360,7 @@ export class SubagentRegistry {
       const data = Object.fromEntries(this.runs.entries());
       writeFileSync(this.persistPath, JSON.stringify(data, null, 2), 'utf-8');
     } catch (error) {
-      console.error('[SubagentRegistry] Failed to persist:', error);
+      logger.error('[SubagentRegistry] Failed to persist:', error);
     }
   }
 
@@ -374,9 +375,9 @@ export class SubagentRegistry {
       for (const [id, record] of Object.entries(data)) {
         this.runs.set(id, record as SubagentRunRecord);
       }
-      console.log(`[SubagentRegistry] Restored ${this.runs.size} records`);
+      logger.debug(`[SubagentRegistry] Restored ${this.runs.size} records`);
     } catch (error) {
-      console.warn('[SubagentRegistry] Failed to restore:', error);
+      logger.warn('[SubagentRegistry] Failed to restore:', error);
     }
   }
 
@@ -443,7 +444,7 @@ export class SubagentRegistry {
 
     if (toDelete.length > 0) {
       this.persist();
-      console.log(`[SubagentRegistry] Cleaned up ${toDelete.length} old records`);
+      logger.debug(`[SubagentRegistry] Cleaned up ${toDelete.length} old records`);
     }
   }
 
@@ -484,7 +485,7 @@ export class SubagentRegistry {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      console.warn(`[SubagentRegistry] Hook ${hookName} failed:`, error);
+      logger.warn(`[SubagentRegistry] Hook ${hookName} failed:`, error);
     }
   }
 

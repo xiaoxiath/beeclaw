@@ -4,6 +4,7 @@
  * Background process for autonomous task execution
  */
 
+import { logger } from '../../infra/observability/logger';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { DaemonState, Schedule, ProactiveJobData } from './types';
@@ -56,7 +57,7 @@ export class Daemon {
     onJob?: (job: ProactiveJobData) => Promise<void>;
   }): Promise<void> {
     if (this.running) {
-      console.log('[Daemon] Already running');
+      logger.debug('[Daemon] Already running');
       return;
     }
 
@@ -81,7 +82,7 @@ export class Daemon {
     writeFileSync(this.pidPath, process.pid.toString(), 'utf-8');
     this.saveState();
 
-    console.log(`[Daemon] Started with PID ${process.pid}`);
+    logger.info(`[Daemon] Started with PID ${process.pid}`);
 
     // Load schedules
     try {
@@ -116,11 +117,11 @@ export class Daemon {
   // Stop the daemon
   async stop(): Promise<void> {
     if (!this.running) {
-      console.log('[Daemon] Not running');
+      logger.debug('[Daemon] Not running');
       return;
     }
 
-    console.log('[Daemon] Stopping...');
+    logger.debug('[Daemon] Stopping...');
 
     // Stop intervals
     if (this.heartbeatInterval) {
@@ -155,7 +156,7 @@ export class Daemon {
     }
 
     this.running = false;
-    console.log('[Daemon] Stopped');
+    logger.debug('[Daemon] Stopped');
   }
 
   // Get daemon state
@@ -207,13 +208,13 @@ export class Daemon {
     
     // Try to acquire memory lock atomically
     if (!scheduler.acquireExecutionLock(schedule.id)) {
-      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
+      logger.debug(`[Daemon] Schedule "${schedule.name}" is already executing (memory lock), skipping`);
       return;
     }
 
     // Check storage lock
     if (schedule.isExecuting) {
-      console.log(`[Daemon] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
+      logger.debug(`[Daemon] Schedule "${schedule.name}" is already executing (storage lock), skipping`);
       scheduler.releaseExecutionLock(schedule.id);
       return;
     }
@@ -236,7 +237,7 @@ export class Daemon {
     // NOTE: This method should only be called after lock is acquired
     // Either via scheduler.executeWithLock (setTimeout path) or executeScheduleWithLock (periodicCheck path)
 
-    console.log(`[Daemon] Executing schedule: ${schedule.name}`);
+    logger.debug(`[Daemon] Executing schedule: ${schedule.name}`);
 
     // [AUDIT FIX M-02/M-11] Derive associatedSessionId from params or from chatId+userId pattern
     const explicitSessionId = schedule.task.params?.associatedSessionId as string;
@@ -313,7 +314,7 @@ export class Daemon {
         break;
 
       default:
-        console.log(`[Daemon] Unknown task type: ${job.taskType}`);
+        logger.debug(`[Daemon] Unknown task type: ${job.taskType}`);
     }
   }
 
@@ -332,10 +333,10 @@ export class Daemon {
       try {
         const { pushed, failed } = await pushPendingNotifications();
         if (pushed > 0 || failed > 0) {
-          console.log(`[Daemon] Pushed ${pushed} notifications, failed ${failed}`);
+          logger.debug(`[Daemon] Pushed ${pushed} notifications, failed ${failed}`);
         }
       } catch (error) {
-        console.error('[Daemon] Failed to push pending notifications:', error);
+        logger.error('[Daemon] Failed to push pending notifications:', error);
       }
 
       // Clean up expired notifications
@@ -343,7 +344,7 @@ export class Daemon {
         const notificationManager = getNotificationManager(this.basePath + '/../proactive');
         const expired = notificationManager.clearExpired();
         if (expired > 0) {
-          console.log(`[Daemon] Cleared ${expired} expired notifications`);
+          logger.debug(`[Daemon] Cleared ${expired} expired notifications`);
         }
       } catch {
         // Ignore
@@ -382,7 +383,7 @@ export class Daemon {
     }
 
     this.saveState();
-    console.error(`[Daemon] Error: ${message}`);
+    logger.error(`[Daemon] Error: ${message}`);
   }
 
   private loadState(): void {
