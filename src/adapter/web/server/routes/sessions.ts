@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
+import { logger } from '../../../../infra/observability/logger';
 import { listSessions, getSession } from '@/domain/session';
 
 export default new Hono()
   // List all sessions
   .get('/', async (c) => {
-    console.log('[Sessions API] GET /');
+    logger.debug('[Sessions API] GET /');
     const sessions = listSessions();
 
     return c.json({
@@ -23,7 +24,7 @@ export default new Hono()
   // Get session details
   .get('/:id', async (c) => {
     const sessionId = c.req.param('id');
-    console.log('[Sessions API] GET /:id', sessionId);
+    logger.debug('[Sessions API] GET /:id', sessionId);
 
     const session = getSession(sessionId);
 
@@ -46,7 +47,7 @@ export default new Hono()
   // Get DAG execution data for session
   .get('/:id/dag', async (c) => {
     const sessionId = c.req.param('id');
-    console.log('[Sessions API] GET /:id/dag', sessionId);
+    logger.debug('[Sessions API] GET /:id/dag', sessionId);
 
     const session = getSession(sessionId);
 

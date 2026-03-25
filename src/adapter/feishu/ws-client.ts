@@ -627,7 +627,7 @@ export class FeishuWSClient {
    */
   async start(): Promise<void> {
     if (!this.config.enabled) {
-      console.log('[FeishuWS] Disabled, skipping connection');
+      logger.info('[FeishuWS] Disabled, skipping connection');
       return;
     }
 
@@ -647,77 +647,77 @@ export class FeishuWSClient {
     this.cardCallbackHandler = new CardCallbackHandler(this);
 
     // Create event dispatcher
-    console.log('[FeishuWS] Creating event dispatcher...');
+    logger.info('[FeishuWS] Creating event dispatcher...');
     const eventDispatcher = new Lark.EventDispatcher({}).register({
       // Message events
       'im.message.receive_v1': async (data: unknown) => {
-        console.log('[FeishuWS] 📨 Message received event triggered');
-        console.log('[FeishuWS] Event data type:', typeof data);
-        console.log('[FeishuWS] Event data keys:', data ? Object.keys(data as object) : 'null');
+        logger.debug('[FeishuWS] Message received event triggered');
+        logger.debug('[FeishuWS] Event data type:', typeof data);
+        logger.debug('[FeishuWS] Event data keys:', data ? Object.keys(data as object) : 'null');;
         await this.handleMessage(data as MessageEventData);
       },
       'im.message.message_read_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Message read');
+        logger.debug('[FeishuWS] Message read');
         await this.handleMessageRead(data as MessageReadEventData);
       },
       'im.message.recalled_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Message recalled');
+        logger.debug('[FeishuWS] Message recalled');
         await this.handleMessageRecalled(data as MessageRecalledEventData);
       },
 
       // Reaction events
       'im.message.reaction.created_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Reaction created');
+        logger.debug('[FeishuWS] Reaction created');
         await this.handleReactionCreated(data as ReactionEventData);
       },
       'im.message.reaction.deleted_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Reaction deleted');
+        logger.debug('[FeishuWS] Reaction deleted');
         await this.handleReactionDeleted(data as ReactionEventData);
       },
 
       // Chat events
       'im.chat.disbanded_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Chat disbanded');
+        logger.debug('[FeishuWS] Chat disbanded');
         await this.handleChatDisbanded(data as ChatDisbandedEventData);
       },
       'im.chat.updated_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Chat updated');
+        logger.debug('[FeishuWS] Chat updated');
         await this.handleChatUpdated(data as ChatUpdatedEventData);
       },
 
       // Chat member events
       'im.chat.member.user.added_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Chat member added');
+        logger.debug('[FeishuWS] Chat member added');
         await this.handleChatMemberAdded(data as ChatMemberAddedEventData);
       },
       'im.chat.member.user.deleted_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Chat member deleted');
+        logger.debug('[FeishuWS] Chat member deleted');
         await this.handleChatMemberDeleted(data as ChatMemberDeletedEventData);
       },
 
       // Bot events
       'im.chat.member.bot.added_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Bot added to chat');
+        logger.debug('[FeishuWS] Bot added to chat');
         await this.handleBotAdded(data as BotAddedEventData);
       },
       'im.chat.member.bot.deleted_v1': async (data: unknown) => {
-        console.log('[FeishuWS] Bot deleted from chat');
+        logger.debug('[FeishuWS] Bot deleted from chat');
         await this.handleBotDeleted(data as BotDeletedEventData);
       },
 
       // P2P chat events
       'p2p_chat_create': async (data: unknown) => {
-        console.log('[FeishuWS] P2P chat created');
+        logger.debug('[FeishuWS] P2P chat created');
         await this.handleP2PChatCreated(data as P2PChatCreatedEventData);
       },
       'im.chat.access_event.bot_p2p_chat_entered_v1': async (data: unknown) => {
-        console.log('[FeishuWS] User entered P2P chat');
+        logger.debug('[FeishuWS] User entered P2P chat');
         await this.handleP2PChatEntered(data as P2PChatEnteredEventData);
       },
 
       // Card callback events for interactive buttons (Card V2)
       'card.action.trigger': async (data: unknown) => {
-        console.log('[FeishuWS] 🎯 Card action triggered');
+        logger.debug('[FeishuWS] Card action triggered');
         await this.handleCardCallback(data as any);
       },
     });
@@ -742,7 +742,7 @@ export class FeishuWSClient {
     this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
 
     // Create WebSocket client
-    console.log('[FeishuWS] Creating WebSocket client...');
+    logger.info('[FeishuWS] Creating WebSocket client...');
     this.wsClient = new Lark.WSClient({
       ...baseConfig,
       loggerLevel,
@@ -750,7 +750,7 @@ export class FeishuWSClient {
 
     // Start connection
     try {
-      console.log('[FeishuWS] Starting WebSocket connection...');
+      logger.info('[FeishuWS] Starting WebSocket connection...');
       await this.wsClient.start({
         eventDispatcher,
       });
@@ -758,8 +758,8 @@ export class FeishuWSClient {
       // BUG #8 FIX: Reset backoff on successful connection
       this.reconnectState.attempt = 0;
       this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
-      console.log('[FeishuWS] ✅ Connected successfully');
-      console.log('[FeishuWS] Connection status:', {
+      logger.info('[FeishuWS] Connected successfully');
+      logger.debug('[FeishuWS] Connection status:', {
         isConnected: this.isConnected,
         hasClient: !!this.client,
         hasWsClient: !!this.wsClient,
@@ -801,7 +801,7 @@ export class FeishuWSClient {
 
     this.client = null;
     this.isConnected = false;
-    console.log('[FeishuWS] Disconnected (intentional)');
+    logger.info('[FeishuWS] Disconnected (intentional)');
   }
 
   /**
@@ -845,7 +845,7 @@ export class FeishuWSClient {
       this.reconnectState.attempt = 0;
       this.reconnectState.currentDelayMs = this.reconnectOptions.initialDelayMs;
 
-      console.log(`[FeishuWS] Reconnected after ${this.reconnectState.attempt} attempt(s)`);
+      logger.info(`[FeishuWS] Reconnected after ${this.reconnectState.attempt} attempt(s)`);
     } catch (error) {
       this.isConnected = false;
       this.reconnectState.connecting = false;
@@ -875,7 +875,7 @@ export class FeishuWSClient {
     const delay = Math.max(0, Math.round(baseDelay + jitter));
 
     this.reconnectState.attempt++;
-    console.log(
+    logger.info(
       `[FeishuWS] Scheduling reconnection attempt ${this.reconnectState.attempt} ` +
       `in ${Math.round(delay / 1000)}s...`
     );
@@ -959,8 +959,8 @@ export class FeishuWSClient {
    * Handle incoming message
    */
   private async handleMessage(data: MessageEventData): Promise<void> {
-    console.log('[FeishuWS] 📨 handleMessage called');
-    console.log('[FeishuWS] Message data:', {
+    logger.debug('[FeishuWS] handleMessage called');
+    logger.debug('[FeishuWS] Message data:', {
       chat_id: data.message?.chat_id,
       message_id: data.message?.message_id,
       message_type: data.message?.message_type,
@@ -976,13 +976,13 @@ export class FeishuWSClient {
       this._lastActiveUserId = data.sender.sender_id.union_id;
     }
 
-    console.log('[FeishuWS] Calling message handlers, count:', this.messageHandlers.length);
+    logger.debug('[FeishuWS] Calling message handlers, count:', this.messageHandlers.length);
 
     for (const handler of this.messageHandlers) {
       try {
-        console.log('[FeishuWS] Calling handler...');
+        logger.debug('[FeishuWS] Calling handler...');
         await handler(data);
-        console.log('[FeishuWS] Handler completed successfully');
+        logger.debug('[FeishuWS] Handler completed successfully');
       } catch (error) {
         console.error('[FeishuWS] Message handler error:', error);
       }
@@ -1211,7 +1211,7 @@ export class FeishuWSClient {
     const cardContent = typeof card === 'string' ? card : JSON.stringify(card);
 
     // Debug: Log the card JSON being sent
-    console.log('[FeishuWS] 📤 Sending proactive card:', {
+    logger.debug('[FeishuWS] Sending proactive card:', {
       receiveId,
       receiveIdType,
       cardPreview: cardContent.substring(0, 500),
@@ -1235,7 +1235,7 @@ export class FeishuWSClient {
 
     // Return the message ID for potential streaming updates
     const messageId = response.data?.message_id || '';
-    console.log('[FeishuWS] ✅ Card sent successfully:', messageId);
+    logger.info('[FeishuWS] Card sent successfully:', messageId);
     return messageId;
   }
 
@@ -1448,7 +1448,7 @@ export class FeishuWSClient {
     const cardContent = typeof card === 'string' ? card : JSON.stringify(card);
 
     // Debug: Log the card JSON being sent
-    console.log('[FeishuWS] 📤 Sending card reply:', {
+    logger.debug('[FeishuWS] Sending card reply:', {
       messageId,
       cardPreview: cardContent.substring(0, 500),
     });

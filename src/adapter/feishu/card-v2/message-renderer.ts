@@ -8,6 +8,7 @@
 import type { ContentBlock, ToolUseBlock, TextBlock, ChartDataBlock } from '../../../types/content-block';
 import { toolIconRegistry } from './tool-icon-registry';
 import { renderHITLContentBlock } from './hitl-renderer';
+import { logger } from '../../../infra/observability/logger';
 import {
   createCard,
   createStreamingConfig,
@@ -301,7 +302,7 @@ function simplifyMarkdownTables(content: string, maxTables: number = 3): string 
     return content; // No need to simplify
   }
 
-  console.log(`[MessageRenderer] 📊 Simplifying ${tableSegments.length} tables to ${maxTables}`);
+  logger.debug(`[MessageRenderer] 📊 Simplifying ${tableSegments.length} tables to ${maxTables}`);
 
   // Keep first maxTables tables, convert rest to lists or remove
   let tableCount = 0;

@@ -8,7 +8,7 @@
  * continuous monitoring without requiring the agent to manually trigger checks.
  */
 import { Logger } from '../../types';
-import { DataSourceHealthChecker, HealthCheckResult } from '../tools/datasource-health';
+import { DataSourceHealthChecker, HealthCheckResult } from '../../domain/tools/datasource-health';
 
 export interface PeriodicHealthMonitorConfig {
   /** Check interval in milliseconds (default: 5 minutes) */

@@ -1,3 +1,4 @@
+// @deprecated - Dead code identified in audit (2026-03-25). Not imported by any production module. Scheduled for removal.
 /**
  * progress-aware-monitor.ts — P2 进度感知活跃检测
  * 

@@ -8,6 +8,7 @@
 import type { ContentBlock } from '../../../types/content-block';
 import { renderMessageCard } from './message-renderer';
 import type { FeishuWSClient } from '../ws-client';
+import { logger } from '../../../infra/observability/logger';
 
 /**
  * StreamingController options
@@ -108,7 +109,7 @@ export class StreamingMessageController {
   async pushContent(block: ContentBlock): Promise<void> {
     // Add block to state
     this.state.blocks.push(block);
-    console.log('[StreamingController] 📥 Pushed content block:', {
+    logger.debug('[StreamingController] Pushed content block:', {
       type: block.type,
       preview: block.type === 'text' ? block.text?.substring(0, 50) : block.type,
       totalBlocks: this.state.blocks.length,
@@ -119,24 +120,24 @@ export class StreamingMessageController {
     if (!this.state.initialized) {
       // If initialization is already in progress, wait for it
       if (this.state.initPromise) {
-        console.log('[StreamingController] ⏳ Waiting for initialization to complete...');
+        logger.debug('[StreamingController] Waiting for initialization to complete...');
         await this.state.initPromise;
-        console.log('[StreamingController] ✅ Initialization completed, scheduling update');
+        logger.debug('[StreamingController] Initialization completed, scheduling update');
         // After waiting, schedule update for this new block
         this.scheduleUpdate();
         return;
       }
 
       // Start initialization and store promise
-      console.log('[StreamingController] 🚀 Starting initialization...');
+      logger.debug('[StreamingController] Starting initialization...');
       this.state.initPromise = this.sendInitialMessage();
       await this.state.initPromise;
-      console.log('[StreamingController] ✅ Initialization finished, messageId:', this.state.messageId);
+      logger.debug('[StreamingController] Initialization finished, messageId:', this.state.messageId);
       return;
     }
 
     // Debounce subsequent updates
-    console.log('[StreamingController] 🔄 Scheduling update (already initialized)');
+    logger.debug('[StreamingController] Scheduling update (already initialized)');
     this.scheduleUpdate();
   }
 
@@ -166,7 +167,7 @@ export class StreamingMessageController {
       const card = renderMessageCard(this.state.blocks, { streaming: true });
 
       // Debug: Log the full card JSON
-      console.log('[StreamingController] 📤 Card JSON:', JSON.stringify(card, null, 2));
+      logger.debug('[StreamingController] Card JSON:', JSON.stringify(card, null, 2));
 
       // Send message
       const messageId = await this.options.client.replyCard(
@@ -215,7 +216,7 @@ export class StreamingMessageController {
    * Send card update via message.patch
    */
   private async sendUpdate(isFinal: boolean): Promise<void> {
-    console.log('[StreamingController] 📤 sendUpdate called:', {
+    logger.debug('[StreamingController] sendUpdate called:', {
       messageId: this.state.messageId,
       isFinal,
       blocksCount: this.state.blocks.length,
@@ -242,7 +243,7 @@ export class StreamingMessageController {
         streaming: !isFinal, // Collapse panels on final update
       });
 
-      console.log('[StreamingController] 📤 Updating card:', {
+      logger.debug('[StreamingController] Updating card:', {
         messageId: this.state.messageId,
         isFinal,
         cardPreview: JSON.stringify(card).substring(0, 200),
@@ -252,7 +253,7 @@ export class StreamingMessageController {
       await this.options.client.patchCard(this.state.messageId, card);
 
       this.state.lastUpdate = Date.now();
-      console.log('[StreamingController] ✅ Card updated successfully');
+      logger.debug('[StreamingController] Card updated successfully');
     } catch (error: any) {
       // Handle specific errors
       if (this.isMessageRevokedError(error)) {

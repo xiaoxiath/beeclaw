@@ -1,21 +1,22 @@
 import { Hono } from 'hono';
+import { logger } from '../../../../infra/observability/logger';
 import { getMemoryStore } from '@/domain/memory';
 
 export default new Hono()
   // List/search memory entries
   .get('/', async (c) => {
-    console.log('[Memory API] GET /');
+    logger.debug('[Memory API] GET /');
     const { path, search, category } = c.req.query();
-    console.log('[Memory API] Query params:', { path, search, category });
+    logger.debug('[Memory API] Query params:', { path, search, category });
 
     const store = getMemoryStore();
 
     try {
       // If searching
       if (search) {
-        console.log('[Memory API] Searching for:', search);
+        logger.debug('[Memory API] Searching for:', search);
         const results = await store.grep(search);
-        console.log('[Memory API] Search results:', results);
+        logger.debug('[Memory API] Search results:', results);
 
         // Parse grep results into structured format
         let entries: any[] = [];
@@ -54,9 +55,9 @@ export default new Hono()
 
       // If browsing by path
       if (path) {
-        console.log('[Memory API] Listing path:', path);
+        logger.debug('[Memory API] Listing path:', path);
         const result = await store.ls(path);
-        console.log('[Memory API] List result:', result);
+        logger.debug('[Memory API] List result:', result);
 
         if (!result.success) {
           return c.json({ error: 'Failed to list path', message: result.error }, 404);
@@ -83,9 +84,9 @@ export default new Hono()
       }
 
       // List all categories
-      console.log('[Memory API] Listing all memory');
+      logger.debug('[Memory API] Listing all memory');
       const allResult = await store.ls('/');
-      console.log('[Memory API] List result:', allResult);
+      logger.debug('[Memory API] List result:', allResult);
 
       if (!allResult.success) {
         return c.json({ error: 'Failed to list memory', message: allResult.error }, 500);
@@ -104,7 +105,7 @@ export default new Hono()
         })
         : [];
 
-      console.log('[Memory API] Total entries:', allMemory.length);
+      logger.debug('[Memory API] Total entries:', allMemory.length);
 
       // Group by category
       const byCategory = allMemory.reduce((acc, entry) => {
@@ -135,7 +136,7 @@ export default new Hono()
     memoryPath = decodeURIComponent(memoryPath);
     // Remove leading slash if present (memory store expects paths without leading slash)
     memoryPath = memoryPath.replace(/^\//, '');
-    console.log('[Memory API] GET /*', memoryPath);
+    logger.debug('[Memory API] GET /*', memoryPath);
 
     const store = getMemoryStore();
 
@@ -162,13 +163,13 @@ export default new Hono()
           updatedAt,
         };
 
-        console.log('[Memory API] File entry retrieved:', memoryPath);
+        logger.debug('[Memory API] File entry retrieved:', memoryPath);
         return c.json({ entry });
       }
 
       // If read failed with directory error, try listing instead
       if (result?.error?.includes('EISDIR') || result?.error?.includes('directory')) {
-        console.log('[Memory API] Path is a directory, listing contents:', memoryPath);
+        logger.debug('[Memory API] Path is a directory, listing contents:', memoryPath);
         const listResult = await store.ls(memoryPath);
 
         if (!listResult.success) {
@@ -219,7 +220,7 @@ export default new Hono()
     memoryPath = decodeURIComponent(memoryPath);
     // Remove leading slash if present
     memoryPath = memoryPath.replace(/^\//, '');
-    console.log('[Memory API] DELETE /*', memoryPath);
+    logger.debug('[Memory API] DELETE /*', memoryPath);
 
     const _store = getMemoryStore();
 

@@ -796,7 +796,7 @@ export function switchModel(modelName?: string, providerName?: string): {
   const newModel = modelName || newProvider?.models[0] || appState.model;
 
   // Recreate agent
-  const agentConfig = appState.config.agents[0];
+  const agentConfig = appState.config.agent || appState.config.agents?.[0];
   const agent = createAgent({
     provider: newProvider!,
     model: newModel,

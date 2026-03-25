@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { logger } from '../../../../infra/observability/logger';
 import { streamSSE } from 'hono/streaming';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -11,35 +12,35 @@ const sendMessageSchema = z.object({
   channel: z.enum(['cli', 'feishu', 'webhook', 'api', 'web']).default('web'),
 });
 
-console.log('[Chat API] Schema loaded - allowed channels:', ['cli', 'feishu', 'webhook', 'api', 'web']);
+logger.debug('[Chat API] Schema loaded - allowed channels:', ['cli', 'feishu', 'webhook', 'api', 'web']);
 
 export default new Hono()
   // Send message with SSE streaming
   .post('/', async (c, next) => {
-    console.log('[Chat API] ===== NEW REQUEST =====');
-    console.log('[Chat API] Content-Type:', c.req.header('Content-Type'));
+    logger.debug('[Chat API] ===== NEW REQUEST =====');
+    logger.debug('[Chat API] Content-Type:', c.req.header('Content-Type'));
 
     try {
       const body = await c.req.json();
-      console.log('[Chat API] Request body:', JSON.stringify(body, null, 2));
-      console.log('[Chat API] Body has message:', 'message' in body);
-      console.log('[Chat API] Body has sessionId:', 'sessionId' in body);
-      console.log('[Chat API] Body has channel:', 'channel' in body, '- value:', body.channel);
+      logger.debug('[Chat API] Request body:', JSON.stringify(body, null, 2));
+      logger.debug('[Chat API] Body has message:', 'message' in body);
+      logger.debug('[Chat API] Body has sessionId:', 'sessionId' in body);
+      logger.debug('[Chat API] Body has channel:', 'channel' in body, '- value:', body.channel);
     } catch (e) {
       console.error('[Chat API] Failed to parse request body:', e);
     }
 
     return next();
   }, zValidator('json', sendMessageSchema), async (c) => {
-    console.log('[Chat API] Validation passed');
+    logger.debug('[Chat API] Validation passed');
     const body = c.req.valid('json');
-    console.log('[Chat API] Validated body:', JSON.stringify(body, null, 2));
+    logger.debug('[Chat API] Validated body:', JSON.stringify(body, null, 2));
     const { message, sessionId, channel } = body;
-    console.log(`[Chat API] Processing: message="${message}", sessionId=${sessionId}, channel=${channel}`);
+    logger.debug(`[Chat API] Processing: message="${message}", sessionId=${sessionId}, channel=${channel}`);
 
     return streamSSE(c, async (stream) => {
       try {
-        console.log('[Chat API] Starting SSE stream');
+        logger.debug('[Chat API] Starting SSE stream');
 
         // Get or create session
         const session = await getOrCreateSession({
@@ -48,7 +49,7 @@ export default new Hono()
           userId: 'web-user',
         });
 
-        console.log('[Chat API] Session ready:', session.id);
+        logger.debug('[Chat API] Session ready:', session.id);
 
         // Add user message to session
         session.messages.push({
@@ -56,11 +57,11 @@ export default new Hono()
           content: message,
           timestamp: new Date().toISOString(),
         });
-        console.log('[Chat API] User message added to session');
+        logger.debug('[Chat API] User message added to session');
 
         // Save session to disk
         saveSession(session);
-        console.log('[Chat API] Session saved after user message');
+        logger.debug('[Chat API] Session saved after user message');
 
         // Send session ID
         await stream.writeSSE({
@@ -68,30 +69,30 @@ export default new Hono()
           data: JSON.stringify({ sessionId: session.id }),
         });
 
-        console.log('[Chat API] Getting agent');
+        logger.debug('[Chat API] Getting agent');
         const agent = getAgent();
 
         // Collect tool calls during streaming
         const _collectedToolCalls: any[] = [];
 
-        console.log('[Chat API] Calling agent.chat()');
+        logger.debug('[Chat API] Calling agent.chat()');
         const fullResponse = await agent.chat(message, {
           sessionId: session.id,
           loadMemory: true,
           autoRefreshMemory: false,
           onToolCall: (name, _params) => {
-            console.log('[Chat API] Tool call:', name);
+            logger.debug('[Chat API] Tool call:', name);
           },
           onToolResult: (name, _result) => {
-            console.log('[Chat API] Tool result:', name);
+            logger.debug('[Chat API] Tool result:', name);
           },
         });
 
-        console.log('[Chat API] Agent response received, length:', fullResponse.length);
+        logger.debug('[Chat API] Agent response received, length:', fullResponse.length);
 
         // Get tool calls from agent and save to session
         const toolCalls = agent.getLastToolCalls();
-        console.log('[Chat API] Tool calls from agent:', toolCalls?.length || 0);
+        logger.debug('[Chat API] Tool calls from agent:', toolCalls?.length || 0);
 
         // Save assistant response to session
         session.messages.push({
@@ -104,7 +105,7 @@ export default new Hono()
 
         // Save session to disk
         saveSession(session);
-        console.log('[Chat API] Assistant response saved to session');
+        logger.debug('[Chat API] Assistant response saved to session');
 
         // Send tool calls if any
         if (toolCalls && toolCalls.length > 0) {
@@ -112,7 +113,7 @@ export default new Hono()
             event: 'tool_calls',
             data: JSON.stringify({ toolCalls }),
           });
-          console.log('[Chat API] Tool calls sent');
+          logger.debug('[Chat API] Tool calls sent');
         }
 
         // Send the full response
@@ -121,7 +122,7 @@ export default new Hono()
           data: JSON.stringify({ chunk: fullResponse, index: 0 }),
         });
 
-        console.log('[Chat API] Chunk sent');
+        logger.debug('[Chat API] Chunk sent');
 
         // Send completion event
         await stream.writeSSE({
@@ -129,7 +130,7 @@ export default new Hono()
           data: JSON.stringify({ response: fullResponse }),
         });
 
-        console.log('[Chat API] SSE stream complete');
+        logger.debug('[Chat API] SSE stream complete');
 
       } catch (error) {
         console.error('[Chat API] Error in SSE stream:', error);
@@ -146,7 +147,7 @@ export default new Hono()
 
   // Get chat sessions
   .get('/sessions', async (c) => {
-    console.log('[Chat API] GET /sessions');
+    logger.debug('[Chat API] GET /sessions');
     const sessions = listSessions();
 
     return c.json({
@@ -165,7 +166,7 @@ export default new Hono()
   // Get session history
   .get('/sessions/:id', async (c) => {
     const sessionId = c.req.param('id');
-    console.log('[Chat API] GET /sessions/:id', sessionId);
+    logger.debug('[Chat API] GET /sessions/:id', sessionId);
     const session = getSession(sessionId);
 
     if (!session) {
@@ -187,7 +188,7 @@ export default new Hono()
   // Delete session
   .delete('/sessions/:id', async (c) => {
     const sessionId = c.req.param('id');
-    console.log('[Chat API] DELETE /sessions/:id', sessionId);
+    logger.debug('[Chat API] DELETE /sessions/:id', sessionId);
     const success = deleteSession(sessionId);
 
     if (!success) {

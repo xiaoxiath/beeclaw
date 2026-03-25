@@ -4,9 +4,9 @@
  * 统一初始化模块，包含钩子、MCP、子代理注册表等
  */
 
-import { getHookRunner, resetHookRunner, type HookName, type HookHandler } from '../hooks';
-import { getMCPManager, resetMCPManager, type MCPServerConfig } from '../mcp';
-import { getSubagentRegistry, resetSubagentRegistry, type SubagentRegistryConfig } from '../subagent/registry';
+import { getHookRunner, resetHookRunner, type HookName, type HookHandler } from '../adapter/plugins/hooks';
+import { getMCPManager, resetMCPManager, type MCPServerConfig } from '../adapter/mcp';
+import { getSubagentRegistry, resetSubagentRegistry, type SubagentRegistryConfig } from '../domain/subagent/registry';
 import { getHybridSearchManager, resetHybridSearchManager, type HybridSearchConfig } from '../domain/memory/hybrid-search';
 
 // ============================================================================

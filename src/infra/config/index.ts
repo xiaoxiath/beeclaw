@@ -78,7 +78,7 @@ function loadEnvConfig(): Record<string, unknown> {
     }
   }
 
-  return config;
+  return resolvedConfig;
 }
 
 async function loadFileConfig(basePath: string): Promise<Record<string, unknown> | null> {
@@ -157,7 +157,7 @@ export async function loadConfig(basePath: string = process.cwd()): Promise<AppC
 
   logger.info(`Configuration loaded (sources: ${configSources.join(' > ')})`);
 
-  return config;
+  return resolvedConfig;
 }
 
 /**

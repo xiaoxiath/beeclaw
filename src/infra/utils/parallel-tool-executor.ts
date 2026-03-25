@@ -1,3 +1,4 @@
+// @deprecated - Dead code identified in audit (2026-03-25). Not imported by any production module. Scheduled for removal.
 /**
  * parallel-tool-executor.ts — P2 并行工具超时聚合
  * 

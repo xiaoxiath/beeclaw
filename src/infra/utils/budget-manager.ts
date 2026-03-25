@@ -1,3 +1,4 @@
+// @deprecated - Dead code identified in audit (2026-03-25). Not imported by any production module. Scheduled for removal.
 /**
  * BeeClaw Resilience Patch — 动态 Budget 管理器
  * 

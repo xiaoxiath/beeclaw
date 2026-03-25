@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { logger } from '../../../../infra/observability/logger';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { readFileSync, writeFileSync } from 'fs';
@@ -70,7 +71,7 @@ function sanitizeConfig(config: any): any {
 export default new Hono()
   // Get current configuration (sanitized)
   .get('/', async (c) => {
-    console.log('[Config API] GET /');
+    logger.debug('[Config API] GET /');
 
     try {
       const configContent = readFileSync(CONFIG_FILE, 'utf-8');
@@ -94,9 +95,9 @@ export default new Hono()
 
   // Update configuration
   .put('/', zValidator('json', configUpdateSchema), async (c) => {
-    console.log('[Config API] PUT /');
+    logger.debug('[Config API] PUT /');
     const updates = c.req.valid('json');
-    console.log('[Config API] Updates:', JSON.stringify(updates, null, 2));
+    logger.debug('[Config API] Updates:', JSON.stringify(updates, null, 2));
 
     try {
       // Read current config
@@ -112,7 +113,7 @@ export default new Hono()
       // Write back to file
       writeFileSync(CONFIG_FILE, JSON.stringify(validated, null, 2));
 
-      console.log('[Config API] Config updated successfully');
+      logger.debug('[Config API] Config updated successfully');
 
       return c.json({
         success: true,
