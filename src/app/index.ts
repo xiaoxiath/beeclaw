@@ -16,7 +16,6 @@ import { logger } from '../infra/observability/logger';
 // Domain layer
 import { createAgent, getAllToolsForAI, SYSTEM_PROMPTS } from '../domain/agent';
 import { callAI } from '../domain/agent/api';
-import { sessionService } from '../domain/session/service';
 import { initSessionManager, loadAllSessions } from '../domain/session';
 import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../domain/subagent';
 import { initializeTimezoneCache, resolveUserLocation, resolveUserTimezone } from '../domain/tools/timezone';
@@ -229,10 +228,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
     format: config.logging.format,
   });
 
-  // 3. Configure session service
-  sessionService.configure(config.sessionStorage.path);
-
-  // 4. Initialize memory stores
+  // 3. Initialize memory stores
   const memoryPath = options.memoryPath || config.memory.path;
   initStores({ basePath: memoryPath, autoInit: true });
   console.log(`   📁 Memory: ${memoryPath}`);
