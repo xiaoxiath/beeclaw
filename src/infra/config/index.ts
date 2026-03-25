@@ -78,7 +78,7 @@ function loadEnvConfig(): Record<string, unknown> {
     }
   }
 
-  return resolvedConfig;
+  return config;
 }
 
 async function loadFileConfig(basePath: string): Promise<Record<string, unknown> | null> {

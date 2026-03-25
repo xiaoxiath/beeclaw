@@ -7,6 +7,8 @@
  * Supports locking, expiration, and change notifications.
  */
 
+import { logger } from '../../infra/observability/logger';
+
 /**
  * State entry with metadata
  */
