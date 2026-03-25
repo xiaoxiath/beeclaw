@@ -22,7 +22,6 @@ jobs:
 
       - name: Run ESLint
         run: bun lint
-        continue-on-error: true
 
   test:
     name: Run Tests
@@ -71,4 +70,3 @@ jobs:
 
       - name: Build Web UI
         run: bun run build:web
-        continue-on-error: true

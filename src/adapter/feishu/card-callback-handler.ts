@@ -150,13 +150,14 @@ export class CardCallbackHandler {
   async handleCallback(rawData: any): Promise<void> {
     try {
       // 添加详细日志，检查实际收到的数据结构
-      logger.info('[CardCallback] Raw data received:', {
+      logger.debug('[CardCallback] Card callback received', {
         dataType: typeof rawData,
         dataKeys: rawData ? Object.keys(rawData) : 'null',
         hasSchema: !!rawData?.schema,
         hasHeader: !!rawData?.header,
         hasEvent: !!rawData?.event,
-        fullData: JSON.stringify(rawData, null, 2),
+        actionType: rawData?.action?.type ?? rawData?.event?.action?.type,
+        actionTag: rawData?.action?.tag ?? rawData?.event?.action?.tag,
       });
 
       // 判断数据结构：可能是完整回调结构，也可能是已解包的 event 对象

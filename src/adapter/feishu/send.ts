@@ -375,19 +375,19 @@ function buildPostContent(
     if (line.startsWith('### ')) {
       elements.push({
         tag: 'text',
-        text: line.substring(3),
+        text: line.substring(4),
         style: ['bold'],
       });
     } else if (line.startsWith('## ')) {
       elements.push({
         tag: 'text',
-        text: line.substring(2),
+        text: line.substring(3),
         style: ['bold'],
       });
     } else if (line.startsWith('# ')) {
       elements.push({
         tag: 'text',
-        text: line.substring(1),
+        text: line.substring(2),
         style: ['bold'],
       });
     }

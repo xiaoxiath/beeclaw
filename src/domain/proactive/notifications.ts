@@ -36,10 +36,9 @@ export class NotificationManager {
   init(): void {
     if (this.initialized) return;
 
-    // Ensure directories exist
-    const notificationsDir = join(this.basePath, 'notifications');
-    if (!existsSync(notificationsDir)) {
-      mkdirSync(notificationsDir, { recursive: true });
+    // Ensure base directory exists
+    if (!existsSync(this.basePath)) {
+      mkdirSync(this.basePath, { recursive: true });
     }
 
     // Load existing storage

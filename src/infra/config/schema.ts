@@ -474,6 +474,9 @@ export const LLMTierConfigSchema = z.object({
   retries: z.number().optional(),
 });
 
+// LLM Tiers Configuration Schema (v4) - record of tier name to config
+export const LLMTiersConfigSchema = z.record(z.string(), LLMTierConfigSchema);
+
 // LLM Router Configuration Schema (v4)
 export const LLMRouterConfigSchema = z.object({
   enabled: z.boolean().default(true),

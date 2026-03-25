@@ -233,8 +233,8 @@ function resolveValue(expr: string, context: TriggerContext): number | string | 
  */
 function compare(left: number | string | boolean, operator: string, right: number | string | boolean): boolean {
   switch (operator) {
-    case '==': return left == right;
-    case '!=': return left != right;
+    case '==': return left === right;
+    case '!=': return left !== right;
     case '>=': return (left as number) >= (right as number);
     case '<=': return (left as number) <= (right as number);
     case '>': return (left as number) > (right as number);
@@ -374,10 +374,3 @@ export async function evaluatePatterns(context?: Partial<TriggerContext>): Promi
   return results;
 }
 
-/**
- * Helper to update pattern (add to scheduler)
- */
-export function _updatePatternTrigger(_patternId: string, _updates: Partial<Pattern>): void {
-  // This is a helper that would be implemented in scheduler
-  // For now, we'll just note that it needs to be added
-}

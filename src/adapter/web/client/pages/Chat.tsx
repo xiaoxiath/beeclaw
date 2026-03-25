@@ -43,10 +43,8 @@ export default function Chat() {
     queryKey: ['session-history', currentSessionId],
     queryFn: async () => {
       if (!currentSessionId) return null;
-      console.log('[Chat] Loading history for session:', currentSessionId);
       const response = await fetch(`/api/chat/sessions/${currentSessionId}`);
       const data = await response.json();
-      console.log('[Chat] History loaded:', data);
       return data;
     },
     enabled: !!currentSessionId && streamingSessionId !== currentSessionId,
@@ -57,21 +55,12 @@ export default function Chat() {
   // Update messages when session history loads
   // Skip if this session is currently being streamed to
   useEffect(() => {
-    console.log('[Chat] Session history effect:', {
-      hasHistory: !!sessionHistory,
-      isLoading: isLoadingHistory,
-      currentSessionId,
-      streamingSessionId
-    });
-
     if (sessionHistory?.session?.messages) {
       // Don't update messages if we're currently streaming this session
       if (streamingSessionId === currentSessionId) {
-        console.log('[Chat] Skipping history update - session is being streamed');
         return;
       }
 
-      console.log('[Chat] Setting messages from history, count:', sessionHistory.session.messages.length);
       setMessages(sessionHistory.session.messages);
     }
   }, [sessionHistory, isLoadingHistory, currentSessionId, streamingSessionId]);
@@ -142,19 +131,16 @@ export default function Chat() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          console.log('[Chat] Stream done');
           break;
         }
 
         const chunk = decoder.decode(value);
-        console.log('[Chat] Received chunk:', chunk);
         const lines = chunk.split('\n');
 
         for (const line of lines) {
           // Parse SSE event type
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim();
-            console.log('[Chat] Event type:', currentEvent);
             continue;
           }
 
@@ -165,10 +151,8 @@ export default function Chat() {
 
             try {
               const parsed = JSON.parse(data);
-              console.log('[Chat] Parsed data:', parsed, 'for event:', currentEvent);
 
               if (currentEvent === 'session') {
-                console.log('[Chat] Setting session ID:', parsed.sessionId);
                 setCurrentSessionId(parsed.sessionId);
                 setStreamingSessionId(parsed.sessionId); // Mark this session as being streamed
                 // Immediately refresh sessions list when a new session is created
@@ -183,7 +167,6 @@ export default function Chat() {
                   return updated;
                 });
               } else if (currentEvent === 'chunk') {
-                console.log('[Chat] Updating message with chunk:', parsed.chunk);
                 setMessages(prev => {
                   const updated = [...prev];
                   const lastMsg = updated[updated.length - 1];
@@ -193,7 +176,6 @@ export default function Chat() {
                   return updated;
                 });
               } else if (currentEvent === 'done') {
-                console.log('[Chat] Done event received');
                 setStreamingSessionId(null); // Allow history updates for this session now
                 queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
               } else if (currentEvent === 'error') {

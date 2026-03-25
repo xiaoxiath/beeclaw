@@ -32,6 +32,9 @@ export class DAGScheduler {
         retryCount: 0,
       });
     }
+
+    // Validate the dependency graph has no cycles before scheduling
+    this.detectCycles();
   }
 
   /**
@@ -284,18 +287,88 @@ export class DAGScheduler {
   }
 
   /**
+   * Detect cycles in the dependency graph using Kahn's algorithm (BFS topological sort).
+   * Throws an error with details about the cycle if one is found.
+   */
+  detectCycles(): void {
+    // Build in-degree map and adjacency list
+    const inDegree = new Map<number, number>();
+    const dependents = new Map<number, number[]>(); // taskId -> tasks that depend on it
+
+    for (const [taskId, state] of this.taskStates) {
+      if (!inDegree.has(taskId)) {
+        inDegree.set(taskId, 0);
+      }
+      if (!dependents.has(taskId)) {
+        dependents.set(taskId, []);
+      }
+
+      for (const depId of state.subtask.dependsOn) {
+        inDegree.set(taskId, (inDegree.get(taskId) || 0) + 1);
+        if (!dependents.has(depId)) {
+          dependents.set(depId, []);
+        }
+        dependents.get(depId)!.push(taskId);
+      }
+    }
+
+    // Kahn's algorithm: start with nodes that have 0 in-degree
+    const queue: number[] = [];
+    for (const [taskId, degree] of inDegree) {
+      if (degree === 0) {
+        queue.push(taskId);
+      }
+    }
+
+    let processedCount = 0;
+    while (queue.length > 0) {
+      const taskId = queue.shift()!;
+      processedCount++;
+
+      for (const dependent of dependents.get(taskId) || []) {
+        const newDegree = (inDegree.get(dependent) || 1) - 1;
+        inDegree.set(dependent, newDegree);
+        if (newDegree === 0) {
+          queue.push(dependent);
+        }
+      }
+    }
+
+    // If we couldn't process all nodes, there is a cycle
+    if (processedCount !== this.taskStates.size) {
+      const cycleTasks: string[] = [];
+      for (const [taskId, degree] of inDegree) {
+        if (degree > 0) {
+          const state = this.taskStates.get(taskId);
+          const desc = state ? state.subtask.description.substring(0, 60) : 'unknown';
+          cycleTasks.push(`Task ${taskId} ("${desc}")`);
+        }
+      }
+      throw new Error(
+        `Cycle detected in task dependency graph. The following tasks are involved in circular dependencies: ${cycleTasks.join(', ')}. ` +
+        `Please remove circular dependsOn references to create a valid DAG.`
+      );
+    }
+  }
+
+  /**
    * Get execution order (topological sort)
    */
   getExecutionOrder(): number[] {
     const order: number[] = [];
     const visited = new Set<number>();
+    const visiting = new Set<number>(); // Track nodes in current DFS path for cycle detection
 
     const visit = (taskId: number) => {
       if (visited.has(taskId)) {
         return;
       }
 
-      visited.add(taskId);
+      if (visiting.has(taskId)) {
+        throw new Error(`Cycle detected in task dependencies involving Task ${taskId}`);
+      }
+
+      visiting.add(taskId);
 
       const state = this.taskStates.get(taskId);
       if (state) {
@@ -303,8 +376,11 @@ export class DAGScheduler {
         for (const depId of state.subtask.dependsOn) {
           visit(depId);
         }
-        order.push(taskId);
       }
+
+      visiting.delete(taskId);
+      visited.add(taskId);
+      order.push(taskId);
     };
 
     for (const taskId of this.taskStates.keys()) {

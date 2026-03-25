@@ -19,7 +19,42 @@ import {
   type ExtractionConfig,
   type ExtractionItem,
   type ExtractedKnowledge,
+  type KnowledgeCategory,
 } from './types';
+
+
+/**
+ * Map LLM-returned category names to valid KnowledgeCategory values.
+ * The LLM prompt uses simplified/different category names that need normalization.
+ */
+const CATEGORY_MAP: Record<string, KnowledgeCategory> = {
+  // Direct matches (already valid)
+  personal: 'personal',
+  family: 'family',
+  work: 'work',
+  finance: 'finance',
+  preferences: 'preferences',
+  events: 'events',
+  lessons: 'lessons',
+  goals: 'goals',
+  relationships: 'relationships',
+  skills: 'skills',
+  decisions: 'decisions',
+  health: 'health',
+  // LLM prompt aliases → valid KnowledgeCategory
+  user_info: 'personal',
+  preference: 'preferences',
+  fact: 'personal',
+  project: 'work',
+  technical: 'work',
+  process: 'work',
+  domain: 'skills',
+};
+
+function normalizeCategory(category: string): KnowledgeCategory {
+  const normalized = CATEGORY_MAP[category.toLowerCase()];
+  return normalized || 'personal'; // fallback to 'personal' for unknown categories
+}
 
 /**
  * Extraction prompt for FastLLMJudge
@@ -145,8 +180,10 @@ export class KnowledgeExtractor {
         // Parse extractions
         const extractions = parseExtractionResult(JSON.stringify(output));
 
-        // Validate and filter
+        // Normalize categories from LLM output to valid KnowledgeCategory values,
+        // then validate and filter
         const validExtractions = extractions
+          .map(item => ({ ...item, category: normalizeCategory(item.category) }))
           .filter(validateExtraction)
           .filter(item => item.confidence >= this.config.lowConfidenceThreshold)
           .slice(0, this.config.maxExtractionsPerRun);

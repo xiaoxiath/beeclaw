@@ -299,7 +299,7 @@ export async function executeProactiveTool(name: string, params: Record<string, 
           name: z.string().min(1),
           description: z.string().optional(),
           cron: z.string(),
-          taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'custom']),
+          taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'self_evolution', 'custom']),
           taskParams: z.record(z.unknown()).optional().default({}),
           enabled: z.boolean().optional().default(true),
         }).safeParse(params);

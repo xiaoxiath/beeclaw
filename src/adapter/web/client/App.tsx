@@ -4,7 +4,6 @@ import {
   createRoute,
   RouterProvider
 } from '@tanstack/react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RootLayout from './components/layout/RootLayout';
 import AuthGuard from './components/AuthGuard';
 import Dashboard from './pages/Dashboard';
@@ -15,9 +14,6 @@ import Chat from './pages/Chat';
 import Memory from './pages/Memory';
 import Sessions from './pages/Sessions';
 import Settings from './pages/Settings';
-
-// Create query client
-const queryClient = new QueryClient();
 
 // Single root route with layout
 const rootRoute = createRootRoute({
@@ -126,8 +122,6 @@ const router = createRouter({ routeTree });
 // Create App component
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <RouterProvider router={router} />
   );
 }

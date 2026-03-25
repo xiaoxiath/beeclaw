@@ -69,6 +69,13 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
     const manager = getNotificationsLazy();
 
     // Create the notification
+    // Merge feishuChatId / feishuUserId into metadata so delivery handlers can access them
+    const metadata: Record<string, unknown> = {
+      ...options.metadata,
+      ...(options.feishuChatId ? { feishuChatId: options.feishuChatId } : {}),
+      ...(options.feishuUserId ? { feishuUserId: options.feishuUserId } : {}),
+    };
+
     const result = manager.create({
       userId: 'cli-user',
       message: options.message,
@@ -77,7 +84,7 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
       scheduledFor: options.scheduledFor,
       expiresAt: options.expiresAt,
       channels: mapToStorageChannels(options.channels || ['cli']),
-      metadata: options.metadata,
+      metadata,
     });
 
     if (!result.success || !result.data) {

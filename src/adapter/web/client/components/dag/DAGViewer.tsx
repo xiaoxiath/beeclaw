@@ -195,17 +195,9 @@ function CustomControls() {
 }
 
 export default function DAGViewer({ nodes: initialNodes, edges: initialEdges }: DAGViewerProps) {
-  console.log('[DAGViewer] Render with:', {
-    nodesCount: initialNodes?.length || 0,
-    edgesCount: initialEdges?.length || 0,
-    firstNode: initialNodes?.[0]?.id,
-  });
-
   // Convert to React Flow format and apply layout in a single computation
   const { nodes, edges } = useMemo(() => {
-    console.log('[DAGViewer] Computing layout...');
     if (!initialNodes || initialNodes.length === 0) {
-      console.log('[DAGViewer] Empty nodes, returning empty arrays');
       return { nodes: [], edges: [] };
     }
 
@@ -233,17 +225,8 @@ export default function DAGViewer({ nodes: initialNodes, edges: initialEdges }: 
     }));
 
     const layouted = getLayoutedElements(nodes, edges);
-    console.log('[DAGViewer] Layout complete:', {
-      nodesCount: layouted.nodes.length,
-      edgesCount: layouted.edges.length,
-    });
     return layouted;
   }, [initialNodes, initialEdges]);
-
-  console.log('[DAGViewer] After useMemo:', {
-    nodesReady: nodes.length,
-    edgesReady: edges.length,
-  });
 
   // Empty state
   if (!initialNodes || initialNodes.length === 0) {

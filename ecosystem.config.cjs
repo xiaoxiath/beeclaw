@@ -4,9 +4,13 @@
  * Usage:
  *   pm2 start ecosystem.config.cjs              # Start in development mode
  *   pm2 start ecosystem.config.cjs --env production  # Start in production mode
+ *   pm2 start ecosystem.config.cjs --env no_daemon   # Start without daemon mode
  *   pm2 stop ecosystem.config.cjs               # Stop all apps
  *   pm2 restart ecosystem.config.cjs            # Restart all apps
  *   pm2 delete ecosystem.config.cjs             # Delete all apps
+ *
+ * Daemon control:
+ *   ENABLE_DAEMON=false pm2 start ecosystem.config.cjs  # Disable daemon via env
  */
 
 module.exports = {
@@ -16,7 +20,11 @@ module.exports = {
       script: 'src/entries/bot.ts',
       interpreter: 'bun',
       cwd: './',
-      args: '--daemon',  // Enable daemon mode for proactive scheduling
+
+      // Args can be controlled via environment variable
+      // Default: --daemon (enabled)
+      // Set ENABLE_DAEMON=false to disable
+      args: process.env.ENABLE_DAEMON === 'false' ? '' : '--daemon',
 
       // Process management
       instances: 1,
@@ -33,9 +41,15 @@ module.exports = {
       // Environment variables
       env: {
         NODE_ENV: 'development',
+        ENABLE_DAEMON: 'true',
       },
       env_production: {
         NODE_ENV: 'production',
+        ENABLE_DAEMON: 'true',
+      },
+      env_no_daemon: {
+        NODE_ENV: 'development',
+        ENABLE_DAEMON: 'false',
       },
 
       // Log configuration
@@ -46,6 +60,7 @@ module.exports = {
       combine_logs: true,
 
       // Advanced options
+      cron_restart: process.env.ENABLE_CRON_RESTART === 'true' ? '0 4 * * *' : undefined,
       time: true,  // Timestamp logs
     },
 

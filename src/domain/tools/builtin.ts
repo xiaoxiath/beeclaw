@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'fs';
-import { join, resolve, dirname, basename } from 'path';
+import { join, resolve, dirname, basename, sep } from 'path';
 import { create, all } from 'mathjs';
 import { parse as parseShell } from 'shell-quote';
 import { logger } from '../../infra/observability/logger';
@@ -1157,16 +1157,14 @@ export async function executeClaudeCode(params: Record<string, unknown>): Promis
   const { prompt, working_dir, timeout, model } = parsed.data;
 
   try {
-    // Build command
-    let cmd = 'claude -p';
+    // Build command args safely (no shell interpolation)
+    const args = ['claude', '-p'];
     if (model) {
-      cmd += ` --model ${model}`;
+      args.push('--model', model);
     }
-    // Escape the prompt for shell
-    const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    cmd += ` '${escapedPrompt}'`;
+    args.push(prompt);
 
-    // Execute using Bun's shell
+    // Execute using Bun's spawn (array form, no shell)
     const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
       const timer = setTimeout(() => {
         resolve({ stdout: '', stderr: 'Timeout reached', exitCode: 124 });
@@ -1174,7 +1172,7 @@ export async function executeClaudeCode(params: Record<string, unknown>): Promis
 
       (async () => {
         try {
-          const proc = Bun.spawn(['bash', '-c', cmd], {
+          const proc = Bun.spawn(args, {
             cwd: working_dir || process.cwd(),
             env: { ...process.env, CLAUDECODE: undefined },
           });
@@ -1281,12 +1279,6 @@ interface ResearchSource {
   source?: string;
 }
 
-interface _ResearchFinding {
-  aspect: string;
-  keyFacts: string[];
-  sources: ResearchSource[];
-}
-
 export async function executeDeepResearch(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const parsed = DeepResearchSchema.safeParse(params);
   if (!parsed.success) {
@@ -1389,7 +1381,10 @@ function ensureOutputDirs(): void {
 // Check if path is within allowed directories
 function isPathAllowed(filePath: string): boolean {
   const resolved = resolve(filePath);
-  return ALLOWED_BASE_DIRS.some(base => resolved.startsWith(resolve(base)));
+  return ALLOWED_BASE_DIRS.some(base => {
+    const resolvedBase = resolve(base);
+    return resolved === resolvedBase || resolved.startsWith(resolvedBase + sep);
+  });
 }
 
 export const FileReadSchema = z.object({
