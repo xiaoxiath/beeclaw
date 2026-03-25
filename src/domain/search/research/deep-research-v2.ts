@@ -1292,10 +1292,12 @@ Return plain text only (no JSON).`;
 
 class Semaphore {
   private permits: number;
-  private waiting: Array<() => void> = [];
+  private waiting: Array<{ resolve: () => void; timeout: NodeJS.Timeout }> = [];
+  private timeoutMs: number;
 
-  constructor(permits: number) {
+  constructor(permits: number, timeoutMs: number = 30000) {
     this.permits = permits;
+    this.timeoutMs = timeoutMs;
   }
 
   async acquire(): Promise<void> {
@@ -1303,13 +1305,26 @@ class Semaphore {
       this.permits--;
       return;
     }
-    return new Promise<void>(resolve => this.waiting.push(resolve));
+
+    return new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        // Remove this entry from waiting queue
+        const idx = this.waiting.findIndex(w => w.resolve === resolve);
+        if (idx !== -1) {
+          this.waiting.splice(idx, 1);
+        }
+        reject(new TimeoutError(`Semaphore acquire timed out after ${this.timeoutMs}ms`));
+      }, this.timeoutMs);
+
+      this.waiting.push({ resolve, timeout: timeoutId });
+    });
   }
 
   release(): void {
     if (this.waiting.length > 0) {
       const next = this.waiting.shift()!;
-      next();
+      clearTimeout(next.timeout);
+      next.resolve();
     } else {
       this.permits++;
     }

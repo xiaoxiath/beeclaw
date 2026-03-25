@@ -49,6 +49,10 @@ export class FinanceOrchestrator {
     info: 24 * 60 * 60 * 1000, // 24 hours for company info
   };
 
+  // P2 FIX: Cache size limit to prevent memory leaks
+  private static readonly MAX_CACHE_SIZE = 1000; // Maximum number of cached entries
+  private static readonly CLEANUP_THRESHOLD = 800; // Clean up when reaching 80% capacity
+
   constructor(config?: FinanceConfig) {
     this.config = config || {};
     this.initializeProviders();
@@ -109,11 +113,43 @@ export class FinanceOrchestrator {
       return;
     }
 
+    // P2 FIX: Clean up cache if it's getting too large
+    if (this.cache.size >= FinanceOrchestrator.CLEANUP_THRESHOLD) {
+      this.cleanupCache();
+    }
+
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
       ttl,
     });
+  }
+
+  /**
+   * P2 FIX: Remove expired entries and enforce size limit using LRU strategy
+   */
+  private cleanupCache(): void {
+    const now = Date.now();
+
+    // First pass: remove expired entries
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > entry.ttl) {
+        this.cache.delete(key);
+      }
+    }
+
+    // Second pass: if still over threshold, remove oldest entries (LRU)
+    if (this.cache.size > FinanceOrchestrator.MAX_CACHE_SIZE) {
+      const entries = Array.from(this.cache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp); // Sort by timestamp (oldest first)
+
+      const toRemove = entries.slice(0, this.cache.size - FinanceOrchestrator.CLEANUP_THRESHOLD);
+      for (const [key] of toRemove) {
+        this.cache.delete(key);
+      }
+
+      console.log(`[Finance] Cache cleanup: removed ${toRemove.length} entries, current size: ${this.cache.size}`);
+    }
   }
 
   // ============================================================================

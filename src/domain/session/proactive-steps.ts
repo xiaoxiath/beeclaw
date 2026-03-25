@@ -88,10 +88,9 @@ export async function prepareProactiveContext(
  * Resolves session, sets deep-analysis context, handles background compression.
  * Mutates `ctx` to set `systemPrompt`, `selectedModel`, `selectedProvider`, etc.
  *
- * NOTE: This is a declaration-only stub. The actual session-lookup, compression,
- * and prompt-building logic remains in session/index.ts because it depends on
- * module-level state (sessions map, agentConfig, compressionLocks). This function
- * is exported so that future refactors can inject those dependencies.
+ * TODO: [Phase 4] Move session-lookup, compression, and prompt-building logic
+ * from session/index.ts to this function by injecting dependencies.
+ * Currently depends on module-level state (sessions map, agentConfig, compressionLocks).
  */
 export function resolveProactiveRecipients(ctx: ProactiveContext): void {
   // Currently a no-op placeholder — logic remains in _sendProactiveMessageInternal.

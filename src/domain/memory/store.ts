@@ -69,9 +69,28 @@ class FileLock {
           const holderAlive = this._isPidAlive(holder.pid);
 
           if (!holderAlive || age > FileLock.STALE_MS) {
-            // Stale lock — break it
-            try { unlinkSync(lockPath); } catch { /* race: another process may have removed it */ }
-            continue; // retry immediately
+            // FIX TOCTOU race: Use atomic rename instead of unlink+create
+            // Create a temporary file and atomically rename it to replace the stale lock
+            const tempLockPath = `${lockPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+            try {
+              const lockContent = JSON.stringify({ pid, ts: Date.now() });
+              writeFileSync(tempLockPath, lockContent);
+              // Atomic rename - if this succeeds, we own the lock
+              // If another process already renamed, this will throw
+              renameSync(tempLockPath, lockPath);
+              // Lock acquired via atomic replacement!
+              break;
+            } catch (renameErr: any) {
+              // Clean up temp file
+              try { unlinkSync(tempLockPath); } catch { /* ignore */ }
+
+              // If rename failed because another process won the race, continue waiting
+              if (renameErr.code === 'EEXIST' || renameErr.code === 'ENOENT') {
+                // Another process broke the lock, continue polling
+                continue;
+              }
+              // Other errors: fall through to normal retry logic
+            }
           }
         } catch {
           // Corrupt lockfile — remove and retry
