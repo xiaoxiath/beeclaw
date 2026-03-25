@@ -77,6 +77,7 @@
     "glob": "13.0.6",
     "lucide-react": "0.577.0",
     "madge": "8.0.0",
+    "monaco-editor": "0.55.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "10.1.0",
@@ -84,7 +85,7 @@
     "tailwindcss": "4.2.1",
     "tailwindcss-cli": "0.1.2",
     "ts-morph": "27.0.2",
-    "typescript": "^5.6.0",
-    "monaco-editor": "0.55.1"
+    "ts-prune": "0.10.3",
+    "typescript": "^5.9.3"
   }
 }

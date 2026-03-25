@@ -16,6 +16,39 @@ import type {
 } from './orchestration-types';
 import type { SubagentResult } from './types';
 
+/** Default per-subtask timeout in ms */
+const DEFAULT_SUBTASK_TIMEOUT = 60000;
+
+/** Minimum per-subtask timeout in ms */
+const MIN_SUBTASK_TIMEOUT = 15000;
+
+/** Maximum per-subtask timeout in ms */
+const MAX_SUBTASK_TIMEOUT = 180000;
+
+/**
+ * Compute a per-subtask timeout based on its estimated complexity (1-10).
+ * Falls back to `defaultMs` when the subtask has no complexity annotation.
+ */
+function computeSubtaskTimeout(
+  subtask: SubTask,
+  perSubtaskTimeoutMs?: number,
+): number {
+  // If the caller provided an explicit per-subtask timeout, honour it.
+  if (perSubtaskTimeoutMs !== undefined) {
+    return perSubtaskTimeoutMs;
+  }
+
+  const complexity = subtask.estimatedComplexity;
+  if (complexity === undefined) {
+    return DEFAULT_SUBTASK_TIMEOUT;
+  }
+
+  // Linear scale: complexity 1 -> MIN, complexity 10 -> MAX
+  const clamped = Math.max(1, Math.min(10, complexity));
+  const ratio = (clamped - 1) / 9; // 0..1
+  return Math.round(MIN_SUBTASK_TIMEOUT + ratio * (MAX_SUBTASK_TIMEOUT - MIN_SUBTASK_TIMEOUT));
+}
+
 /**
  * Task Orchestrator - manages task decomposition and execution
  */
@@ -30,6 +63,7 @@ export class TaskOrchestrator {
     defaultMaxParallelism?: number;
     defaultMaxRetries?: number;
     defaultTimeout?: number;
+    defaultSubtaskTimeout?: number;
   }) {
     this.provider = options.provider;
     this.model = options.model;
@@ -38,6 +72,7 @@ export class TaskOrchestrator {
       maxParallelism: options.defaultMaxParallelism || 3,
       maxRetries: options.defaultMaxRetries || 1,
       timeout: options.defaultTimeout || 300000, // 5 minutes
+      subtaskTimeout: options.defaultSubtaskTimeout,
       continueOnFailure: true,
     };
   }
@@ -99,6 +134,7 @@ export class TaskOrchestrator {
   ): Promise<OrchestrationResult> {
     const opts = { ...this.defaultOptions, ...options };
     const startTime = Date.now();
+    const globalTimeout = opts.timeout || 300000; // 5 minutes default
 
     console.log(`[Orchestrator] Starting execution of ${decomposition.subtasks.length} subtasks`);
     console.log(`[Orchestrator] Max parallelism: ${opts.maxParallelism}`);
@@ -111,43 +147,40 @@ export class TaskOrchestrator {
     const results = new Map<number, SubagentResult>();
     const errors: Array<{ subtaskId: number; error: string }> = [];
 
-    // Execute tasks
-    while (!scheduler.isComplete()) {
-      // Get tasks that can run in parallel
-      const readyTasks = scheduler.getParallelizableTasks();
+    // ---------------------------------------------------------------
+    // Fix 2: Event-driven signal instead of busy-wait polling.
+    // A shared promise that resolves whenever any running task finishes.
+    // ---------------------------------------------------------------
+    let resolveSignal: () => void;
+    let taskCompletionSignal = new Promise<void>(r => { resolveSignal = r; });
+    const resetSignal = () => {
+      taskCompletionSignal = new Promise<void>(r => { resolveSignal = r; });
+    };
 
-      if (readyTasks.length === 0) {
-        // Check if we're stuck (all pending tasks have failed dependencies)
-        const failedTasks = scheduler.getFailedTasks();
-        if (failedTasks.length > 0 && scheduler.getRunningTasks().length === 0) {
-          console.error('[Orchestrator] Execution stuck due to failed tasks');
+    // ---------------------------------------------------------------
+    // Fix 3: Pipeline scheduling – maintain a running-promise set so we
+    // can dispatch new tasks as soon as *any* task finishes, rather than
+    // waiting for the entire batch.
+    // ---------------------------------------------------------------
+    const runningPromises = new Map<number, Promise<void>>();
 
-          // Skip all pending tasks
-          for (const state of scheduler.getTaskStates().values()) {
-            if (state.status === 'pending') {
-              scheduler.skipTask(state.subtask.id);
-            }
-          }
-          break;
-        }
+    /**
+     * Launch a single subtask and manage its lifecycle.
+     * Returns a promise that settles when the task completes / fails.
+     */
+    const launchTask = (task: SubTask): Promise<void> => {
+      scheduler.startTask(task.id);
+      console.log(`[Orchestrator] Starting subtask ${task.id}: ${task.description.substring(0, 50)}...`);
 
-        // Wait a bit for running tasks to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-        continue;
-      }
+      const subtaskTimeout = computeSubtaskTimeout(task, opts.subtaskTimeout);
 
-      // Execute ready tasks in parallel
-      const taskPromises = readyTasks.map(async (task) => {
-        scheduler.startTask(task.id);
-
-        console.log(`[Orchestrator] Starting subtask ${task.id}: ${task.description.substring(0, 50)}...`);
-
+      const promise = (async () => {
         try {
           const result = await spawnSubagent({
             type: task.type,
             task: task.description,
             context: task.context,
-            timeout: 60000, // 1 minute per subtask
+            timeout: subtaskTimeout,
           });
 
           if (result.success) {
@@ -180,20 +213,90 @@ export class TaskOrchestrator {
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           console.error(`[Orchestrator] Subtask ${task.id} error:`, errorMsg);
-          scheduler.failTask(task.id, errorMsg);
-          errors.push({ subtaskId: task.id, error: errorMsg });
+
+          // Only fail if not already handled (retry path sets status to pending)
+          const state = scheduler.getTaskState(task.id);
+          if (state && state.status === 'running') {
+            scheduler.failTask(task.id, errorMsg);
+            errors.push({ subtaskId: task.id, error: errorMsg });
+          }
 
           if (!opts.continueOnFailure) {
             throw error;
           }
+        } finally {
+          // Remove from running set and signal the main loop
+          runningPromises.delete(task.id);
+          resolveSignal();
+          resetSignal();
+
+          // Progress callback
+          opts.onProgress?.(scheduler.getProgress());
+        }
+      })();
+
+      runningPromises.set(task.id, promise);
+      return promise;
+    };
+
+    // ---------------------------------------------------------------
+    // Main scheduling loop
+    // ---------------------------------------------------------------
+    while (!scheduler.isComplete()) {
+      // -----------------------------------------------------------
+      // Fix 1: Global timeout check
+      // -----------------------------------------------------------
+      if (Date.now() - startTime > globalTimeout) {
+        console.error('[Orchestrator] Global timeout reached');
+        // Fail all pending / running tasks
+        for (const state of scheduler.getTaskStates().values()) {
+          if (state.status === 'pending' || state.status === 'running') {
+            scheduler.failTask(state.subtask.id, 'Global orchestration timeout');
+            errors.push({ subtaskId: state.subtask.id, error: 'Global orchestration timeout' });
+          }
+        }
+        break;
+      }
+
+      // Get tasks that can run right now (respects maxParallelism)
+      const readyTasks = scheduler.getParallelizableTasks();
+
+      if (readyTasks.length === 0) {
+        // Check if we are stuck (all pending tasks have failed dependencies)
+        const failedTasks = scheduler.getFailedTasks();
+        if (failedTasks.length > 0 && scheduler.getRunningTasks().length === 0) {
+          console.error('[Orchestrator] Execution stuck due to failed tasks');
+
+          // Skip all remaining pending tasks
+          for (const state of scheduler.getTaskStates().values()) {
+            if (state.status === 'pending') {
+              scheduler.skipTask(state.subtask.id);
+            }
+          }
+          break;
         }
 
-        // Progress callback
-        opts.onProgress?.(scheduler.getProgress());
-      });
+        if (runningPromises.size > 0) {
+          // Wait for any running task to complete (event-driven, not busy-wait)
+          await taskCompletionSignal;
+        }
+        continue;
+      }
 
-      // Wait for this batch to complete
-      await Promise.all(taskPromises);
+      // Launch all ready tasks (fire-and-forget into the running set)
+      for (const task of readyTasks) {
+        launchTask(task);
+      }
+
+      // Wait for at least one running task to complete before re-evaluating
+      if (runningPromises.size > 0) {
+        await taskCompletionSignal;
+      }
+    }
+
+    // Ensure all running promises are settled before returning
+    if (runningPromises.size > 0) {
+      await Promise.allSettled([...runningPromises.values()]);
     }
 
     const duration = Date.now() - startTime;
@@ -263,6 +366,21 @@ export class TaskOrchestrator {
         for (const { task, result } of items) {
           sections.push(`\n### ${task.description.substring(0, 60)}...\n\n${result.output}`);
         }
+      }
+    }
+
+    // -----------------------------------------------------------
+    // Fix 4: Include failed task information in aggregated output
+    // -----------------------------------------------------------
+    const failedTasks = decomposition.subtasks.filter(
+      s => !results.has(s.id) || !results.get(s.id)!.success
+    );
+    if (failedTasks.length > 0) {
+      sections.push('## Failed Tasks\n');
+      for (const task of failedTasks) {
+        const result = results.get(task.id);
+        const reason = result?.error || 'Task was skipped or not executed';
+        sections.push(`- **${task.description.substring(0, 60)}**: ${reason}`);
       }
     }
 

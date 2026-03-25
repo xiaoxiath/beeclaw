@@ -152,7 +152,7 @@ function calculateMaxParallelism(subtasks: SubTask[]): number {
 /**
  * Create a simple sequential decomposition for simple tasks
  */
-function createSequentialDecomposition(task: string, steps: string[]): TaskDecomposition {
+export function createSequentialDecomposition(task: string, steps: string[]): TaskDecomposition {
   const subtasks: SubTask[] = steps.map((step, idx) => ({
     id: idx,
     type: 'general' as const,
@@ -163,11 +163,38 @@ function createSequentialDecomposition(task: string, steps: string[]): TaskDecom
   }));
 
   return {
+    originalTask: task,
     subtasks,
     strategy: 'sequential',
     reasoning: 'Simple task, sequential execution',
     totalComplexity: subtasks.length * 5,
     maxParallelism: 1,
+  };
+}
+
+/**
+ * Create a parallel decomposition for independent tasks
+ */
+export function createParallelDecomposition(
+  task: string,
+  descriptions: Array<{ type: SubTask['type']; description: string }>
+): TaskDecomposition {
+  const subtasks: SubTask[] = descriptions.map((desc, idx) => ({
+    id: idx,
+    type: desc.type,
+    description: desc.description,
+    parallel: true,
+    dependsOn: [],
+    estimatedComplexity: 5,
+  }));
+
+  return {
+    originalTask: task,
+    subtasks,
+    strategy: 'parallel',
+    reasoning: 'Independent tasks, parallel execution',
+    totalComplexity: subtasks.length * 5,
+    maxParallelism: subtasks.length,
   };
 }
 
@@ -247,6 +274,7 @@ export async function decomposeTask(options: {
       const maxParallelism = calculateMaxParallelism(subtasks);
 
       return {
+        originalTask: task,
         subtasks,
         strategy,
         reasoning: output.reasoning || 'LLM-generated decomposition',

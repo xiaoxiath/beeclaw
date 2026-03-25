@@ -146,7 +146,7 @@ export async function executeStateUpdate(params: StateUpdateParams): Promise<Too
         throw new Error(`Unknown operation: ${params.operation}`);
     }
 
-    await state.update(params.key, updater, params.ttl);
+    await state.guardedUpdate(params.key, updater, params.ttl);
 
     const entry = await state.getEntry(params.key);
 

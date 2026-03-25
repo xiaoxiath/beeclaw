@@ -1,85 +1,27 @@
 /**
  * Subagent Tools Tests
  *
- * Unit tests for subagent tool definitions and state tools
+ * Unit tests for subagent tool formatters and state tool formatters.
+ *
+ * Note: Tests for the old individual tool definition objects (spawnSubagentTool,
+ * spawnParallelTool, stateSetTool, etc.) have been removed. Tool definitions
+ * now live in builtin.ts (spawnSubagentToolDef / spawnParallelToolDef) and
+ * state-tools-consolidated.ts respectively.
  */
 
 import { describe, test, expect } from 'bun:test';
 import {
-  spawnSubagentTool,
-  spawnParallelTool,
   formatSubagentResult,
   formatParallelResults,
 } from '../tools';
 import type { SubagentResult } from '../types';
 import {
-  stateSetTool,
-  stateGetTool,
-  stateDeleteTool,
-  stateUpdateTool,
-  stateExistsTool,
-  stateListTool,
-  stateStatsTool,
-  stateLockTool,
-  stateUnlockTool,
   formatStateEntry,
   formatStateStats,
 } from '../state-tools';
 import type { StateEntry, StateStats } from '../state';
 
 describe('Subagent Tools', () => {
-  describe('spawn_subagent tool', () => {
-    test('should have correct name', () => {
-      expect(spawnSubagentTool.name).toBe('spawn_subagent');
-    });
-
-    test('should have description', () => {
-      expect(spawnSubagentTool.description).toContain('specialized subagent');
-    });
-
-    test('should require type and task parameters', () => {
-      const params = spawnSubagentTool.parameters;
-      expect(params.required).toContain('type');
-      expect(params.required).toContain('task');
-    });
-
-    test('should accept all subagent types', () => {
-      const typeProperty = spawnSubagentTool.parameters.properties.type as any;
-      expect(typeProperty.enum).toContain('research');
-      expect(typeProperty.enum).toContain('memory');
-      expect(typeProperty.enum).toContain('skill');
-      expect(typeProperty.enum).toContain('code');
-      expect(typeProperty.enum).toContain('general');
-    });
-
-    test('should have optional parameters', () => {
-      const props = spawnSubagentTool.parameters.properties;
-      expect(props.context).toBeDefined();
-      expect(props.timeout).toBeDefined();
-      expect(props.maxTokens).toBeDefined();
-    });
-  });
-
-  describe('spawn_parallel tool', () => {
-    test('should have correct name', () => {
-      expect(spawnParallelTool.name).toBe('spawn_parallel');
-    });
-
-    test('should have description', () => {
-      expect(spawnParallelTool.description).toContain('parallel');
-    });
-
-    test('should require tasks parameter', () => {
-      const params = spawnParallelTool.parameters;
-      expect(params.required).toContain('tasks');
-    });
-
-    test('should accept maxParallelism parameter', () => {
-      const props = spawnParallelTool.parameters.properties;
-      expect(props.maxParallelism).toBeDefined();
-    });
-  });
-
   describe('formatSubagentResult', () => {
     test('should format successful result', () => {
       const result: SubagentResult = {
@@ -185,131 +127,7 @@ describe('Subagent Tools', () => {
   });
 });
 
-describe('State Tools', () => {
-  describe('state_set tool', () => {
-    test('should have correct name', () => {
-      expect(stateSetTool.name).toBe('state_set');
-    });
-
-    test('should require key and value', () => {
-      const params = stateSetTool.parameters;
-      expect(params.required).toContain('key');
-      expect(params.required).toContain('value');
-    });
-
-    test('should have optional ttl and metadata', () => {
-      const props = stateSetTool.parameters.properties;
-      expect(props.ttl).toBeDefined();
-      expect(props.metadata).toBeDefined();
-    });
-  });
-
-  describe('state_get tool', () => {
-    test('should have correct name', () => {
-      expect(stateGetTool.name).toBe('state_get');
-    });
-
-    test('should require key', () => {
-      const params = stateGetTool.parameters;
-      expect(params.required).toContain('key');
-    });
-  });
-
-  describe('state_delete tool', () => {
-    test('should have correct name', () => {
-      expect(stateDeleteTool.name).toBe('state_delete');
-    });
-
-    test('should require key', () => {
-      const params = stateDeleteTool.parameters;
-      expect(params.required).toContain('key');
-    });
-  });
-
-  describe('state_update tool', () => {
-    test('should have correct name', () => {
-      expect(stateUpdateTool.name).toBe('state_update');
-    });
-
-    test('should require key and operation', () => {
-      const params = stateUpdateTool.parameters;
-      expect(params.required).toContain('key');
-      expect(params.required).toContain('operation');
-    });
-
-    test('should accept all operations', () => {
-      const opProperty = stateUpdateTool.parameters.properties.operation as any;
-      expect(opProperty.enum).toContain('increment');
-      expect(opProperty.enum).toContain('decrement');
-      expect(opProperty.enum).toContain('append');
-      expect(opProperty.enum).toContain('prepend');
-      expect(opProperty.enum).toContain('merge');
-      expect(opProperty.enum).toContain('replace');
-    });
-  });
-
-  describe('state_exists tool', () => {
-    test('should have correct name', () => {
-      expect(stateExistsTool.name).toBe('state_exists');
-    });
-
-    test('should require key', () => {
-      const params = stateExistsTool.parameters;
-      expect(params.required).toContain('key');
-    });
-  });
-
-  describe('state_list tool', () => {
-    test('should have correct name', () => {
-      expect(stateListTool.name).toBe('state_list');
-    });
-
-    test('should have optional prefix filter', () => {
-      const props = stateListTool.parameters.properties;
-      expect(props.prefix).toBeDefined();
-      expect(stateListTool.parameters.required).not.toContain('prefix');
-    });
-  });
-
-  describe('state_stats tool', () => {
-    test('should have correct name', () => {
-      expect(stateStatsTool.name).toBe('state_stats');
-    });
-
-    test('should have no required parameters', () => {
-      const params = stateStatsTool.parameters;
-      expect(params.required).toHaveLength(0);
-    });
-  });
-
-  describe('state_lock tool', () => {
-    test('should have correct name', () => {
-      expect(stateLockTool.name).toBe('state_lock');
-    });
-
-    test('should require key', () => {
-      const params = stateLockTool.parameters;
-      expect(params.required).toContain('key');
-    });
-
-    test('should have optional owner and timeout', () => {
-      const props = stateLockTool.parameters.properties;
-      expect(props.owner).toBeDefined();
-      expect(props.timeout).toBeDefined();
-    });
-  });
-
-  describe('state_unlock tool', () => {
-    test('should have correct name', () => {
-      expect(stateUnlockTool.name).toBe('state_unlock');
-    });
-
-    test('should require key', () => {
-      const params = stateUnlockTool.parameters;
-      expect(params.required).toContain('key');
-    });
-  });
-
+describe('State Tools Formatters', () => {
   describe('formatStateEntry', () => {
     test('should format entry with metadata', () => {
       const entry: StateEntry = {
@@ -401,93 +219,5 @@ describe('State Tools', () => {
 
       expect(formatted).toContain('2.00 KB');
     });
-  });
-});
-
-describe('Tool Parameter Validation', () => {
-  test('all tools should have name property', () => {
-    const tools = [
-      spawnSubagentTool,
-      spawnParallelTool,
-      stateSetTool,
-      stateGetTool,
-      stateDeleteTool,
-      stateUpdateTool,
-      stateExistsTool,
-      stateListTool,
-      stateStatsTool,
-      stateLockTool,
-      stateUnlockTool,
-    ];
-
-    for (const tool of tools) {
-      expect(tool.name).toBeDefined();
-      expect(typeof tool.name).toBe('string');
-      expect(tool.name.length).toBeGreaterThan(0);
-    }
-  });
-
-  test('all tools should have description', () => {
-    const tools = [
-      spawnSubagentTool,
-      spawnParallelTool,
-      stateSetTool,
-      stateGetTool,
-      stateDeleteTool,
-      stateUpdateTool,
-      stateExistsTool,
-      stateListTool,
-      stateStatsTool,
-      stateLockTool,
-      stateUnlockTool,
-    ];
-
-    for (const tool of tools) {
-      expect(tool.description).toBeDefined();
-      expect(typeof tool.description).toBe('string');
-      expect(tool.description.length).toBeGreaterThan(0);
-    }
-  });
-
-  test('all tools should have parameters object', () => {
-    const tools = [
-      spawnSubagentTool,
-      spawnParallelTool,
-      stateSetTool,
-      stateGetTool,
-      stateDeleteTool,
-      stateUpdateTool,
-      stateExistsTool,
-      stateListTool,
-      stateStatsTool,
-      stateLockTool,
-      stateUnlockTool,
-    ];
-
-    for (const tool of tools) {
-      expect(tool.parameters).toBeDefined();
-      expect(tool.parameters.type).toBe('object');
-      expect(tool.parameters.properties).toBeDefined();
-    }
-  });
-
-  test('tools with required params should have array', () => {
-    const toolsWithRequired = [
-      spawnSubagentTool,
-      spawnParallelTool,
-      stateSetTool,
-      stateGetTool,
-      stateDeleteTool,
-      stateUpdateTool,
-      stateExistsTool,
-      stateLockTool,
-      stateUnlockTool,
-    ];
-
-    for (const tool of toolsWithRequired) {
-      if (tool.parameters.required) {
-        expect(Array.isArray(tool.parameters.required)).toBe(true);
-      }
-    }
   });
 });

@@ -332,18 +332,36 @@ export class SharedState {
    * @returns Function to release the lock
    */
   async acquireLock(key: string, owner?: string, timeout = 5000): Promise<() => void> {
-    // Check if already locked
-    const existingLock = this.locks.get(key);
-    if (existingLock) {
-      // Wait for existing lock with timeout
+    const deadline = Date.now() + timeout;
+
+    // Spin-wait until the key is unlocked or we time out.
+    // A plain `if` would let multiple awaiters through simultaneously
+    // after `Promise.race` resolves, causing them to overwrite each
+    // other's locks. The `while` loop re-checks after every wakeup.
+    while (this.locks.has(key)) {
+      const existingLock = this.locks.get(key)!;
+      const remainingTime = deadline - Date.now();
+      if (remainingTime <= 0) {
+        throw new Error(`Lock acquisition timeout for key: ${key}`);
+      }
+
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Lock acquisition timeout for key: ${key}`)), timeout);
+        setTimeout(
+          () => reject(new Error(`Lock acquisition timeout for key: ${key}`)),
+          remainingTime,
+        );
       });
 
-      await Promise.race([existingLock.promise, timeoutPromise]);
+      try {
+        await Promise.race([existingLock.promise, timeoutPromise]);
+      } catch (error) {
+        // Timeout — propagate directly
+        throw error;
+      }
+      // Loop back and re-check — another waiter may have grabbed the lock first.
     }
 
-    // Create new lock
+    // At this point no lock exists for `key`; safe to create one.
     let releaseLock: () => void;
     const lockPromise = new Promise<void>((resolve) => {
       releaseLock = resolve;
@@ -370,8 +388,10 @@ export class SharedState {
   private releaseLock(key: string): void {
     const lock = this.locks.get(key);
     if (lock) {
-      lock.release();
+      // Delete entry BEFORE resolving so that awoken waiters see the
+      // lock as absent when their `while` loop re-checks `this.locks.has(key)`.
       this.locks.delete(key);
+      lock.release();
     }
   }
 

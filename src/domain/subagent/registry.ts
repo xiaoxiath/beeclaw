@@ -7,8 +7,6 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
-// TODO: [CR-Layer] Move getHookRunner to domain port interface
-import { getHookRunner } from '../../adapter/plugins/hooks';
 
 // ============================================================================
 // 类型定义
@@ -102,6 +100,11 @@ export interface SubagentRegistryStats {
   totalTokens: number;
 }
 
+/** Minimal interface for hook runner injection (decoupled from adapter layer) */
+export interface RegistryHookRunner {
+  runParallel: (name: string, data: any, ctx: any) => Promise<void>;
+}
+
 // ============================================================================
 // Subagent Registry
 // ============================================================================
@@ -111,8 +114,9 @@ export class SubagentRegistry {
   private config: SubagentRegistryConfig;
   private persistPath: string;
   private cleanupTimer?: Timer;
+  private hookRunner?: RegistryHookRunner;
 
-  constructor(config: Partial<SubagentRegistryConfig> = {}) {
+  constructor(config: Partial<SubagentRegistryConfig> = {}, hookRunner?: RegistryHookRunner) {
     this.config = {
       persistPath: './data/subagent-runs.json',
       maxDepth: 3,
@@ -122,6 +126,7 @@ export class SubagentRegistry {
       ...config,
     };
     this.persistPath = this.config.persistPath;
+    this.hookRunner = hookRunner;
     this.ensureDirectory();
     this.restore();
     this.startCleanupTimer();
@@ -472,9 +477,9 @@ export class SubagentRegistry {
   }
 
   private async triggerHook(hookName: string, record: SubagentRunRecord): Promise<void> {
+    if (!this.hookRunner) return;
     try {
-      const hookRunner = getHookRunner();
-      await hookRunner.runParallel(hookName as any, record, {
+      await this.hookRunner.runParallel(hookName as any, record, {
         sessionKey: record.childSessionKey,
         timestamp: new Date().toISOString(),
       });
@@ -506,9 +511,9 @@ export class SubagentRegistry {
 
 let registry: SubagentRegistry | null = null;
 
-export function getSubagentRegistry(config?: Partial<SubagentRegistryConfig>): SubagentRegistry {
+export function getSubagentRegistry(config?: Partial<SubagentRegistryConfig>, hookRunner?: RegistryHookRunner): SubagentRegistry {
   if (!registry) {
-    registry = new SubagentRegistry(config);
+    registry = new SubagentRegistry(config, hookRunner);
   }
   return registry;
 }

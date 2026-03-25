@@ -365,7 +365,7 @@ describe('Dependency Validation', () => {
       { id: 1, type: 'memory', description: 'Task 2', parallel: false, dependsOn: [0] },
     ];
 
-    expect(() => validateDependencies(subtasks)).toThrow('circular');
+    expect(() => validateDependencies(subtasks)).toThrow('Circular');
   });
 
   test('should detect self-dependencies', () => {
@@ -383,7 +383,7 @@ describe('Dependency Validation', () => {
       { id: 2, type: 'skill', description: 'Task 3', parallel: false, dependsOn: [1] },
     ];
 
-    expect(() => validateDependencies(subtasks)).toThrow('circular');
+    expect(() => validateDependencies(subtasks)).toThrow('Circular');
   });
 
   test('should accept independent tasks', () => {

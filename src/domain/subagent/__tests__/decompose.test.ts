@@ -165,7 +165,7 @@ describe('Task Decomposition', () => {
           { id: 0, type: 'general', description: 'A', parallel: false, dependsOn: [0] },
         ];
 
-        expect(() => validateDependencies(subtasks)).toThrow('Self-dependency');
+        expect(() => validateDependencies(subtasks)).toThrow('depends on itself');
       });
 
     test('throws on invalid reference', () => {
@@ -173,7 +173,7 @@ describe('Task Decomposition', () => {
           { id: 0, type: 'general', description: 'A', parallel: false, dependsOn: [99] },
         ];
 
-        expect(() => validateDependencies(subtasks)).toThrow('Invalid dependency reference');
+        expect(() => validateDependencies(subtasks)).toThrow('non-existent task');
       });
 
     test('throws on circular dependency (simple)', () => {
@@ -182,7 +182,7 @@ describe('Task Decomposition', () => {
           { id: 1, type: 'general', description: 'B', parallel: false, dependsOn: [0] },
         ];
 
-        expect(() => validateDependencies(subtasks)).toThrow('circular dependency');
+        expect(() => validateDependencies(subtasks)).toThrow('Circular dependency');
       });
 
     test('throws on circular dependency (complex)', () => {
@@ -192,7 +192,7 @@ describe('Task Decomposition', () => {
           { id: 2, type: 'general', description: 'C', parallel: false, dependsOn: [1] },
         ];
 
-        expect(() => validateDependencies(subtasks)).toThrow('circular dependency');
+        expect(() => validateDependencies(subtasks)).toThrow('Circular dependency');
       });
 
     test('validates complex DAG', () => {

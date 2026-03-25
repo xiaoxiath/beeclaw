@@ -23,7 +23,7 @@ export async function executeSpawnSubagent(
       type: params.type,
       task: params.task,
       context: params.context,
-      timeout: params.timeout || 60000,
+      timeout: params.timeout || 180000,
       maxTokens: params.maxTokens,
     });
 
@@ -84,7 +84,7 @@ export async function executeSpawnParallel(
       type: task.type,
       task: task.task,
       context: task.context,
-      timeout: task.timeout || 60000,
+      timeout: task.timeout || 180000,
     }));
 
     const results = await spawnParallelSubagents(configs);

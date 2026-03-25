@@ -1,12 +1,15 @@
 /**
  * Subagent Runtime
  *
- * Core runtime for spawning and executing subagents
+ * Core runtime for spawning and executing subagents.
+ * Integrates with SubagentRegistry for depth limiting, lifecycle tracking,
+ * and persistent statistics.
  */
 
 import { createAgent, getAllToolsForAI } from '../agent';
 import { buildSubagentSystemPrompt } from './prompts';
 import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
+import { getSubagentRegistry } from './registry';
 import type { AIProvider } from '../../infra/config/schema';
 import type { OpenAITool } from '../agent/types';
 // TODO: [CR-Layer] Move getPluginRegistry to domain port interface
@@ -55,6 +58,7 @@ const DEFAULT_MAX_CONCURRENT_SUBAGENTS = 3;
 export class SubagentRuntime {
   private provider: AIProvider;
   private model: string;
+  private sessionKey: string;
   private stats: SubagentStats = {
     totalSpawned: 0,
     successful: 0,
@@ -67,9 +71,11 @@ export class SubagentRuntime {
   constructor(options: {
     provider: AIProvider;
     model: string;
+    sessionKey?: string;
   }) {
     this.provider = options.provider;
     this.model = options.model;
+    this.sessionKey = options.sessionKey || 'root';
   }
 
   /**
@@ -100,39 +106,85 @@ export class SubagentRuntime {
     console.log(`[Subagent] Spawning ${config.type} subagent: ${subagentId}`);
     console.log(`[Subagent] Task: ${config.task.substring(0, 100)}...`);
 
-    // Trigger subagent_spawning hook (modifying)
-    let modifiedConfig = config;
+    // --- Registry: depth check ---
     try {
-      const registry = getPluginRegistry();
-      const hookRunner = createHookRunner(registry);
-
-      const spawningEvent = {
-        subagentId,
-        type: config.type,
-        task: config.task,
-        context: config.context,
-        provider: config.provider || this.provider,
-        model: config.model || this.model,
-        timestamp: new Date().toISOString(),
-      };
-
-      const result = await hookRunner.runSubagentSpawning(spawningEvent);
-
-      // Apply modifications if returned
-      if (result) {
-        modifiedConfig = {
-          ...config,
-          task: result.task || config.task,
-          context: result.context || config.context,
-          model: result.model || config.model,
-          provider: result.provider || config.provider,
+      const registry = getSubagentRegistry();
+      const { allowed, depth, maxDepth } = registry.checkDepth(this.sessionKey);
+      if (!allowed) {
+        return {
+          success: false,
+          output: '',
+          tokensUsed: 0,
+          duration: 0,
+          error: `Subagent nesting depth ${depth} exceeds maximum ${maxDepth}`,
+          id: subagentId,
         };
       }
-    } catch (error) {
-      logger.debug('Plugin system not initialized:', error);
+    } catch {
+      // Registry not initialized, skip depth check
+    }
+
+    // --- Obtain hook runner once, reuse throughout spawn ---
+    let hookRunner: ReturnType<typeof createHookRunner> | null = null;
+    try {
+      const pluginRegistry = getPluginRegistry();
+      hookRunner = createHookRunner(pluginRegistry);
+    } catch {
+      // Plugin system not initialized
+    }
+
+    // Trigger subagent_spawning hook (modifying)
+    let modifiedConfig = config;
+    if (hookRunner) {
+      try {
+        const spawningEvent = {
+          subagentId,
+          type: config.type,
+          task: config.task,
+          context: config.context,
+          provider: config.provider || this.provider,
+          model: config.model || this.model,
+          timestamp: new Date().toISOString(),
+        };
+
+        const result = await hookRunner.runSubagentSpawning(spawningEvent);
+
+        // Apply modifications if returned
+        if (result) {
+          modifiedConfig = {
+            ...config,
+            task: result.task || config.task,
+            context: result.context || config.context,
+            model: result.model || config.model,
+            provider: result.provider || config.provider,
+          };
+        }
+      } catch (error) {
+        logger.debug('Plugin hook runSubagentSpawning failed:', error);
+      }
     }
 
     this.stats.totalSpawned++;
+
+    // --- Registry: register subagent ---
+    try {
+      const registry = getSubagentRegistry();
+      await registry.register({
+        runId: subagentId,
+        childSessionKey: subagentId,
+        requesterSessionKey: this.sessionKey,
+        task: modifiedConfig.task,
+        type: modifiedConfig.type,
+        model: modifiedConfig.model || this.model,
+        provider: (modifiedConfig.provider || this.provider).type,
+        spawnMode: 'run',
+        cleanup: 'delete',
+        expectsCompletionMessage: false,
+      });
+      await registry.start(subagentId);
+    } catch {
+      // Registry not initialized, skip registration
+    }
 
     try {
       // Build system prompt
@@ -160,20 +212,19 @@ export class SubagentRuntime {
       });
 
       // Trigger subagent_spawned hook (void)
-      try {
-        const registry = getPluginRegistry();
-        const hookRunner = createHookRunner(registry);
-
-        await hookRunner.runSubagentSpawned({
-          subagentId,
-          type: modifiedConfig.type,
-          task: modifiedConfig.task,
-          provider: (modifiedConfig.provider || this.provider).type,
-          model: modifiedConfig.model || this.model,
-          timestamp: new Date().toISOString(),
-        });
-      } catch {
-        // Plugin system not initialized
+      if (hookRunner) {
+        try {
+          await hookRunner.runSubagentSpawned({
+            subagentId,
+            type: modifiedConfig.type,
+            task: modifiedConfig.task,
+            provider: (modifiedConfig.provider || this.provider).type,
+            model: modifiedConfig.model || this.model,
+            timestamp: new Date().toISOString(),
+          });
+        } catch {
+          // Hook failed, non-critical
+        }
       }
 
       // Execute with timeout and retry
@@ -277,48 +328,57 @@ export class SubagentRuntime {
         id: subagentId,
       };
 
-      // Trigger subagent_delivery_target hook (modifying)
+      // --- Registry: complete (success) ---
       try {
-        const registry = getPluginRegistry();
-        const hookRunner = createHookRunner(registry);
-
-        const deliveryEvent = {
-          subagentId,
-          type: modifiedConfig.type,
-          output,
-          result,
-          timestamp: new Date().toISOString(),
-        };
-
-        const modifiedDelivery = await hookRunner.runSubagentDeliveryTarget(deliveryEvent);
-
-        // Apply modifications if returned
-        if (modifiedDelivery?.output) {
-          output = modifiedDelivery.output;
-          result.output = output || '';
-        }
-        if (modifiedDelivery?.result) {
-          result = { ...result, ...modifiedDelivery.result };
-        }
+        const registry = getSubagentRegistry();
+        await registry.complete(subagentId, 'ok', {
+          output: output,
+          tokensUsed: result.tokensUsed,
+        });
       } catch {
-        // Plugin system not initialized
+        // Registry not initialized
+      }
+
+      // Trigger subagent_delivery_target hook (modifying)
+      if (hookRunner) {
+        try {
+          const deliveryEvent = {
+            subagentId,
+            type: modifiedConfig.type,
+            output,
+            result,
+            timestamp: new Date().toISOString(),
+          };
+
+          const modifiedDelivery = await hookRunner.runSubagentDeliveryTarget(deliveryEvent);
+
+          // Apply modifications if returned
+          if (modifiedDelivery?.output) {
+            output = modifiedDelivery.output;
+            result.output = output || '';
+          }
+          if (modifiedDelivery?.result) {
+            result = { ...result, ...modifiedDelivery.result };
+          }
+        } catch {
+          // Hook failed, non-critical
+        }
       }
 
       // Trigger subagent_ended hook (void)
-      try {
-        const registry = getPluginRegistry();
-        const hookRunner = createHookRunner(registry);
-
-        await hookRunner.runSubagentEnded({
-          subagentId,
-          type: modifiedConfig.type,
-          success: true,
-          duration,
-          output,
-          timestamp: new Date().toISOString(),
-        });
-      } catch {
-        // Plugin system not initialized
+      if (hookRunner) {
+        try {
+          await hookRunner.runSubagentEnded({
+            subagentId,
+            type: modifiedConfig.type,
+            success: true,
+            duration,
+            output,
+            timestamp: new Date().toISOString(),
+          });
+        } catch {
+          // Hook failed, non-critical
+        }
       }
 
       return result;
@@ -346,21 +406,30 @@ export class SubagentRuntime {
 
       console.error(`[Subagent] ${subagentId} failed:`, errorMessage);
 
-      // Trigger subagent_ended hook (void) for failure case
+      // --- Registry: complete (error) ---
       try {
-        const registry = getPluginRegistry();
-        const hookRunner = createHookRunner(registry);
-
-        await hookRunner.runSubagentEnded({
-          subagentId,
-          type: modifiedConfig.type,
-          success: false,
-          duration,
+        const registry = getSubagentRegistry();
+        await registry.complete(subagentId, 'error', {
           error: errorMessage,
-          timestamp: new Date().toISOString(),
         });
       } catch {
-        // Plugin system not initialized
+        // Registry not initialized
+      }
+
+      // Trigger subagent_ended hook (void) for failure case
+      if (hookRunner) {
+        try {
+          await hookRunner.runSubagentEnded({
+            subagentId,
+            type: modifiedConfig.type,
+            success: false,
+            duration,
+            error: errorMessage,
+            timestamp: new Date().toISOString(),
+          });
+        } catch {
+          // Hook failed, non-critical
+        }
       }
 
       return {
@@ -442,6 +511,7 @@ let runtimeInstance: SubagentRuntime | null = null;
 export function initSubagentRuntime(options: {
   provider: AIProvider;
   model: string;
+  sessionKey?: string;
 }): SubagentRuntime {
   runtimeInstance = new SubagentRuntime(options);
   return runtimeInstance;

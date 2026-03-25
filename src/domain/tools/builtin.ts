@@ -29,15 +29,6 @@ import {
   executeSpawnParallel,
 } from '../subagent/executor';
 import {
-  stateSetTool,
-  stateGetTool,
-  stateDeleteTool,
-  stateUpdateTool,
-  stateExistsTool,
-  stateListTool,
-  stateStatsTool,
-  stateLockTool,
-  stateUnlockTool,
   type StateSetParams,
   type StateGetParams,
   type StateDeleteParams,

@@ -153,6 +153,9 @@ export interface OrchestrationOptions {
   /** Timeout for entire orchestration in ms (default: 300000 = 5 minutes) */
   timeout?: number;
 
+  /** Timeout per individual subtask in ms. When unset, computed from estimatedComplexity. */
+  subtaskTimeout?: number;
+
   /** Whether to continue on failure (default: true) */
   continueOnFailure?: boolean;
 
