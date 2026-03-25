@@ -10,6 +10,60 @@ import { logger } from '../../infra/observability/logger';
 import * as HITLManager from '../../domain/session/hitl-manager';
 
 /**
+ * [FIX-3] Card callback event_id deduplication.
+ *
+ * Feishu may re-deliver card action callbacks (button clicks, form submits).
+ * Without dedup, HITLManager.setDecision/resume can fire multiple times,
+ * causing duplicate session resumes and unpredictable behavior.
+ *
+ * Implementation: In-memory LRU map with 30-minute TTL (matches Feishu token validity).
+ */
+const CALLBACK_DEDUP_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CALLBACK_DEDUP_MAX_SIZE = 1000;
+
+class CallbackEventDedup {
+  private events = new Map<string, number>(); // event_id → timestamp
+
+  /**
+   * Check if an event_id has been seen before.
+   * @returns true if this is a DUPLICATE (should skip), false if first occurrence
+   */
+  isDuplicate(eventId: string): boolean {
+    this.cleanup();
+    if (this.events.has(eventId)) {
+      return true;
+    }
+    this.events.set(eventId, Date.now());
+    return false;
+  }
+
+  private cleanup(): void {
+    if (this.events.size <= CALLBACK_DEDUP_MAX_SIZE) return;
+    const now = Date.now();
+    for (const [id, ts] of this.events) {
+      if (now - ts > CALLBACK_DEDUP_TTL_MS) {
+        this.events.delete(id);
+      }
+    }
+    // If still over limit, drop oldest half
+    if (this.events.size > CALLBACK_DEDUP_MAX_SIZE) {
+      const entries = [...this.events.entries()].sort((a, b) => a[1] - b[1]);
+      const toDelete = entries.slice(0, Math.floor(entries.length / 2));
+      for (const [id] of toDelete) {
+        this.events.delete(id);
+      }
+    }
+  }
+
+  /** Exposed for testing */
+  get size(): number { return this.events.size; }
+  clear(): void { this.events.clear(); }
+}
+
+/** Singleton dedup tracker for card callback events */
+export const callbackEventDedup = new CallbackEventDedup();
+
+/**
  * 卡片回调事件（Card V2 - card.action.trigger）
  * 参考: https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-callback-communication
  */
@@ -212,6 +266,15 @@ export class CardCallbackHandler {
         operatorOpenId: operator?.open_id,
         data: callbackData,
       });
+
+      // [FIX-3] Dedup card callback events using event_id from header.
+      // Feishu may re-deliver card callbacks; without this check,
+      // HITLManager.setDecision/resume would fire multiple times.
+      const eventId = header?.event_id;
+      if (eventId && callbackEventDedup.isDuplicate(eventId)) {
+        logger.info('[CardCallback] Duplicate callback event, skipping', { eventId });
+        return;
+      }
 
       // 根据 action 类型路由到不同的处理器
       if (actionType === 'hitl_callback') {

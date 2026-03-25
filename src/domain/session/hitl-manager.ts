@@ -239,6 +239,15 @@ export function setDecision(
     return;
   }
 
+  // [FIX-4] Finalization guard: reject duplicate decision calls.
+  // Feishu card callbacks may be re-delivered, causing setDecision to fire
+  // multiple times for the same tool call. Only accept the first decision.
+  const existingDecision = (metadata as any).buttonDecision;
+  if (existingDecision && existingDecision.toolCallId === toolCallId) {
+    logger.warn(`[HITL] Decision already set for toolCallId ${toolCallId} (was: ${existingDecision.decision}). Ignoring duplicate.`);
+    return;
+  }
+
   logger.info(`[HITL] Setting decision via button callback: ${decision} for tool ${pendingConfirmation.toolCall.name}`);
 
   // 将决策保存到 metadata，供后续 handleHITLResponse 使用
@@ -246,6 +255,7 @@ export function setDecision(
     toolCallId,
     decision,
     timestamp: Date.now(),
+    finalized: true, // [FIX-4] Mark as finalized to prevent overwrite
   };
 
   saveSession(session);
@@ -271,6 +281,13 @@ export function setUserInput(
 
   const metadata = session.metadata || {};
 
+  // [FIX-4] Finalization guard: reject duplicate user input for same requestId.
+  const existingInput = (metadata as any).buttonUserInput;
+  if (existingInput && existingInput.requestId === requestId && existingInput.finalized) {
+    logger.warn(`[HITL] User input already set for requestId ${requestId}. Ignoring duplicate.`);
+    return;
+  }
+
   logger.info(`[HITL] Setting user input via button callback:`, { requestId, value });
 
   // 将用户输入保存到 metadata，供后续 handleHITLResponse 使用
@@ -278,6 +295,7 @@ export function setUserInput(
     requestId,
     value,
     timestamp: Date.now(),
+    finalized: true, // [FIX-4] Mark as finalized
   };
 
   saveSession(session);
@@ -295,10 +313,24 @@ export function resume(sessionId: string): void {
     return;
   }
 
+  const metadata = session.metadata || {};
+
+  // [FIX-4] Double-resume guard: if hitlResumeReady is already true and was
+  // set recently (within 30s), this is likely a duplicate callback. Skip.
+  if ((metadata as any).hitlResumeReady === true) {
+    const resumeAt = (metadata as any).hitlResumeAt || 0;
+    const elapsed = Date.now() - resumeAt;
+    if (elapsed < 30_000) {
+      logger.warn(`[HITL] Session ${sessionId} already resumed ${elapsed}ms ago. Ignoring duplicate resume.`);
+      return;
+    }
+    // If it's been more than 30s, allow re-resume (could be a legitimate retry)
+    logger.info(`[HITL] Session ${sessionId} was resumed ${Math.round(elapsed / 1000)}s ago. Allowing re-resume.`);
+  }
+
   logger.info(`[HITL] Resuming session ${sessionId} after button callback`);
 
   // 标记会话为可恢复状态
-  const metadata = session.metadata || {};
   (metadata as any).hitlResumeReady = true;
   (metadata as any).hitlResumeAt = Date.now();
 

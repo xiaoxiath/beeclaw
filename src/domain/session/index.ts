@@ -93,6 +93,38 @@ export interface SessionMessage {
   };
 }
 
+/**
+ * Three-state message processing for Feishu duplicate message protection.
+ *
+ * States:
+ * - 'processing': Agent is actively working on this message (set before execution)
+ * - 'completed':  Reply delivered successfully (set after delivery)
+ * - 'failed':     Processing or delivery failed (allows bounded retry)
+ *
+ * This prevents the race window between isMessageProcessed() check and
+ * markMessageProcessed() call, where Feishu re-delivery during Agent
+ * execution would bypass dedup.
+ */
+export interface MessageProcessingState {
+  status: 'processing' | 'completed' | 'failed';
+  startedAt: number;
+  completedAt?: number;
+  failedAt?: number;
+  retryCount: number;
+  /** Cached agent response for delivery-only retry (avoids re-executing Agent) */
+  cachedResponse?: string;
+  /** Whether Card V2 was used for this message */
+  cachedUsedCardV2?: boolean;
+  /** Error message if failed */
+  error?: string;
+}
+
+/** Maximum retries for a failed message before permanently giving up */
+export const MAX_MESSAGE_RETRY_COUNT = 2;
+
+/** Maximum time (ms) a message can stay in 'processing' state before considered stale */
+export const PROCESSING_STALE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+
 export interface Session {
   id: string;
   userId: string;
@@ -113,14 +145,13 @@ export interface Session {
   /** Consecutive recovery failure count for exponential backoff */
   consecutiveRecoveryFailures?: number;
   /**
-   * [BUG FIX] Set of processed message IDs for permanent deduplication
-   * Key: messageId, Value: true (presence = processed)
+   * Three-state message processing map for robust Feishu deduplication.
+   * Key: messageId, Value: MessageProcessingState
    *
-   * Storage: Permanent (no TTL cleanup)
-   * Reason: Feishu message IDs are globally unique (UUID-like)
-   * Impact: ~5 KB/month for medium usage (50 msgs/day)
+   * Handles: duplicate pushes, process restarts, delivery failures.
+   * See MessageProcessingState for state machine documentation.
    */
-  processedMessageIds?: Record<string, boolean>;
+  processedMessageIds?: Record<string, boolean | MessageProcessingState>;
 }
 
 export interface ProactiveMessageOptions {
@@ -325,20 +356,16 @@ export function confirmDelivery(sessionId: string): void {
 }
 
 /**
- * [BUG FIX] Check if a message has already been processed in this session.
+ * Check if a message has already been processed or is currently being processed.
  *
- * This provides persistent deduplication across restarts by checking the session's
- * processedMessageIds set. Since Feishu message IDs are globally unique (UUID-like),
- * we keep them permanently to ensure 100% deduplication.
+ * Three-state logic:
+ * - 'completed' → always skip (already handled)
+ * - 'processing' → skip if not stale (someone is handling it)
+ * - 'processing' (stale) → allow retry (previous handler likely crashed)
+ * - 'failed' → allow retry if retryCount < MAX_MESSAGE_RETRY_COUNT
+ * - absent → allow (first time)
  *
- * Storage impact:
- * - Low usage (10 msgs/day): ~1 KB/day = 360 KB/year
- * - Medium usage (50 msgs/day): ~5 KB/day = 1.8 MB/year
- * - High usage (200 msgs/day): ~20 KB/day = 7.2 MB/year
- *
- * @param sessionId - Session ID
- * @param messageId - Feishu message ID to check
- * @returns true if message was already processed, false otherwise
+ * @returns true if message should be SKIPPED, false if it should be processed
  */
 export function isMessageProcessed(sessionId: string, messageId: string): boolean {
   const session = sessions.get(sessionId);
@@ -346,34 +373,185 @@ export function isMessageProcessed(sessionId: string, messageId: string): boolea
     return false;
   }
 
-  return messageId in session.processedMessageIds;
+  const entry = session.processedMessageIds[messageId];
+  if (!entry) return false;
+
+  // Backward compatibility: old boolean format
+  if (entry === true) return true;
+
+  const state = entry as MessageProcessingState;
+
+  // Completed → always skip
+  if (state.status === 'completed') return true;
+
+  // Processing → skip unless stale
+  if (state.status === 'processing') {
+    const elapsed = Date.now() - state.startedAt;
+    if (elapsed > PROCESSING_STALE_TIMEOUT_MS) {
+      console.warn(`[Session] Stale processing detected for message ${messageId} (elapsed: ${Math.round(elapsed / 1000)}s). Allowing retry.`);
+      return false; // Allow re-processing
+    }
+    return true; // Still actively processing, skip duplicate
+  }
+
+  // Failed → allow retry if under limit
+  if (state.status === 'failed') {
+    if (state.retryCount >= MAX_MESSAGE_RETRY_COUNT) {
+      console.warn(`[Session] Message ${messageId} permanently failed after ${state.retryCount} retries. Skipping.`);
+      return true; // Exhausted retries
+    }
+    return false; // Allow retry
+  }
+
+  return false;
 }
 
 /**
- * [BUG FIX] Mark a message as processed in the session.
- *
- * This should be called AFTER successfully processing and replying to a message.
- * The message ID will be stored permanently for deduplication.
- *
- * @param sessionId - Session ID
- * @param messageId - Feishu message ID to record
+ * Get the full processing state for a message.
+ * Returns null if no state exists.
  */
-export function markMessageProcessed(sessionId: string, messageId: string): void {
+export function getMessageState(sessionId: string, messageId: string): MessageProcessingState | null {
   const session = sessions.get(sessionId);
-  if (!session) {
-    return;
-  }
+  if (!session || !session.processedMessageIds) return null;
+
+  const entry = session.processedMessageIds[messageId];
+  if (!entry) return null;
+  if (entry === true) return { status: 'completed', startedAt: 0, retryCount: 0 };
+
+  return entry as MessageProcessingState;
+}
+
+/**
+ * Mark a message as 'processing' — called BEFORE agent execution begins.
+ * This closes the race window where Feishu re-delivery could bypass dedup.
+ */
+export function markMessageProcessing(sessionId: string, messageId: string): void {
+  const session = sessions.get(sessionId);
+  if (!session) return;
 
   if (!session.processedMessageIds) {
     session.processedMessageIds = {};
   }
 
-  // Store as boolean (presence = processed)
-  session.processedMessageIds[messageId] = true;
+  const existing = session.processedMessageIds[messageId];
+  const prevRetryCount = (existing && existing !== true)
+    ? (existing as MessageProcessingState).retryCount
+    : 0;
+
+  session.processedMessageIds[messageId] = {
+    status: 'processing',
+    startedAt: Date.now(),
+    retryCount: prevRetryCount,
+  };
   session.updatedAt = new Date().toISOString();
   saveSession(session);
 
-  console.log(`[Session] ✓ Marked message as processed: ${messageId}`);
+  console.log(`[Session] ⏳ Message marked as processing: ${messageId} (retry #${prevRetryCount})`);
+}
+
+/**
+ * Mark a message as 'completed' — called AFTER successful reply delivery.
+ * Optionally caches the agent response for auditing.
+ *
+ * @deprecated Use markMessageCompleted() for new code. markMessageProcessed() is kept
+ * as an alias for backward compatibility.
+ */
+export function markMessageProcessed(sessionId: string, messageId: string): void {
+  markMessageCompleted(sessionId, messageId);
+}
+
+/**
+ * Mark a message as 'completed' with optional cached response.
+ */
+export function markMessageCompleted(
+  sessionId: string,
+  messageId: string,
+  response?: string,
+  usedCardV2?: boolean,
+): void {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  if (!session.processedMessageIds) {
+    session.processedMessageIds = {};
+  }
+
+  const existing = session.processedMessageIds[messageId];
+  const prevRetryCount = (existing && existing !== true)
+    ? (existing as MessageProcessingState).retryCount
+    : 0;
+
+  session.processedMessageIds[messageId] = {
+    status: 'completed',
+    startedAt: (existing && existing !== true) ? (existing as MessageProcessingState).startedAt : Date.now(),
+    completedAt: Date.now(),
+    retryCount: prevRetryCount,
+    cachedResponse: response,
+    cachedUsedCardV2: usedCardV2,
+  };
+  session.updatedAt = new Date().toISOString();
+  saveSession(session);
+
+  console.log(`[Session] ✅ Message marked as completed: ${messageId}`);
+}
+
+/**
+ * Mark a message as 'failed' — called when processing or delivery fails.
+ * Increments retry count. Caches partial response if available for delivery-only retry.
+ */
+export function markMessageFailed(
+  sessionId: string,
+  messageId: string,
+  error: string,
+  cachedResponse?: string,
+  cachedUsedCardV2?: boolean,
+): void {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  if (!session.processedMessageIds) {
+    session.processedMessageIds = {};
+  }
+
+  const existing = session.processedMessageIds[messageId];
+  const prevRetryCount = (existing && existing !== true)
+    ? (existing as MessageProcessingState).retryCount
+    : 0;
+
+  session.processedMessageIds[messageId] = {
+    status: 'failed',
+    startedAt: (existing && existing !== true) ? (existing as MessageProcessingState).startedAt : Date.now(),
+    failedAt: Date.now(),
+    retryCount: prevRetryCount + 1,
+    error,
+    cachedResponse,
+    cachedUsedCardV2,
+  };
+  session.updatedAt = new Date().toISOString();
+  saveSession(session);
+
+  console.warn(`[Session] ❌ Message marked as failed: ${messageId} (retry #${prevRetryCount + 1}, error: ${error})`);
+}
+
+/**
+ * Get cached agent response for delivery-only retry.
+ * Returns null if no cached response exists.
+ */
+export function getCachedAgentResponse(sessionId: string, messageId: string): { response: string; usedCardV2: boolean } | null {
+  const session = sessions.get(sessionId);
+  if (!session || !session.processedMessageIds) return null;
+
+  const entry = session.processedMessageIds[messageId];
+  if (!entry || entry === true) return null;
+
+  const state = entry as MessageProcessingState;
+  if (state.cachedResponse) {
+    return {
+      response: state.cachedResponse,
+      usedCardV2: state.cachedUsedCardV2 || false,
+    };
+  }
+  return null;
 }
 
 /**

@@ -4,7 +4,7 @@
  * Provides Feishu bot integration with memory system
  */
 
-import { initSessionManager, sendProactiveMessage, confirmDelivery, isMessageProcessed, markMessageProcessed } from '../../domain/session';
+import { initSessionManager, sendProactiveMessage, confirmDelivery, isMessageProcessed, markMessageProcessed, markMessageProcessing, markMessageCompleted, markMessageFailed, getCachedAgentResponse, getMessageState } from '../../domain/session';
 import { pushNotification } from '../../domain/proactive/pusher';
 import { evaluatePatterns } from '../../domain/proactive/triggers';
 import { getGoalStore } from '../../domain/agent/goal/store';
@@ -177,6 +177,42 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
         return;
       }
 
+      // [FIX-2] Check if we have a cached agent response from a previous failed delivery.
+      // If so, skip agent re-execution entirely and jump straight to delivery.
+      const cachedResult = getCachedAgentResponse(sessionId, messageId);
+      if (cachedResult) {
+        console.log(`[FeishuWS:${process.pid}] 📦 Found cached agent response for ${messageId}, attempting delivery-only retry`);
+        // Mark as processing for this delivery attempt
+        markMessageProcessing(sessionId, messageId);
+        try {
+          if (cachedResult.usedCardV2) {
+            // Card V2 already sent in previous attempt — mark completed
+            markMessageCompleted(sessionId, messageId, cachedResult.response, true);
+            console.log(`[FeishuWS:${process.pid}] ✅ Cached Card V2 response — marked completed`);
+          } else {
+            const gateway = getMessageGateway();
+            const replyResult = await gateway.replyMessage('feishu', {
+              sessionId, userId, chatId, parentMessageId: messageId,
+            }, cachedResult.response);
+            if (!replyResult.success) throw new Error(replyResult.error || 'Cached reply failed');
+            markMessageCompleted(sessionId, messageId, cachedResult.response, false);
+            console.log(`[FeishuWS:${process.pid}] ✅ Cached response delivered successfully`);
+          }
+          if (reactionId) {
+            try { await client.deleteReaction(messageId, reactionId); } catch (_e) { /* non-critical */ }
+          }
+        } catch (deliveryError) {
+          console.error(`[FeishuWS:${process.pid}] ❌ Cached delivery retry also failed:`, deliveryError);
+          markMessageFailed(sessionId, messageId, String(deliveryError), cachedResult.response, cachedResult.usedCardV2);
+        }
+        return;
+      }
+
+      // [FIX-1] Mark message as 'processing' BEFORE agent execution.
+      // This closes the race window: any Feishu re-delivery arriving while
+      // the agent is running will see 'processing' and skip.
+      markMessageProcessing(sessionId, messageId);
+
       // Process image message if needed
       let imageBase64: string | null = null;
       if (isImageMessage) {
@@ -321,8 +357,8 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       if (result.usedCardV2) {
         console.log(`[FeishuWS:${process.pid}] ✅ Card V2 already sent, skipping text reply`);
 
-        // Mark message as processed (for persistent deduplication)
-        markMessageProcessed(sessionId, messageId);
+        // [FIX-1] Mark completed with cached response
+        markMessageCompleted(sessionId, messageId, result.response, true);
 
         // Remove the reaction since reply is complete
         if (reactionId) {
@@ -359,8 +395,8 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
 
         console.log(`[FeishuWS:${process.pid}] ✅ Reply sent successfully via Gateway`);
 
-        // Mark message as processed (for persistent deduplication)
-        markMessageProcessed(sessionId, messageId);
+        // [FIX-1] Mark completed with cached response
+        markMessageCompleted(sessionId, messageId, result.response, false);
 
         // Remove the reaction since reply is complete
         if (reactionId) {
@@ -372,7 +408,6 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
         }
 
         // Mark response as delivered (for tracking purposes)
-        // BUG #2 FIX: Use confirmDelivery() instead of separate markResponseDelivered()
         if (result.sessionId) {
           confirmDelivery(result.sessionId);
         }
@@ -385,8 +420,11 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
         }
 
         console.error(`[FeishuWS:${process.pid}] ❌ Reply failed:`, error);
-        // BUG #2 FIX: Do NOT confirm delivery - leave pendingRecovery=true so recovery can retry
-        console.warn(`[FeishuWS:${process.pid}] Message ${messageId} will be retried on recovery (delivery failed)`);
+        // [FIX-2] Cache the agent response and mark as failed for delivery-only retry.
+        // Next time Feishu re-delivers this message, getCachedAgentResponse() will
+        // return this response, avoiding full agent re-execution.
+        markMessageFailed(sessionId, messageId, errorMsg, result.response, result.usedCardV2 || false);
+        console.warn(`[FeishuWS:${process.pid}] Message ${messageId} delivery failed. Response cached for retry.`);
         // Try fallback with simple text via direct client (fallback to old behavior)
         try {
           // Strip markdown for fallback
