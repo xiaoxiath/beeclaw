@@ -485,7 +485,7 @@ export const LLMRouterConfigSchema = z.object({
 // Web UI configuration schema
 export const WebConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  port: z.number().default(3000),
+  port: z.coerce.number().default(3000),
   host: z.string().default('0.0.0.0'),
   auth: z.object({
     level: z.enum(['none', 'token', 'basic']).default('none'),

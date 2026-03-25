@@ -88,14 +88,17 @@ async function loadFileConfig(basePath: string): Promise<Record<string, unknown>
       try {
         let content = await readFile(filePath, 'utf-8');
 
-        // Replace environment variables ${VAR_NAME}
-        content = content.replace(/\$\{(\w+)\}/g, (_, varName) => {
+        // Replace environment variables ${VAR_NAME} and ${VAR_NAME:-default}
+        content = content.replace(/\$\{(\w+)(?::-(.*?))?\}/g, (_, varName, defaultValue) => {
           const value = process.env[varName];
-          if (value === undefined) {
-            logger.warn(`Environment variable ${varName} is not set`);
-            return '';
+          if (value !== undefined) {
+            return value;
           }
-          return value;
+          if (defaultValue !== undefined) {
+            return defaultValue;
+          }
+          logger.warn(`Environment variable ${varName} is not set`);
+          return '';
         });
 
         if (file.endsWith('.json')) {
