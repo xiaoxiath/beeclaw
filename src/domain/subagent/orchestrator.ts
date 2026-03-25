@@ -1,7 +1,8 @@
 /**
  * Task Orchestrator
  *
- * Main orchestrator for task decomposition and execution
+ * Main orchestrator for task decomposition and execution.
+ * Now supports cooperative cancellation via AbortController.
  */
 
 import type { AIProvider } from '../../infra/config/schema';
@@ -33,7 +34,6 @@ function computeSubtaskTimeout(
   subtask: SubTask,
   perSubtaskTimeoutMs?: number,
 ): number {
-  // If the caller provided an explicit per-subtask timeout, honour it.
   if (perSubtaskTimeoutMs !== undefined) {
     return perSubtaskTimeoutMs;
   }
@@ -43,9 +43,8 @@ function computeSubtaskTimeout(
     return DEFAULT_SUBTASK_TIMEOUT;
   }
 
-  // Linear scale: complexity 1 -> MIN, complexity 10 -> MAX
   const clamped = Math.max(1, Math.min(10, complexity));
-  const ratio = (clamped - 1) / 9; // 0..1
+  const ratio = (clamped - 1) / 9;
   return Math.round(MIN_SUBTASK_TIMEOUT + ratio * (MAX_SUBTASK_TIMEOUT - MIN_SUBTASK_TIMEOUT));
 }
 
@@ -71,7 +70,7 @@ export class TaskOrchestrator {
     this.defaultOptions = {
       maxParallelism: options.defaultMaxParallelism || 3,
       maxRetries: options.defaultMaxRetries || 1,
-      timeout: options.defaultTimeout || 300000, // 5 minutes
+      timeout: options.defaultTimeout || 300000,
       subtaskTimeout: options.defaultSubtaskTimeout,
       continueOnFailure: true,
     };
@@ -102,7 +101,6 @@ export class TaskOrchestrator {
     } catch (error) {
       console.error('[Orchestrator] Decomposition failed:', error);
 
-      // Fallback: create a simple single-task decomposition
       console.log('[Orchestrator] Using fallback decomposition');
 
       return {
@@ -126,7 +124,11 @@ export class TaskOrchestrator {
   }
 
   /**
-   * Execute a decomposed task
+   * Execute a decomposed task.
+   *
+   * Creates an AbortController whose signal is propagated to every spawned
+   * subagent. When the global timeout fires, all running subagents receive
+   * the abort signal for cooperative cancellation.
    */
   async execute(
     decomposition: TaskDecomposition,
@@ -134,7 +136,13 @@ export class TaskOrchestrator {
   ): Promise<OrchestrationResult> {
     const opts = { ...this.defaultOptions, ...options };
     const startTime = Date.now();
-    const globalTimeout = opts.timeout || 300000; // 5 minutes default
+    const globalTimeout = opts.timeout || 300000;
+
+    // ---------------------------------------------------------------
+    // AbortController: propagates cancellation to all child subagents
+    // ---------------------------------------------------------------
+    const abortController = new AbortController();
+    const { signal } = abortController;
 
     console.log(`[Orchestrator] Starting execution of ${decomposition.subtasks.length} subtasks`);
     console.log(`[Orchestrator] Max parallelism: ${opts.maxParallelism}`);
@@ -147,26 +155,18 @@ export class TaskOrchestrator {
     const results = new Map<number, SubagentResult>();
     const errors: Array<{ subtaskId: number; error: string }> = [];
 
-    // ---------------------------------------------------------------
-    // Fix 2: Event-driven signal instead of busy-wait polling.
-    // A shared promise that resolves whenever any running task finishes.
-    // ---------------------------------------------------------------
+    // Event-driven signal
     let resolveSignal: () => void;
     let taskCompletionSignal = new Promise<void>(r => { resolveSignal = r; });
     const resetSignal = () => {
       taskCompletionSignal = new Promise<void>(r => { resolveSignal = r; });
     };
 
-    // ---------------------------------------------------------------
-    // Fix 3: Pipeline scheduling – maintain a running-promise set so we
-    // can dispatch new tasks as soon as *any* task finishes, rather than
-    // waiting for the entire batch.
-    // ---------------------------------------------------------------
+    // Pipeline scheduling — running promise set
     const runningPromises = new Map<number, Promise<void>>();
 
     /**
-     * Launch a single subtask and manage its lifecycle.
-     * Returns a promise that settles when the task completes / fails.
+     * Launch a single subtask with abort signal propagation.
      */
     const launchTask = (task: SubTask): Promise<void> => {
       scheduler.startTask(task.id);
@@ -181,6 +181,7 @@ export class TaskOrchestrator {
             task: task.description,
             context: task.context,
             timeout: subtaskTimeout,
+            signal, // Propagate abort signal to subagent
           });
 
           if (result.success) {
@@ -188,15 +189,11 @@ export class TaskOrchestrator {
             results.set(task.id, result);
 
             console.log(`[Orchestrator] Subtask ${task.id} completed successfully`);
-
-            // Callback
             opts.onSubtaskComplete?.(task.id, result);
           } else {
-            // Task failed
             const errorMsg = result.error || 'Unknown error';
             console.error(`[Orchestrator] Subtask ${task.id} failed:`, errorMsg);
 
-            // Check if we should retry
             const state = scheduler.getTaskState(task.id);
             if (state && state.retryCount < opts.maxRetries!) {
               console.log(`[Orchestrator] Retrying subtask ${task.id} (attempt ${state.retryCount + 1}/${opts.maxRetries})`);
@@ -206,6 +203,8 @@ export class TaskOrchestrator {
               errors.push({ subtaskId: task.id, error: errorMsg });
 
               if (!opts.continueOnFailure) {
+                // Abort all other running subagents
+                abortController.abort();
                 throw new Error(`Subtask ${task.id} failed: ${errorMsg}`);
               }
             }
@@ -214,7 +213,6 @@ export class TaskOrchestrator {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           console.error(`[Orchestrator] Subtask ${task.id} error:`, errorMsg);
 
-          // Only fail if not already handled (retry path sets status to pending)
           const state = scheduler.getTaskState(task.id);
           if (state && state.status === 'running') {
             scheduler.failTask(task.id, errorMsg);
@@ -222,15 +220,14 @@ export class TaskOrchestrator {
           }
 
           if (!opts.continueOnFailure) {
+            abortController.abort();
             throw error;
           }
         } finally {
-          // Remove from running set and signal the main loop
           runningPromises.delete(task.id);
           resolveSignal();
           resetSignal();
 
-          // Progress callback
           opts.onProgress?.(scheduler.getProgress());
         }
       })();
@@ -243,12 +240,11 @@ export class TaskOrchestrator {
     // Main scheduling loop
     // ---------------------------------------------------------------
     while (!scheduler.isComplete()) {
-      // -----------------------------------------------------------
-      // Fix 1: Global timeout check
-      // -----------------------------------------------------------
+      // Global timeout check — abort all running subagents
       if (Date.now() - startTime > globalTimeout) {
-        console.error('[Orchestrator] Global timeout reached');
-        // Fail all pending / running tasks
+        console.error('[Orchestrator] Global timeout reached — aborting running subagents');
+        abortController.abort();
+
         for (const state of scheduler.getTaskStates().values()) {
           if (state.status === 'pending' || state.status === 'running') {
             scheduler.failTask(state.subtask.id, 'Global orchestration timeout');
@@ -258,16 +254,13 @@ export class TaskOrchestrator {
         break;
       }
 
-      // Get tasks that can run right now (respects maxParallelism)
       const readyTasks = scheduler.getParallelizableTasks();
 
       if (readyTasks.length === 0) {
-        // Check if we are stuck (all pending tasks have failed dependencies)
         const failedTasks = scheduler.getFailedTasks();
         if (failedTasks.length > 0 && scheduler.getRunningTasks().length === 0) {
           console.error('[Orchestrator] Execution stuck due to failed tasks');
 
-          // Skip all remaining pending tasks
           for (const state of scheduler.getTaskStates().values()) {
             if (state.status === 'pending') {
               scheduler.skipTask(state.subtask.id);
@@ -277,24 +270,21 @@ export class TaskOrchestrator {
         }
 
         if (runningPromises.size > 0) {
-          // Wait for any running task to complete (event-driven, not busy-wait)
           await taskCompletionSignal;
         }
         continue;
       }
 
-      // Launch all ready tasks (fire-and-forget into the running set)
       for (const task of readyTasks) {
         launchTask(task);
       }
 
-      // Wait for at least one running task to complete before re-evaluating
       if (runningPromises.size > 0) {
         await taskCompletionSignal;
       }
     }
 
-    // Ensure all running promises are settled before returning
+    // Ensure all running promises settle
     if (runningPromises.size > 0) {
       await Promise.allSettled([...runningPromises.values()]);
     }
@@ -304,10 +294,7 @@ export class TaskOrchestrator {
 
     console.log(`[Orchestrator] Execution ${success ? 'completed' : 'finished with errors'} in ${duration}ms`);
 
-    // Aggregate output
     const output = this.aggregateOutput(decomposition, results);
-
-    // Calculate stats
     const stats = this.calculateStats(results, duration, scheduler);
 
     return {
@@ -328,10 +315,7 @@ export class TaskOrchestrator {
     context?: string,
     options?: Partial<OrchestrationOptions>
   ): Promise<OrchestrationResult> {
-    // Decompose
     const decomposition = await this.decompose(task, context);
-
-    // Execute
     return this.execute(decomposition, options);
   }
 
@@ -344,7 +328,6 @@ export class TaskOrchestrator {
   ): string {
     const sections: string[] = [];
 
-    // Group by task type
     const byType: Record<string, Array<{ task: SubTask; result: SubagentResult }>> = {};
 
     for (const subtask of decomposition.subtasks) {
@@ -357,7 +340,6 @@ export class TaskOrchestrator {
       }
     }
 
-    // Build output
     for (const [type, items] of Object.entries(byType)) {
       if (items.length === 1) {
         sections.push(`## ${this.capitalizeType(type)}\n\n${items[0].result.output}`);
@@ -369,9 +351,7 @@ export class TaskOrchestrator {
       }
     }
 
-    // -----------------------------------------------------------
-    // Fix 4: Include failed task information in aggregated output
-    // -----------------------------------------------------------
+    // Include failed task information
     const failedTasks = decomposition.subtasks.filter(
       s => !results.has(s.id) || !results.get(s.id)!.success
     );
@@ -422,9 +402,6 @@ export class TaskOrchestrator {
     };
   }
 
-  /**
-   * Capitalize task type for display
-   */
   private capitalizeType(type: string): string {
     const map: Record<string, string> = {
       research: 'Research',

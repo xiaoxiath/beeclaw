@@ -1,10 +1,10 @@
 /**
  * Subagent Types
  *
- * Type definitions for the subagent system
+ * Core type definitions for the subagent system
  */
 
-import type { AIProvider } from '../../infra/config/schema';
+import type { SubagentResult as _SR } from './types';
 
 /**
  * Subagent types - each type has a specialized role
@@ -38,82 +38,74 @@ export interface SubagentConfig {
   /** Timeout in milliseconds (optional, default: 60000) */
   timeout?: number;
 
-  /** Provider to use (optional, defaults to main agent's provider) */
-  provider?: AIProvider;
+  /** AI provider (overrides runtime default) */
+  provider?: any;
 
-  /** Model to use (optional, defaults to main agent's model) */
+  /** AI model (overrides runtime default) */
   model?: string;
 
-  /** Unique identifier for this subagent instance */
+  /** Unique identifier for this subagent */
   id?: string;
+
+  /** AbortSignal for cooperative cancellation */
+  signal?: AbortSignal;
 }
 
 /**
  * Result from a subagent execution
  */
 export interface SubagentResult {
-  /** Whether the task completed successfully */
+  /** Whether the subagent succeeded */
   success: boolean;
 
-  /** Output from the subagent */
+  /** Output text */
   output: string;
 
-  /** Artifacts produced (e.g., created files, updated memories) */
-  artifacts?: Record<string, any>;
-
-  /** Total tokens used by this subagent */
+  /** Tokens used */
   tokensUsed: number;
 
-  /** Execution time in milliseconds */
+  /** Duration in milliseconds */
   duration: number;
 
   /** Error message if failed */
   error?: string;
 
-  /** Subagent ID */
-  id: string;
-
-  /** Tool calls made by this subagent */
-  toolCalls?: Array<{
-    name: string;
-    params: Record<string, any>;
-    result: any;
-  }>;
+  /** Subagent identifier */
+  id?: string;
 }
 
 /**
- * Statistics for subagent execution
+ * Subagent statistics
  */
 export interface SubagentStats {
-  /** Total subagents spawned */
   totalSpawned: number;
-
-  /** Successful executions */
   successful: number;
-
-  /** Failed executions */
   failed: number;
-
-  /** Total tokens used */
   totalTokens: number;
-
-  /** Total execution time */
   totalDuration: number;
-
-  /** Average execution time */
   avgDuration: number;
 }
 
 /**
- * Tool set configuration for each subagent type
+ * Tool set configuration for each subagent type.
+ *
+ * Tool names MUST match the actual registered names from:
+ * - builtin.ts: web_search, web_fetch, file_read, file_write, file_list, file_delete,
+ *               shell, code_execute, spawn_subagent, spawn_parallel, etc.
+ * - memory/tools.ts: memory_ls, memory_grep, memory_read, memory_write, memory_record
+ * - skills/tools.ts: skill_list, skill_get, skill_ensure, skill_delete, skill_record,
+ *                     skill_maturity, skill_evals
  */
 export const SUBAGENT_TOOL_SETS: Record<SubagentType, string[]> = {
   research: [
     'web_search',
     'web_fetch',
+    'file_read',
+    'file_write',
     'memory_read',
     'memory_grep',
     'memory_ls',
+    'memory_write',
   ],
 
   memory: [
@@ -122,6 +114,7 @@ export const SUBAGENT_TOOL_SETS: Record<SubagentType, string[]> = {
     'memory_grep',
     'memory_ls',
     'memory_record',
+    'file_read',
   ],
 
   skill: [
@@ -129,16 +122,24 @@ export const SUBAGENT_TOOL_SETS: Record<SubagentType, string[]> = {
     'skill_get',
     'skill_ensure',
     'skill_evals',
+    'skill_record',
+    'skill_maturity',
+    'file_read',
+    'file_write',
   ],
 
   code: [
     'code_execute',
+    'shell',
+    'file_read',
+    'file_write',
+    'file_list',
+    'file_delete',
     'memory_read',
     'memory_write',
-    'skill_get',
   ],
 
   general: [
-    // All tools available
+    // All tools available — empty array signals "no filtering"
   ],
 };

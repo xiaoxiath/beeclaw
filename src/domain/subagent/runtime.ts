@@ -4,23 +4,109 @@
  * Core runtime for spawning and executing subagents.
  * Integrates with SubagentRegistry for depth limiting, lifecycle tracking,
  * and persistent statistics.
+ *
+ * === Architecture (Clean Architecture Compliance) ===
+ * Domain code MUST NOT import from adapter/ directly. External dependencies
+ * (plugin system, hook runner) are injected via the `RuntimeDeps` interface.
+ * The infra logger is the sole exception — logging is a cross-cutting concern.
  */
 
-import { createAgent, getAllToolsForAI } from '../agent';
-import { buildSubagentSystemPrompt } from './prompts';
 import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
 import { getSubagentRegistry } from './registry';
-import type { AIProvider } from '../../infra/config/schema';
-import type { OpenAITool } from '../agent/types';
-// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
-import { getPluginRegistry } from '../../adapter/plugins';
-// TODO: [CR-Layer] Move createHookRunner to domain port interface
-import { createHookRunner } from '../../adapter/plugins/hook-runner';
 import { logger } from '../../infra/observability/logger';
+
+// ============================================================================
+// Port interfaces — domain-side abstractions for adapter-layer dependencies
+// ============================================================================
+
+/**
+ * Abstraction over the plugin hook runner.
+ * Implementations live in the adapter layer; the domain only knows this shape.
+ */
+export interface RuntimeHookRunner {
+  runSubagentSpawning(event: Record<string, unknown>): Promise<Record<string, unknown> | null>;
+  runSubagentSpawned(event: Record<string, unknown>): Promise<void>;
+  runSubagentDeliveryTarget(event: Record<string, unknown>): Promise<Record<string, unknown> | null>;
+  runSubagentEnded(event: Record<string, unknown>): Promise<void>;
+}
+
+/**
+ * Factory that creates an Agent capable of chat().
+ * Default: `createAgent` from `../agent`. Override in tests or DI containers.
+ */
+export interface AgentLike {
+  chat(message: string): Promise<string>;
+  /** Estimated token count after chat completes (for usage tracking) */
+  readonly estimatedTokens?: number;
+}
+
+export type AgentFactory = (options: Record<string, unknown>) => AgentLike;
+
+/**
+ * Function that returns all available tools in OpenAI function-calling format.
+ */
+export type ToolProvider = () => Array<{ function: { name: string }; [k: string]: unknown }>;
+
+/**
+ * External dependencies injected into SubagentRuntime.
+ * All fields are optional — when omitted the runtime gracefully degrades.
+ */
+export interface RuntimeDeps {
+  /** Factory to create an agent (default: imported createAgent) */
+  agentFactory?: AgentFactory;
+  /** Provider for the full tool catalogue (default: imported getAllToolsForAI) */
+  toolProvider?: ToolProvider;
+  /** Hook runner for plugin lifecycle events */
+  hookRunner?: RuntimeHookRunner | null;
+}
+
+// ============================================================================
+// Lazy default loaders (only imported when no DI override is supplied)
+// ============================================================================
+
+let _defaultAgentFactory: AgentFactory | null = null;
+let _defaultToolProvider: ToolProvider | null = null;
+let _defaultHookRunnerLoader: (() => RuntimeHookRunner | null) | null = null;
+
+function getDefaultAgentFactory(): AgentFactory {
+  if (!_defaultAgentFactory) {
+    // Dynamic import avoids hard compile-time coupling
+    const { createAgent } = require('../agent');
+    _defaultAgentFactory = createAgent as AgentFactory;
+  }
+  return _defaultAgentFactory;
+}
+
+function getDefaultToolProvider(): ToolProvider {
+  if (!_defaultToolProvider) {
+    const { getAllToolsForAI } = require('../agent');
+    _defaultToolProvider = getAllToolsForAI as ToolProvider;
+  }
+  return _defaultToolProvider;
+}
+
+function loadDefaultHookRunner(): RuntimeHookRunner | null {
+  if (!_defaultHookRunnerLoader) {
+    _defaultHookRunnerLoader = () => {
+      try {
+        const { getPluginRegistry } = require('../../adapter/plugins');
+        const { createHookRunner } = require('../../adapter/plugins/hook-runner');
+        const pluginRegistry = getPluginRegistry();
+        return createHookRunner(pluginRegistry) as RuntimeHookRunner;
+      } catch {
+        return null;
+      }
+    };
+  }
+  return _defaultHookRunnerLoader();
+}
+
+// ============================================================================
+// Utility
+// ============================================================================
 
 /**
  * Simple concurrency limiter (avoids p-limit dependency)
- * Limits the number of concurrent async operations
  */
 function pLimit(concurrency: number) {
   const queue: Array<() => void> = [];
@@ -52,13 +138,24 @@ function pLimit(concurrency: number) {
 /** Default max concurrent subagent spawns */
 const DEFAULT_MAX_CONCURRENT_SUBAGENTS = 3;
 
+// ============================================================================
+// SubagentRuntime
+// ============================================================================
+
 /**
- * Subagent Runtime - manages subagent execution
+ * Subagent Runtime — manages subagent execution with full DI support.
  */
 export class SubagentRuntime {
-  private provider: AIProvider;
+  private provider: any; // AIProvider
   private model: string;
   private sessionKey: string;
+
+  // Injected (or lazily loaded) dependencies
+  private agentFactory: AgentFactory;
+  private toolProvider: ToolProvider;
+  private hookRunnerInstance: RuntimeHookRunner | null;
+  private hookRunnerResolved = false;
+
   private stats: SubagentStats = {
     totalSpawned: 0,
     successful: 0,
@@ -69,27 +166,49 @@ export class SubagentRuntime {
   };
 
   constructor(options: {
-    provider: AIProvider;
+    provider: any;
     model: string;
     sessionKey?: string;
+    deps?: RuntimeDeps;
   }) {
     this.provider = options.provider;
     this.model = options.model;
     this.sessionKey = options.sessionKey || 'root';
+
+    const deps = options.deps || {};
+    this.agentFactory = deps.agentFactory || getDefaultAgentFactory();
+    this.toolProvider = deps.toolProvider || getDefaultToolProvider();
+
+    if (deps.hookRunner !== undefined) {
+      this.hookRunnerInstance = deps.hookRunner;
+      this.hookRunnerResolved = true;
+    } else {
+      this.hookRunnerInstance = null;
+      this.hookRunnerResolved = false;
+    }
+  }
+
+  /** Lazily resolve hookRunner (only when first needed) */
+  private getHookRunner(): RuntimeHookRunner | null {
+    if (!this.hookRunnerResolved) {
+      this.hookRunnerInstance = loadDefaultHookRunner();
+      this.hookRunnerResolved = true;
+    }
+    return this.hookRunnerInstance;
   }
 
   /**
-   * Get available tools for a subagent type
+   * Get available tools for a subagent type.
+   * Public for testing; runtime consumers should not call directly.
    */
-  private getToolsForType(type: SubagentType): OpenAITool[] {
-    const allTools = getAllToolsForAI();
+  getToolsForType(type: SubagentType): Array<{ function: { name: string }; [k: string]: unknown }> {
+    const allTools = this.toolProvider();
 
     // For 'general' type, all tools are available
     if (type === 'general') {
       return allTools;
     }
 
-    // Filter tools based on type
     const allowedTools = SUBAGENT_TOOL_SETS[type];
     return allTools.filter(tool =>
       allowedTools.includes(tool.function.name)
@@ -103,8 +222,20 @@ export class SubagentRuntime {
     const startTime = Date.now();
     const subagentId = config.id || `subagent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    console.log(`[Subagent] Spawning ${config.type} subagent: ${subagentId}`);
-    console.log(`[Subagent] Task: ${config.task.substring(0, 100)}...`);
+    logger.debug(`[Subagent] Spawning ${config.type} subagent: ${subagentId}`);
+    logger.debug(`[Subagent] Task: ${config.task.substring(0, 100)}...`);
+
+    // --- Early abort check ---
+    if (config.signal?.aborted) {
+      return {
+        success: false,
+        output: '',
+        tokensUsed: 0,
+        duration: 0,
+        error: 'Aborted before start',
+        id: subagentId,
+      };
+    }
 
     // --- Registry: depth check ---
     try {
@@ -125,13 +256,7 @@ export class SubagentRuntime {
     }
 
     // --- Obtain hook runner once, reuse throughout spawn ---
-    let hookRunner: ReturnType<typeof createHookRunner> | null = null;
-    try {
-      const pluginRegistry = getPluginRegistry();
-      hookRunner = createHookRunner(pluginRegistry);
-    } catch {
-      // Plugin system not initialized
-    }
+    const hookRunner = this.getHookRunner();
 
     // Trigger subagent_spawning hook (modifying)
     let modifiedConfig = config;
@@ -149,13 +274,12 @@ export class SubagentRuntime {
 
         const result = await hookRunner.runSubagentSpawning(spawningEvent);
 
-        // Apply modifications if returned
         if (result) {
           modifiedConfig = {
             ...config,
-            task: result.task || config.task,
-            context: result.context || config.context,
-            model: result.model || config.model,
+            task: (result.task as string) || config.task,
+            context: (result.context as string) || config.context,
+            model: (result.model as string) || config.model,
             provider: result.provider || config.provider,
           };
         }
@@ -188,6 +312,7 @@ export class SubagentRuntime {
 
     try {
       // Build system prompt
+      const { buildSubagentSystemPrompt } = require('./prompts');
       const systemPrompt = buildSubagentSystemPrompt(
         modifiedConfig.type,
         modifiedConfig.task,
@@ -196,19 +321,19 @@ export class SubagentRuntime {
 
       // Get tools
       const tools = modifiedConfig.tools
-        ? getAllToolsForAI().filter(t => modifiedConfig.tools!.includes(t.function.name))
+        ? this.toolProvider().filter((t: any) => modifiedConfig.tools!.includes(t.function.name))
         : this.getToolsForType(modifiedConfig.type);
 
-      // Create agent
-      const agent = createAgent({
+      // Create agent via injected factory
+      const agent = this.agentFactory({
         provider: modifiedConfig.provider || this.provider,
         model: modifiedConfig.model || this.model,
         systemPrompt,
         tools,
         maxTokens: modifiedConfig.maxTokens,
-        loadCoreMemory: false, // Don't load core memory for subagents
+        loadCoreMemory: false,
         autoRefreshMemory: false,
-        tokenStatsConfig: { showTokenStats: false }, // Don't show token stats
+        tokenStatsConfig: { showTokenStats: false },
       });
 
       // Trigger subagent_spawned hook (void)
@@ -227,36 +352,46 @@ export class SubagentRuntime {
         }
       }
 
-      // Execute with timeout and retry
-      // Default 3 minutes for large models
-      // Can be configured via SUBAGENT_TIMEOUT_MS environment variable or config.timeout
+      // Execute with timeout, abort signal, and retry
       const defaultTimeout = parseInt(process.env.SUBAGENT_TIMEOUT_MS || '180000', 10);
       const timeout = modifiedConfig.timeout || defaultTimeout;
-      const MAX_RETRIES = 2; // Subagent has fewer retries than main agent
+      const MAX_RETRIES = 2;
 
       let output: string | undefined;
       let lastError: Error | undefined;
 
-      // Retry loop
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Subagent timeout after ${timeout}ms`)), timeout)
-          );
-
-          output = await Promise.race([
+          // Build race competitors
+          const competitors: Promise<any>[] = [
             agent.chat(config.task),
-            timeoutPromise,
-          ]);
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Subagent timeout after ${timeout}ms`)), timeout)
+            ),
+          ];
 
-          // Success! Break out of retry loop
+          // Add abort signal as a race competitor
+          if (config.signal) {
+            competitors.push(
+              new Promise<never>((_, reject) => {
+                if (config.signal!.aborted) {
+                  reject(new Error('Aborted'));
+                  return;
+                }
+                const onAbort = () => reject(new Error('Aborted'));
+                config.signal!.addEventListener('abort', onAbort, { once: true });
+              })
+            );
+          }
+
+          output = await Promise.race(competitors);
+
           if (attempt > 0) {
-            console.log(`[Subagent] ${subagentId} succeeded after ${attempt + 1} attempts`);
+            logger.debug(`[Subagent] ${subagentId} succeeded after ${attempt + 1} attempts`);
           }
           break;
 
         } catch (error) {
-          // Properly serialize error to string
           let errorMsg: string;
           if (error instanceof Error) {
             errorMsg = error.message;
@@ -265,22 +400,20 @@ export class SubagentRuntime {
             errorMsg = error;
             lastError = new Error(error);
           } else {
-            // For objects, try to stringify them
-            try {
-              errorMsg = JSON.stringify(error);
-            } catch {
-              errorMsg = String(error);
-            }
+            try { errorMsg = JSON.stringify(error); } catch { errorMsg = String(error); }
             lastError = new Error(errorMsg);
           }
 
-          // Check if this is the last attempt
-          if (attempt === MAX_RETRIES) {
-            console.error(`[Subagent] ${subagentId} failed after ${MAX_RETRIES + 1} attempts:`, errorMsg);
+          // Non-retryable: abort signal
+          if (errorMsg === 'Aborted') {
             throw lastError;
           }
 
-          // Check if error is retryable
+          if (attempt === MAX_RETRIES) {
+            logger.error(`[Subagent] ${subagentId} failed after ${MAX_RETRIES + 1} attempts:`, errorMsg);
+            throw lastError;
+          }
+
           const isRetryable =
             errorMsg.includes('timeout') ||
             errorMsg.includes('network') ||
@@ -289,19 +422,14 @@ export class SubagentRuntime {
             errorMsg.includes('rate limit');
 
           if (!isRetryable) {
-            console.error(`[Subagent] ${subagentId} non-retryable error:`, errorMsg);
+            logger.error(`[Subagent] ${subagentId} non-retryable error:`, errorMsg);
             throw lastError;
           }
 
-          // Calculate delay with exponential backoff
           const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-
-          console.warn(
-            `[Subagent] ${subagentId} attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errorMsg}\n` +
-            `  Retrying in ${Math.round(delay / 1000)}s...`
+          logger.warn(
+            `[Subagent] ${subagentId} attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errorMsg} — retrying in ${Math.round(delay / 1000)}s`
           );
-
-          // Wait before retry
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -312,18 +440,26 @@ export class SubagentRuntime {
 
       const duration = Date.now() - startTime;
 
+      // ---------------------------------------------------------------
+      // Token tracking: extract from agent if available
+      // ---------------------------------------------------------------
+      let tokensUsed = 0;
+      if (typeof (agent as any).estimatedTokens === 'number') {
+        tokensUsed = (agent as any).estimatedTokens;
+      }
+
       // Update stats
       this.stats.successful++;
+      this.stats.totalTokens += tokensUsed;
       this.stats.totalDuration += duration;
       this.stats.avgDuration = this.stats.totalDuration / this.stats.totalSpawned;
 
-      console.log(`[Subagent] ${subagentId} completed in ${duration}ms`);
+      logger.debug(`[Subagent] ${subagentId} completed in ${duration}ms (tokens: ${tokensUsed})`);
 
-      // Build result
       let result: SubagentResult = {
         success: true,
         output,
-        tokensUsed: 0, // TODO: extract from agent
+        tokensUsed,
         duration,
         id: subagentId,
       };
@@ -332,7 +468,7 @@ export class SubagentRuntime {
       try {
         const registry = getSubagentRegistry();
         await registry.complete(subagentId, 'ok', {
-          output: output,
+          output,
           tokensUsed: result.tokensUsed,
         });
       } catch {
@@ -352,13 +488,12 @@ export class SubagentRuntime {
 
           const modifiedDelivery = await hookRunner.runSubagentDeliveryTarget(deliveryEvent);
 
-          // Apply modifications if returned
           if (modifiedDelivery?.output) {
-            output = modifiedDelivery.output;
+            output = modifiedDelivery.output as string;
             result.output = output || '';
           }
           if (modifiedDelivery?.result) {
-            result = { ...result, ...modifiedDelivery.result };
+            result = { ...result, ...(modifiedDelivery.result as SubagentResult) };
           }
         } catch {
           // Hook failed, non-critical
@@ -374,6 +509,7 @@ export class SubagentRuntime {
             success: true,
             duration,
             output,
+            tokensUsed,
             timestamp: new Date().toISOString(),
           });
         } catch {
@@ -386,25 +522,19 @@ export class SubagentRuntime {
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      // Properly serialize error to string
       let errorMessage: string;
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {
         errorMessage = error;
       } else {
-        // For objects, try to stringify them
-        try {
-          errorMessage = JSON.stringify(error);
-        } catch {
-          errorMessage = String(error);
-        }
+        try { errorMessage = JSON.stringify(error); } catch { errorMessage = String(error); }
       }
 
       this.stats.failed++;
       this.stats.totalDuration += duration;
 
-      console.error(`[Subagent] ${subagentId} failed:`, errorMessage);
+      logger.error(`[Subagent] ${subagentId} failed:`, errorMessage);
 
       // --- Registry: complete (error) ---
       try {
@@ -445,10 +575,6 @@ export class SubagentRuntime {
 
   /**
    * Spawn multiple subagents in parallel with concurrency limiting.
-   *
-   * @param configs - Array of subagent configurations
-   * @param maxConcurrency - Maximum number of subagents running simultaneously
-   *                         (default: 3, configurable via SUBAGENT_MAX_CONCURRENCY env var)
    */
   async spawnParallel(
     configs: SubagentConfig[],
@@ -457,9 +583,8 @@ export class SubagentRuntime {
     const concurrency = maxConcurrency
       ?? (parseInt(process.env.SUBAGENT_MAX_CONCURRENCY || '0', 10) || DEFAULT_MAX_CONCURRENT_SUBAGENTS);
 
-    console.log(
-      `[Subagent] Spawning ${configs.length} subagents in parallel ` +
-      `(max concurrency: ${concurrency})`
+    logger.debug(
+      `[Subagent] Spawning ${configs.length} subagents in parallel (max concurrency: ${concurrency})`
     );
 
     const startTime = Date.now();
@@ -472,9 +597,8 @@ export class SubagentRuntime {
     const totalDuration = Date.now() - startTime;
     const successful = results.filter(r => r.success).length;
 
-    console.log(
-      `[Subagent] Parallel spawn completed: ${successful}/${configs.length} ` +
-      `successful in ${totalDuration}ms`
+    logger.debug(
+      `[Subagent] Parallel spawn completed: ${successful}/${configs.length} successful in ${totalDuration}ms`
     );
 
     return results;
@@ -509,9 +633,10 @@ let runtimeInstance: SubagentRuntime | null = null;
  * Initialize the subagent runtime
  */
 export function initSubagentRuntime(options: {
-  provider: AIProvider;
+  provider: any;
   model: string;
   sessionKey?: string;
+  deps?: RuntimeDeps;
 }): SubagentRuntime {
   runtimeInstance = new SubagentRuntime(options);
   return runtimeInstance;
