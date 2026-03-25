@@ -1,5 +1,6 @@
 import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../../infra/resilience/circuit-breaker';
 import { LoopDetector, createLoopDetector } from '../../infra/resilience/loop-detector';
+import { TimeoutEnforcer } from '../../infra/resilience/timeout-enforcer';
 
 import type { AIProvider } from '../../infra/config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent, UserContext } from './types';
@@ -400,6 +401,7 @@ export class Agent {
       this.hookRunner,
       this.loopDetector,
       this.options.blockedTools,
+      TimeoutEnforcer.fromConfig(),
     );
     this.tokenBudget = new TokenBudgetManager(
       this.contextConfig,
@@ -1235,449 +1237,96 @@ export class Agent {
           const remainingToolCalls = otherCalls;
 
           // 使用剩余的工具调用继续执行
-          const batches = groupToolCalls(remainingToolCalls.map(tc => ({
-            name: tc.function.name,
-            call: tc,
-          })));
+          const allBatchResults = await this.toolDispatcher.executeToolBatches(
+            remainingToolCalls, iterations, this.messages, {
+              onToolCall: options?.onToolCall,
+              onToolResult: options?.onToolResult,
+              onContentBlock: options?.onContentBlock,
+              userContext: this.currentUserContext,
+            },
+          );
 
-          const stats = getGroupingStats(remainingToolCalls.map(tc => ({ name: tc.function.name })));
-          logger.debug(`\n[Tool Execution Plan] (After skill_get)`);
-          logger.debug(`  Total calls: ${stats.totalCalls}`);
-          logger.debug(`  Parallel batches: ${stats.parallelBatches}`);
-          logger.debug(`  Sequential batches: ${stats.sequentialBatches}`);
-          logger.debug(`  Max parallelism: ${stats.maxParallelism}`);
-          if (batches.length > 0) {
-            batches.forEach((batch, idx) => {
-              const toolNames = batch.map(b => b.call.function.name).join(', ');
-              logger.debug(`  Batch ${idx + 1}: ${toolNames}`);
+          for (const { call, result } of allBatchResults) {
+            let resultToSave = result;
+            if (this.hookRunner) {
+              resultToSave = this.toolDispatcher.persistResult(call.function.name, result, call.id);
+            }
+
+            const resultStr = typeof resultToSave === 'string' ? resultToSave : JSON.stringify(resultToSave);
+            const compressedResult = compressToolResult(resultStr, 4000);
+
+            this.messages.push({
+              role: 'tool',
+              content: compressedResult,
+              tool_call_id: call.id,
             });
-          }
-
-          // 执行剩余的工具调用
-          for (const batch of batches) {
-            const batchStartTime = Date.now();
-
-            if (batch.length === 1 && batch[0].call.function.name.startsWith('state_')) {
-              // Sequential tool
-              const { call } = batch[0];
-              const params = safeJsonParse(call.function.arguments, {});
-              const toolName = call.function.name;
-
-              logger.debug(`[Sequential Tool] ${toolName}`);
-              options?.onToolCall?.(toolName, params);
-
-              // Generate ContentBlock
-              options?.onContentBlock?.({
-                type: 'tool_use',
-                id: call.id,
-                name: toolName,
-                input: params,
-              });
-
-              if (this.isToolBlocked(toolName)) {
-                const blockedMsg = `Tool "${toolName}" is blocked in this context.`;
-                console.warn(`[Agent] ${blockedMsg}`);
-                const blockedResult = { success: false, error: blockedMsg, blocked: true };
-                options?.onToolResult?.(toolName, blockedResult);
-              } else {
-                const result = await this.toolExecutor(toolName, params, this.currentUserContext);
-                options?.onToolResult?.(toolName, result);
-
-                // Check if result contains a content block (e.g., chart_data)
-                if (result._contentBlock && result.success && result.data) {
-                  logger.debug(`[Agent] 🎨 Tool ${toolName} returned content block, triggering onContentBlock callback`);
-                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
-                  options?.onContentBlock?.(result.data);
-                } else if (result._contentBlock) {
-                  logger.debug(`[Agent] ⚠️ Tool ${toolName} has _contentBlock but missing success or data`);
-                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data });
-                }
-
-                let resultToSave = result;
-                if (this.hookRunner) {
-                  resultToSave = this.hookRunner.runToolResultPersist({
-                    toolName,
-                    result,
-                    toolCallId: call.id,
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-
-                this.messages.push({
-                  role: 'tool',
-                  content: JSON.stringify(resultToSave),
-                  tool_call_id: call.id,
-                });
-                this.estimatedTokens += estimateMessageTokens({
-                  role: 'tool',
-                  content: JSON.stringify(resultToSave),
-                  tool_call_id: call.id,
-                });
-              }
-            } else {
-              // Parallel batch
-              const batchPromises = batch.map(async ({ call }) => {
-                const params = safeJsonParse(call.function.arguments, {});
-                const toolName = call.function.name;
-
-                logger.debug(`[Parallel Tool] ${toolName}`);
-                options?.onToolCall?.(toolName, params);
-
-                // Generate ContentBlock
-                options?.onContentBlock?.({
-                  type: 'tool_use',
-                  id: call.id,
-                  name: toolName,
-                  input: params,
-                });
-
-                if (this.isToolBlocked(toolName)) {
-                  const blockedMsg = `Tool "${toolName}" is blocked in this context.`;
-                  console.warn(`[Agent] ${blockedMsg}`);
-                  return {
-                    call,
-                    result: { success: false, error: blockedMsg, blocked: true },
-                  };
-                }
-
-                const result = await this.toolExecutor(toolName, params, this.currentUserContext);
-                options?.onToolResult?.(toolName, result);
-
-                // DEBUG: Log the actual result structure
-                logger.debug(`[Agent] [DEBUG] Tool ${toolName} result:`, {
-                  hasContentBlock: '_contentBlock' in result,
-                  contentBlockValue: result._contentBlock,
-                  success: result.success,
-                  hasData: !!result.data,
-                  resultKeys: Object.keys(result),
-                });
-
-                // Check if result contains a content block (e.g., chart_data)
-                if (result._contentBlock && result.success && result.data) {
-                  logger.debug(`[Agent] 🎨 [Parallel] Tool ${toolName} returned content block, triggering onContentBlock callback`);
-                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
-                  options?.onContentBlock?.(result.data);
-                } else if (result._contentBlock) {
-                  logger.debug(`[Agent] ⚠️ [Parallel] Tool ${toolName} has _contentBlock but missing success or data`);
-                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
-                }
-
-                return { call, result };
-              });
-
-              const batchResults = await Promise.all(batchPromises);
-
-              for (const { call, result } of batchResults) {
-                let resultToSave = result;
-                if (this.hookRunner) {
-                  resultToSave = this.hookRunner.runToolResultPersist({
-                    toolName: call.function.name,
-                    result,
-                    toolCallId: call.id,
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-
-                this.messages.push({
-                  role: 'tool',
-                  content: JSON.stringify(resultToSave),
-                  tool_call_id: call.id,
-                });
-                this.estimatedTokens += estimateMessageTokens({
-                  role: 'tool',
-                  content: JSON.stringify(resultToSave),
-                  tool_call_id: call.id,
-                });
-              }
-            }
-
-            const elapsed = Date.now() - batchStartTime;
-            if (batch.length > 1) {
-              const toolNames = batch.map(b => b.call.function.name).join(', ');
-              logger.debug(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
-              logger.debug(`  Tools: ${toolNames}`);
-            } else {
-              logger.debug(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
-            }
+            this.estimatedTokens += estimateMessageTokens({
+              role: 'tool',
+              content: compressedResult,
+              tool_call_id: call.id,
+            });
           }
 
           // 执行完剩余工具后 continue
           continue;
         }
 
-        const batches = groupToolCalls(toolCalls.map(tc => ({
-          name: tc.function.name,
-          call: tc,
-        })));
+        const allBatchResults = await this.toolDispatcher.executeToolBatches(
+          toolCalls, iterations, this.messages, {
+            onToolCall: options?.onToolCall,
+            onToolResult: options?.onToolResult,
+            onContentBlock: options?.onContentBlock,
+            userContext: this.currentUserContext,
+          },
+        );
 
-        const stats = getGroupingStats(toolCalls.map(tc => ({ name: tc.function.name })));
-        logger.debug(`\n[Tool Execution Plan]`);
-        logger.debug(`  Total calls: ${stats.totalCalls}`);
-        logger.debug(`  Parallel batches: ${stats.parallelBatches}`);
-        logger.debug(`  Sequential batches: ${stats.sequentialBatches}`);
-        logger.debug(`  Max parallelism: ${stats.maxParallelism}`);
-        if (batches.length > 0) {
-          batches.forEach((batch, idx) => {
-            const toolNames = batch.map(b => b.call.function.name).join(', ');
-            logger.debug(`  Batch ${idx + 1}: ${toolNames}`);
+        for (const { call, result } of allBatchResults) {
+          const params = safeJsonParse(call.function.arguments, {});
+
+          if (call.function.name === 'skill_record') {
+            const skillName = params.name as string;
+            const success = params.success as boolean;
+            if (!success && skillName) {
+              const contextStr = typeof userMessage === 'string'
+                ? userMessage
+                : '[Multimodal message]';
+              recordSkillFailure(skillName, contextStr);
+              this.lastSkillFailed = skillName;
+            }
+          }
+
+          if (call.function.name === 'skill_get') {
+            const skillName = params.name as string;
+            if (skillName) {
+              this.usedSkillsInTurn.add(skillName);
+              logger.debug(`[Skill] \u2705 Using skill: ${skillName}`);
+            }
+          }
+
+          if (call.function.name === 'skill_record') {
+            const skillName = params.name as string;
+            const success = params.success as boolean;
+            logger.debug(`[Skill] \ud83d\udcdd Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
+          }
+
+          let resultToSave = result;
+          if (this.hookRunner) {
+            resultToSave = this.toolDispatcher.persistResult(call.function.name, result, call.id);
+          }
+
+          const resultStr = typeof resultToSave === 'string' ? resultToSave : JSON.stringify(resultToSave);
+          const compressedResult = compressToolResult(resultStr, 4000);
+
+          this.messages.push({
+            role: 'tool',
+            content: compressedResult,
+            tool_call_id: call.id,
           });
-        }
-
-        for (const batch of batches) {
-          const batchStartTime = Date.now();
-
-          logger.debug(`\n[Batch Execution] Starting batch with ${batch.length} tool(s)...`);
-
-          const batchResults = await Promise.all(
-            batch.map(async ({ call }) => {
-              const params = safeJsonParse(call.function.arguments, {});
-
-              const paramsStr = JSON.stringify(params);
-              const paramsPreview = paramsStr.length > 100 ? paramsStr.substring(0, 100) + '...' : paramsStr;
-              logger.debug(`  [Executing] ${call.function.name}(${paramsPreview})`);
-
-              options?.onToolCall?.(call.function.name, params);
-
-              // Generate ContentBlock for tool use
-              options?.onContentBlock?.({
-                type: 'tool_use',
-                id: call.id,
-                name: call.function.name,
-                input: params,
-              });
-
-              try {
-                if (this.hookRunner) {
-                  await this.hookRunner.runBeforeToolCall({
-                    toolName: call.function.name,
-                    params,
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-
-                const toolStartTime = Date.now();
-                // 循环检测：执行前检查
-              const loopCheck = this.loopDetector.check(call.function.name, params);
-              if (loopCheck.action === 'warn') {
-                // 注入警告给 LLM
-                this.messages.push({
-                  role: 'system',
-                  content: loopCheck.warningMessage || '检测到可能的循环行为',
-                });
-                this.loopDetector.acknowledgeWarning();
-              } else if (loopCheck.action === 'break') {
-                // 强制退出
-                const errorMsg = `检测到循环行为: ${loopCheck.details}。请尝试不同的方法。`;
-                options?.onToolResult?.(call.function.name, { success: false, error: errorMsg });
-                return errorMsg;
-              }
-              
-              // 记录工具调用
-              this.loopDetector.recordToolCall(call.function.name, params, iterations);
-
-              // [AUDIT FIX P-2] Check if tool is blocked in current context
-              if (this.isToolBlocked(call.function.name)) {
-                const blockedMsg = `Tool "${call.function.name}" is blocked in this context. ` +
-                  `This operation is not allowed in proactive/scheduled tasks to prevent recursion.`;
-                console.warn(`[Agent] ${blockedMsg}`);
-                const blockedResult = { success: false, error: blockedMsg, blocked: true };
-                options?.onToolResult?.(call.function.name, blockedResult);
-                return { call, result: blockedResult, error: blockedMsg };
-              }
-
-              const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
-                const toolElapsed = Date.now() - toolStartTime;
-
-                // DEBUG: Log the actual result structure
-                logger.debug(`[Agent] [DEBUG] Tool ${call.function.name} result:`, {
-                  hasContentBlock: '_contentBlock' in result,
-                  contentBlockValue: result._contentBlock,
-                  success: result.success,
-                  hasData: !!result.data,
-                  resultKeys: Object.keys(result),
-                });
-
-                // Check if result contains a content block (e.g., chart_data)
-                if (result._contentBlock && result.success && result.data) {
-                  logger.debug(`[Agent] 🎨 [Batch] Tool ${call.function.name} returned content block, triggering onContentBlock callback`);
-                  logger.debug(`[Agent] Content block:`, JSON.stringify(result.data, null, 2));
-                  options?.onContentBlock?.(result.data);
-                } else if (result._contentBlock) {
-                  logger.debug(`[Agent] ⚠️ [Batch] Tool ${call.function.name} has _contentBlock but missing success or data`);
-                  logger.debug(`[Agent] Result:`, { success: result.success, hasData: !!result.data, hasContentBlock: !!result._contentBlock });
-                }
-
-                // [HITL] Check if tool result needs user confirmation or input
-                if (result.needsConfirmation) {
-                  logger.debug(`[HITL] Tool ${call.function.name} requires user confirmation`);
-
-                  // Generate ConfirmationRequest ContentBlock
-                  options?.onContentBlock?.({
-                    type: 'confirmation_request',
-                    toolCallId: call.id,
-                    toolName: call.function.name,
-                    params,
-                    riskLevel: result.riskLevel || 'high',
-                    timeoutMs: result.timeoutMs,
-                    expiresAt: result.timeoutMs ? Date.now() + result.timeoutMs : undefined,
-                    message: result.confirmationMessage || `Tool "${call.function.name}" requires confirmation`,
-                    sessionId: this.currentUserContext?.sessionId,
-                  });
-
-                  // Inject system message to guide agent
-                  this.messages.push({
-                    role: 'system',
-                    content: `⚠️ TOOL CONFIRMATION REQUIRED\n\n${result.confirmationMessage || `Tool "${call.function.name}" requires user confirmation (${result.riskLevel || 'high'} risk).`}\n\n` +
-                             `Please ask the user for approval before proceeding. ` +
-                             `If approved, respond with "APPROVED: ${call.function.name}". ` +
-                             `If denied, respond with "DENIED: ${call.function.name}" and try an alternative approach.`,
-                  });
-
-                  // Add tool result to indicate waiting
-                  this.messages.push({
-                    role: 'tool',
-                    content: JSON.stringify({
-                      success: false,
-                      error: 'Tool execution blocked pending user confirmation. Ask the user for approval before proceeding.',
-                      needsConfirmation: true,
-                      toolName: call.function.name,
-                    }),
-                    tool_call_id: call.id,
-                  });
-
-                  // Return early to let agent handle confirmation
-                  return { call, result: { ...result, _hitlHandled: true }, error: null };
-                }
-
-                // [HITL] Check if tool needs user input
-                if (result.needsUserInput) {
-                  logger.debug(`[HITL] Tool ${call.function.name} requires user input`);
-
-                  // Generate UserInputRequest ContentBlock
-                  options?.onContentBlock?.({
-                    type: 'user_input_request',
-                    question: result.question,
-                    options: result.options,
-                    context: result.context,
-                    inputType: result.inputType || 'text',
-                    timestamp: Date.now(),
-                    requestId: call.id,  // Use tool call ID as request ID
-                    sessionId: this.currentUserContext?.sessionId,
-                  });
-
-                  // Inject system message to guide agent
-                  this.messages.push({
-                    role: 'system',
-                    content: `USER INPUT REQUIRED\n\n` +
-                             `Question: ${result.question}\n` +
-                             (result.options ? `Options: ${result.options.join(', ')}\n` : '') +
-                             (result.context ? `Context: ${result.context}\n` : '') +
-                             `\nPlease ask the user for this information and wait for their response.`,
-                  });
-
-                  // Add tool result to indicate waiting
-                  this.messages.push({
-                    role: 'tool',
-                    content: JSON.stringify({
-                      success: false,
-                      error: 'Waiting for user input. Ask the user for the required information.',
-                      needsUserInput: true,
-                      question: result.question,
-                    }),
-                    tool_call_id: call.id,
-                  });
-
-                  // Return early to let agent handle user input
-                  return { call, result: { ...result, _hitlHandled: true }, error: null };
-                }
-
-                if (this.hookRunner) {
-                  await this.hookRunner.runAfterToolCall({
-                    toolName: call.function.name,
-                    result,
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-
-                const resultStr = JSON.stringify(result);
-                const resultPreview = resultStr.length > 150 ? resultStr.substring(0, 150) + '...' : resultStr;
-                logger.debug(`  [Completed] ${call.function.name} (${toolElapsed}ms): ${resultPreview}`);
-
-                options?.onToolResult?.(call.function.name, result);
-
-              // 记录工具结果用于循环检测
-              this.loopDetector.recordToolResult(result);
-
-                return { call, result, error: null };
-              } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                console.error(`  [Failed] ${call.function.name}: ${errorMsg}`);
-                const errorResult = { success: false, error: errorMsg };
-                options?.onToolResult?.(call.function.name, errorResult);
-                return { call, result: errorResult, error: errorMsg };
-              }
-            })
-          );
-
-          for (const { call, result } of batchResults) {
-            const params = safeJsonParse(call.function.arguments, {});
-
-            if (call.function.name === 'skill_record') {
-              const skillName = params.name as string;
-              const success = params.success as boolean;
-              if (!success && skillName) {
-                const contextStr = typeof userMessage === 'string'
-                  ? userMessage
-                  : '[Multimodal message]';
-                recordSkillFailure(skillName, contextStr);
-                this.lastSkillFailed = skillName;
-              }
-            }
-
-            if (call.function.name === 'skill_get') {
-              const skillName = params.name as string;
-              if (skillName) {
-                this.usedSkillsInTurn.add(skillName);
-                logger.debug(`[Skill] ✅ Using skill: ${skillName}`);
-              }
-            }
-
-            if (call.function.name === 'skill_record') {
-              const skillName = params.name as string;
-              const success = params.success as boolean;
-              logger.debug(`[Skill] 📝 Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
-            }
-
-            let resultToSave = result;
-            if (this.hookRunner) {
-              resultToSave = this.hookRunner.runToolResultPersist({
-                toolName: call.function.name,
-                result,
-                toolCallId: call.id,
-                timestamp: new Date().toISOString(),
-              });
-            }
-
-            this.messages.push({
-              role: 'tool',
-              content: JSON.stringify(resultToSave),
-              tool_call_id: call.id,
-            });
-            this.estimatedTokens += estimateMessageTokens({
-              role: 'tool',
-              content: JSON.stringify(resultToSave),
-              tool_call_id: call.id,
-            });
-          }
-
-          const elapsed = Date.now() - batchStartTime;
-          if (batch.length > 1) {
-            const toolNames = batch.map(b => b.call.function.name).join(', ');
-            logger.debug(`\n[Batch Complete] ${batch.length} tools executed in ${elapsed}ms (parallel)`);
-            logger.debug(`  Tools: ${toolNames}`);
-          } else {
-            logger.debug(`[Tool Complete] ${batch[0].call.function.name} in ${elapsed}ms`);
-          }
+          this.estimatedTokens += estimateMessageTokens({
+            role: 'tool',
+            content: compressedResult,
+            tool_call_id: call.id,
+          });
         }
 
         continue;
@@ -2108,94 +1757,38 @@ export class Agent {
         const toolCalls = extractToolCalls(response);
 
         // [P0 FIX] Use batched parallel execution (same as chat())
-        const batches = groupToolCalls(toolCalls.map(tc => ({
-          name: tc.function.name,
-          call: tc,
-        })));
+        const allBatchResults = await this.toolDispatcher.executeToolBatches(
+          toolCalls, iterations, this.messages, {
+            userContext: this.currentUserContext,
+          },
+        );
 
-        // Collect yielded events in order for each batch
-        for (const batch of batches) {
-          const batchPromises = batch.map(async ({ call }) => {
-            const params = safeJsonParse(call.function.arguments, {});
+        for (const { call, result } of allBatchResults) {
+          const params = safeJsonParse(call.function.arguments, {});
 
-            // Track skill usage
-            if (call.function.name === 'skill_get') {
-              const skillName = params.name as string;
-              if (skillName) {
-                this.usedSkillsInTurn.add(skillName);
-              }
+          // Track skill usage
+          if (call.function.name === 'skill_get') {
+            const skillName = params.name as string;
+            if (skillName) {
+              this.usedSkillsInTurn.add(skillName);
             }
-
-            // [P0 FIX] Loop detection (same as chat())
-            const loopCheck = this.loopDetector.check(call.function.name, params);
-            if (loopCheck.action === 'warn') {
-              this.messages.push({
-                role: 'system',
-                content: loopCheck.warningMessage || 'Possible loop detected',
-              });
-              this.loopDetector.acknowledgeWarning();
-            } else if (loopCheck.action === 'break') {
-              const errorMsg = `Loop detected: ${loopCheck.details}. Try a different approach.`;
-              return {
-                call,
-                params,
-                result: { success: false, error: errorMsg } as BuiltinToolResult,
-                blocked: true,
-              };
-            }
-            this.loopDetector.recordToolCall(call.function.name, params, iterations);
-
-            // [AUDIT FIX P-2] Check if tool is blocked in current context
-            if (this.isToolBlocked(call.function.name)) {
-              const blockedMsg = `Tool "${call.function.name}" is blocked in this context. ` +
-                `This operation is not allowed in proactive/scheduled tasks to prevent recursion.`;
-              console.warn(`[Agent] ${blockedMsg}`);
-              return {
-                call,
-                params,
-                result: { success: false, error: blockedMsg, blocked: true } as BuiltinToolResult,
-                blocked: true,
-              };
-            }
-
-            // [P0 FIX] Run beforeToolCall hook (same as chat())
-            if (this.hookRunner) {
-              await this.hookRunner.runBeforeToolCall({
-                toolName: call.function.name,
-                params,
-                timestamp: new Date().toISOString(),
-              });
-            }
-
-            const result = await this.toolExecutor(call.function.name, params, this.currentUserContext);
-            return { call, params, result, blocked: false };
-          });
-
-          const batchResults = await Promise.all(batchPromises);
-
-          // Yield events sequentially (maintains stream ordering)
-          for (const { call, params, result, blocked } of batchResults) {
-            yield { type: 'tool_call' as const, name: call.function.name, params };
-            yield { type: 'tool_result' as const, name: call.function.name, result };
-
-            let resultToSave = result;
-            if (this.hookRunner) {
-              resultToSave = this.hookRunner.runToolResultPersist({
-                toolName: call.function.name,
-                result,
-                toolCallId: call.id,
-                timestamp: new Date().toISOString(),
-              });
-            }
-
-            const toolMsg: ChatMessage = {
-              role: 'tool',
-              content: JSON.stringify(resultToSave),
-              tool_call_id: call.id,
-            };
-            this.messages.push(toolMsg);
-            this.estimatedTokens += estimateMessageTokens(toolMsg);
           }
+
+          yield { type: 'tool_call' as const, name: call.function.name, params };
+          yield { type: 'tool_result' as const, name: call.function.name, result };
+
+          let resultToSave = result;
+          if (this.hookRunner) {
+            resultToSave = this.toolDispatcher.persistResult(call.function.name, result, call.id);
+          }
+
+          const toolMsg: ChatMessage = {
+            role: 'tool',
+            content: JSON.stringify(resultToSave),
+            tool_call_id: call.id,
+          };
+          this.messages.push(toolMsg);
+          this.estimatedTokens += estimateMessageTokens(toolMsg);
         }
 
         continue;

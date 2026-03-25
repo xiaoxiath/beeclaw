@@ -50,9 +50,8 @@ const DEFAULT_CHECK_INTERVAL_MS = 30000;  // 30 seconds
  * Monitors agent activity and triggers timeout only when
  * the agent has been inactive for the specified duration.
  *
- * @deprecated Use `TimeoutOrchestrator` from `../resilience/timeout-hierarchy.ts` instead.
- * TimeoutOrchestrator provides a hierarchical timeout system with phase-aware budgets.
- * This class is retained until all call-sites are migrated.
+ * SmartTimeout handles L4 (inactivity timeout) detection.
+ * L1-L3 timeout enforcement is handled by TimeoutEnforcer from './timeout-enforcer'.
  *
  * @example
  * ```typescript

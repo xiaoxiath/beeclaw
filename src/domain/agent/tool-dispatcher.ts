@@ -9,6 +9,7 @@ import { logger } from '../../infra/observability/logger';
 import type { ToolExecutor, ToolCall, UserContext } from './types';
 import type { LoopDetector } from '../../infra/resilience/loop-detector';
 import { groupToolCalls, getGroupingStats } from './tool-dependencies';
+import { TimeoutEnforcer, ToolTimeoutError } from '../../infra/resilience/timeout-enforcer';
 
 function safeJsonParse<T>(jsonString: string, fallback: T): T {
   try { return JSON.parse(jsonString); }
@@ -34,6 +35,7 @@ export class ToolDispatcher {
     private hookRunner: any | null,
     private loopDetector: LoopDetector,
     private blockedTools?: string[],
+    private timeoutEnforcer?: TimeoutEnforcer,
   ) {}
 
   isToolBlocked(toolName: string): boolean {
@@ -73,7 +75,15 @@ export class ToolDispatcher {
     }
 
     try {
-      const result = await this.toolExecutor(toolName, params, opts?.userContext);
+      let result;
+      if (this.timeoutEnforcer) {
+        result = await this.timeoutEnforcer.executeWithToolTimeout(
+          toolName,
+          async (_signal) => this.toolExecutor(toolName, params, opts?.userContext),
+        );
+      } else {
+        result = await this.toolExecutor(toolName, params, opts?.userContext);
+      }
       this.loopDetector.recordToolResult(result);
       if (result._contentBlock && result.success && result.data) opts?.onContentBlock?.(result.data);
       if (this.hookRunner) {
@@ -82,6 +92,14 @@ export class ToolDispatcher {
       opts?.onToolResult?.(toolName, result);
       return { call, result, error: null };
     } catch (error) {
+      if (error instanceof ToolTimeoutError) {
+        const timeoutMs = this.timeoutEnforcer?.getToolTimeout(toolName) ?? 'unknown';
+        const errorMsg = `Tool "${toolName}" timed out after ${timeoutMs}ms`;
+        logger.warn(`[ToolDispatcher] ${errorMsg}`);
+        const errorResult = { success: false, error: errorMsg, timeout: true };
+        opts?.onToolResult?.(toolName, errorResult);
+        return { call, result: errorResult, error: errorMsg };
+      }
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       const errorResult = { success: false, error: errorMsg };
       opts?.onToolResult?.(toolName, errorResult);

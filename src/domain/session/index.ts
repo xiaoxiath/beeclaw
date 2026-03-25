@@ -125,6 +125,11 @@ export const MAX_MESSAGE_RETRY_COUNT = 2;
 /** Maximum time (ms) a message can stay in 'processing' state before considered stale */
 export const PROCESSING_STALE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
+/** GC: TTL for processed message entries */
+export const MESSAGE_DEDUP_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+/** GC: Maximum number of entries to keep */
+export const MESSAGE_DEDUP_MAX_SIZE = 10_000;
+
 export interface Session {
   id: string;
   userId: string;
@@ -353,6 +358,59 @@ export function confirmDelivery(sessionId: string): void {
     saveSession(session);
     logger.info(`[Session] Delivery confirmed for session ${sessionId}`);
   }
+}
+
+/**
+ * Prune old entries from session.processedMessageIds to bound memory.
+ *
+ * Phase 1 – TTL cleanup: remove entries older than MESSAGE_DEDUP_TTL_MS.
+ * Phase 2 – LRU protection: if still over MESSAGE_DEDUP_MAX_SIZE, sort by
+ *           timestamp ascending and delete the oldest entries.
+ *
+ * @returns number of pruned entries
+ */
+export function pruneProcessedMessages(session: Session): number {
+  if (!session.processedMessageIds) return 0;
+
+  const now = Date.now();
+  let pruned = 0;
+  const entries = Object.entries(session.processedMessageIds);
+
+  // Phase 1: TTL cleanup
+  for (const [msgId, entry] of entries) {
+    if (entry === true) {
+      // Legacy boolean format – no timestamp available, treat as old
+      delete session.processedMessageIds[msgId];
+      pruned++;
+      continue;
+    }
+    const state = entry as MessageProcessingState;
+    const ts = state.completedAt || state.startedAt;
+    if (now - ts > MESSAGE_DEDUP_TTL_MS) {
+      delete session.processedMessageIds[msgId];
+      pruned++;
+    }
+  }
+
+  // Phase 2: LRU protection – trim to max size
+  const remaining = Object.entries(session.processedMessageIds);
+  if (remaining.length > MESSAGE_DEDUP_MAX_SIZE) {
+    const sorted = remaining.sort((a, b) => {
+      const tsA = a[1] === true ? 0 : ((a[1] as MessageProcessingState).completedAt || (a[1] as MessageProcessingState).startedAt);
+      const tsB = b[1] === true ? 0 : ((b[1] as MessageProcessingState).completedAt || (b[1] as MessageProcessingState).startedAt);
+      return tsA - tsB; // oldest first
+    });
+    const toRemove = sorted.length - MESSAGE_DEDUP_MAX_SIZE;
+    for (let i = 0; i < toRemove; i++) {
+      delete session.processedMessageIds[sorted[i][0]];
+      pruned++;
+    }
+  }
+
+  if (pruned > 0) {
+    logger.debug(`[Session] Pruned ${pruned} processed-message entries from session ${session.id}`);
+  }
+  return pruned;
 }
 
 /**
@@ -939,6 +997,7 @@ export function getOrCreateSession(options: SessionOptions): Session {
   if (loaded) {
     sessions.set(options.sessionId, loaded);
     logger.info('[Session] Loaded from disk:', options.sessionId, `(${loaded.messages.length} messages)`);
+    pruneProcessedMessages(loaded);
     return loaded;
   }
 

@@ -448,7 +448,7 @@ export class CircuitBreakerRegistry {
   }
 
   /**
-   * 获取所有断路器的 Map（用于 ParallelToolExecutor）
+   * 获取所有断路器的 Map（用于 ToolDispatcher / TimeoutEnforcer）
    */
   getAllBreakers(): Map<string, CircuitBreaker> {
     return new Map(this.breakers);

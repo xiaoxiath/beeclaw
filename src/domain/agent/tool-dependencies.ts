@@ -5,6 +5,8 @@
  * This enables Phase 1 of the subagent optimization - parallel tool execution.
  */
 
+import { logger } from '../../infra/observability/logger';
+
 /**
  * Tool execution mode
  * - parallel: Can execute simultaneously with other tools
