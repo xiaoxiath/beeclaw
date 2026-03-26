@@ -211,7 +211,7 @@ export class HookRunner {
           await reg.handler(event, ctx);
         } catch (err) {
           // B-P2-08: Always log, never let a single plugin break the pipeline
-          console.warn(\`[HookRunner] Plugin hook '\${reg.id}' (\${hookName}) failed:\`, err);
+          console.warn(`[HookRunner] Plugin hook '${reg.id}' (${hookName}) failed:`, err);
           this.handleHookError(hookName, reg, err);
           if (!this.catchErrors) {
             throw err;
@@ -253,7 +253,7 @@ export class HookRunner {
         // 不支持异步结果
         if (result instanceof Promise) {
           this.logger.warn?.(
-            \`[hooks] \${hookName} handler \${reg.id} returned Promise in sync context\`,
+            `[hooks] ${hookName} handler ${reg.id} returned Promise in sync context`,
           );
           continue;
         }
@@ -262,7 +262,7 @@ export class HookRunner {
         }
       } catch (err) {
         // B-P2-08: Always log, never let a single plugin break the pipeline
-        console.warn(\`[HookRunner] Plugin hook '\${reg.id}' (\${hookName}) failed:\`, err);
+        console.warn(`[HookRunner] Plugin hook '${reg.id}' (${hookName}) failed:`, err);
         this.handleHookError(hookName, reg, err);
         if (!this.catchErrors) {
           throw err;
