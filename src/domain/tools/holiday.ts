@@ -145,10 +145,9 @@ export function formatHolidayDescription(info: HolidayInfo): string {
 }
 
 /**
- * Get system prompt context about today's date and holiday status
- *
- * Note: This is a synchronous function that uses cached holiday info.
- * Call fetchHolidayInfo() asynchronously elsewhere to populate the cache.
+ * @deprecated Since KV-Cache optimization — holiday info is now an on-demand tool.
+ * Use `get_holiday_info` builtin tool instead of injecting into the system prompt.
+ * Kept for backward compatibility.
  */
 export function getDateContext(): string {
   const today = new Date();
@@ -171,4 +170,58 @@ export function getDateContext(): string {
  */
 export function clearHolidayCache(): void {
   cache.cleanup();
+}
+
+
+// =============================================================================
+// [KV-Cache] Holiday info as an on-demand tool
+//
+// Previously injected into the system prompt on every turn (~30 tokens).
+// Now the LLM calls this tool only when holiday/workday info is relevant,
+// saving tokens and keeping the prompt prefix stable for KV Cache reuse.
+// =============================================================================
+
+/** Tool definition for the agent tool registry */
+export const holidayToolDef = {
+  name: 'get_holiday_info',
+  description: '获取指定日期的节假日/工作日/调休信息。当用户询问"今天放不放假"、"是不是工作日"、"调休安排"、日历相关问题时调用此工具。',
+  parameters: {
+    type: 'object',
+    properties: {
+      date: {
+        type: 'string',
+        description: '日期，YYYY-MM-DD 格式。不传则默认今天。',
+      },
+    },
+    required: [],
+  },
+};
+
+/** Execute the holiday tool — fetches live data (with 24h cache) */
+export async function executeHolidayTool(params: Record<string, unknown>): Promise<{
+  success: boolean;
+  result?: string;
+  error?: string;
+}> {
+  try {
+    const dateStr = params.date as string | undefined;
+    const targetDate = dateStr ? new Date(dateStr) : undefined;
+
+    const info = await fetchHolidayInfo(targetDate);
+    if (!info) {
+      const now = targetDate || new Date();
+      const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return {
+        success: true,
+        result: `${y}-${m}-${d} ${weekDays[now.getDay()]}（节假日 API 暂不可用，无法确认是否调休）`,
+      };
+    }
+
+    return { success: true, result: formatHolidayDescription(info) };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
 }

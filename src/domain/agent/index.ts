@@ -5,7 +5,7 @@ import type { AIProvider } from '../../infra/config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent, UserContext } from './types';
 import { stripMessageMetadata } from './types';
 import { callAI, hasToolCalls, extractToolCalls, extractContent } from './api';
-import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
+import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext, buildVolatileContext } from './tools';
 import { logger } from '../../infra/observability/logger';
 import { getMemoryStore, getDynamicMemoryInjector } from '../memory';
 import { getSkillStore } from '../skills/store';
@@ -64,12 +64,23 @@ export * from './exports';
 
 
 // Agent class
+// [KV-Cache] Lightweight djb2 hash for dirty-checking system prompt stability.
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return hash.toString(36);
+}
+
 export class Agent {
   private options: AgentOptions;
   private messages: ChatMessage[] = [];
   private toolExecutor: ToolExecutor;
   private lastSkillFailed: string | undefined;
   private baseSystemPrompt: string;
+  /** [KV-Cache] Content hash of last stable system prompt to skip no-op rebuilds */
+  private _lastStableHash: string = '';
   private autoRefreshMemory: boolean;
   private contextConfig: ContextConfig;
   private tokenStatsConfig: TokenStatsConfig;
@@ -160,11 +171,20 @@ export class Agent {
     this.tokenStatsConfig = { ...DEFAULT_TOKEN_STATS_CONFIG, ...options.tokenStatsConfig };
 
     if (options.systemPrompt) {
+      // [KV-Cache] messages[0]: stable prompt prefix
       this.messages.push({
         role: 'system',
         content: options.systemPrompt,
       });
-      this.estimatedTokens = estimateMessageTokens({ role: 'system', content: options.systemPrompt });
+      // [KV-Cache] messages[1]: volatile time context (separate message so
+      // the stable prefix stays byte-identical across turns for KV Cache reuse)
+      const volatileCtx = buildVolatileContext();
+      this.messages.push({
+        role: 'system',
+        content: volatileCtx,
+      });
+      this.estimatedTokens = estimateMessageTokens({ role: 'system', content: options.systemPrompt })
+                           + estimateMessageTokens({ role: 'system', content: volatileCtx });
     }
 
     // [V2 FIX] Initialize skill enforcement engine
@@ -314,6 +334,17 @@ export class Agent {
 
       const freshPrompt = buildSystemPrompt(this.baseSystemPrompt, contextWithSkills);
 
+      // [KV-Cache] Skip rebuild if content hasn't actually changed.
+      // This preserves the LLM's prefix cache across turns.
+      const promptHash = simpleHash(freshPrompt);
+      if (promptHash === this._lastStableHash) {
+        logger.debug('[Agent] Memory unchanged — skipping system prompt rebuild (KV Cache preserved)');
+        return;
+      }
+      this._lastStableHash = promptHash;
+
+      // Only update messages[0] (stable prefix). messages[1] (volatile time)
+      // is handled separately by refreshTime().
       const systemIndex = this.messages.findIndex(m => m.role === 'system');
       if (systemIndex >= 0) {
         const oldTokens = estimateMessageTokens(this.messages[systemIndex]);
@@ -328,28 +359,44 @@ export class Agent {
         this.estimatedTokens += estimateMessageTokens({ role: 'system', content: freshPrompt });
       }
 
-      logger.info('[Agent] Memory refreshed - facts/*.md changes applied');
+      logger.info('[Agent] Memory refreshed — stable system prompt updated');
     } catch (error) {
       console.warn('[Agent] Failed to refresh memory:', error);
     }
   }
 
-  // Refresh time context in system message
+  /**
+   * [KV-Cache] Refresh volatile time context in messages[1].
+   *
+   * Only the volatile message is mutated — the stable prefix (messages[0])
+   * stays untouched so the LLM's prefix-cache stays valid. Time is quantized
+   * to hourly slots, so within the same clock-hour even messages[1] is
+   * byte-identical → ~100% cache hit rate during sustained usage.
+   */
   refreshTime(): void {
-    const systemIndex = this.messages.findIndex(m => m.role === 'system');
-    if (systemIndex < 0) return;
+    const volatileCtx = buildVolatileContext();
 
-    const systemContent = this.messages[systemIndex].content;
-    if (typeof systemContent !== 'string') return;
+    // Find the second system message (volatile context)
+    let volatileIndex = -1;
+    let systemCount = 0;
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].role === 'system') {
+        systemCount++;
+        if (systemCount === 2) { volatileIndex = i; break; }
+      }
+    }
 
-    const newTimeContext = getCurrentTimeContext();
-    const timeContextPattern = /# Current Context\n\n\*\*Date\*\*:.*?\n\*\*Time\*\*:.*?\n\*\*Timezone\*\*:.*?\n\n---/s;
-
-    if (timeContextPattern.test(systemContent)) {
-      const oldTokens = estimateMessageTokens(this.messages[systemIndex]);
-      this.messages[systemIndex].content = systemContent.replace(timeContextPattern, newTimeContext);
-      const newTokens = estimateMessageTokens(this.messages[systemIndex]);
+    if (volatileIndex >= 0) {
+      if (this.messages[volatileIndex].content === volatileCtx) return; // same hour — skip
+      const oldTokens = estimateMessageTokens(this.messages[volatileIndex]);
+      this.messages[volatileIndex].content = volatileCtx;
+      const newTokens = estimateMessageTokens({ role: 'system', content: volatileCtx });
       this.estimatedTokens = this.estimatedTokens - oldTokens + newTokens;
+    } else if (this.messages.length > 0 && this.messages[0].role === 'system') {
+      // Volatile message missing — insert after stable prefix
+      const msg = { role: 'system' as const, content: volatileCtx };
+      this.messages.splice(1, 0, msg);
+      this.estimatedTokens += estimateMessageTokens(msg);
     }
   }
 

@@ -21,8 +21,6 @@ import { getProactiveToolsForAI } from '../proactive';
 import { getBuiltinToolsForAI, builtinToolNames } from '../tools';
 import { getPersonaToolsForAI, getTraitSystemPrompt } from './persona';
 import { getGoalStore } from './goal/store';
-import { getDateContext } from '../tools/holiday';
-import { getWeatherContext } from '../tools/weather';
 import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
 // Feishu tools are now handled by feishu-cli-toolkit skill
 // Task 3: Use port interfaces instead of direct adapter imports
@@ -232,9 +230,73 @@ export function getBeeclawVersion(): string {
   }
 }
 
+/**
+ * Time-period labels for Chinese locale.
+ * Quantized to hourly slots to maximise KV Cache hit rate —
+ * all requests within the same clock-hour produce identical strings.
+ */
+const TIME_PERIODS: [number, string][] = [
+  [6, '凌晨'], [9, '早上'], [12, '上午'], [14, '中午'],
+  [17, '下午'], [19, '傍晚'], [24, '晚上'],
+];
+
+function getTimePeriod(hour: number): string {
+  for (const [upper, label] of TIME_PERIODS) {
+    if (hour < upper) return label;
+  }
+  return '晚上';
+}
+
+/**
+ * Build the **volatile** runtime context string.
+ *
+ * Time is quantized to hourly slots (`下午 15:00段`) so that all
+ * requests within the same clock-hour produce byte-identical strings.
+ * This maximises LLM prefix-cache (KV Cache) hit rate.
+ *
+ * Weather and holiday are NOT included here — they are available as
+ * on-demand tools (`weather`, `get_holiday_info`).
+ */
 export function getCurrentTimeContext(): string {
   const userLocation = resolveUserLocation();
   const userTimezone = resolveUserTimezone();
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('zh-CN', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+    timeZone: userTimezone,
+  });
+
+  // Quantize to hour boundary — e.g. "下午 15:00段"
+  const hour = parseInt(now.toLocaleTimeString('zh-CN', {
+    hour: '2-digit', hour12: false, timeZone: userTimezone,
+  }), 10);
+  const period = getTimePeriod(hour);
+  const timeSlot = `${String(hour).padStart(2, '0')}:00`;
+
+  return `当前: ${dateStr} ${period} ${timeSlot}段, ${userLocation}, tz=${userTimezone}`;
+}
+
+/**
+ * Build the volatile system message content.
+ *
+ * Placed in a SEPARATE `{ role: 'system' }` message (messages[1]) so that
+ * the stable prompt prefix (messages[0]) is never mutated by time changes,
+ * preserving the LLM's KV Cache.
+ */
+export function buildVolatileContext(): string {
+  return getCurrentTimeContext();
+}
+
+/**
+ * Full time context with version info — used in beeclaw_info tool only,
+ * NOT in the volatile system message (to avoid unnecessary cache bust).
+ */
+export function getFullTimeContext(): string {
+  const userLocation = resolveUserLocation();
+  const userTimezone = resolveUserTimezone();
+  const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const version = getBeeclawVersion();
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('zh-CN', {
@@ -245,9 +307,6 @@ export function getCurrentTimeContext(): string {
     hour: '2-digit', minute: '2-digit', hour12: false,
     timeZone: userTimezone,
   });
-
-  const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const version = getBeeclawVersion();
 
   const locationInfo = `**Location**: ${userLocation}`;
   let timezoneInfo = `**Timezone**: ${userTimezone}`;
@@ -395,40 +454,26 @@ export function buildSystemPromptWithBudget(
     }
   }
 
-  // Layer 8: Volatile runtime context (medium priority — important for recency)
-  const volatileParts: string[] = [];
-  volatileParts.push(`# Runtime Context\n\n${getCurrentTimeContext()}`);
-
-  try {
-    const holidayContext = getDateContext();
-    if (holidayContext) volatileParts.push(holidayContext);
-  } catch (error) {
-    logger.debug('Failed to get holiday info:', error);
-  }
-
-  try {
-    const weatherContext = getWeatherContext();
-    if (weatherContext) volatileParts.push(weatherContext);
-  } catch (error) {
-    logger.debug('Failed to get weather info:', error);
-  }
+  // Layer 8: Goals & session stats (relatively stable across turns)
+  // NOTE: Volatile time context is NO LONGER embedded here.
+  // It lives in a separate system message (messages[1]) so that the
+  // stable prefix (messages[0]) stays byte-identical across turns,
+  // enabling LLM prefix-cache (KV Cache) reuse.
+  // Weather & holiday data are now on-demand tools, not prompt-injected.
+  const stableRuntimeParts: string[] = [];
 
   const goalsContext = getActiveGoalsContext();
-  if (goalsContext) volatileParts.push(goalsContext);
+  if (goalsContext) stableRuntimeParts.push(goalsContext);
 
   const statsContext = getSessionStatsContext(sessionContext);
-  if (statsContext) volatileParts.push(statsContext);
+  if (statsContext) stableRuntimeParts.push(statsContext);
 
-  if (volatileParts.length > 0) {
+  if (stableRuntimeParts.length > 0) {
     layers.push({
-      name: 'runtime',
-      content: `\n---\n\n${volatileParts.join('\n\n')}`,
-      // [FIX] Raised from 75→95 and marked non-trimmable.
-      // Runtime context contains current date/time which is critical for
-      // time-sensitive searches and skill executions. Dropping it causes
-      // the agent to lose temporal awareness and return stale data.
+      name: 'runtime-stable',
+      content: `\n---\n\n${stableRuntimeParts.join('\n\n')}`,
       priority: LAYER_PRIORITIES.RUNTIME,
-      trimmable: false,
+      trimmable: true,  // goals/stats can be trimmed if budget is tight
     });
   }
 

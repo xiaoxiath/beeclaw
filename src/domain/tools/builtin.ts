@@ -604,6 +604,7 @@ import { webSearchTool, executeWebSearch } from './search-tools';
 import { webFetchTool, executeWebFetch } from './search-tools';
 import { timeTool, executeTime } from './time-tools';
 import { weatherTool, executeWeather } from './time-tools';
+import { holidayToolDef, executeHolidayTool } from './holiday';
 import { beeclawInfoTool, executeBeeclawInfo } from './info-tools';
 import { calcTool, executeCalc } from './calc-tools';
 import { codeExecuteTool, executeCode } from './calc-tools';
@@ -629,6 +630,7 @@ export const builtinTools = {
   calc: calcTool,
   code_execute: codeExecuteTool,
   weather: weatherTool,
+  get_holiday_info: holidayToolDef,
   stock_quote: stockQuoteTool,
   stock_history: stockHistoryTool,
   stock_financial: stockFinancialTool,
@@ -683,6 +685,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeCode(params);
     case 'weather':
       return executeWeather(params);
+    case 'get_holiday_info':
+      return executeHolidayTool(params);
     case 'stock_quote':
       return executeStockQuote(params);
     case 'stock_history':

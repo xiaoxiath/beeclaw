@@ -458,10 +458,9 @@ export function formatDailyWeatherDescription(info: DailyWeatherInfo): string {
 }
 
 /**
- * Get weather context for system prompt
- *
- * Note: This is a synchronous function that uses cached weather info.
- * Call fetchWeatherInfo() asynchronously elsewhere to populate the cache.
+ * @deprecated Since KV-Cache optimization — weather is now an on-demand tool.
+ * Use the `weather` builtin tool instead of injecting into the system prompt.
+ * Kept for backward compatibility with any code that still calls it.
  */
 export function getWeatherContext(): string | null {
   // Check unified cache for any location's weather info

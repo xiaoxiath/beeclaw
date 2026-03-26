@@ -22,8 +22,6 @@ import { loadAllSessions, saveAllSessions } from '../domain/session';
 import { getDaemon, getScheduler, registerFeishuHandler, setCliDeliveryHandler } from '../domain/proactive';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { initSelfEvolution } from '../domain/agent/evolution/self-evolution';
-import { fetchHolidayInfo } from '../domain/tools/holiday';
-import { fetchWeatherInfo } from '../domain/tools/weather';
 import { initTaskManager } from '../infra/queue';
 import { renderMessageCard } from '../adapter/feishu/card-v2/message-renderer';
 import type { ContentBlock } from '../types/content-block';
@@ -88,21 +86,11 @@ async function main() {
     enableRecovery: true,
   });
 
-  // Pre-load dynamic context (holiday and weather info)
-  console.log('\n📅 Loading dynamic context...');
-  try {
-    await fetchHolidayInfo();
-    console.log('   ✓ Holiday information loaded');
-  } catch (_error) {
-    console.log('   ⚠ Holiday information unavailable (will use fallback)');
-  }
-
-  try {
-    await fetchWeatherInfo();
-    console.log('   ✓ Weather information loaded');
-  } catch (_error) {
-    console.log('   ⚠ Weather information unavailable (QWEATHER_TOKEN may not be configured)');
-  }
+  // [KV-Cache] Holiday & weather are now on-demand tools — no eager fetch needed.
+  // The LLM calls `get_holiday_info` / `weather` tools when contextually relevant,
+  // each with its own TTL cache (24h / 1h). This removes ~50 tokens from every
+  // system prompt and keeps the stable prefix byte-identical for KV Cache reuse.
+  console.log('\n📅 Dynamic context: holiday & weather available as on-demand tools');
 
   // Check Feishu configuration
   if (!config.feishu?.appId || !config.feishu?.appSecret) {
