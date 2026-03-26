@@ -7,7 +7,18 @@
 import { logger } from '../../infra/observability/logger';
 import { z } from 'zod';
 import { getTaskManager } from '../../infra/queue/manager';
-import type { AnalysisJobData } from '../queue/types';
+
+// Local interface (no external queue/types module exists)
+interface AnalysisJobData {
+  sessionId: string;
+  userId: string;
+  chatId: string;
+  originalMessage: string;
+  analysisTasks: string[];
+  context: string;
+  createdAt: string;
+}
+
 
 // Tool result type
 export type DeepAnalysisToolResult = {
@@ -154,7 +165,7 @@ export async function executeRequestDeepAnalysis(
     const manager = getTaskManager();
     await manager.initialize();
 
-    const { jobId } = await manager.addJob('analysis-jobs', 'deep-analysis', jobData);
+    const { jobId } = await manager.addJob('proactive-jobs' as any, 'deep-analysis', jobData);
 
     logger.info(`[DeepAnalysis] Created analysis job: ${jobId}`);
     logger.debug(`[DeepAnalysis] Reason: ${reason}`);

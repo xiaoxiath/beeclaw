@@ -44,24 +44,6 @@ import { SmartTimeout } from '../../infra/resilience/smart-timeout';
 import { handleHITLResponse } from './hitl-manager';
 import { resolveConfig, type ResilienceConfig } from '../../infra/config/resilience-config';
 
-// Phase 4: Extracted proactive message steps
-import {
-  prepareProactiveContext,
-  resolveProactiveRecipients,
-  formatProactiveMessage,
-  deliverProactiveMessage,
-  handleProactiveResult,
-} from './proactive-steps';
-
-// Phase 4: Re-export extracted proactive message steps
-export {
-  prepareProactiveContext,
-  resolveProactiveRecipients,
-  formatProactiveMessage,
-  deliverProactiveMessage,
-  handleProactiveResult,
-  type ProactiveContext,
-} from './proactive-steps';
 
 export interface SessionOptions {
   sessionId: string;

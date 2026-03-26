@@ -524,6 +524,11 @@ export class Scheduler {
   }
 
   // Execute with atomic lock acquisition (prevents race condition)
+  // [BUG 3 FIX] This method is the convergence point for both execution paths:
+  // 1. setTimeout path: startSchedule -> executeWithLock
+  // 2. periodicCheck path: daemon.executeScheduleWithLock -> acquireExecutionLock
+  // Both share the same Scheduler singleton and executingSchedules Set.
+  // JS single-threaded execution guarantees acquireExecutionLock is atomic.
   private async executeWithLock(schedule: Schedule, callback: ScheduleCallback): Promise<void> {
     // Atomic check-and-set for memory lock
     if (!this.acquireExecutionLock(schedule.id)) {

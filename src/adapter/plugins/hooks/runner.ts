@@ -66,6 +66,13 @@ export class HookRunner {
   private logger: HookRunnerLogger;
   private catchErrors: boolean;
 
+  /**
+   * Bridge function to forward legacy hook registrations to the new hook system.
+   * Set via `setBridge()` during app initialization after the new HookRunner
+   * (createHookRunner) is created.
+   */
+  private bridgeToNew: ((hookName: string, handler: Function, priority: number) => void) | null = null;
+
   constructor(options: HookRunnerOptions = {}) {
     this.logger = options.logger || {
       warn: console.warn,
@@ -75,12 +82,31 @@ export class HookRunner {
   }
 
   /**
+   * Connect a bridge so that hooks registered on this legacy runner are also
+   * forwarded to the new plugin-registry-based hook system.
+   *
+   * @param bridge - callback that registers a handler in the new system
+   */
+  setBridge(bridge: (hookName: string, handler: Function, priority: number) => void): void {
+    this.bridgeToNew = bridge;
+  }
+
+  /**
    * 注册钩子
    */
   register(registration: HookRegistration): () => void {
     const hooks = this.hooks.get(registration.hookName) || [];
     hooks.push(registration);
     this.hooks.set(registration.hookName, hooks);
+
+    // Bridge to new hook system if available
+    if (this.bridgeToNew) {
+      try {
+        this.bridgeToNew(registration.hookName, registration.handler, registration.priority || 0);
+      } catch (e) {
+        this.logger.debug?.(`[HookRunner] Bridge failed for ${registration.hookName}: ${e}`);
+      }
+    }
 
     // 返回取消注册函数
     return () => {

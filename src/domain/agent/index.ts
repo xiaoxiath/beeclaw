@@ -47,7 +47,6 @@ import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforce
 import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
 import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 // P0 Context Engineering imports
-import { getContextSelector } from './context/selector';
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
 

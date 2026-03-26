@@ -4,11 +4,12 @@
  * Allows users to update their location and timezone settings through conversation
  */
 
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { BuiltinToolResult } from './builtin';
 import { getTimezoneFromLocation } from './timezone';
 import { reloadConfig } from '../../infra/config';
+import { writeFileAtomic } from '../../infra/utils/atomic-fs';
 import type { AppConfig } from '../../infra/config/schema';
 
 /**
@@ -86,7 +87,7 @@ export async function executeUpdateUserSettings(params: {
       config.user.timezone = resolvedTimezone;
     }
 
-    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    writeFileAtomic(configPath, JSON.stringify(config, null, 2));
 
     // 3. Reload config
     reloadConfig();
@@ -116,4 +117,3 @@ export async function executeUpdateUserSettings(params: {
     };
   }
 }
-

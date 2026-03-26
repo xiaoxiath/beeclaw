@@ -9,7 +9,16 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { AppConfigSchema, type AppConfig } from './schema';
 import { logger } from '../observability/logger';
-import { getHookRunner } from '../hooks';
+
+// Dependency-inversion: hook notifier injected at app startup to avoid
+// infra -> adapter layer reverse dependency.
+type HookNotifier = (event: string, data: unknown, context?: unknown) => Promise<void>;
+let hookNotifier: HookNotifier | null = null;
+
+export function setHookNotifier(notifier: HookNotifier): void {
+  hookNotifier = notifier;
+}
+
 
 // ============================================================================
 // 类型定义
@@ -352,11 +361,14 @@ export class ConfigWatcher {
    */
   private async notifyHooks(change: ConfigChange, diff?: ConfigDiff): Promise<void> {
     try {
-      const hookRunner = getHookRunner();
-      await hookRunner.runParallel('config_changed' as any, change, {
-        timestamp: change.timestamp,
-        diff,  // [P2 FIX 4.4] Include full diff in hook context
-      });
+      if (hookNotifier) {
+        await hookNotifier('config_changed', change, {
+          timestamp: change.timestamp,
+          diff,  // [P2 FIX 4.4] Include full diff in hook context
+        });
+      } else {
+        logger.debug('[ConfigWatcher] No hook notifier registered, skipping config_changed notification');
+      }
     } catch (error) {
       logger.warn('[ConfigWatcher] Failed to notify hooks:', error);
     }

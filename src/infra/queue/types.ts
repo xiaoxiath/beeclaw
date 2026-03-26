@@ -77,7 +77,7 @@ export interface WorkerConfig {
 
 export interface ProactiveJobData {
   scheduleId: string;
-  taskType: 'check_goal_progress' | 'run_skill' | 'send_reminder' | 'memory_compress' | 'llm_proactive_chat' | 'custom';
+  taskType: 'check_goal_progress' | 'run_skill' | 'send_reminder' | 'memory_compress' | 'llm_proactive_chat' | 'deep_analysis' | 'custom';
   params?: Record<string, unknown>;
   triggeredAt: string;
   triggeredBy: 'cron' | 'pattern' | 'manual';

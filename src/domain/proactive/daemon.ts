@@ -17,6 +17,7 @@ import {
   handleGoalProgressCheckJob,
   handleCustomJob,
   handleSendReminderJob,
+  handleRunSkillJob,
 } from './job-handlers';
 import { pushPendingNotifications } from './pusher';
 
@@ -200,6 +201,12 @@ export class Daemon {
   // Private helper methods
 
   // Execute with lock acquisition (for periodicCheck path)
+  // [BUG 3 FIX] TOCTOU Race Condition Note:
+  // Both the setTimeout path (scheduler.executeWithLock) and the periodicCheck path
+  // (daemon.executeScheduleWithLock) can discover the same due schedule concurrently.
+  // This is safe because both paths converge on scheduler.acquireExecutionLock(), which
+  // uses a synchronous Set.has() + Set.add() check. Since JS is single-threaded, only
+  // one path can win the lock; the other will see the Set entry and skip execution.
   private async executeScheduleWithLock(
     schedule: Schedule,
     onJob?: (job: ProactiveJobData) => Promise<void>
@@ -324,9 +331,21 @@ export class Daemon {
       const scheduler = getScheduler(this.basePath + '/../proactive');
       const dueSchedules = scheduler.getDueSchedules();
 
-      for (const schedule of dueSchedules) {
-        // Use unified lock acquisition method
-        await this.executeScheduleWithLock(schedule, onJob);
+      // [BUG 4 FIX] Concurrent execution with random jitter to prevent thundering herd.
+      // When multiple schedules are due simultaneously (e.g., several daily 3am tasks),
+      // stagger their execution with small random delays and run them concurrently
+      // instead of blocking each other serially.
+      if (dueSchedules.length > 1) {
+        await Promise.allSettled(
+          dueSchedules.map(async (schedule) => {
+            // Stagger execution with small random jitter (0-5 seconds)
+            const jitter = Math.random() * 5000;
+            await new Promise<void>(r => setTimeout(r, jitter));
+            await this.executeScheduleWithLock(schedule, onJob);
+          })
+        );
+      } else if (dueSchedules.length === 1) {
+        await this.executeScheduleWithLock(dueSchedules[0], onJob);
       }
 
       // Push pending notifications

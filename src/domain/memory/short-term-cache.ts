@@ -74,12 +74,13 @@ export class ShortTermMemoryCache {
     currentSize: 0,
     userCount: 0,
   };
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: Partial<ShortTermCacheConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
     // 定期清理过期缓存（每 10 分钟）
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       this.cleanupExpired();
     }, 10 * 60 * 1000);
 
@@ -89,6 +90,21 @@ export class ShortTermMemoryCache {
       ttl: `${this.config.ttl / 1000 / 60} minutes`,
       maxSize: `${this.config.maxSize / 1024 / 1024} MB`,
     });
+  }
+
+  /**
+   * 释放定时器和缓存资源。
+   * 在单例重置或进程关闭时调用以防止 setInterval 泄漏。
+   */
+  dispose(): void {
+    if (this.cleanupTimer !== null) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.cache.clear();
+    this.stats.currentSize = 0;
+    this.stats.userCount = 0;
+    logger.debug('[ShortTermCache] Disposed (timer cleared, cache emptied)');
   }
 
   /**
@@ -365,7 +381,7 @@ export function getShortTermCache(config?: Partial<ShortTermCacheConfig>): Short
 
 export function resetShortTermCache(): void {
   if (cacheInstance) {
-    cacheInstance.clear();
+    cacheInstance.dispose();
   }
   cacheInstance = null;
 }

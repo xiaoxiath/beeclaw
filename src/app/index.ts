@@ -9,6 +9,7 @@ import { join } from 'path';
 
 // Infra layer
 import { loadConfig, shouldShowTokenStats } from '../infra/config';
+import { setHookNotifier } from '../infra/config/hot-reload';
 import { initStores } from '../infra/db/store';
 import { initDataConnection } from '../infra/db/connection';
 import { logger } from '../infra/observability/logger';
@@ -38,7 +39,7 @@ import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience
 // Adapter layer
 import { initializeMCP, shutdownMCP } from '../adapter/mcp';
 import { getHookRunner, resetHookRunner } from '../adapter/plugins/hooks';
-import { loadPlugins } from '../adapter/plugins';
+import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
 import { FeishuChannel } from '../adapter/feishu/channel';
@@ -401,6 +402,12 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 9.8. Initialize hook system (built-in hooks)
   const _hookRunner = getHookRunner();
 
+  // 9.8.1. Wire hot-reload -> hook system via dependency inversion
+  setHookNotifier(async (event, data, context) => {
+    const hookRunner = getHookRunner();
+    await hookRunner.runParallel(event as any, data, context);
+  });
+
   // 9.9. Load plugins (OpenClaw-compatible)
   if (config.plugins?.enabled !== false) {
     const pluginResult = await loadPlugins({
@@ -424,6 +431,28 @@ export async function initApp(options: InitOptions = {}): Promise<{
     }
   }
 
+
+  // 9.9.1. Bridge legacy HookRunner to new plugin-registry-based hook system
+  // so that hooks registered via registerHook() are also visible to createHookRunner(registry)
+  try {
+    const registry = getPluginRegistry();
+    _hookRunner.setBridge((hookName: string, handler: Function, priority: number) => {
+      if (!registry.typedHooks.has(hookName as any)) {
+        registry.typedHooks.set(hookName as any, []);
+      }
+      const list = registry.typedHooks.get(hookName as any)!;
+      list.push({
+        pluginId: 'legacy-bridge',
+        hookName: hookName as any,
+        handler: handler as any,
+        priority,
+      });
+      list.sort((a: any, b: any) => (b.priority ?? 0) - (a.priority ?? 0));
+    });
+    logger.debug('   🔗 Hook bridge: legacy -> new system connected');
+  } catch (e) {
+    logger.debug('   ⚠️  Hook bridge setup skipped (registry not ready)');
+  }
   // 9.10. Initialize timezone cache
   await initializeTimezoneCache();
   const resolvedLocation = resolveUserLocation();
