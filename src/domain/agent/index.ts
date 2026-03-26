@@ -1,4 +1,3 @@
-import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../../infra/resilience/circuit-breaker';
 import { LoopDetector, createLoopDetector } from '../../infra/resilience/loop-detector';
 import { TimeoutEnforcer } from '../../infra/resilience/timeout-enforcer';
 
@@ -10,21 +9,12 @@ import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPro
 import { logger } from '../../infra/observability/logger';
 import { getMemoryStore, getDynamicMemoryInjector } from '../memory';
 import { getSkillStore } from '../skills/store';
-import { executeMemoryTool } from '../memory/tools';
-import { executeSkillTool } from '../skills/tools';
-import { executeGoalTool } from './goal/tools';
-import { executeProactiveTool } from '../proactive/tools';
-import { executePersonaTool } from './persona/tools';
-import { executeBuiltinTool, isBuiltinTool } from '../tools';
-// TODO: [CR-Layer] Move MCPClientManager/getMCPManager to domain port interface
-import { getMCPManager, MCPClientManager } from '../../adapter/mcp';
-// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
-import { getPluginRegistry } from '../../adapter/plugins';
-// TODO: [CR-Layer] Move createHookRunner to domain port interface
-import { createHookRunner } from '../../adapter/plugins/hook-runner';
-import { recordSkillFailure, getReflectionStats, checkConsecutiveFailures } from './evolution';
+// Task 3: Use port interfaces instead of direct adapter imports
+import { getHookRunnerPort } from '../ports';
+import type { IHookRunner } from '../ports';
+import { recordSkillFailure, getReflectionStats } from './evolution';
 import { checkPreferenceTriggers } from './evolution/preference-learning';
-import { triggerSelfEvolution, getSelfEvolutionStatus } from './evolution/self-evolution';
+import { triggerSelfEvolution } from './evolution/self-evolution';
 import {
   estimateMessageTokens,
   estimateTotalTokens,
@@ -33,16 +23,13 @@ import {
   compressAssistantMessage,
   formatTokenStats,
   cleanTokenStats,
-  DEFAULT_CONTEXT_CONFIG,
   DEFAULT_TOKEN_STATS_CONFIG,
   calculateContextConfig,
-  getModelContextWindow,
   type ContextConfig,
   type TokenStatsConfig,
   type TokenStats,
 } from './context';
-import { getTieredCompressor, compressMessages, shouldCompress, hybridCompress, type LegacyCompressionResult as CompressionResult } from './compression';
-import { groupToolCalls, getGroupingStats } from './tool-dependencies';
+import { compressMessages, shouldCompress, hybridCompress, type LegacyCompressionResult as CompressionResult } from './compression';
 import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
 import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
 import { getHealthMonitorInstance } from '../../app/bootstrap-health';
@@ -54,6 +41,10 @@ import { getContextHealthDashboard } from './context/health-dashboard';
 import { ToolDispatcher } from './tool-dispatcher';
 import { TokenBudgetManager } from './token-budget';
 import { SkillRunner } from './skill-runner';
+
+// Phase 5: Extracted tool executor (from createDefaultToolExecutor / _executeToolInner)
+import { createDefaultToolExecutor } from './tool-executor';
+
 /**
  * Safely parse JSON with fallback
  */
@@ -66,198 +57,11 @@ function safeJsonParse<T>(jsonString: string, fallback: T): T {
   }
 }
 
-// Re-export from tools
-export { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext };
-export { getMemoryTools, getSkillTools, getToolsByCategory, TOOL_CATEGORIES } from './tools';
-export { getBuiltinToolsForAI, executeBuiltinTool, isBuiltinTool, builtinToolNames } from '../tools';
-export { recordSkillFailure } from './evolution';
-export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
-export { stripMessageMetadata } from './types';
-export { estimateMessageTokens, estimateTotalTokens, DEFAULT_CONTEXT_CONFIG, DEFAULT_TOKEN_STATS_CONFIG, calculateContextConfig, getModelContextWindow, cleanTokenStats, type ContextConfig, type TokenStatsConfig, type TokenStats };
-export { groupToolCalls, getGroupingStats, isParallelTool, getToolDependency, hasSideEffects, registerToolDependencyOverride, registerToolDependencyPattern, clearToolDependencyOverrides, getToolDependencyOverrides } from './tool-dependencies';
+// ============================================================================
+// Re-exports (aggregated in exports.ts for modular access)
+// ============================================================================
+export * from './exports';
 
-// Phase 4: Re-export extracted modules for backward compatibility
-export { ToolDispatcher } from './tool-dispatcher';
-export { TokenBudgetManager, type TokenBudget, type TurnBudgetCheck } from './token-budget';
-export { SkillRunner } from './skill-runner';
-
-// Re-export getAgent from app module for backward compatibility
-export { getAgent } from '../../app';
-
-// Default tool executor that handles plugin, memory, skill, goal, proactive, persona, builtin, and feishu tools
-export function createDefaultToolExecutor(): ToolExecutor {
-  // Initialize circuit breaker registry with tool-specific presets
-  const cbRegistry = getCircuitBreakerRegistry();
-  cbRegistry.registerToolConfig('web_search', CIRCUIT_BREAKER_PRESETS.mcp_tool);
-  cbRegistry.registerToolConfig('deep_research', { failureThreshold: 2, cooldownMs: 120_000 });
-
-  return async (name: string, params: Record<string, unknown>, userContext?: UserContext) => {
-    // Determine if this tool needs circuit breaker protection
-    const needsCircuitBreaker = (
-      name.startsWith('feishu_') ||
-      name.startsWith('mcp_') ||
-      name === 'web_search' ||
-      name === 'deep_research' ||
-      isBuiltinTool(name) && ['web_search', 'deep_research'].includes(name)
-    );
-
-    // If circuit breaker applies, wrap the execution
-    if (needsCircuitBreaker) {
-      try {
-        return await cbRegistry.execute(name, async () => {
-          return await _executeToolInner(name, params, userContext);
-        });
-      } catch (error) {
-        if (error instanceof CircuitOpenError) {
-          const remainSec = Math.round(error.cooldownRemainingMs / 1000);
-          return {
-            success: false,
-            error: `Tool "${name}" is temporarily unavailable (circuit breaker open). ` +
-                   `Too many recent failures. Will auto-recover in ~${remainSec}s. ` +
-                   `Please try an alternative approach or wait.`,
-          };
-        }
-        // Re-throw non-circuit-breaker errors as tool failure
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        return { success: false, error: errorMsg };
-      }
-    }
-
-    // Non-protected tools: execute directly
-    return _executeToolInner(name, params, userContext);
-  };  // end of createDefaultToolExecutor return
-}
-
-// Inner tool execution logic (separated for circuit breaker wrapping)
-async function _executeToolInner(name: string, params: Record<string, unknown>, _userContext?: UserContext): Promise<{ success: boolean; data?: unknown; error?: string; _contentBlock?: boolean }> {
-    // Plugin tools (highest priority)
-    try {
-      const registry = getPluginRegistry();
-      if (registry.tools.has(name)) {
-        const tool = registry.tools.get(name)!;
-        return tool.execute(params);
-      }
-    } catch (error) {
-      logger.debug('Plugin system not initialized, continue to other tools:', error);
-    }
-
-    // Memory tools
-    if (name.startsWith('memory_')) {
-      return executeMemoryTool(name, params);
-    }
-
-    // Skill tools
-    if (name.startsWith('skill_')) {
-      const result = await executeSkillTool(name, params);
-
-      // Handle skill_ensure requiring skill-creator workflow
-      if (name === 'skill_ensure' && result.success === false && result.error === 'NEW_SKILL_REQUIRES_CREATOR') {
-        const store = getSkillStore();
-        const skillBasePath = store.getBasePath();
-
-        return {
-          success: false,
-          error: `Creating new skill "${(result.data as any)?.skillName}" requires skill-creator workflow.
-
-**IMPORTANT: User skills must be created in the correct directory:**
-📁 Target directory: ${skillBasePath}
-
-Please follow these steps:
-
-1. **Read skill-creator skill:**
-   skill_get({ name: "skill-creator" })
-
-2. **Follow skill-creator workflow to design the skill**
-
-3. **Create the skill in the correct directory:**
-   - Use file_write or shell commands to create skill files
-   - Skill directory: ${skillBasePath}/${(result.data as any)?.skillName}/
-   - Required file: ${skillBasePath}/${(result.data as any)?.skillName}/SKILL.md
-   - Optional: scripts/, references/, evals/, assets/ subdirectories
-
-4. **Verify creation:**
-   skill_get({ name: "${(result.data as any)?.skillName}" })
-
-The skill-creator provides:
-- Proper skill structure (SKILL.md, scripts/, references/, evals/)
-- Test cases and evaluation
-- Iterative refinement
-- Quality benchmarking
-
-**Skill Location:**
-- User skills (AI-created): ${skillBasePath}/
-- Built-in skills (project): skills/ (DO NOT create here)
-
-This ensures skills are in the correct location and follow quality standards.`,
-        };
-      }
-
-      return result;
-    }
-
-    // Goal tools
-    if (name.startsWith('goal_')) {
-      return executeGoalTool(name, params);
-    }
-
-    // Proactive tools
-    if (name.startsWith('proactive_') || name.startsWith('notification_') || name === 'schedule_once') {
-      return executeProactiveTool(name, params);
-    }
-
-    // Persona tools
-    if (name.startsWith('persona_')) {
-      return executePersonaTool(name, params);
-    }
-
-    // Builtin tools
-    if (isBuiltinTool(name)) {
-      return executeBuiltinTool(name, params);
-    }
-
-    // Feishu tools - now handled by feishu-cli-toolkit skill
-    // All feishu_* tools are delegated to the skill for complete functionality
-    if (name.startsWith('feishu_')) {
-      return {
-        success: false,
-        error: `Feishu tool "${name}" has been migrated to feishu-cli-toolkit skill. ` +
-              `Please use the skill directly by describing what you want to do. ` +
-              `Example: "创建一个日程" or "列出我的云空间文件"`,
-        hint: 'See /skills/skills/feishu-cli-toolkit/SKILL.md for available commands',
-      };
-    }
-
-    // MCP tools (format: mcp_{serverId}_{toolName})
-    if (MCPClientManager.isMCPToolName(name)) {
-      try {
-        const manager = getMCPManager();
-        const parsed = MCPClientManager.parseMCPToolName(name);
-        if (!parsed) {
-          return {
-            success: false,
-            error: `Invalid MCP tool name format: ${name}`,
-          };
-        }
-        const result = await manager.executeTool(parsed.serverId, parsed.toolName, params);
-        return {
-          success: result.success,
-          data: result.data,
-          error: result.error,
-        };
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        return {
-          success: false,
-          error: `MCP tool execution failed: ${errorMsg}`,
-        };
-      }
-    }
-
-    return {
-      success: false,
-      error: `Unknown tool: ${name}`,
-    };
-}
 
 // Agent class
 export class Agent {
@@ -271,7 +75,7 @@ export class Agent {
   private tokenStatsConfig: TokenStatsConfig;
   private estimatedTokens: number = 0;
   private usedSkillsInTurn: Set<string> = new Set();
-  private hookRunner: ReturnType<typeof createHookRunner> | null = null;
+  private hookRunner: IHookRunner | null = null;
   private lastToolCalls: Array<{
     id: string;
     type: 'function';
@@ -315,10 +119,9 @@ export class Agent {
     this.baseSystemPrompt = options.systemPrompt || '';
     this.autoRefreshMemory = (options as any).autoRefreshMemory ?? false;
 
-    // Initialize plugin hook runner
+    // Initialize plugin hook runner via port
     try {
-      const registry = getPluginRegistry();
-      this.hookRunner = createHookRunner(registry);
+      this.hookRunner = getHookRunnerPort();
     } catch {
       // Plugin system not initialized
     }

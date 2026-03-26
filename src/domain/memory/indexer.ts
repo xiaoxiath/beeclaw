@@ -20,29 +20,56 @@ export interface MemoryIndex {
   lastFullIndex: string;
 }
 
+// ---------------------------------------------------------------------------
+// Keyword extraction configuration
+//
+// TODO(i18n): The Chinese keyword patterns below are hardcoded for the
+// original author's personal-assistant use case.  To support other languages
+// or deployable instances, extract these into a user-facing config file
+// (e.g. `data/memory/keyword-patterns.json`) that is loaded at startup.
+// The config schema could look like:
+//
+//   interface KeywordPatternConfig {
+//     locale: string;                  // e.g. "zh-CN", "en-US"
+//     patterns: { label: string; regex: string; flags: string }[];
+//     stopWords: string[];
+//   }
+//
+// For now the patterns are inlined to avoid a breaking change.
+// ---------------------------------------------------------------------------
+
+/** Default Chinese keyword patterns (personal-assistant domain). */
+const DEFAULT_CHINESE_PATTERNS: RegExp[] = [
+  // Names (2-4 Chinese characters preceded by common surname chars)
+  /([汤吴纪修][\u4e00-\u9fa5]{1,3})/g,
+  // Companies / organisations
+  /(A司|百度|腾讯|阿里|美团|快手|小红书|百奥赛图|特斯拉|Tesla)/g,
+  // Financial terms
+  /(期权|股票|基金|港股|A股|美股|存款|资产|收入|年薪|月薪|赔偿|FIRE)/g,
+  // Family terms
+  /(媳妇|闺女|父亲|母亲|岳母|父母|家人|带娃)/g,
+  // Locations
+  /(北京|新疆|石河子|海淀|永丰|海南|云南|南京|沈阳)/g,
+  // Life events
+  /(裁员|绩效|开学|幼儿园|面试|求职)/g,
+  // Technical terms
+  /(前端|全栈|React|Vue|Angular|AI|编程)/g,
+];
+
+/** Common English stop words filtered during extraction. */
+const DEFAULT_ENGLISH_STOP_WORDS: string[] = [
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all',
+  'can', 'had', 'her', 'was', 'one', 'our', 'out',
+];
+
 // Chinese word segmentation (simple approach - extract meaningful terms)
-function extractChineseKeywords(text: string): string[] {
+function extractChineseKeywords(text: string, patterns?: RegExp[]): string[] {
   const keywords: string[] = [];
+  const activePatterns = patterns ?? DEFAULT_CHINESE_PATTERNS;
 
-  // Extract specific patterns
-  const patterns = [
-    // Names (2-4 Chinese characters followed by context)
-    /([汤吴纪修][\u4e00-\u9fa5]{1,3})/g,
-    // Companies
-    /( A 司|百度|腾讯|阿里|美团|快手|小红书|百奥赛图|特斯拉|Tesla)/g,
-    // Financial terms
-    /(期权|股票|基金|港股|A股|美股|存款|资产|收入|年薪|月薪|赔偿|FIRE)/g,
-    // Family terms
-    /(媳妇|闺女|父亲|母亲|岳母|父母|家人|带娃)/g,
-    // Locations
-    /(北京|新疆|石河子|海淀|永丰|海南|云南|南京|沈阳)/g,
-    // Time references
-    /(裁员|绩效|开学|幼儿园|面试|求职)/g,
-    // Technical terms
-    /(前端|全栈|React|Vue|Angular|AI|编程)/g,
-  ];
-
-  for (const pattern of patterns) {
+  for (const pattern of activePatterns) {
+    // Reset lastIndex for global regexps that may have been reused
+    pattern.lastIndex = 0;
     let match;
     while ((match = pattern.exec(text)) !== null) {
       if (match[1] && !keywords.includes(match[1])) {
@@ -55,17 +82,16 @@ function extractChineseKeywords(text: string): string[] {
 }
 
 // Extract English keywords
-function extractEnglishKeywords(text: string): string[] {
+function extractEnglishKeywords(text: string, stopWords?: string[]): string[] {
   const keywords: string[] = [];
+  const activeStopWords = stopWords ?? DEFAULT_ENGLISH_STOP_WORDS;
 
   // Match English words (3+ chars)
   const englishPattern = /\b([A-Za-z]{3,})\b/g;
   let match;
   while ((match = englishPattern.exec(text)) !== null) {
     const word = match[1].toLowerCase();
-    // Skip common words
-    const stopWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out'];
-    if (!stopWords.includes(word) && !keywords.includes(word)) {
+    if (!activeStopWords.includes(word) && !keywords.includes(word)) {
       keywords.push(word);
     }
   }

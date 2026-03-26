@@ -20,6 +20,7 @@ export enum ErrorCategory {
   CANCELLED = 'cancelled',
 }
 
+/** @deprecated Use `unifiedRetry` from `infra/resilience/unified-retry.ts` instead. */
 export interface RetryPolicy {
   maxRetries: number;
   backoff: 'fixed' | 'linear' | 'exponential';
@@ -86,6 +87,7 @@ export class BeeclawError extends Error {
     };
   }
 }
+/** @deprecated Use `unifiedRetry` from `infra/resilience/unified-retry.ts` instead. */
 export function isRetryableCategory(category: ErrorCategory): boolean {
   return [
     ErrorCategory.NETWORK,
@@ -98,6 +100,7 @@ export function isRetryableCategory(category: ErrorCategory): boolean {
 // 重试策略
 // ============================================================================
 
+/** @deprecated Use `unifiedRetry` from `infra/resilience/unified-retry.ts` instead. */
 export const DEFAULT_RETRY_POLICIES: Record<string, RetryPolicy> = {
   network: {
     maxRetries: 3,

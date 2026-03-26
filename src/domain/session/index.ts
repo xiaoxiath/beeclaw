@@ -6,9 +6,14 @@
  * - History loading (continue previous conversations)
  * - Context compression (handle long conversations)
  * - Auto knowledge extraction
+ *
+ * Submodules:
+ * - dedup.ts: Message deduplication (three-state processing)
+ * - storage.ts: Session persistence (JSON + SQLite dual-mode)
+ * - proactive-messaging.ts: Proactive result injection & history retrieval
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { ChatMessage, MultimodalContent } from '../agent/types';
 import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, formatSkillsForPrompt, type TokenStatsConfig } from '../agent';
@@ -24,26 +29,59 @@ import {
   resetExtractionManager,
   type ExtractionManager,
 } from '../extraction';
-// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
-import { getPluginRegistry } from '../../adapter/plugins';
-// TODO: [CR-Layer] Move createHookRunner to domain port interface
-import { createHookRunner } from '../../adapter/plugins/hook-runner';
+// [CR-Layer] Domain ports replace direct adapter imports
+import { getPluginRegistryPort, getHookRunnerPort, getChannelClientPort, getMessageControllerFactory } from '../ports';
+import type { IMessageController } from '../ports';
 import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
 import type { SessionMessageQueueOptions } from '../../infra/resilience/session-lock';
-import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../../infra/utils/atomic-fs';
-import { getDataConnection } from '../../infra/db';
-import { sessions as sessionsTable } from '../../infra/db/schema';
-import { eq } from 'drizzle-orm';
-// TODO: [CR-Layer] StreamingMessageController is a Feishu adapter concern; inject via port
-import { StreamingMessageController } from '../../adapter/feishu/card-v2';
-// TODO: [CR-Layer] getFeishuWSClient is a Feishu adapter concern; inject via port
-import { getFeishuWSClient } from '../../adapter/feishu';
 import { getConfig_ } from '../../app';
 import { SmartTimeout } from '../../infra/resilience/smart-timeout';
 import { handleHITLResponse } from './hitl-manager';
 import { resolveConfig, type ResilienceConfig } from '../../infra/config/resilience-config';
 
+// --- Submodule imports ---
+import {
+  pruneProcessedMessages as _pruneProcessedMessages,
+  isMessageProcessed as _isMessageProcessed,
+  getMessageState as _getMessageState,
+  markMessageProcessing as _markMessageProcessing,
+  markMessageProcessed as _markMessageProcessed,
+  markMessageCompleted as _markMessageCompleted,
+  markMessageFailed as _markMessageFailed,
+  getCachedAgentResponse as _getCachedAgentResponse,
+  MESSAGE_DEDUP_TTL_MS,
+  MESSAGE_DEDUP_MAX_SIZE,
+  MAX_MESSAGE_RETRY_COUNT,
+  PROCESSING_STALE_TIMEOUT_MS,
+} from './dedup';
+import {
+  saveSession as _saveSessionToStorage,
+  loadSession as _loadSession,
+  isValidSession,
+  loadSessionFromSQLite,
+  saveSessionToSQLite,
+  deleteSessionFile as _deleteSessionFile,
+  getSessionFilePath,
+  loadAllSessions as _loadAllSessionsFromStorage,
+  clearOldSessions as _clearOldSessions,
+  saveAllSessions as _saveAllSessions,
+} from './storage';
+import {
+  injectProactiveResult as _injectProactiveResult,
+  getRecentSessionHistory as _getRecentSessionHistory,
+} from './proactive-messaging';
+
+// --- Re-export submodule public APIs ---
+export {
+  MESSAGE_DEDUP_TTL_MS,
+  MESSAGE_DEDUP_MAX_SIZE,
+  MAX_MESSAGE_RETRY_COUNT,
+  PROCESSING_STALE_TIMEOUT_MS,
+} from './dedup';
+
+// Re-export types and functions from storage that external consumers might need
+export { isValidSession } from './storage';
 
 export interface SessionOptions {
   sessionId: string;
@@ -100,17 +138,6 @@ export interface MessageProcessingState {
   /** Error message if failed */
   error?: string;
 }
-
-/** Maximum retries for a failed message before permanently giving up */
-export const MAX_MESSAGE_RETRY_COUNT = 2;
-
-/** Maximum time (ms) a message can stay in 'processing' state before considered stale */
-export const PROCESSING_STALE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-
-/** GC: TTL for processed message entries */
-export const MESSAGE_DEDUP_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-/** GC: Maximum number of entries to keep */
-export const MESSAGE_DEDUP_MAX_SIZE = 10_000;
 
 export interface Session {
   id: string;
@@ -177,9 +204,6 @@ let sessionConfig: SessionConfig = {
 /** Maximum recovery attempts before marking a message as "poison" */
 export const MAX_RECOVERY_ATTEMPTS = 3;
 
-// Feature flag for SQLite (dual-mode)
-const USE_SQLITE = process.env.USE_SQLITE_SESSIONS === 'true';
-
 // Active sessions cache
 const sessions: Map<string, Session> = new Map();
 
@@ -216,6 +240,121 @@ const channelHandlers: Map<string, (sessionId: string, message: string) => Promi
 
 // [PERF OPT] Track ongoing compression to prevent duplicates
 const compressionLocks: Map<string, Promise<void>> = new Map();
+
+// ============================================================================
+// Thin wrappers: bridge session-ID-based public API → submodule functions
+// ============================================================================
+
+/**
+ * Save session to disk (delegates to storage submodule)
+ */
+export function saveSession(session: Session): void {
+  _saveSessionToStorage(session, sessionConfig.storagePath);
+}
+
+/**
+ * Load session from disk (private, delegates to storage submodule)
+ */
+function loadSession(sessionId: string): Session | null {
+  return _loadSession(sessionId, sessionConfig.storagePath);
+}
+
+// --- Dedup wrappers (preserve original session-ID-based API) ---
+
+export function pruneProcessedMessages(session: Session): number {
+  return _pruneProcessedMessages(session);
+}
+
+export function isMessageProcessed(sessionId: string, messageId: string): boolean {
+  const session = sessions.get(sessionId);
+  return _isMessageProcessed(session, messageId);
+}
+
+export function getMessageState(sessionId: string, messageId: string): MessageProcessingState | null {
+  const session = sessions.get(sessionId);
+  return _getMessageState(session, messageId);
+}
+
+export function markMessageProcessing(sessionId: string, messageId: string): void {
+  const session = sessions.get(sessionId);
+  _markMessageProcessing(session, messageId, saveSession);
+}
+
+/**
+ * @deprecated Use markMessageCompleted() for new code.
+ */
+export function markMessageProcessed(sessionId: string, messageId: string): void {
+  const session = sessions.get(sessionId);
+  _markMessageProcessed(session, messageId, saveSession);
+}
+
+export function markMessageCompleted(
+  sessionId: string,
+  messageId: string,
+  response?: string,
+  usedCardV2?: boolean,
+): void {
+  const session = sessions.get(sessionId);
+  _markMessageCompleted(session, messageId, saveSession, response, usedCardV2);
+}
+
+export function markMessageFailed(
+  sessionId: string,
+  messageId: string,
+  error: string,
+  cachedResponse?: string,
+  cachedUsedCardV2?: boolean,
+): void {
+  const session = sessions.get(sessionId);
+  _markMessageFailed(session, messageId, error, saveSession, cachedResponse, cachedUsedCardV2);
+}
+
+export function getCachedAgentResponse(sessionId: string, messageId: string): { response: string; usedCardV2: boolean } | null {
+  const session = sessions.get(sessionId);
+  return _getCachedAgentResponse(session, messageId);
+}
+
+// --- Proactive messaging wrappers ---
+
+/**
+ * [AUDIT FIX M-02] Inject proactive task result into a user's active session.
+ */
+export function injectProactiveResult(
+  targetSessionId: string,
+  result: { source: string; content: string; timestamp?: number },
+): boolean {
+  const session = sessions.get(targetSessionId);
+  return _injectProactiveResult(session, result, saveSession);
+}
+
+/**
+ * [AUDIT FIX M-02] Load recent conversation history for a session.
+ */
+export function getRecentSessionHistory(
+  sessionId: string,
+  maxMessages: number = 10,
+): SessionMessage[] {
+  const session = sessions.get(sessionId) || loadSession(sessionId);
+  return _getRecentSessionHistory(session, maxMessages);
+}
+
+// --- Storage wrappers ---
+
+export function loadAllSessions(): number {
+  return _loadAllSessionsFromStorage(sessionConfig.storagePath, sessions);
+}
+
+export function clearOldSessions(daysOld: number = 30): number {
+  return _clearOldSessions(sessions, deleteSession, daysOld);
+}
+
+export function saveAllSessions(): void {
+  _saveAllSessions(sessions, saveSession);
+}
+
+// ============================================================================
+// Core session management (remains in index.ts)
+// ============================================================================
 
 /**
  * Configure session manager
@@ -321,10 +460,6 @@ export function clearRecoveryFlag(sessionId: string): void {
 
 /**
  * Confirm that a message has been successfully delivered to the channel.
- *
- * This replaces both clearRecoveryFlag() and markResponseDelivered() from
- * the original code. It's called ONLY after the Feishu reply (or CLI output)
- * has succeeded.
  */
 export function confirmDelivery(sessionId: string): void {
   const session = sessions.get(sessionId);
@@ -343,280 +478,28 @@ export function confirmDelivery(sessionId: string): void {
 }
 
 /**
- * Prune old entries from session.processedMessageIds to bound memory.
- *
- * Phase 1 – TTL cleanup: remove entries older than MESSAGE_DEDUP_TTL_MS.
- * Phase 2 – LRU protection: if still over MESSAGE_DEDUP_MAX_SIZE, sort by
- *           timestamp ascending and delete the oldest entries.
- *
- * @returns number of pruned entries
- */
-export function pruneProcessedMessages(session: Session): number {
-  if (!session.processedMessageIds) return 0;
-
-  const now = Date.now();
-  let pruned = 0;
-  const entries = Object.entries(session.processedMessageIds);
-
-  // Phase 1: TTL cleanup
-  for (const [msgId, entry] of entries) {
-    if (entry === true) {
-      // Legacy boolean format – no timestamp available, treat as old
-      delete session.processedMessageIds[msgId];
-      pruned++;
-      continue;
-    }
-    const state = entry as MessageProcessingState;
-    const ts = state.completedAt || state.startedAt;
-    if (now - ts > MESSAGE_DEDUP_TTL_MS) {
-      delete session.processedMessageIds[msgId];
-      pruned++;
-    }
-  }
-
-  // Phase 2: LRU protection – trim to max size
-  const remaining = Object.entries(session.processedMessageIds);
-  if (remaining.length > MESSAGE_DEDUP_MAX_SIZE) {
-    const sorted = remaining.sort((a, b) => {
-      const tsA = a[1] === true ? 0 : ((a[1] as MessageProcessingState).completedAt || (a[1] as MessageProcessingState).startedAt);
-      const tsB = b[1] === true ? 0 : ((b[1] as MessageProcessingState).completedAt || (b[1] as MessageProcessingState).startedAt);
-      return tsA - tsB; // oldest first
-    });
-    const toRemove = sorted.length - MESSAGE_DEDUP_MAX_SIZE;
-    for (let i = 0; i < toRemove; i++) {
-      delete session.processedMessageIds[sorted[i][0]];
-      pruned++;
-    }
-  }
-
-  if (pruned > 0) {
-    logger.debug(`[Session] Pruned ${pruned} processed-message entries from session ${session.id}`);
-  }
-  return pruned;
-}
-
-/**
- * Check if a message has already been processed or is currently being processed.
- *
- * Three-state logic:
- * - 'completed' → always skip (already handled)
- * - 'processing' → skip if not stale (someone is handling it)
- * - 'processing' (stale) → allow retry (previous handler likely crashed)
- * - 'failed' → allow retry if retryCount < MAX_MESSAGE_RETRY_COUNT
- * - absent → allow (first time)
- *
- * @returns true if message should be SKIPPED, false if it should be processed
- */
-export function isMessageProcessed(sessionId: string, messageId: string): boolean {
-  const session = sessions.get(sessionId);
-  if (!session || !session.processedMessageIds) {
-    return false;
-  }
-
-  const entry = session.processedMessageIds[messageId];
-  if (!entry) return false;
-
-  // Backward compatibility: old boolean format
-  if (entry === true) return true;
-
-  const state = entry as MessageProcessingState;
-
-  // Completed → always skip
-  if (state.status === 'completed') return true;
-
-  // Processing → skip unless stale
-  if (state.status === 'processing') {
-    const elapsed = Date.now() - state.startedAt;
-    if (elapsed > PROCESSING_STALE_TIMEOUT_MS) {
-      logger.warn(`[Session] Stale processing detected for message ${messageId} (elapsed: ${Math.round(elapsed / 1000)}s). Allowing retry.`);
-      return false; // Allow re-processing
-    }
-    return true; // Still actively processing, skip duplicate
-  }
-
-  // Failed → allow retry if under limit
-  if (state.status === 'failed') {
-    if (state.retryCount >= MAX_MESSAGE_RETRY_COUNT) {
-      logger.warn(`[Session] Message ${messageId} permanently failed after ${state.retryCount} retries. Skipping.`);
-      return true; // Exhausted retries
-    }
-    return false; // Allow retry
-  }
-
-  return false;
-}
-
-/**
- * Get the full processing state for a message.
- * Returns null if no state exists.
- */
-export function getMessageState(sessionId: string, messageId: string): MessageProcessingState | null {
-  const session = sessions.get(sessionId);
-  if (!session || !session.processedMessageIds) return null;
-
-  const entry = session.processedMessageIds[messageId];
-  if (!entry) return null;
-  if (entry === true) return { status: 'completed', startedAt: 0, retryCount: 0 };
-
-  return entry as MessageProcessingState;
-}
-
-/**
- * Mark a message as 'processing' — called BEFORE agent execution begins.
- * This closes the race window where Feishu re-delivery could bypass dedup.
- */
-export function markMessageProcessing(sessionId: string, messageId: string): void {
-  const session = sessions.get(sessionId);
-  if (!session) return;
-
-  if (!session.processedMessageIds) {
-    session.processedMessageIds = {};
-  }
-
-  const existing = session.processedMessageIds[messageId];
-  const prevRetryCount = (existing && existing !== true)
-    ? (existing as MessageProcessingState).retryCount
-    : 0;
-
-  session.processedMessageIds[messageId] = {
-    status: 'processing',
-    startedAt: Date.now(),
-    retryCount: prevRetryCount,
-  };
-  session.updatedAt = new Date().toISOString();
-  saveSession(session);
-
-  logger.debug(`[Session] ⏳ Message marked as processing: ${messageId} (retry #${prevRetryCount})`);
-}
-
-/**
- * Mark a message as 'completed' — called AFTER successful reply delivery.
- * Optionally caches the agent response for auditing.
- *
- * @deprecated Use markMessageCompleted() for new code. markMessageProcessed() is kept
- * as an alias for backward compatibility.
- */
-export function markMessageProcessed(sessionId: string, messageId: string): void {
-  markMessageCompleted(sessionId, messageId);
-}
-
-/**
- * Mark a message as 'completed' with optional cached response.
- */
-export function markMessageCompleted(
-  sessionId: string,
-  messageId: string,
-  response?: string,
-  usedCardV2?: boolean,
-): void {
-  const session = sessions.get(sessionId);
-  if (!session) return;
-
-  if (!session.processedMessageIds) {
-    session.processedMessageIds = {};
-  }
-
-  const existing = session.processedMessageIds[messageId];
-  const prevRetryCount = (existing && existing !== true)
-    ? (existing as MessageProcessingState).retryCount
-    : 0;
-
-  session.processedMessageIds[messageId] = {
-    status: 'completed',
-    startedAt: (existing && existing !== true) ? (existing as MessageProcessingState).startedAt : Date.now(),
-    completedAt: Date.now(),
-    retryCount: prevRetryCount,
-    cachedResponse: response,
-    cachedUsedCardV2: usedCardV2,
-  };
-  session.updatedAt = new Date().toISOString();
-  saveSession(session);
-
-  logger.info(`[Session] ✅ Message marked as completed: ${messageId}`);
-}
-
-/**
- * Mark a message as 'failed' — called when processing or delivery fails.
- * Increments retry count. Caches partial response if available for delivery-only retry.
- */
-export function markMessageFailed(
-  sessionId: string,
-  messageId: string,
-  error: string,
-  cachedResponse?: string,
-  cachedUsedCardV2?: boolean,
-): void {
-  const session = sessions.get(sessionId);
-  if (!session) return;
-
-  if (!session.processedMessageIds) {
-    session.processedMessageIds = {};
-  }
-
-  const existing = session.processedMessageIds[messageId];
-  const prevRetryCount = (existing && existing !== true)
-    ? (existing as MessageProcessingState).retryCount
-    : 0;
-
-  session.processedMessageIds[messageId] = {
-    status: 'failed',
-    startedAt: (existing && existing !== true) ? (existing as MessageProcessingState).startedAt : Date.now(),
-    failedAt: Date.now(),
-    retryCount: prevRetryCount + 1,
-    error,
-    cachedResponse,
-    cachedUsedCardV2,
-  };
-  session.updatedAt = new Date().toISOString();
-  saveSession(session);
-
-  logger.warn(`[Session] ❌ Message marked as failed: ${messageId} (retry #${prevRetryCount + 1}, error: ${error})`);
-}
-
-/**
- * Get cached agent response for delivery-only retry.
- * Returns null if no cached response exists.
- */
-export function getCachedAgentResponse(sessionId: string, messageId: string): { response: string; usedCardV2: boolean } | null {
-  const session = sessions.get(sessionId);
-  if (!session || !session.processedMessageIds) return null;
-
-  const entry = session.processedMessageIds[messageId];
-  if (!entry || entry === true) return null;
-
-  const state = entry as MessageProcessingState;
-  if (state.cachedResponse) {
-    return {
-      response: state.cachedResponse,
-      usedCardV2: state.cachedUsedCardV2 || false,
-    };
-  }
-  return null;
-}
-
-/**
  * Calculate exponential backoff delay for recovery attempts.
  * Returns delay in ms, or -1 if max attempts exceeded.
- * 
+ *
  * Backoff schedule: 1s, 4s, 16s, 64s, 256s (5 attempts max)
  */
 export function calculateRecoveryBackoff(sessionId: string): number {
   const session = sessions.get(sessionId);
   if (!session) return -1;
-  
+
   const failures = session.consecutiveRecoveryFailures || 0;
   const MAX_FAILURES = 5;
-  
+
   if (failures >= MAX_FAILURES) {
     logger.warn(`[Session] Recovery permanently failed for ${sessionId} after ${failures} attempts`);
     return -1;
   }
-  
+
   session.consecutiveRecoveryFailures = failures + 1;
   session.lastRecoveryAt = new Date().toISOString();
   session.updatedAt = new Date().toISOString();
   saveSession(session);
-  
+
   const delayMs = 1000 * Math.pow(4, failures); // 1s, 4s, 16s, 64s, 256s
   logger.debug(`[Session] Recovery backoff for ${sessionId}: attempt ${failures + 1}/${MAX_FAILURES}, delay ${delayMs}ms`);
   return delayMs;
@@ -624,12 +507,6 @@ export function calculateRecoveryBackoff(sessionId: string): number {
 
 /**
  * Get a summary of recent session messages for proactive task context injection.
- * Returns a formatted string with the last N messages.
- *
- * @param sessionId - The session ID to retrieve
- * @param maxMessages - Maximum number of recent messages to include (default: 5)
- * @param requesterId - Optional user ID for permission check. If provided, must match session.userId
- * @returns Formatted summary string, or empty string if no access or no messages
  */
 export function getSessionSummary(
   sessionId: string,
@@ -656,7 +533,6 @@ export function getSessionSummary(
 
 /**
  * Mark response as delivered to user (for tracking purposes)
- * This is separate from pendingRecovery - it's just for status tracking
  */
 export function markResponseDelivered(sessionId: string): void {
   const session = sessions.get(sessionId);
@@ -679,216 +555,9 @@ export function registerChannelHandler(
 }
 
 /**
- * Get session file path
- */
-function getSessionFilePath(sessionId: string): string {
-  // Sanitize session ID for filesystem
-  const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  return join(sessionConfig.storagePath, `${safeId}.json`);
-}
-
-/**
- * Save session to disk
- */
-export function saveSession(session: Session): void {
-  try {
-    // Trigger before_message_write hook (synchronous)
-    try {
-      const registry = getPluginRegistry();
-      const hookRunner = createHookRunner(registry);
-
-      const modifiedSession = hookRunner.runBeforeMessageWrite({
-        sessionId: session.id,
-        messages: session.messages,
-        metadata: session.metadata,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Use modified data if returned
-      if (modifiedSession) {
-        session.messages = modifiedSession.messages || session.messages;
-        session.metadata = modifiedSession.metadata || session.metadata;
-      }
-    } catch (error) {
-      logger.debug('Plugin system not initialized:', error);
-    }
-
-    // Save to JSON (always for backward compatibility)
-    const filePath = getSessionFilePath(session.id);
-    // BUG #3 FIX: Use atomic write instead of writeFileSync
-    writeFileAtomic(filePath, JSON.stringify(session, null, 2));
-
-    // Save to SQLite if enabled (dual-mode)
-    saveSessionToSQLite(session);
-  } catch (error) {
-    logger.error('[Session] Failed to save session:', error);
-  }
-}
-
-/**
- * Load session from disk
- */
-function loadSession(sessionId: string): Session | null {
-  // Try SQLite first if enabled (RFC-03)
-  if (USE_SQLITE) {
-    const sqliteSession = loadSessionFromSQLite(sessionId);
-    if (sqliteSession) {
-      logger.info(`[Session] Loaded from SQLite: ${sessionId}`);
-      return sqliteSession;
-    }
-  }
-
-  // Fallback to JSON file
-  try {
-    const filePath = getSessionFilePath(sessionId);
-
-    // BUG #3 FIX: Use readFileWithRecovery with structure validation
-    const data = readFileWithRecovery<Session>(filePath, isValidSession);
-
-    if (!data) {
-      logger.warn(`[Session] Failed to load session ${sessionId} (corrupted or missing)`);
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    logger.error('[Session] Failed to load session:', error);
-    return null;
-  }
-}
-
-/**
- * Validate session structure after loading.
- */
-function isValidSession(data: unknown): data is Session {
-  if (typeof data !== 'object' || data === null) return false;
-  const obj = data as Record<string, unknown>;
-  // Must have id and either messages or conversationHistory
-  if (typeof obj.id !== 'string') return false;
-  if (!Array.isArray(obj.messages)) return false;
-  return true;
-}
-
-/**
- * Load session from SQLite database (RFC-03)
- */
-function loadSessionFromSQLite(sessionId: string): Session | null {
-  if (!USE_SQLITE) return null;
-
-  try {
-    const db = getDataConnection();
-    const results = db.select()
-      .from(sessionsTable)
-      .where(eq(sessionsTable.id, sessionId))
-      .limit(1)
-      .all();
-
-    if (results.length === 0) return null;
-
-    const row = results[0];
-    const session: Session = {
-      id: row.id,
-      channel: row.channel,
-      userId: row.userId,
-      messages: row.messages as SessionMessage[],
-      metadata: row.metadata || undefined,
-      pendingRecovery: row.needsRecovery || undefined,
-      recoveredAt: row.recoveredAt?.toISOString() || undefined,
-      createdAt: row.createdAt?.toISOString() || new Date().toISOString(),
-      updatedAt: row.updatedAt?.toISOString() || new Date().toISOString(),
-    };
-
-    return session;
-  } catch (error) {
-    logger.error('[Session] Failed to load from SQLite:', error);
-    return null;
-  }
-}
-
-/**
- * Save session to SQLite database (RFC-03)
- */
-function saveSessionToSQLite(session: Session): void {
-  if (!USE_SQLITE) return;
-
-  try {
-    const db = getDataConnection();
-    const now = new Date();
-
-    // Upsert session
-    const existing = db.select()
-      .from(sessionsTable)
-      .where(eq(sessionsTable.id, session.id))
-      .limit(1)
-      .all();
-
-    if (existing.length === 0) {
-      // Insert
-      db.insert(sessionsTable).values({
-        id: session.id,
-        channel: session.channel,
-        userId: session.userId,
-        messages: session.messages,
-        metadata: session.metadata || null,
-        needsRecovery: session.pendingRecovery || false,
-        recoveredAt: session.recoveredAt ? new Date(session.recoveredAt) : null,
-        createdAt: new Date(session.createdAt),
-        updatedAt: now,
-      }).run();
-    } else {
-      // Update
-      db.update(sessionsTable)
-        .set({
-          channel: session.channel,
-          userId: session.userId,
-          messages: session.messages,
-          metadata: session.metadata || null,
-          needsRecovery: session.pendingRecovery || false,
-          recoveredAt: session.recoveredAt ? new Date(session.recoveredAt) : null,
-          updatedAt: now,
-        })
-        .where(eq(sessionsTable.id, session.id))
-        .run();
-    }
-  } catch (error) {
-    logger.error('[Session] Failed to save to SQLite:', error);
-  }
-}
-
-/**
- * Delete session from disk
- */
-function deleteSessionFile(sessionId: string): void {
-  // Delete JSON file
-  try {
-    const filePath = getSessionFilePath(sessionId);
-    if (existsSync(filePath)) {
-      unlinkSync(filePath);
-    }
-  } catch (error) {
-    logger.error('[Session] Failed to delete session file:', error);
-  }
-
-  // Delete from SQLite if enabled
-  if (USE_SQLITE) {
-    try {
-      const db = getDataConnection();
-      db.delete(sessionsTable)
-        .where(eq(sessionsTable.id, sessionId))
-        .run();
-    } catch (error) {
-      logger.error('[Session] Failed to delete session from SQLite:', error);
-    }
-  }
-}
-
-/**
  * Compress old messages into a summary
  *
  * [PERF OPT] Optimized to use fast model + direct API call
- * - Bypasses Agent layer to avoid unnecessary initialization
- * - Uses fast model (e.g., glm-5-turbo) instead of main model
- * - Reduces compression time from ~18s to ~1-2s
  */
 async function compressMessages(
   messages: SessionMessage[],
@@ -923,7 +592,6 @@ async function compressMessages(
   try {
     // [PERF OPT] Use fast model + direct API call instead of Agent
     const fastModelConfig = getFastModelFromConfig();
-    // Priority: fast model > main model from config
     const compressionModel = fastModelConfig?.model || agentConfig.model;
     const compressionMaxTokens = fastModelConfig?.maxTokens || 200;
 
@@ -942,11 +610,10 @@ async function compressMessages(
           content: `请总结以下对话：\n\n${conversationText}`,
         },
       ],
-      maxTokens: compressionMaxTokens,  // Use config value
-      temperature: 0.3,  // Lower temperature for more focused output
+      maxTokens: compressionMaxTokens,
+      temperature: 0.3,
     });
 
-    // Extract content from response
     const summary = response.choices?.[0]?.message?.content || '';
 
     if (summary) {
@@ -958,7 +625,6 @@ async function compressMessages(
     return { summary, recentMessages };
   } catch (error) {
     logger.error('[Session] ❌ Failed to compress messages:', error);
-    // Fallback: keep all messages if compression fails
     return { summary: '', recentMessages: messages };
   }
 }
@@ -999,19 +665,18 @@ export function getOrCreateSession(options: SessionOptions): Session {
 
   // Trigger session_start hook (async, fire-and-forget)
   try {
-    const registry = getPluginRegistry();
-    const hookRunner = createHookRunner(registry);
-
-    // Fire-and-forget to avoid blocking
-    Promise.resolve().then(() => {
-      hookRunner.runSessionStart({
-        sessionId: session.id,
-        userId: session.userId,
-        channel: session.channel,
-        metadata: session.metadata,
-        timestamp: session.createdAt,
+    const hookRunner = getHookRunnerPort();
+    if (hookRunner) {
+      Promise.resolve().then(() => {
+        hookRunner.runSessionStart({
+          sessionId: session.id,
+          userId: session.userId,
+          channel: session.channel,
+          metadata: session.metadata,
+          timestamp: session.createdAt,
+        });
       });
-    });
+    }
   } catch {
     // Plugin system not initialized, ignore
   }
@@ -1050,26 +715,25 @@ export function deleteSession(sessionId: string): boolean {
   if (session) {
     // Trigger session_end hook before deletion (async, fire-and-forget)
     try {
-      const registry = getPluginRegistry();
-      const hookRunner = createHookRunner(registry);
-
-      // Fire-and-forget to avoid blocking
-      Promise.resolve().then(() => {
-        hookRunner.runSessionEnd({
-          sessionId: session.id,
-          userId: session.userId,
-          channel: session.channel,
-          messageCount: session.messages.length,
-          createdAt: session.createdAt,
-          endedAt: new Date().toISOString(),
+      const hookRunner = getHookRunnerPort();
+      if (hookRunner) {
+        Promise.resolve().then(() => {
+          hookRunner.runSessionEnd({
+            sessionId: session.id,
+            userId: session.userId,
+            channel: session.channel,
+            messageCount: session.messages.length,
+            createdAt: session.createdAt,
+            endedAt: new Date().toISOString(),
+          });
         });
-      });
+      }
     } catch (error) {
       logger.debug('Plugin system not initialized:', error);
     }
   }
 
-  deleteSessionFile(sessionId);
+  _deleteSessionFile(sessionId, sessionConfig.storagePath);
   return sessions.delete(sessionId);
 }
 
@@ -1102,9 +766,10 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
   const channel = options.channel || 'cli';
   const sessionId = options.sessionId || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-  // [PERF OPT] 提前创建 StreamingMessageController，立即显示"正在思考..."
-  // 在所有耗时操作之前，让用户立即看到响应
-  let streamingController: StreamingMessageController | null = null;
+  // [PERF OPT] 提前创建 streaming controller，立即显示"正在思考..."
+  // TODO: [CR-Layer] StreamingMessageController is still accessed via dynamic import for deep Feishu integration
+  // Full port abstraction would require significant refactoring of the streaming protocol
+  let streamingController: IMessageController | null = null;
 
   try {
     const config = getConfig_();
@@ -1112,17 +777,18 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     const useCardV2 = feishuConfig?.useCardV2 ?? false;
 
     if (channel === 'feishu' && useCardV2 && options.context?.parentMessageId) {
-      const feishuClient = getFeishuWSClient();
-      if (feishuClient) {
-        streamingController = new StreamingMessageController({
-          client: feishuClient,
+      const controllerFactory = getMessageControllerFactory();
+      const channelClient = getChannelClientPort();
+
+      if (controllerFactory && channelClient) {
+        streamingController = controllerFactory({
+          client: channelClient,
           parentMessageId: options.context.parentMessageId as string,
           chatId: (options.context.chatId as string) || '',
           debounceMs: 500,
         });
 
         // 【参考 agentara】立即发送初始 Card，显示 "Thinking..." 占位符
-        // 这样用户能立即看到反馈，而不是等到 agent 开始输出
         await streamingController.pushContent({
           type: 'thinking',
           thinking: 'Thinking...',
@@ -1165,18 +831,14 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     }
 
     // [PERF OPT] Async compression - don't block user message processing
-    // Check if compression is needed
     if (session.messages.length >= sessionConfig.maxMessages) {
-      // Skip if already compressing this session
       if (compressionLocks.has(sessionId)) {
         logger.debug(`[Session] ⏭️ Compression already in progress for ${sessionId}, skipping`);
       } else {
-        // Start async compression (fire-and-forget)
         const compressionPromise = (async () => {
           try {
             logger.info(`[Session] 🗜️ Starting background compression for ${sessionId} (${session.messages.length} messages)`);
 
-            // Record message count before compression to detect messages added during async work
             const messageCountAtStart = session.messages.length;
 
             const { summary, recentMessages } = await compressMessages(
@@ -1184,15 +846,12 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
               sessionConfig.keepRecent
             );
 
-            // Reload session to get latest state (might have changed during compression)
             const latestSession = sessions.get(sessionId) || loadSession(sessionId);
             if (!latestSession) {
               logger.warn(`[Session] Session ${sessionId} disappeared during compression`);
               return;
             }
 
-            // Update session with compressed data
-            // [BUG FIX] Don't accumulate summaries - replace with latest to avoid duplication
             latestSession.summary = summary;
 
             logger.debug('[Session] 📝 Updated summary:', {
@@ -1201,12 +860,10 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
               recentMessagesKept: recentMessages.length,
             });
 
-            // Preserve messages added during compression
             const newMessagesDuringCompression = latestSession.messages.slice(messageCountAtStart);
             latestSession.messages = [...recentMessages, ...newMessagesDuringCompression];
             latestSession.updatedAt = new Date().toISOString();
 
-            // Save compressed session
             saveSession(latestSession);
             sessions.set(sessionId, latestSession);
 
@@ -1214,16 +871,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           } catch (error) {
             logger.error(`[Session] ❌ Background compression failed for ${sessionId}:`, error);
           } finally {
-            // Always clean up lock
             compressionLocks.delete(sessionId);
           }
         })();
 
-        // Track compression promise
         compressionLocks.set(sessionId, compressionPromise);
-
-        // Don't await - let it run in background
-        // User message processing continues immediately
       }
     }
 
@@ -1283,18 +935,12 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     }
 
     // [AUDIT FIX M-03] Configurable two-stage vision processing
-    // Replaces hardcoded model names with VisionConfig
     const { DEFAULT_VISION_CONFIG } = await import('../agent/types');
 
-    // Build visionConfig with smart defaults:
-    // 1. User-provided visionConfig (highest priority)
-    // 2. DEFAULT_VISION_CONFIG defaults
-    // 3. Use agent's model as textModel default (instead of hardcoded 'glm-5')
     const visionConfig = {
       ...DEFAULT_VISION_CONFIG,
-      // Override textModel default to use agent's model
-      textModel: agentConfig.model, // ← Use configured model, not hardcoded 'glm-5'
-      ...(agentConfig.visionConfig || {}), // User config takes precedence
+      textModel: agentConfig.model,
+      ...(agentConfig.visionConfig || {}),
     };
 
     let selectedModel = agentConfig.model;
@@ -1306,12 +952,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       options.message.some(part => part.type === 'image_url');
 
     if (hasMultimodalContent) {
-      // ========================================
-      // STAGE 1: Pure vision recognition (no tools, no skill context)
-      // [AUDIT FIX M-03] Now uses configurable model and prompt
-      // ========================================
+      // STAGE 1: Pure vision recognition
       logger.info(`[Session] 🖼️ Stage 1: Vision recognition using ${visionConfig.visionModel}`);
-      
+
       let retries = 0;
       while (retries <= visionConfig.maxRetries) {
         try {
@@ -1319,18 +962,17 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
             provider: selectedProvider,
             model: visionConfig.visionModel,
             systemPrompt: visionConfig.visionSystemPrompt,
-            tools: undefined,  // No tools for vision-only task!
+            tools: undefined,
             loadCoreMemory: false,
           });
 
           imageDescription = await visionAgent.chat(options.message);
           logger.debug('[Session] 📝 Vision result:', imageDescription?.substring(0, 100));
-          break; // Success
+          break;
         } catch (error) {
           retries++;
           logger.error(`[Session] Vision model attempt ${retries} failed:`, error instanceof Error ? error.message : error);
           if (retries > visionConfig.maxRetries) {
-            // [AUDIT FIX M-03] Structured fallback on vision failure
             if (visionConfig.fallbackOnError === 'placeholder') {
               imageDescription = '[图片识别失败 - 视觉模型不可用]';
             } else if (visionConfig.fallbackOnError === 'description') {
@@ -1341,18 +983,13 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         }
       }
 
-      // Save original multimodal message for later storage
       originalMultimodalMessage = options.message;
-      
-      // ========================================
+
       // STAGE 2: Intent detection with text model
-      // [AUDIT FIX M-03] Uses configurable text model
-      // ========================================
       selectedModel = visionConfig.textModel;
       options.message = imageDescription || '[图片识别失败]';
       logger.info(`[Session] 🧠 Stage 2: Intent detection with ${selectedModel}`);
     } else {
-      // Text-only message — use agent's configured model
       selectedModel = agentConfig.model;
       logger.info(`[Session] 📝 Using text model (${selectedModel}) for text message`);
     }
@@ -1360,8 +997,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // Check if this is a recovery - don't duplicate the user message
     const isRecovery = options.context?.isRecovery === true;
 
-    // Create agent (loadCoreMemory: false because we already built the system prompt above)
-    // [AUDIT FIX M-06] Pass blockedTools from proactive task options
+    // Create agent
     const agent = createAgent({
       provider: selectedProvider,
       model: selectedModel,
@@ -1370,18 +1006,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       loadCoreMemory: false,
       autoRefreshMemory: true,
       tokenStatsConfig: agentConfig.tokenStatsConfig,
-      // Pass resolved params from three-layer configuration
       params: agentConfig.params,
       ...(options.agentOptions?.blockedTools ? { blockedTools: options.agentOptions.blockedTools } : {}),
     });
 
     // Replay conversation history
-    // NOTE: Skip the last user message since it was just saved and will be added by agent.chat()
-    // [AUDIT FIX M-03] Preserve multimodal semantic markers during replay
-    // [BUG FIX] Load ALL messages except the last one (which will be added by agent.chat)
-    // IMPORTANT: This loop assumes session.messages does NOT include the new user message yet
-    // The new user message is added AFTER this loop (see line 1043)
-
     logger.debug('[Session] ⚠️ Replaying conversation history:', {
       messageCount: session.messages.length,
       messages: session.messages.map(m => ({
@@ -1391,10 +1020,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       })),
     });
 
-    for (let i = 0; i < session.messages.length; i++) {  // ← Changed from length-1 to length
+    for (let i = 0; i < session.messages.length; i++) {
       const msg = session.messages[i];
       if (msg.role === 'user') {
-        // [AUDIT FIX M-03] If original was multimodal with vision description, add semantic marker
         if (msg._meta?.originalType === 'multimodal' && msg._meta.visionDescription) {
           agent.addMessage({
             role: 'user',
@@ -1409,20 +1037,14 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       }
     }
 
-    // ========================================
-    // CRITICAL: Prepare user message content
-    // ========================================
+    // Prepare user message content
     let userContentString: string;
 
     if (isRecovery) {
-      // Recovery mode: user message already exists in session
-      // Extract content from last user message for processing
       const lastUserMessage = session.messages[session.messages.length - 1];
       userContentString = lastUserMessage?.content || '';
-
       logger.debug('[Session] 🔄 Recovery mode - skipping user message save');
     } else if (originalMultimodalMessage) {
-      // Image was processed in two stages - will be updated after response
       const textPart = originalMultimodalMessage.find(p => p.type === 'text');
       const userText = textPart && 'text' in textPart ? textPart.text : '';
       userContentString = `[图片] ${userText || '(图片)'} [处理中...]`;
@@ -1436,9 +1058,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       userContentString = 'unknown';
     }
 
-    // ========================================
-    // CRITICAL: Check for HITL recovery BEFORE processing new message
-    // ========================================
+    // Check for HITL recovery BEFORE processing new message
     const hitlResult = await handleHITLResponse(sessionId, userContentString);
 
     if (hitlResult !== null) {
@@ -1446,18 +1066,16 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       return {
         success: true,
         response: hitlResult,
-        usedCardV2: session.metadata?.usedCardV2 || false,
+        usedCardV2: (session.metadata as any)?.usedCardV2 || false,
       };
     }
 
     // Save user message immediately (before AI processing)
-    // BUT skip in recovery mode to avoid duplicates
     if (!isRecovery) {
       session.messages.push({
         role: 'user',
         content: userContentString,
         timestamp: new Date().toISOString(),
-        // [AUDIT FIX M-03] Preserve multimodal metadata for future replay
         _meta: originalMultimodalMessage ? {
           originalType: 'multimodal',
           visionDescription: imageDescription,
@@ -1467,15 +1085,13 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           source: (options.context?.source as 'user' | 'proactive' | 'recovery' | 'system') || 'user',
         },
       });
-      session.pendingRecovery = true;  // Mark for recovery
+      session.pendingRecovery = true;
       session.lastMessageSource = (options.context?.source as string || 'user');
       session.updatedAt = new Date().toISOString();
       saveSession(session);
 
       logger.debug('[Session] 📨 User message saved (recovery-ready)');
     } else {
-      // Recovery mode: message already exists in session
-      // Ensure pendingRecovery is still true (might have been cleared if response was partially sent)
       session.pendingRecovery = true;
       session.updatedAt = new Date().toISOString();
       saveSession(session);
@@ -1483,35 +1099,16 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       logger.debug('[Session] 🔄 Recovery mode - using existing user message');
     }
 
-    // Get response with smart timeout (inactivity-based)
-    // Only timeout when agent is truly stuck (no activity for 10 minutes)
-    //
-    // Configuration:
-    //   AGENT_INACTIVITY_TIMEOUT_MS - inactivity timeout (default: 600000 = 10 minutes)
-    //   DEBUG_SESSION_ACTIVITY - log all activities (default: false)
-    //
-    // Why 10 minutes?
-    // - Deep research: Multi-step research with gaps between steps
-    // - Complex reasoning: Long thinking time before output
-    // - Tool chains: Multiple tool calls with preparation time
-    // - Network issues: API latency can be 2-5 minutes
-    // - Real "stuck" is rare: Most tasks either complete or fail with error
-    //
-    // This replaces fixed timeout because:
-    // - Simple tasks: complete in seconds, no waiting
-    // - Complex tasks: can run for hours as long as agent is active
-    // - Truly stuck: detected by 10 minutes of NO activity
-    //
-
+    // Get response with smart timeout
     let response: string | undefined;
     let timeoutError: Error | undefined;
 
     const smartTimeout = new SmartTimeout({
       inactivityTimeoutMs: parseInt(
-        process.env.AGENT_INACTIVITY_TIMEOUT_MS || '600000',  // 10 minutes
+        process.env.AGENT_INACTIVITY_TIMEOUT_MS || '600000',
         10
       ),
-      checkIntervalMs: 30000,  // Check every 30 seconds
+      checkIntervalMs: 30000,
       onTimeout: (inactiveMs) => {
         const stats = smartTimeout.getMonitor().getStats();
         logger.error(
@@ -1526,7 +1123,6 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         );
       },
       onActivity: (type, details) => {
-        // Log significant activities
         if (
           process.env.DEBUG_SESSION_ACTIVITY === 'true' &&
           (type === 'tool_call' || type === 'subagent')
@@ -1538,29 +1134,21 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     smartTimeout.start();
 
-    // [PERF OPT] StreamingMessageController 已经在函数开始时创建
-    // 这里不需要重复创建，直接使用前面创建的 streamingController
-
     try {
-      // Wrap agent.chat() with activity monitoring
-      // CRITICAL: In recovery mode, use the full message from session (userContentString)
-      // because options.message might be truncated (recovery.ts passes only first 100 chars)
       const messageForAgent = isRecovery ? userContentString : options.message;
 
-      // Build user context for tool execution
       const userContextForTools = {
         openId,
         chatId,
         messageId,
         userId: options.userId,
-        sessionId,  // Add sessionId for HITL callbacks
+        sessionId,
       };
 
       const chatPromise = agent.chat(messageForAgent, {
-        onContentBlock: (block) => {
+        onContentBlock: (block: any) => {
           logger.debug('[Session] 📦 Received content block:', JSON.stringify(block, null, 2));
-          streamingController?.pushContent(block).catch(err => {
-            // Silently handle message withdrawn errors
+          streamingController?.pushContent(block).catch((err: any) => {
             const errorMsg = err instanceof Error ? err.message : String(err);
             if (!errorMsg.includes('withdrawn')) {
               logger.warn('[Session] Failed to push content block:', errorMsg);
@@ -1570,7 +1158,6 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         userContext: userContextForTools,
       });
 
-      // Create a promise that rejects on timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
         const checkInterval = setInterval(() => {
           if (timeoutError) {
@@ -1580,7 +1167,6 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         }, 1000);
       });
 
-      // Race between chat completion and timeout
       response = await Promise.race([chatPromise, timeoutPromise]);
 
       // Finish streaming controller
@@ -1593,10 +1179,8 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         }
       }
 
-      // Record final activity
       smartTimeout.recordActivity('progress', 'response completed');
 
-      // Success
       const runtime = Math.round(smartTimeout.getRuntimeMs() / 1000);
       if (runtime > 30) {
         logger.info(
@@ -1608,7 +1192,6 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
 
-      // Finish streaming controller on error
       if (streamingController) {
         try {
           await streamingController.finish();
@@ -1618,14 +1201,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       }
 
       if (timeoutError) {
-        // Inactivity timeout
         return {
           success: false,
           error: `AI 长时间无响应，可能遇到了问题。请稍后重试或简化任务。\n\n${errorMsg}`
         };
       } else {
-        // Other errors (network, API, etc.)
-        // These will be handled by retry mechanism
         throw error;
       }
     } finally {
@@ -1639,16 +1219,12 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     }
 
     // Update messages with final content
-    // For multimodal (image) messages, update the user message with recognition result
-    // This preserves image context for future conversations
     let assistantContentString: string;
 
     if (originalMultimodalMessage && imageDescription) {
-      // Image was processed in two stages - update user message with recognition result
       const textPart = originalMultimodalMessage.find(p => p.type === 'text');
       const userText = textPart && 'text' in textPart ? textPart.text : '';
 
-      // Update the last user message (already saved before processing)
       const lastUserMessage = session.messages[session.messages.length - 1];
       if (lastUserMessage && lastUserMessage.role === 'user') {
         lastUserMessage.content = `[图片] ${userText || '(图片)'}\n[识别结果]: ${imageDescription}`;
@@ -1660,11 +1236,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       assistantContentString = response;
     }
 
-    // Get tool calls from agent if available
     const lastToolCalls = agent.getLastToolCalls?.() || [];
     logger.debug('[Session] Tool calls from agent:', lastToolCalls.length, lastToolCalls);
 
-    // Save assistant response with tool calls
     session.messages.push({
       role: 'assistant',
       content: assistantContentString,
@@ -1672,26 +1246,16 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       toolCalls: lastToolCalls.length > 0 ? lastToolCalls : undefined,
     });
 
-    // CRITICAL FIX #1: Set pendingDelivery BEFORE attempting delivery
-    // This ensures that if the bot crashes or delivery fails, the response is cached
-    // and can be re-delivered on next recovery without reprocessing
     session.pendingDelivery = true;
     session.lastAiResponse = assistantContentString;
     logger.debug('[Session] ✓ AI responded, set pendingDelivery=true for safe recovery');
 
-    // CRITICAL FIX #2: Clear pendingRecovery flag immediately after AI responds
-    // This prevents recovery from reprocessing already-answered messages
-    // (Previously this was only cleared after Feishu delivery, which caused race conditions)
     if (session.pendingRecovery) {
       session.pendingRecovery = false;
       logger.debug('[Session] ✓ Cleared pendingRecovery flag');
     }
 
-    // NOTE: responseDelivered flag is for tracking Feishu delivery status
-    // It's set separately after successful Feishu send (see routes/proactive.ts)
     session.updatedAt = new Date().toISOString();
-
-    // Save session to disk (with pendingDelivery=true)
     saveSession(session);
 
     // Trigger knowledge extraction (background)
@@ -1703,17 +1267,15 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       await handler(sessionId, response);
     }
 
-    // Clear deep analysis context
     clearDeepAnalysisContext();
 
     return {
       success: true,
       sessionId,
       response,
-      usedCardV2: !!streamingController, // Indicate if Card V2 was used
+      usedCardV2: !!streamingController,
     };
   } catch (error) {
-    // Clear deep analysis context on error too
     clearDeepAnalysisContext();
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1771,82 +1333,29 @@ export function getSessionStats(): {
 }
 
 /**
- * Load all sessions from disk (call on startup)
- */
-export function loadAllSessions(): number {
-  if (!existsSync(sessionConfig.storagePath)) {
-    return 0;
-  }
-
-  // BUG #3 FIX: Clean up leftover temp files from crashes
-  cleanupTempFiles(sessionConfig.storagePath);
-
-  let loaded = 0;
-  const files = readdirSync(sessionConfig.storagePath).filter(
-    f => f.endsWith('.json') && !f.endsWith('.bak') && !f.endsWith('.tmp')
-  );
-
-  for (const file of files) {
-    try {
-      const content = readFileSync(join(sessionConfig.storagePath, file), 'utf-8');
-      const session = JSON.parse(content) as Session;
-      sessions.set(session.id, session);
-      loaded++;
-    } catch (error) {
-      logger.error('[Session] Failed to load', file, error);
-    }
-  }
-
-  logger.info(`[Session] Loaded ${loaded} sessions from disk`);
-  return loaded;
-}
-
-/**
- * Clear old sessions (cleanup)
- */
-export function clearOldSessions(daysOld: number = 30): number {
-  const cutoff = Date.now() - daysOld * 24 * 60 * 60 * 1000;
-  let cleared = 0;
-
-  for (const [id, session] of sessions) {
-    if (new Date(session.updatedAt).getTime() < cutoff) {
-      deleteSession(id);
-      cleared++;
-    }
-  }
-
-  return cleared;
-}
-
-/**
  * Run knowledge extraction in background
  */
 async function runExtractionInBackground(session: Session): Promise<void> {
   try {
     const extractionManager = getExtractionManager();
 
-    // Convert session messages to ChatMessage format
     const messages: ChatMessage[] = session.messages.map(m => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
-    // Check for conversation end signals
     const lastMessage = session.messages[session.messages.length - 1];
     const isConversationEnd = lastMessage?.role === 'user' &&
       extractionManager.shouldTrigger(messages, { isConversationEnd: false }).reason.includes('Trigger phrase');
 
-    // Run extraction
     const result = await extractionManager.extract(messages, {
       isConversationEnd,
     });
 
     if (result.triggered && result.notifications.length > 0) {
       logger.debug('[Session] Extraction notifications:', result.notifications);
-      // TODO: Send notifications to user via channel handler
     }
   } catch (error) {
-    // Extraction errors should not affect the main conversation
     logger.error('[Session] Background extraction failed:', error);
   }
 }
@@ -1869,70 +1378,5 @@ export function resetExtraction(): void {
   resetExtractionManager();
 }
 
-/**
- * Save all active sessions to disk (for graceful shutdown)
- */
-export function saveAllSessions(): void {
-  let saved = 0;
-  for (const session of sessions.values()) {
-    try {
-      saveSession(session);
-      saved++;
-    } catch (error) {
-      logger.error(`[Session] Failed to save session ${session.id}:`, error);
-    }
-  }
-  logger.info(`[Session] Saved ${saved} sessions to disk`);
-}
-
 // Export recovery module
 export * from './recovery';
-
-/**
- * [AUDIT FIX M-02] Inject proactive task result into a user's active session.
- *
- * This enables bidirectional context flow between scheduled tasks and user conversations.
- * When a proactive task completes, its result can be injected into the user's session
- * so the user can reference it in subsequent interactions.
- */
-export function injectProactiveResult(
-  targetSessionId: string,
-  result: { source: string; content: string; timestamp?: number }
-): boolean {
-  const session = sessions.get(targetSessionId);
-  if (!session) {
-    logger.warn(`[Session] Cannot inject proactive result: session ${targetSessionId} not found`);
-    return false;
-  }
-
-  const ts = result.timestamp ? new Date(result.timestamp).toISOString() : new Date().toISOString();
-
-  session.messages.push({
-    role: 'system',
-    content: `[定时任务结果 - ${result.source}]\n${result.content}`,
-    timestamp: ts,
-    _meta: {
-      source: 'proactive',
-    },
-  });
-
-  session.updatedAt = ts;
-  saveSession(session);
-
-  logger.info(`[Session] 📥 Proactive result injected into session ${targetSessionId} from ${result.source}`);
-  return true;
-}
-
-/**
- * [AUDIT FIX M-02] Load recent conversation history for a session.
- * Used by proactive task handlers to inherit user context.
- */
-export function getRecentSessionHistory(
-  sessionId: string,
-  maxMessages: number = 10
-): SessionMessage[] {
-  const session = sessions.get(sessionId) || loadSession(sessionId);
-  if (!session || session.messages.length === 0) return [];
-
-  return session.messages.slice(-maxMessages);
-}

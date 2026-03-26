@@ -129,10 +129,12 @@ export function createPluginRuntimeCore(options: RuntimeShimOptions = {}) {
  */
 export function createChannelRuntimeStub(logger: any): any {
   const adapters = [
+    // Core messaging abstractions used by beeclaw
     "text", "reply", "routing", "pairing", "media",
     "activity", "session", "mentions", "reactions", "groups",
-    "debounce", "commands", "discord", "slack", "telegram",
-    "signal", "imessage", "whatsapp", "line",
+    "debounce", "commands",
+    // Note: Third-party platform stubs (discord, slack, telegram, signal,
+    // imessage, whatsapp, line) were removed — beeclaw uses Feishu adapter only.
   ];
 
   const stub: any = {};

@@ -40,7 +40,9 @@
     "pm2:flush": "pm2 flush",
     "pm2:reset": "pm2 reset beeclaw",
     "check:daemon": "./scripts/check-daemon.sh",
-    "check:daemon:fix": "./scripts/check-daemon.sh --fix"
+    "check:daemon:fix": "./scripts/check-daemon.sh --fix",
+    "typecheck": "bunx tsc --noEmit",
+    "test:coverage": "bun test --coverage"
   },
   "dependencies": {
     "@hono/zod-validator": "0.7.6",

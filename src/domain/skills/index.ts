@@ -10,3 +10,19 @@ export type {
   SkillToolResult,
   SkillEvolutionConfig,
 } from './types';
+
+// Task 2: Re-export extracted submodules
+export {
+  readMetadata,
+  writeMetadata,
+  emptyMetadata,
+  calculateMaturity,
+  hasSecurityIssues,
+} from './loader';
+export type { SkillMetadata, SkillPerformanceData } from './loader';
+
+export {
+  recommendSkillsStandalone,
+  recommendSkillsWithLLMStandalone,
+  calculateRecommendationScore,
+} from './store';

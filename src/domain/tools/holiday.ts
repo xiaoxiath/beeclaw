@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../../infra/observability/logger';
+import { cache } from '../../infra/cache';
 
 const HOLIDAY_API_BASE = 'https://holiday.ailcc.com/api/holiday/info';
 
@@ -38,9 +39,9 @@ interface HolidayApiResponse {
   } | null;
 }
 
-// Cache for today's holiday info (refreshed daily)
-let cachedHolidayInfo: HolidayInfo | null = null;
-let lastFetchDate: string | null = null;
+// Cache keys and TTL (using unified MemoryCache from infra/cache)
+const HOLIDAY_CACHE_KEY = 'holiday:info';
+const HOLIDAY_TTL = 86400; // 24 hours in seconds (refreshed daily)
 
 /**
  * Parse API response to HolidayInfo
@@ -70,8 +71,9 @@ export async function fetchHolidayInfo(date?: Date): Promise<HolidayInfo | null>
   const dateStr = formatDate(targetDate);
 
   // Check cache (only for today's date)
-  if (!date && cachedHolidayInfo && lastFetchDate === dateStr) {
-    return cachedHolidayInfo;
+  if (!date) {
+    const cached = cache.get<HolidayInfo>(`${HOLIDAY_CACHE_KEY}:${dateStr}`);
+    if (cached) return cached;
   }
 
   try {
@@ -99,8 +101,7 @@ export async function fetchHolidayInfo(date?: Date): Promise<HolidayInfo | null>
 
     // Cache if it's today's date
     if (!date) {
-      cachedHolidayInfo = info;
-      lastFetchDate = dateStr;
+      cache.set(`${HOLIDAY_CACHE_KEY}:${dateStr}`, info, HOLIDAY_TTL);
     }
 
     logger.info(`Holiday info fetched: ${formatHolidayDescription(info)}`);
@@ -155,8 +156,9 @@ export function getDateContext(): string {
   const dateStr = formatDate(today);
 
   // Try to use cached info
-  if (cachedHolidayInfo && lastFetchDate === dateStr) {
-    return formatHolidayDescription(cachedHolidayInfo);
+  const cached = cache.get<HolidayInfo>(`${HOLIDAY_CACHE_KEY}:${dateStr}`);
+  if (cached) {
+    return formatHolidayDescription(cached);
   }
 
   // Fallback: just show today's date without holiday info
@@ -168,6 +170,5 @@ export function getDateContext(): string {
  * Clear cache (useful for testing or forced refresh)
  */
 export function clearHolidayCache(): void {
-  cachedHolidayInfo = null;
-  lastFetchDate = null;
+  cache.cleanup();
 }

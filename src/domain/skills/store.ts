@@ -22,10 +22,42 @@ import { SkillParser, getSkillParser } from './parser';
 import { SkillCache } from './cache';
 import { SkillWatcher } from './watcher';
 
+// Task 2: Extracted loader helpers
+import {
+  readMetadata,
+  writeMetadata,
+  emptyMetadata,
+  calculateMaturity,
+  hasSecurityIssues,
+} from './loader';
+import type { SkillMetadata } from './loader';
+
+// Task 2: Extracted recommender functions
+import {
+  recommendSkills as _recommendSkills,
+  recommendSkillsWithLLM as _recommendSkillsWithLLM,
+  calculateRecommendationScore as _calculateRecommendationScore,
+} from './recommender';
+
 // Phase 4: Re-export extracted modules for backward compatibility
 export { SkillParser, getSkillParser } from './parser';
 export { SkillCache } from './cache';
 export { SkillWatcher } from './watcher';
+
+// Task 2: Re-export loader & recommender for direct use
+export {
+  readMetadata,
+  writeMetadata,
+  emptyMetadata,
+  calculateMaturity,
+  hasSecurityIssues,
+} from './loader';
+export type { SkillMetadata, SkillPerformanceData } from './loader';
+export {
+  recommendSkills as recommendSkillsStandalone,
+  recommendSkillsWithLLM as recommendSkillsWithLLMStandalone,
+  calculateRecommendationScore,
+} from './recommender';
 
 export class SkillStore {
   private basePath: string;          // User skills path
@@ -295,7 +327,7 @@ export class SkillStore {
       writeFileSync(join(skillPath, 'SKILL.md'), skillMd, 'utf-8');
 
       // Create metadata file for evolution tracking
-      this.writeMetadata(skillPath, {
+      writeMetadata(skillPath, {
         usageCount: 0,
         successCount: 0,
         failureCount: 0,
@@ -373,7 +405,7 @@ export class SkillStore {
     }
   }
 
-  // Record skill usage
+  // Record skill usage — delegates to loader helpers for metadata I/O
   recordUsage(name: string, success: boolean, executionTimeMs?: number): SkillToolResult {
     this.init();
 
@@ -384,7 +416,7 @@ export class SkillStore {
     }
 
     try {
-      const metadata = this.readMetadata(skillPath);
+      const metadata = readMetadata(skillPath);
 
       metadata.usageCount++;
       if (success) {
@@ -411,9 +443,9 @@ export class SkillStore {
       }
 
       // Update maturity score
-      metadata.maturityScore = this.calculateMaturity(metadata);
+      metadata.maturityScore = calculateMaturity(metadata);
 
-      this.writeMetadata(skillPath, metadata);
+      writeMetadata(skillPath, metadata);
 
       return { success: true, data: metadata };
     } catch (error) {
@@ -428,7 +460,7 @@ export class SkillStore {
     this.init();
 
     const skillPath = join(this.basePath, name);
-    const metadata = this.readMetadata(skillPath);
+    const metadata = readMetadata(skillPath);
 
     const perf = metadata.performance || {
       executionTimes: [],
@@ -457,7 +489,7 @@ export class SkillStore {
     };
   }
 
-  // Assess skill maturity
+  // Assess skill maturity — delegates to loader helpers
   assessMaturity(name: string): MaturityAssessment {
     this.init();
 
@@ -478,7 +510,7 @@ export class SkillStore {
       };
     }
 
-    const metadata = this.readMetadata(skillPath);
+    const metadata = readMetadata(skillPath);
     const skillMdPath = join(skillPath, 'SKILL.md');
     const content = readFileSync(skillMdPath, 'utf-8');
     const lines = content.split('\n').length;
@@ -497,10 +529,10 @@ export class SkillStore {
       wellStructured: skill.name && skill.description && lines <= 300,
 
       // Clean: no hardcoded secrets (basic check)
-      clean: !this.hasSecurityIssues(content),
+      clean: !hasSecurityIssues(content),
     };
 
-    const score = this.calculateMaturity(metadata, checks);
+    const score = calculateMaturity(metadata, checks);
     const recommendations: string[] = [];
 
     if (!checks.productionTested) {
@@ -548,7 +580,7 @@ export class SkillStore {
     });
   }
 
-  // Load skill from path
+  // Load skill from path — uses loader helpers for metadata
   private load(skillPath: string, isBuiltin: boolean = false): Skill | null {
     const skillMdPath = join(skillPath, 'SKILL.md');
 
@@ -559,7 +591,7 @@ export class SkillStore {
     try {
       const content = readFileSync(skillMdPath, 'utf-8');
       const { frontmatter, body } = this.parseSkillMd(content);
-      const metadata = isBuiltin ? this.emptyMetadata() : this.readMetadata(skillPath);
+      const metadata = isBuiltin ? emptyMetadata() : readMetadata(skillPath);
       const skillDirName = skillPath.split('/').pop() || '';
 
       return {
@@ -595,17 +627,7 @@ export class SkillStore {
     }
   }
 
-  // Empty metadata for builtin skills
-  private emptyMetadata() {
-    return {
-      usageCount: 0,
-      successCount: 0,
-      failureCount: 0,
-      maturityScore: 100, // Builtin skills are considered mature
-    };
-  }
-
-  // Parse SKILL.md file
+  // Parse SKILL.md file (thin wrapper — parser.ts has the canonical implementation)
   private parseSkillMd(content: string): { frontmatter: SkillFrontmatter; body: string } {
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
@@ -638,136 +660,6 @@ export class SkillStore {
     }).trim();
 
     return `---\n${yamlContent}\n---\n\n${body.trim()}\n`;
-  }
-
-  // Read metadata file
-  private readMetadata(skillPath: string): {
-    usageCount: number;
-    successCount: number;
-    failureCount: number;
-    lastUsed?: string;
-    lastFailure?: string;
-    maturityScore: number;
-    // Performance metrics
-    performance?: {
-      executionTimes: number[];    // Last N execution times in ms
-      totalExecutions: number;
-      avgExecutionTime: number;
-      minExecutionTime: number;
-      maxExecutionTime: number;
-    };
-  } {
-    const metadataPath = join(skillPath, '.metadata.json');
-
-    if (!existsSync(metadataPath)) {
-      return {
-        usageCount: 0,
-        successCount: 0,
-        failureCount: 0,
-        maturityScore: 0,
-        performance: {
-          executionTimes: [],
-          totalExecutions: 0,
-          avgExecutionTime: 0,
-          minExecutionTime: 0,
-          maxExecutionTime: 0,
-        },
-      };
-    }
-
-    try {
-      const content = readFileSync(metadataPath, 'utf-8');
-      const data = JSON.parse(content);
-      // Ensure performance field exists
-      if (!data.performance) {
-        data.performance = {
-          executionTimes: [],
-          totalExecutions: 0,
-          avgExecutionTime: 0,
-          minExecutionTime: 0,
-          maxExecutionTime: 0,
-        };
-      }
-      return data;
-    } catch {
-      return {
-        usageCount: 0,
-        successCount: 0,
-        failureCount: 0,
-        maturityScore: 0,
-        performance: {
-          executionTimes: [],
-          totalExecutions: 0,
-          avgExecutionTime: 0,
-          minExecutionTime: 0,
-          maxExecutionTime: 0,
-        },
-      };
-    }
-  }
-
-  // Write metadata file
-  private writeMetadata(skillPath: string, metadata: {
-    usageCount: number;
-    successCount: number;
-    failureCount: number;
-    lastUsed?: string;
-    lastFailure?: string;
-    maturityScore: number;
-    performance?: {
-      executionTimes: number[];
-      totalExecutions: number;
-      avgExecutionTime: number;
-      minExecutionTime: number;
-      maxExecutionTime: number;
-    };
-  }): void {
-    const metadataPath = join(skillPath, '.metadata.json');
-    const skillName = skillPath.split('/').pop() || 'unknown';
-
-    // Log metadata update (debug level to avoid noise)
-    logger.debug(`[SkillStore] 📊 Metadata updated for ${skillName}:`, {
-      usage: metadata.usageCount,
-      success: metadata.successCount,
-      maturity: metadata.maturityScore,
-      avgTime: metadata.performance?.avgExecutionTime,
-    });
-
-    writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
-  }
-
-  // Calculate maturity score
-  private calculateMaturity(
-    metadata: { usageCount: number; successCount: number; failureCount: number },
-    checks?: { productionTested: boolean; stable: boolean; wellStructured: boolean; clean: boolean }
-  ): number {
-    if (checks) {
-      const checkScore = Object.values(checks).filter(Boolean).length * 20;
-      const usageScore = Math.min(20, metadata.usageCount * 2);
-      return Math.min(100, checkScore + usageScore);
-    }
-
-    // Simple calculation based on usage
-    if (metadata.usageCount === 0) return 0;
-
-    const successRate = metadata.successCount / metadata.usageCount;
-    const usageBonus = Math.min(30, metadata.usageCount * 3);
-
-    return Math.min(100, Math.round(successRate * 70 + usageBonus));
-  }
-
-  // Check for security issues
-  private hasSecurityIssues(content: string): boolean {
-    const patterns = [
-      /api[_-]?key\s*[=:]\s*['"][^'"]+['"]/i,
-      /secret\s*[=:]\s*['"][^'"]+['"]/i,
-      /password\s*[=:]\s*['"][^'"]+['"]/i,
-      /token\s*[=:]\s*['"][^'"]+['"]/i,
-      /sk-[a-zA-Z0-9]{20,}/,
-      /\$\{[A-Z_]+_API_KEY\}/,
-    ];
-
-    return patterns.some(p => p.test(content));
   }
 
   // ============================================================================
@@ -998,11 +890,6 @@ export class SkillStore {
 
   /**
    * Run evaluation test cases for a skill
-   *
-   * This method provides a framework for running skill evaluations.
-   * It validates the eval structure and provides grading based on
-   * expectations. In a full implementation, this would integrate with
-   * the agent execution pipeline.
    */
   runEval(skillName: string, evalId?: number): SkillToolResult {
     const skillPath = join(this.basePath, skillName);
@@ -1066,13 +953,6 @@ export class SkillStore {
 
   /**
    * Execute a single eval test case
-   *
-   * This is a simplified implementation that checks expectations
-   * against the expected output. In a full implementation, this would:
-   * 1. Set up a test workspace
-   * 2. Execute the skill with the prompt
-   * 3. Capture the actual output
-   * 4. Grade the output against expectations
    */
   private executeEval(evalCase: import('./types').SkillEval): import('./types').EvalRunResult {
     const startTime = Date.now();
@@ -1087,10 +967,7 @@ export class SkillStore {
     const totalExpectations = evalCase.expectations?.length || 0;
 
     if (hasExpectations && evalCase.expectations) {
-      // For now, we assume all expectations are met if they're well-defined
-      // In a real implementation, we would validate each expectation
       expectationsPassed = evalCase.expectations.filter(exp => {
-        // Basic check: expectation should be a non-empty string
         return typeof exp === 'string' && exp.trim().length > 0;
       }).length;
     }
@@ -1134,10 +1011,8 @@ export class SkillStore {
   }): 'A' | 'B' | 'C' | 'D' | 'F' {
     const { hasPrompt, hasExpectedOutput, hasExpectations, expectationsPassed, totalExpectations } = params;
 
-    // Must have a prompt
     if (!hasPrompt) return 'F';
 
-    // Check completeness
     let score = 0;
 
     if (hasExpectedOutput) score += 40;
@@ -1147,11 +1022,9 @@ export class SkillStore {
         score += (expectationsPassed / totalExpectations) * 30;
       }
     } else {
-      // No expectations is okay if there's expected output
       if (hasExpectedOutput) score += 30;
     }
 
-    // Map score to grade
     if (score >= 90) return 'A';
     if (score >= 80) return 'B';
     if (score >= 70) return 'C';
@@ -1202,7 +1075,6 @@ export class SkillStore {
       parts.push('⚠️ No expected output or expectations defined.');
     }
 
-    // Add suggestions based on grade
     if (grade === 'F') {
       parts.push('💡 This eval needs significant improvement. Add a clear prompt and expected outcomes.');
     } else if (grade === 'D' || grade === 'C') {
@@ -1254,7 +1126,6 @@ export class SkillStore {
   private checkDependencyWarnings(skill: Skill): string[] {
     const warnings: string[] = [];
 
-    // Check for missing dependencies
     if (skill.dependsOn && skill.dependsOn.length > 0) {
       for (const depName of skill.dependsOn) {
         const depPath = join(this.basePath, depName);
@@ -1265,7 +1136,6 @@ export class SkillStore {
         }
       }
 
-      // Check for circular dependencies
       const circularDeps = this.detectCircularDependencies(skill.name, skill.dependsOn, new Set());
       if (circularDeps.length > 0) {
         warnings.push(`🔄 Circular dependency detected: ${circularDeps.join(' → ')}`);
@@ -1285,7 +1155,6 @@ export class SkillStore {
     path: string[] = []
   ): string[] {
     if (visited.has(skillName)) {
-      // Found a cycle
       const cycleStart = path.indexOf(skillName);
       if (cycleStart >= 0) {
         return [...path.slice(cycleStart), skillName];
@@ -1315,50 +1184,21 @@ export class SkillStore {
   }
 
   // ============================================================================
-  // Skill Recommendation Methods
+  // Skill Recommendation Methods — delegates to recommender.ts
   // ============================================================================
 
   /**
-   * Recommend skills based on context (sync version, keyword-based only)
+   * Recommend skills based on context (sync version, keyword-based only).
+   * Delegates to standalone function in recommender.ts.
    */
   recommendSkills(context: string): import('./types').SkillRecommendResult {
     this.init();
-
-    const allSkills = this.list();
-    const recommendations: import('./types').SkillRecommendation[] = [];
-    const contextLower = context.toLowerCase();
-
-    for (const skill of allSkills) {
-      const score = this.calculateRecommendationScore(skill, contextLower);
-
-      if (score.confidence > 0.3) { // Only include if confidence > 30%
-        recommendations.push({
-          name: skill.name,
-          description: skill.description,
-          confidence: score.confidence,
-          reason: score.reason,
-          matched_triggers: score.matchedTriggers,
-          matched_tags: score.matchedTags,
-        });
-      }
-    }
-
-    // Sort by confidence (descending)
-    recommendations.sort((a, b) => b.confidence - a.confidence);
-
-    // Return top 5 recommendations
-    const topRecommendations = recommendations.slice(0, 5);
-
-    return {
-      context,
-      recommendations: topRecommendations,
-      timestamp: new Date().toISOString(),
-    };
+    return _recommendSkills(this, context);
   }
 
   /**
-   * Recommend skills with LLM semantic matching (async version)
-   * 混合策略：关键词过滤 + LLM 精确匹配
+   * Recommend skills with LLM semantic matching (async version).
+   * Delegates to standalone function in recommender.ts.
    */
   async recommendSkillsWithLLM(
     context: string,
@@ -1369,159 +1209,7 @@ export class SkillStore {
     }
   ): Promise<import('./types').SkillRecommendResult> {
     this.init();
-
-    const maxCandidates = options?.maxCandidates ?? 15;
-    const topK = options?.topK ?? 5;
-
-    // Step 1: 关键词快速过滤（宽松条件）
-    const allSkills = this.list();
-    const keywordCandidates: Array<{ skill: Skill; score: number }> = [];
-    const contextLower = context.toLowerCase();
-
-    for (const skill of allSkills) {
-      // 使用更宽松的评分（阈值 0.1）
-      const score = this.calculateRecommendationScore(skill, contextLower);
-      if (score.confidence > 0.1) {
-        keywordCandidates.push({ skill, score: score.confidence });
-      }
-    }
-
-    // 按分数排序，取 top N 候选
-    keywordCandidates.sort((a, b) => b.score - a.score);
-    const candidates = keywordCandidates.slice(0, maxCandidates).map(c => c.skill);
-
-    // Step 2: 如果启用 LLM 且有匹配器，进行语义匹配
-    if (!options?.skipLLM && this.llmMatcher && candidates.length > 0) {
-      try {
-        const llmMatches = await this.llmMatcher.match(context, candidates);
-
-        if (llmMatches.length > 0) {
-          // 将 LLM 结果转换为推荐格式
-          const recommendations: import('./types').SkillRecommendation[] = llmMatches.map(match => {
-            const skill = candidates.find(s => s.name === match.skill);
-            if (!skill) return null;
-
-            return {
-              name: skill.name,
-              description: skill.description,
-              confidence: match.confidence,
-              reason: match.reason,
-              matched_triggers: skill.triggers.slice(0, 3),
-              matched_tags: skill.tags.slice(0, 3),
-            };
-          }).filter((r): r is NonNullable<typeof r> => r !== null);
-
-          return {
-            context,
-            recommendations,
-            timestamp: new Date().toISOString(),
-          };
-        }
-      } catch (error) {
-        logger.error('[SkillStore] LLM matching failed, falling back to keyword matching:', error);
-        // 降级：继续使用关键词匹配
-      }
-    }
-
-    // Step 3: 降级到关键词匹配（如果没有 LLM 或 LLM 失败）
-    const recommendations: import('./types').SkillRecommendation[] = candidates
-      .slice(0, topK)
-      .map(skill => {
-        const score = this.calculateRecommendationScore(skill, contextLower);
-        return {
-          name: skill.name,
-          description: skill.description,
-          confidence: score.confidence,
-          reason: score.reason,
-          matched_triggers: score.matchedTriggers,
-          matched_tags: score.matchedTags,
-        };
-      });
-
-    return {
-      context,
-      recommendations,
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * Calculate recommendation score for a skill
-   */
-  private calculateRecommendationScore(
-    skill: Skill,
-    contextLower: string
-  ): {
-    confidence: number;
-    reason: string;
-    matchedTriggers: string[];
-    matchedTags: string[];
-  } {
-    let score = 0;
-    const matchedTriggers: string[] = [];
-    const matchedTags: string[] = [];
-    const reasons: string[] = [];
-
-    // Check triggers (highest weight)
-    for (const trigger of skill.triggers) {
-      if (contextLower.includes(trigger.toLowerCase())) {
-        score += 0.4;
-        matchedTriggers.push(trigger);
-      }
-    }
-
-    // Check tags (medium weight)
-    for (const tag of skill.tags) {
-      if (contextLower.includes(tag.toLowerCase())) {
-        score += 0.2;
-        matchedTags.push(tag);
-      }
-    }
-
-    // Check description keywords (lower weight)
-    const descWords = skill.description.toLowerCase().split(/\s+/);
-    const contextWords = contextLower.split(/\s+/);
-    const matchingWords = descWords.filter(word =>
-      word.length > 3 && contextWords.includes(word)
-    );
-    score += matchingWords.length * 0.05;
-
-    // Bonus for high success rate
-    if (skill.usageCount > 0) {
-      const successRate = skill.successCount / skill.usageCount;
-      if (successRate > 0.9) {
-        score += 0.1;
-        reasons.push('High success rate');
-      }
-    }
-
-    // Bonus for maturity
-    if (skill.maturityScore >= 80) {
-      score += 0.1;
-      reasons.push('Mature skill');
-    }
-
-    // Cap confidence at 1.0
-    const confidence = Math.min(score, 1.0);
-
-    // Generate reason
-    if (matchedTriggers.length > 0) {
-      reasons.push(`Matched triggers: ${matchedTriggers.join(', ')}`);
-    }
-    if (matchedTags.length > 0) {
-      reasons.push(`Matched tags: ${matchedTags.join(', ')}`);
-    }
-
-    const reason = reasons.length > 0
-      ? reasons.join('; ')
-      : 'Contextually relevant';
-
-    return {
-      confidence,
-      reason,
-      matchedTriggers,
-      matchedTags,
-    };
+    return _recommendSkillsWithLLM(this, context, this.llmMatcher, options);
   }
 
   // ============================================================================
@@ -1531,7 +1219,7 @@ export class SkillStore {
   /**
    * Analyze failure patterns for a skill
    */
-  analyzeFailures(name: string): import('./types').FailureAnalysisResult{
+  analyzeFailures(name: string): import('./types').FailureAnalysisResult {
     this.init();
 
     const skill = this.get(name);
@@ -1548,15 +1236,14 @@ export class SkillStore {
       };
     }
 
-    const metadata = this.readMetadata(join(this.basePath, name));
+    const metadata = readMetadata(join(this.basePath, name));
     const totalFailures = metadata.failureCount;
     const totalUses = metadata.usageCount;
     const failureRate = totalUses > 0 ? totalFailures / totalUses : 0;
 
-    // Analyze failure patterns (simplified - in real implementation would analyze error logs)
+    // Analyze failure patterns (simplified)
     const patterns: import('./types').FailurePattern[] = [];
 
-    // Common failure types based on skill characteristics
     if (skill.tags.includes('api') || skill.tags.includes('web')) {
       patterns.push({
         type: 'network_error',
@@ -1587,7 +1274,6 @@ export class SkillStore {
       });
     }
 
-    // Common causes
     const commonCauses: string[] = [];
     if (failureRate > 0.5) {
       commonCauses.push('High failure rate suggests fundamental issues');
@@ -1599,7 +1285,6 @@ export class SkillStore {
       commonCauses.push('Automation skill missing script files');
     }
 
-    // Recommendations
     const recommendations: string[] = [];
     if (failureRate > 0.3) {
       recommendations.push('Consider reviewing and rewriting this skill');
@@ -1632,7 +1317,6 @@ export class SkillStore {
 
   /**
    * Export a skill to a shareable package
-   * In production, this would create a tar.gz file with all skill files
    */
   // TODO: Implement actual tar.gz export with checksum calculation
   exportSkill(_name: string, _outputPath?: string): import('./types').SkillExportResult {
@@ -1641,7 +1325,6 @@ export class SkillStore {
 
   /**
    * Import a skill from a package file
-   * In production, this would extract and validate the skill
    */
   // TODO: Implement actual tar.gz extraction, validation, and conflict resolution
   importSkill(_filePath: string): import('./types').SkillImportResult {

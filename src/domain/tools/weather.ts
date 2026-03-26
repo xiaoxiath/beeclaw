@@ -7,6 +7,7 @@
 
 import { logger } from '../../infra/observability/logger';
 import { getWeatherConfig } from '../../infra/config';
+import { cache } from '../../infra/cache';
 
 // Get configuration from unified config system
 function getConfig() {
@@ -128,14 +129,11 @@ interface WeatherDailyResponse {
   }>;
 }
 
-// Cache for weather info (refreshed every hour)
-let cachedWeatherInfo: WeatherInfo | null = null;
-let lastFetchTime: number | null = null;
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
-
-// Cache for location ID
-let cachedLocationId: string | null = null;
-let cachedLocationName: string | null = null;
+// Cache keys and TTL (using unified MemoryCache from infra/cache)
+const WEATHER_CACHE_KEY = 'weather:info';
+const LOCATION_CACHE_KEY = 'weather:location';
+const WEATHER_TTL = 3600; // 1 hour in seconds
+const LOCATION_TTL = 86400; // 24 hours in seconds
 
 /**
  * Get authentication headers for QWeather API
@@ -285,34 +283,41 @@ function _getCurrentHourIndex(): number {
 /**
  * Fetch weather information for default location
  */
+/**
+ * Resolve a location name to its ID and name using the unified cache.
+ * Caches the result for LOCATION_TTL seconds.
+ */
+async function resolveLocation(targetLocation: string): Promise<{ id: string; name: string } | null> {
+  const locKey = `${LOCATION_CACHE_KEY}:${targetLocation}`;
+  const cachedLoc = cache.get<{ id: string; name: string }>(locKey);
+  if (cachedLoc) return cachedLoc;
+
+  const cityInfo = await searchCity(targetLocation);
+  if (!cityInfo) return null;
+
+  const loc = { id: cityInfo.id, name: cityInfo.name };
+  cache.set(locKey, loc, LOCATION_TTL);
+  return loc;
+}
+
 export async function fetchWeatherInfo(location?: string): Promise<WeatherInfo | null> {
   const config = getConfig();
   const targetLocation = location || config.defaultLocation;
+  const cacheKey = `${WEATHER_CACHE_KEY}:${targetLocation}`;
 
   // Check cache
-  const now = Date.now();
-  if (
-    cachedWeatherInfo &&
-    lastFetchTime &&
-    now - lastFetchTime < CACHE_DURATION &&
-    cachedLocationName === targetLocation
-  ) {
-    return cachedWeatherInfo;
+  const cached = cache.get<WeatherInfo>(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   try {
-    // Step 1: Get location ID (use cache if available)
-    if (!cachedLocationId || cachedLocationName !== targetLocation) {
-      const cityInfo = await searchCity(targetLocation);
-      if (!cityInfo) {
-        return null;
-      }
-      cachedLocationId = cityInfo.id;
-      cachedLocationName = cityInfo.name;
-    }
+    // Step 1: Get location ID (use cache or fetch)
+    const loc = await resolveLocation(targetLocation);
+    if (!loc) return null;
 
     // Step 2: Fetch weather data
-    const weatherData = await fetchHourlyWeather(cachedLocationId);
+    const weatherData = await fetchHourlyWeather(loc.id);
     if (!weatherData || !weatherData.hourly || weatherData.hourly.length === 0) {
       return null;
     }
@@ -321,7 +326,6 @@ export async function fetchWeatherInfo(location?: string): Promise<WeatherInfo |
     // Find the closest hour
     const now = new Date();
     const currentHour = now.getHours();
-    const _currentMinute = now.getMinutes();
 
     // API returns data starting from the next hour or current hour
     // Find the entry that matches current time best
@@ -339,8 +343,8 @@ export async function fetchWeatherInfo(location?: string): Promise<WeatherInfo |
 
     // Step 4: Build WeatherInfo
     const info: WeatherInfo = {
-      location: cachedLocationName,
-      locationId: cachedLocationId,
+      location: loc.name,
+      locationId: loc.id,
       temp: currentWeather.temp,
       text: currentWeather.text,
       windDir: currentWeather.windDir,
@@ -349,9 +353,8 @@ export async function fetchWeatherInfo(location?: string): Promise<WeatherInfo |
       updateTime: weatherData.updateTime,
     };
 
-    // Cache the result
-    cachedWeatherInfo = info;
-    lastFetchTime = now;
+    // Cache the result using unified MemoryCache
+    cache.set(cacheKey, info, WEATHER_TTL);
 
     logger.info(`Weather info fetched: ${formatWeatherDescription(info)}`);
     return info;
@@ -371,26 +374,20 @@ export async function fetchDailyWeatherInfo(location?: string, days: string = '3
   const targetLocation = location || config.defaultLocation;
 
   try {
-    // Step 1: Get location ID (use cache if available)
-    if (!cachedLocationId || cachedLocationName !== targetLocation) {
-      const cityInfo = await searchCity(targetLocation);
-      if (!cityInfo) {
-        return null;
-      }
-      cachedLocationId = cityInfo.id;
-      cachedLocationName = cityInfo.name;
-    }
+    // Step 1: Get location ID (use cache or fetch)
+    const loc = await resolveLocation(targetLocation);
+    if (!loc) return null;
 
     // Step 2: Fetch daily weather data
-    const weatherData = await fetchDailyWeather(cachedLocationId, days);
+    const weatherData = await fetchDailyWeather(loc.id, days);
     if (!weatherData || !weatherData.daily || weatherData.daily.length === 0) {
       return null;
     }
 
     // Step 3: Build DailyWeatherInfo
     const info: DailyWeatherInfo = {
-      location: cachedLocationName,
-      locationId: cachedLocationId,
+      location: loc.name,
+      locationId: loc.id,
       updateTime: weatherData.updateTime,
       daily: weatherData.daily.map(day => ({
         fxDate: day.fxDate,
@@ -467,14 +464,13 @@ export function formatDailyWeatherDescription(info: DailyWeatherInfo): string {
  * Call fetchWeatherInfo() asynchronously elsewhere to populate the cache.
  */
 export function getWeatherContext(): string | null {
-  // Check if cache is valid
-  const now = Date.now();
-  if (
-    cachedWeatherInfo &&
-    lastFetchTime &&
-    now - lastFetchTime < CACHE_DURATION
-  ) {
-    return formatWeatherDescription(cachedWeatherInfo);
+  // Check unified cache for any location's weather info
+  // Default location is checked first
+  const config = getConfig();
+  const cacheKey = `${WEATHER_CACHE_KEY}:${config.defaultLocation}`;
+  const cached = cache.get<WeatherInfo>(cacheKey);
+  if (cached) {
+    return formatWeatherDescription(cached);
   }
 
   // Cache expired or not populated yet
@@ -485,8 +481,9 @@ export function getWeatherContext(): string | null {
  * Clear cache (useful for testing or forced refresh)
  */
 export function clearWeatherCache(): void {
-  cachedWeatherInfo = null;
-  lastFetchTime = null;
-  cachedLocationId = null;
-  cachedLocationName = null;
+  // Clear all weather-related entries from unified cache
+  cache.delete(WEATHER_CACHE_KEY);
+  cache.delete(LOCATION_CACHE_KEY);
+  // Also clear location-specific weather caches
+  cache.cleanup();
 }

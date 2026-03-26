@@ -6,7 +6,7 @@
 /**
  * Channel types supported by the system
  */
-export type ChannelType = 'cli' | 'feishu' | 'webhook' | 'api' | 'slack' | 'telegram';
+export type ChannelType = 'cli' | 'feishu' | 'web' | 'webhook' | 'api';
 
 /**
  * Message content can be text or multimodal

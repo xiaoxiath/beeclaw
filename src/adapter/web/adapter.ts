@@ -1,12 +1,16 @@
 /**
  * Web Adapter
  *
- * Web UI 入口适配器，提供 HTTP 服务和 WebSocket 支持
+ * Web UI entry adapter, providing HTTP service and WebSocket support.
+ * Registers a WebChannel with the MessageGateway so that domain-layer
+ * code can send messages back to connected web clients.
  */
 
 import type { EntryAdapter, EntryContext, AdapterStatus } from '../../infra/entry/types';
 import { createWebApp } from './server';
 import { logger } from '../../infra/observability/logger';
+import { getWebChannel } from './channel';
+import { getMessageGateway } from '../../app/gateway-channel';
 
 export class WebAdapter implements EntryAdapter {
   readonly name = 'web';
@@ -19,7 +23,14 @@ export class WebAdapter implements EntryAdapter {
 
   async initialize(context: EntryContext): Promise<void> {
     this.context = context;
-    logger.debug('[WebAdapter] Initialized');
+
+    // Register the WebChannel with the gateway so domain layer can route
+    // messages to web clients via the unified MessageChannel interface.
+    const channel = getWebChannel();
+    const gateway = getMessageGateway();
+    gateway.registerChannel(channel);
+
+    logger.debug('[WebAdapter] Initialized and WebChannel registered with gateway');
   }
 
   async start(): Promise<void> {
@@ -68,6 +79,10 @@ export class WebAdapter implements EntryAdapter {
   }
 
   async stop(): Promise<void> {
+    // Unregister the channel from the gateway on shutdown
+    const gateway = getMessageGateway();
+    gateway.unregisterChannel('web' as any);
+
     if (this.server) {
       try {
         this.server.stop();
@@ -84,6 +99,7 @@ export class WebAdapter implements EntryAdapter {
   }
 
   getStatus(): AdapterStatus {
+    const channel = getWebChannel();
     return {
       running: this.server !== null,
       uptime: this.server ? Date.now() - this.startTime : 0,
@@ -91,6 +107,7 @@ export class WebAdapter implements EntryAdapter {
       metadata: {
         port: this.context?.config.web?.port || 3000,
         host: this.context?.config.web?.host || '0.0.0.0',
+        activeListeners: channel.activeListenerCount,
       },
     };
   }

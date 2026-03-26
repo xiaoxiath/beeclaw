@@ -2,6 +2,7 @@
  * File Tools — Extracted from builtin.ts (Phase 4)
  *
  * Re-exports file-system tools for modular access.
+ * Now imports directly from the file-system-tools submodule.
  */
 export {
   fileReadTool,
@@ -19,12 +20,14 @@ export {
   shellTool,
   executeShell,
   ShellSchema,
-} from '../builtin';
+} from '../file-system-tools';
 
 import type { OpenAITool } from '../../agent/types';
 
 /** All file-system tool definitions. */
 export const fileTools: OpenAITool[] = [
-  // Lazy-loaded to avoid circular dependency
-  // Tools are imported by consumers via individual exports above
+  // INTENTIONALLY EMPTY — circular dependency guard.
+  //
+  // Consumers should import individual tools (fileReadTool, fileWriteTool, fileListTool, fileDeleteTool, shellTool)
+  // directly from this module rather than using this array.
 ];

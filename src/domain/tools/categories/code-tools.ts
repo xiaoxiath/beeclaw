@@ -2,6 +2,7 @@
  * Code Tools — Extracted from builtin.ts (Phase 4)
  *
  * Re-exports code/compute tools for modular access.
+ * Now imports directly from the calc-tools submodule.
  */
 export {
   calcTool,
@@ -13,12 +14,14 @@ export {
   claudeCodeTool,
   executeClaudeCode,
   ClaudeCodeSchema,
-} from '../builtin';
+} from '../calc-tools';
 
 import type { OpenAITool } from '../../agent/types';
 
 /** All code/compute tool definitions. */
 export const codeTools: OpenAITool[] = [
-  // Lazy-loaded to avoid circular dependency
-  // Tools are imported by consumers via individual exports above
+  // INTENTIONALLY EMPTY — circular dependency guard.
+  //
+  // Consumers should import individual tools (calcTool, codeExecuteTool, claudeCodeTool)
+  // directly from this module rather than using this array.
 ];

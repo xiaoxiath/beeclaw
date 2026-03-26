@@ -1,7 +1,7 @@
 /**
  * Search & web tools
  *
- * Re-export from builtin.ts for modular imports.
+ * Re-export from focused submodules for modular imports.
  * Usage: import { webSearchTool } from '../tools/categories/search';
  */
 export {
@@ -9,7 +9,10 @@ export {
   executeWebSearch,
   webFetchTool,
   executeWebFetch,
+} from '../search-tools';
+
+export {
   deepResearchTool,
   executeDeepResearch,
-  DeepResearchSchema
-} from '../builtin';
+  DeepResearchSchema,
+} from '../deep-research-tools';

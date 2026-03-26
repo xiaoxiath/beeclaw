@@ -18,7 +18,7 @@ export interface EntryAdapter {
   readonly name: string;
 
   /** 适配器类型 */
-  readonly type: 'cli' | 'bot' | 'web' | 'daemon' | 'wecom' | 'dingtalk' | 'slack';
+  readonly type: 'cli' | 'bot' | 'web' | 'daemon';
 
   /** 初始化适配器 */
   initialize(context: EntryContext): Promise<void>;

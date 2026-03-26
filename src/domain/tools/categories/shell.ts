@@ -1,8 +1,8 @@
 /**
  * Shell & file tools
  *
- * Re-export from builtin.ts for modular imports.
- * Usage: import { webSearchTool } from '../tools/categories/search';
+ * Re-export from the file-system-tools submodule for modular imports.
+ * Usage: import { shellTool } from '../tools/categories/shell';
  */
 export {
   shellTool,
@@ -19,5 +19,5 @@ export {
   FileListSchema,
   fileDeleteTool,
   executeFileDelete,
-  FileDeleteSchema
-} from '../builtin';
+  FileDeleteSchema,
+} from '../file-system-tools';

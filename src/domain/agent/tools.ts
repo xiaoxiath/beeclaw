@@ -25,10 +25,8 @@ import { getDateContext } from '../tools/holiday';
 import { getWeatherContext } from '../tools/weather';
 import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
 // Feishu tools are now handled by feishu-cli-toolkit skill
-// TODO: [CR-Layer] Move getMCPManager to domain port interface
-import { getMCPManager } from '../../adapter/mcp';
-// TODO: [CR-Layer] Move getPluginRegistry to domain port interface
-import { getPluginRegistry } from '../../adapter/plugins';
+// Task 3: Use port interfaces instead of direct adapter imports
+import { getMCPManagerPort, getPluginRegistryPort } from '../ports';
 import { logger } from '../../infra/observability/logger';
 import { estimateTokens } from './context';
 import type { OpenAITool, ChatMessage } from './types';
@@ -103,23 +101,27 @@ export function getAllTools(): OpenAITool[] {
 
   let mcpTools: OpenAITool[] = [];
   try {
-    const mcpManager = getMCPManager();
-    mcpTools = mcpManager.getAllToolsAsOpenAI();
+    const mcpManager = getMCPManagerPort();
+    if (mcpManager) {
+      mcpTools = mcpManager.getAllToolsAsOpenAI();
+    }
   } catch {
     // MCP not initialized
   }
 
   let pluginTools: OpenAITool[] = [];
   try {
-    const registry = getPluginRegistry();
-    pluginTools = Array.from(registry.tools.values()).map(tool => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      },
-    }));
+    const registry = getPluginRegistryPort();
+    if (registry) {
+      pluginTools = Array.from(registry.tools.values()).map(tool => ({
+        type: 'function' as const,
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        },
+      }));
+    }
   } catch {
     // Plugin system not initialized
   }

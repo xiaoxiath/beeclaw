@@ -100,6 +100,21 @@ class MemoryCache {
   /**
    * Clean up expired entries
    */
+
+  /**
+   * Get a cached value or compute and cache it
+   * @param key - Cache key
+   * @param factory - Function to compute the value if not cached
+   * @param ttlSeconds - Time to live in seconds (optional)
+   * @returns The cached or newly computed value
+   */
+  async getOrSet<T>(key: string, factory: () => T | Promise<T>, ttlSeconds?: number): Promise<T> {
+    const cached = this.get<T>(key);
+    if (cached !== undefined) return cached;
+    const value = await factory();
+    this.set(key, value, ttlSeconds);
+    return value;
+  }
   cleanup(): number {
     let cleaned = 0;
     const now = Date.now();

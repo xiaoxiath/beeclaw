@@ -60,7 +60,7 @@ async function main() {
 
     logger.info('\n✅ Beeclaw Web started');
 
-    // 设置优雅关闭
+    // 设置优雅关闭 (GracefulShutdown constructor auto-installs SIGTERM/SIGINT handlers)
     const shutdown = new GracefulShutdown();
 
     shutdown.register({

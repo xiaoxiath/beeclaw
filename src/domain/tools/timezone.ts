@@ -8,24 +8,28 @@
 import { searchCity } from './weather';
 import { logger } from '../../infra/observability/logger';
 import { getConfig } from '../../infra/config';
+import { cache } from '../../infra/cache';
 
-const locationTimezoneCache = new Map<string, string>();
+const TZ_CACHE_PREFIX = 'timezone:location:';
+const TZ_TTL = 86400; // 24 hours in seconds
 
 /**
  * Get timezone from location using weather API
  * Results are cached for performance
  */
 export async function getTimezoneFromLocation(location: string): Promise<string | null> {
-  // Check cache
-  if (locationTimezoneCache.has(location)) {
-    return locationTimezoneCache.get(location)!;
+  // Check unified cache
+  const cacheKey = `${TZ_CACHE_PREFIX}${location}`;
+  const cached = cache.get<string>(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   try {
     // Use weather API to get timezone info
     const cityInfo = await searchCity(location);
     if (cityInfo && cityInfo.tz) {
-      locationTimezoneCache.set(location, cityInfo.tz);
+      cache.set(cacheKey, cityInfo.tz, TZ_TTL);
       logger.info(`Timezone derived for ${location}: ${cityInfo.tz}`);
       return cityInfo.tz;
     }
@@ -63,7 +67,7 @@ export function resolveUserTimezone(): string {
 
     // 2. Try to get from cache (derived at startup)
     if (config.user?.location) {
-      const cachedTz = locationTimezoneCache.get(config.user.location);
+      const cachedTz = cache.get<string>(`${TZ_CACHE_PREFIX}${config.user.location}`);
       if (cachedTz) {
         return cachedTz;
       }
@@ -104,5 +108,5 @@ export function resolveUserLocation(): string {
  * Clear cache (for testing)
  */
 export function clearTimezoneCache(): void {
-  locationTimezoneCache.clear();
+  cache.cleanup();
 }
