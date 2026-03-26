@@ -5,7 +5,7 @@
  */
 
 import type { Pattern } from './types';
-import { getSchedulerLazy } from '../../infra/db/store';
+import { getSchedulerLazy } from './scheduler';
 import { pushNotification } from './pusher';
 import { getGoalStore } from '../agent/goal/store';
 

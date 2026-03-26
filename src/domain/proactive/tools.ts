@@ -7,8 +7,8 @@
 import { logger } from '../../infra/observability/logger';
 import { z } from 'zod';
 import type { ProactiveToolResult, CreateScheduleOptions } from './types';
-import { getSchedulerLazy } from '../../infra/db/store';
-import { getNotificationsLazy } from '../../infra/db/store';
+import { getSchedulerLazy } from './scheduler';
+import { getNotificationsLazy } from './notifications';
 import { getTaskManager } from '../../infra/queue/manager';
 import { pushNotification } from './pusher';
 

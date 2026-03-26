@@ -5,7 +5,7 @@
  */
 
 import type { PendingNotification, NotificationPriority } from '../proactive/types';
-import { getNotificationsLazy } from '../../infra/db/store';
+import { getNotificationsLazy } from './notifications';
 
 export type PusherChannel = 'cli' | 'feishu' | 'webhook';
 type StorageChannel = 'cli' | 'websocket' | 'email';

@@ -791,6 +791,19 @@ export function getScheduler(basePath?: string): Scheduler {
   return scheduler;
 }
 
+/**
+ * Lazy initialization of Scheduler with default path
+ * Uses data/schedules as default basePath
+ */
+export function getSchedulerLazy(): Scheduler {
+  if (!scheduler) {
+    const defaultPath = join(process.cwd(), 'data', 'schedules');
+    scheduler = new Scheduler(defaultPath);
+    scheduler.init();
+  }
+  return scheduler;
+}
+
 export function resetScheduler(): void {
   scheduler = null;
 }

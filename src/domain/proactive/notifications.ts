@@ -319,6 +319,19 @@ export function getNotificationManager(basePath?: string): NotificationManager {
   return notificationManager;
 }
 
+/**
+ * Lazy initialization of NotificationManager with default path
+ * Uses data/notifications as default basePath
+ */
+export function getNotificationsLazy(): NotificationManager {
+  if (!notificationManager) {
+    const defaultPath = join(process.cwd(), 'data', 'notifications');
+    notificationManager = new NotificationManager(defaultPath);
+    notificationManager.init();
+  }
+  return notificationManager;
+}
+
 export function resetNotificationManager(): void {
   notificationManager = null;
 }
