@@ -18,9 +18,3 @@ export * as SubagentTools from './categories/subagent';
 
 export * as SandboxTools from './categories/sandbox';
 
-// Phase 4: Additional category namespaces
-export * as ResearchTools from './categories/research-tools';
-export * as FileTools from './categories/file-tools';
-export * as CodeTools from './categories/code-tools';
-export * as StateTools from './categories/state-tools';
-export * as MemoryTools from './categories/memory-tools';

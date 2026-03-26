@@ -80,6 +80,36 @@ export class MCPClientManager {
   private connections: Map<string, MCPConnection> = new Map();
   private defaultTimeout: number = 30000;
 
+  // B-P2-07: Reconnection state
+  private reconnectAttempts = new Map<string, number>();
+  private static MAX_RECONNECT = 5;
+  private static BASE_DELAY = 1000;
+
+  /**
+   * B-P2-07: Attempt to reconnect to a disconnected MCP server
+   * with exponential backoff.
+   */
+  private async reconnect(serverId: string): Promise<boolean> {
+    const attempts = this.reconnectAttempts.get(serverId) ?? 0;
+    if (attempts >= MCPClientManager.MAX_RECONNECT) {
+      logger.error(\`[MCP] Max reconnect attempts (\${MCPClientManager.MAX_RECONNECT}) reached for \${serverId}\`);
+      return false;
+    }
+    this.reconnectAttempts.set(serverId, attempts + 1);
+    const delay = Math.min(MCPClientManager.BASE_DELAY * Math.pow(2, attempts), 30000);
+    logger.info(\`[MCP] Reconnecting to \${serverId} (attempt \${attempts + 1}/\${MCPClientManager.MAX_RECONNECT}, delay \${delay}ms)\`);
+    await new Promise(r => setTimeout(r, delay));
+    try {
+      const connection = this.connections.get(serverId);
+      if (!connection) return false;
+      await this.connect(connection.config);
+      this.reconnectAttempts.delete(serverId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * 连接到 MCP 服务器
    */
@@ -378,6 +408,38 @@ export class MCPClientManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       connection.lastError = message;
+
+      // B-P2-07: If the error looks like a connection issue, try reconnecting
+      const isConnectionError = /ECONNREFUSED|EPIPE|ENOTCONN|connection|closed|disconnect/i.test(message);
+      if (isConnectionError) {
+        connection.connected = false;
+        const reconnected = await this.reconnect(serverId);
+        if (reconnected) {
+          // Retry the tool call once after successful reconnection
+          try {
+            const retryResult = await connection.client.callTool(
+              { name: toolName, arguments: params },
+              undefined,
+              { timeout: timeout || connection.config.timeout || this.defaultTimeout },
+            );
+            const retryContent = retryResult.content as Array<{ type: string; text?: string }>;
+            const retryText = retryContent
+              .filter((c) => c.type === 'text' && c.text)
+              .map((c) => c.text)
+              .join('\n');
+            return {
+              success: !retryResult.isError,
+              data: retryText || retryResult.content,
+              error: retryResult.isError ? retryText : undefined,
+              isError: retryResult.isError === true,
+            };
+          } catch (retryError) {
+            const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+            return { success: false, error: \`Retry after reconnect failed: \${retryMsg}\` };
+          }
+        }
+      }
+
       return {
         success: false,
         error: message,

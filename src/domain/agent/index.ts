@@ -11,8 +11,8 @@ import { getMemoryStore, getDynamicMemoryInjector } from '../memory';
 import { getLifecycleManager } from '../memory/lifecycle-manager';
 import { getSkillStore } from '../skills/store';
 // Task 3: Use port interfaces instead of direct adapter imports
-import { getHookRunnerPort } from '../ports';
-import type { IHookRunner } from '../ports';
+import { getHookRunnerPort, getHealthMonitorPort } from '../ports';
+import type { IHookRunner, IHealthMonitor } from '../ports';
 import { recordSkillFailure, getReflectionStats } from './evolution';
 import { checkPreferenceTriggers } from './evolution/preference-learning';
 import { triggerSelfEvolution } from './evolution/self-evolution';
@@ -26,14 +26,12 @@ import {
   cleanTokenStats,
   DEFAULT_TOKEN_STATS_CONFIG,
   calculateContextConfig,
-  type ContextConfig,
+  type AgentContextConfig,
   type TokenStatsConfig,
   type TokenStats,
 } from './context';
 import { compressMessages, shouldCompress, hybridCompress, type LegacyCompressionResult as CompressionResult } from './compression';
 import { SkillEnforcementEngine, type SkillMatchResult } from '../skills/enforcement';
-import { PeriodicHealthMonitor } from '../../infra/resilience/periodic-health-monitor';
-import { getHealthMonitorInstance } from '../../app/bootstrap-health';
 // P0 Context Engineering imports
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
@@ -45,6 +43,7 @@ import { SkillRunner } from './skill-runner';
 
 // Phase 5: Extracted tool executor (from createDefaultToolExecutor / _executeToolInner)
 import { createDefaultToolExecutor } from './tool-executor';
+import { MemoryManager } from './memory-manager';
 import { getHybridToolSelector } from './hybrid-tool-selector';
 
 /**
@@ -54,7 +53,7 @@ function safeJsonParse<T>(jsonString: string, fallback: T): T {
   try {
     return JSON.parse(jsonString);
   } catch (error) {
-    console.error('[Agent] Failed to parse JSON:', error, 'Input:', jsonString.substring(0, 100));
+    logger.error('[Agent] Failed to parse JSON:', error, 'Input:', jsonString.substring(0, 100));
     return fallback;
   }
 }
@@ -62,7 +61,62 @@ function safeJsonParse<T>(jsonString: string, fallback: T): T {
 // ============================================================================
 // Re-exports (aggregated in exports.ts for modular access)
 // ============================================================================
-export * from './exports';
+// ============================================================================
+// Public re-exports (inlined from former exports.ts — D-P0-02)
+// ============================================================================
+
+// Tools & prompt building
+export { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext } from './tools';
+export { getMemoryTools, getSkillTools, getToolsByCategory, TOOL_CATEGORIES } from './tools';
+
+// Builtin tools
+export { getBuiltinToolsForAI, executeBuiltinTool, isBuiltinTool, builtinToolNames } from '../tools';
+
+// Evolution
+export { recordSkillFailure } from './evolution';
+
+// Types
+export type { OpenAITool, ChatMessage, ToolCall, ToolResult } from './types';
+export { stripMessageMetadata } from './types';
+
+// Context management
+export {
+  estimateMessageTokens,
+  estimateTotalTokens,
+  DEFAULT_CONTEXT_CONFIG,
+  DEFAULT_TOKEN_STATS_CONFIG,
+  calculateContextConfig,
+  getModelContextWindow,
+  cleanTokenStats,
+  type AgentContextConfig,
+  type ContextConfig,
+  type TokenStatsConfig,
+  type TokenStats,
+} from './context';
+
+// Tool dependencies
+export {
+  groupToolCalls,
+  getGroupingStats,
+  isParallelTool,
+  getToolDependency,
+  hasSideEffects,
+  registerToolDependencyOverride,
+  registerToolDependencyPattern,
+  clearToolDependencyOverrides,
+  getToolDependencyOverrides,
+} from './tool-dependencies';
+
+// Phase 4: Extracted modules
+export { ToolDispatcher } from './tool-dispatcher';
+export { TokenBudgetManager, type TokenBudget, type TurnBudgetCheck } from './token-budget';
+export { SkillRunner } from './skill-runner';
+
+// App-level re-exports
+export { getAgent } from '../../app';
+
+// Tool executor
+export { createDefaultToolExecutor, _executeToolInner } from './tool-executor';
 
 
 // Agent class
@@ -84,7 +138,7 @@ export class Agent {
   /** [KV-Cache] Content hash of last stable system prompt to skip no-op rebuilds */
   private _lastStableHash: string = '';
   private autoRefreshMemory: boolean;
-  private contextConfig: ContextConfig;
+  private contextConfig: AgentContextConfig;
   private tokenStatsConfig: TokenStatsConfig;
   private estimatedTokens: number = 0;
   private usedSkillsInTurn: Set<string> = new Set();
@@ -100,7 +154,10 @@ export class Agent {
   private loopDetector: LoopDetector = createLoopDetector();
   private currentUserContext?: UserContext;  // User context for tool execution
   private skillEnforcement?: SkillEnforcementEngine;
-  private healthMonitor?: PeriodicHealthMonitor;
+  private healthMonitor?: IHealthMonitor;
+  private memoryManager: MemoryManager = new MemoryManager();
+  // B-P1-06: Mutex flag to prevent concurrent compression
+  private _compressing = false;
 
   // Phase 4: Extracted focused modules
   private toolDispatcher: ToolDispatcher;
@@ -121,7 +178,7 @@ export class Agent {
   }
 
   constructor(options: AgentOptions & {
-    contextConfig?: Partial<ContextConfig>;
+    contextConfig?: Partial<AgentContextConfig>;
     tokenStatsConfig?: Partial<TokenStatsConfig>;
   }) {
     this.options = {
@@ -211,7 +268,7 @@ export class Agent {
     // NOTE: Health monitor is now initialized in bootstrap-health.ts during app startup
     // to avoid creating multiple instances. We only get the existing instance here.
     try {
-      const monitor = getHealthMonitorInstance();
+      const monitor = getHealthMonitorPort();
       if (monitor) {
         this.healthMonitor = monitor;
       }
@@ -234,6 +291,7 @@ export class Agent {
     this.skillRunner = new SkillRunner();
 
     // Trigger before_agent_start hook (async, fire-and-forget)
+    // [E-P1-02] Added .catch() to prevent unhandled rejection
     if (this.hookRunner) {
       Promise.resolve().then(() => {
         this.hookRunner?.runBeforeAgentStart({
@@ -242,6 +300,8 @@ export class Agent {
           systemPrompt: this.baseSystemPrompt,
           timestamp: new Date().toISOString(),
         });
+      }).catch((err) => {
+        logger.warn('[Agent] before_agent_start hook failed (non-fatal):', err);
       });
     }
   }
@@ -257,7 +317,7 @@ export class Agent {
   }
 
   // Get context config
-  getContextConfig(): ContextConfig {
+  getContextConfig(): AgentContextConfig {
     return { ...this.contextConfig };
   }
 
@@ -285,86 +345,14 @@ export class Agent {
     return buildSystemPrompt(basePrompt, coreContext, sessionContext);
   }
 
-  // Refresh memory context
+  // Refresh memory context (delegated to MemoryManager — A-P1-05)
   refreshMemory(): void {
-    try {
-      const memoryStore = getMemoryStore();
-      const coreContext = memoryStore.getCoreContext();
-
-      let skillsPrompt = '';
-      try {
-        const skillStore = getSkillStore();
-        const skills = skillStore.list();
-        if (skills.length > 0) {
-          const skillsForPrompt = skills.map(s => ({
-            name: s.name,
-            description: s.description,
-            triggers: s.triggers,
-          }));
-
-          // Debug: Log skills metadata being injected
-          logger.info('[Agent] 🎯 Injecting skills metadata:', {
-            count: skillsForPrompt.length,
-            sample: skillsForPrompt.slice(0, 3).map(s => ({
-              name: s.name,
-              hasDescription: !!s.description,
-              triggerCount: s.triggers?.length || 0,
-              triggers: s.triggers?.slice(0, 2),
-            })),
-          });
-
-          skillsPrompt = formatSkillsForPrompt(skillsForPrompt);
-        }
-      } catch (error) {
-        logger.debug('SkillStore not initialized:', error);
-      }
-
-      const contextWithSkills = {
-        ...coreContext,
-        skills: skillsPrompt,
-      };
-
-      if (this.hookRunner) {
-        this.hookRunner.runBeforePromptBuild({
-          basePrompt: this.baseSystemPrompt,
-          context: contextWithSkills,
-          timestamp: new Date().toISOString(),
-        }).catch(err => {
-          console.warn('[Agent] before_prompt_build hook error:', err);
-        });
-      }
-
-      const freshPrompt = buildSystemPrompt(this.baseSystemPrompt, contextWithSkills);
-
-      // [KV-Cache] Skip rebuild if content hasn't actually changed.
-      // This preserves the LLM's prefix cache across turns.
-      const promptHash = simpleHash(freshPrompt);
-      if (promptHash === this._lastStableHash) {
-        logger.debug('[Agent] Memory unchanged — skipping system prompt rebuild (KV Cache preserved)');
-        return;
-      }
-      this._lastStableHash = promptHash;
-
-      // Only update messages[0] (stable prefix). messages[1] (volatile time)
-      // is handled separately by refreshTime().
-      const systemIndex = this.messages.findIndex(m => m.role === 'system');
-      if (systemIndex >= 0) {
-        const oldTokens = estimateMessageTokens(this.messages[systemIndex]);
-        this.messages[systemIndex].content = freshPrompt;
-        const newTokens = estimateMessageTokens(this.messages[systemIndex]);
-        this.estimatedTokens = this.estimatedTokens - oldTokens + newTokens;
-      } else {
-        this.messages.unshift({
-          role: 'system',
-          content: freshPrompt,
-        });
-        this.estimatedTokens += estimateMessageTokens({ role: 'system', content: freshPrompt });
-      }
-
-      logger.info('[Agent] Memory refreshed — stable system prompt updated');
-    } catch (error) {
-      console.warn('[Agent] Failed to refresh memory:', error);
-    }
+    const tokenDelta = this.memoryManager.refreshMemory(
+      this.baseSystemPrompt,
+      this.messages,
+      this.hookRunner,
+    );
+    this.estimatedTokens += tokenDelta;
   }
 
   /**
@@ -475,6 +463,10 @@ export class Agent {
    * for type-safe compression tracking.
    */
   private trimContextIfNeeded(): void {
+    // B-P1-06: Skip if compression is already in progress
+    if (this._compressing) return;
+    this._compressing = true;
+    try {
     const threshold = this.contextConfig.maxTokens * this.contextConfig.compressionThreshold;
 
     if (this.estimatedTokens <= threshold) {
@@ -555,6 +547,9 @@ export class Agent {
     }
 
     logger.debug(`[Agent] Context compressed: freed ${tokensFreed} tokens, now at ${this.estimatedTokens}`);
+    } finally {
+      this._compressing = false;
+    }
   }
 
   // Compressed context summary (from LLM compression)
@@ -564,6 +559,12 @@ export class Agent {
    * Compress old messages using LLM for intelligent summarization
    */
   async compressContextWithLLM(): Promise<CompressionResult> {
+    // B-P1-06: Skip if compression is already in progress
+    if (this._compressing) {
+      return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
+    }
+    this._compressing = true;
+    try {
     if (!this.options.provider) {
       return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
     }
@@ -646,9 +647,12 @@ export class Agent {
         compressionRatio: result.compressionRatio,
       };
     } catch (error) {
-      console.error('[Agent] LLM compression failed:', error);
+      logger.error('[Agent] LLM compression failed:', error);
       this.trimContextIfNeeded();
       return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
+    }
+    } finally {
+      this._compressing = false;
     }
   }
 
@@ -914,7 +918,7 @@ export class Agent {
       // [P2 FIX 4.2] Check if we've consumed too many tokens in this turn
       const turnTokensUsed = this.estimatedTokens - turnStartTokens;
       if (turnTokensUsed > maxTokensPerTurn) {
-        console.warn(
+        logger.warn(
           `[Agent] Token budget guard: turn used ${turnTokensUsed} tokens ` +
           `(limit: ${maxTokensPerTurn}). Forcing completion.`
         );
@@ -930,7 +934,7 @@ export class Agent {
 
       // [P2 FIX 4.2] Warn when approaching 80% of turn budget
       if (turnTokensUsed > maxTokensPerTurn * 0.8 && iterations > 1) {
-        console.warn(
+        logger.warn(
           `[Agent] Token budget warning: ${Math.round(turnTokensUsed / maxTokensPerTurn * 100)}% ` +
           `of turn budget used (${turnTokensUsed}/${maxTokensPerTurn})`
         );
@@ -1049,7 +1053,7 @@ export class Agent {
           // [AUDIT FIX P-2] Check if tool is blocked
           if (this.isToolBlocked(skillGetCall.function.name)) {
             const blockedMsg = `Tool "${skillGetCall.function.name}" is blocked in this context.`;
-            console.warn(`[Agent] ${blockedMsg}`);
+            logger.warn(`[Agent] ${blockedMsg}`);
             const blockedResult = { success: false, error: blockedMsg, blocked: true };
             options?.onToolResult?.(skillGetCall.function.name, blockedResult);
           } else {
@@ -1224,7 +1228,7 @@ export class Agent {
       const lastAssistantMsg = [...this.messages].reverse().find(m => m.role === 'assistant');
       if (lastAssistantMsg?.content && typeof lastAssistantMsg.content === 'string') {
         finalContent = lastAssistantMsg.content;
-        console.warn(`[Agent] Reached max iterations (${this.options.maxToolIterations || 5}), using last assistant message`);
+        logger.warn(`[Agent] Reached max iterations (${this.options.maxToolIterations || 5}), using last assistant message`);
 
         // Generate ContentBlock for final text from fallback
         options?.onContentBlock?.({
@@ -1233,7 +1237,7 @@ export class Agent {
         });
       } else {
         finalContent = '抱歉，处理您的请求时达到了工具调用次数限制。请尝试简化您的问题。';
-        console.warn(`[Agent] Reached max iterations with no assistant message to fall back to`);
+        logger.warn(`[Agent] Reached max iterations with no assistant message to fall back to`);
 
         // Generate ContentBlock for error message
         options?.onContentBlock?.({
@@ -1251,8 +1255,8 @@ export class Agent {
       );
 
       if (issues.length > 0) {
-        console.warn(`[SkillEnforcement] Output validation found ${issues.length} issue(s):`);
-        issues.forEach(i => console.warn(`  - ${i}`));
+        logger.warn(`[SkillEnforcement] Output validation found ${issues.length} issue(s):`);
+        issues.forEach(i => logger.warn(`  - ${i}`));
 
         // If we have iterations budget left, attempt one retry
         if (iterations < (this.options.maxToolIterations || 5) - 1) {
@@ -1298,7 +1302,7 @@ export class Agent {
               });
             }
           } catch (err) {
-            console.warn('[SkillEnforcement] Retry failed:', err);
+            logger.warn('[SkillEnforcement] Retry failed:', err);
           }
         }
       }
@@ -1317,29 +1321,11 @@ export class Agent {
       totalCompletionTokens = estimateTokens(finalContent);
     }
 
-    try {
-      const memoryStore = getMemoryStore();
-      const userMessageStr = typeof userMessage === 'string'
-        ? userMessage
-        : '[Multimodal message]';
-      // [P0 FIX] recordConversation is now async
-      await memoryStore.recordConversation({
-        timestamp: new Date().toISOString(),
-        source: 'agent',
-        user: userMessageStr,
-        assistant: finalContent,
-      });
-
-      // Trigger lightweight lifecycle check after recording
-      try {
-        const lifecycleManager = getLifecycleManager();
-        await lifecycleManager.checkAfterRecord();
-      } catch {
-        // Lifecycle check is optional, don't block main flow
-      }
-    } catch (error) {
-      logger.debug('Memory might not be initialized:', error);
-    }
+    // Record conversation to memory (delegated to MemoryManager — A-P1-05)
+    const userMessageStr = typeof userMessage === 'string'
+      ? userMessage
+      : '[Multimodal message]';
+    await this.memoryManager.recordConversation(userMessageStr, finalContent);
 
     const metadata: string[] = [];
 
@@ -1607,7 +1593,7 @@ export class Agent {
       // [P2 FIX 4.2] Token budget check
       const streamTurnUsed = this.estimatedTokens - turnStartTokensStream;
       if (streamTurnUsed > maxTokensPerTurnStream) {
-        console.warn(
+        logger.warn(
           `[Agent.chatStream] Token budget guard triggered: ${streamTurnUsed}/${maxTokensPerTurnStream}`
         );
         yield { type: 'content' as const, content: '\n\n⚠️ 处理过程中消耗了过多 Token，已提前终止。' };
@@ -1696,27 +1682,8 @@ export class Agent {
     // [P0 FIX] Post-response context check — was missing from chatStream
     this.trimContextIfNeeded();
 
-    // Record to memory
-    try {
-      const memoryStore = getMemoryStore();
-      // [P0 FIX] recordConversation is now async
-      await memoryStore.recordConversation({
-        timestamp: new Date().toISOString(),
-        source: 'agent',
-        user: userMessage,
-        assistant: finalContent,
-      });
-
-      // Trigger lightweight lifecycle check after recording
-      try {
-        const lifecycleManager = getLifecycleManager();
-        await lifecycleManager.checkAfterRecord();
-      } catch {
-        // Lifecycle check is optional, don't block main flow
-      }
-    } catch (error) {
-      logger.debug('Memory might not be initialized:', error);
-    }
+    // Record conversation to memory (delegated to MemoryManager — A-P1-05)
+    await this.memoryManager.recordConversation(userMessage, finalContent);
 
     // Yield skill attribution if any skills were used
     if (this.usedSkillsInTurn.size > 0) {
@@ -1741,7 +1708,7 @@ export function createAgent(options: {
   toolExecutor?: ToolExecutor;
   loadCoreMemory?: boolean;
   autoRefreshMemory?: boolean;
-  contextConfig?: Partial<ContextConfig>;
+  contextConfig?: Partial<AgentContextConfig>;
   tokenStatsConfig?: Partial<TokenStatsConfig>;
   /** Resolved model parameters from three-layer configuration */
   params?: {
@@ -1815,5 +1782,5 @@ export function createAgent(options: {
     autoRefreshMemory: options.autoRefreshMemory ?? false,
     contextConfig: options.contextConfig,
     tokenStatsConfig: options.tokenStatsConfig,
-  } as AgentOptions & { contextConfig?: Partial<ContextConfig>; tokenStatsConfig?: Partial<TokenStatsConfig> });
+  } as AgentOptions & { contextConfig?: Partial<AgentContextConfig>; tokenStatsConfig?: Partial<TokenStatsConfig> });
 }

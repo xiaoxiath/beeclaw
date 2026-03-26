@@ -472,8 +472,6 @@ const ALLOWED_PATTERNS = [
   /^du\s+/,
   // Network info (safe)
   /^ping\s+/,
-  /^curl\s+/,
-  /^wget\s+/,
   // Text processing
   /^echo\s+/,
   /^printf\s+/,
@@ -608,7 +606,7 @@ SUPPORTED COMMANDS (all are allowed):
 - File ops: ls, cat, head, tail, grep, find, mkdir, touch, cp, mv, rm
 - Development: node, bun, npx, tsc, eslint, prettier, python3
 - Process: pm2, ps, top, htop
-- Network: ping, curl, wget
+- Network: ping
 - Text: sed, awk, sort, uniq, echo
 - System: pwd, whoami, date, env, df, du
 - CLI tools: feishu-cli (Feishu/Lark command-line tool)
@@ -656,14 +654,14 @@ export async function executeShell(params: Record<string, unknown>): Promise<Bui
   try {
     const proc = Bun.spawn(['bash', '-c', command], {
       cwd: cwd ? resolve(cwd) : process.cwd(),
-      env: {
-        ...process.env,
-        // Remove sensitive env vars
-        OPENAI_API_KEY: undefined,
-        ANTHROPIC_API_KEY: undefined,
-        ZHIPU_API_KEY: undefined,
-        MINIMAX_API_KEY: undefined,
-      },
+      env: (() => {
+        const SAFE_ENV_KEYS = ['PATH', 'HOME', 'LANG', 'TERM', 'USER', 'SHELL', 'TMPDIR', 'NODE_ENV'];
+        const safeEnv: Record<string, string> = {};
+        for (const key of SAFE_ENV_KEYS) {
+          if (process.env[key]) safeEnv[key] = process.env[key]!;
+        }
+        return safeEnv;
+      })(),
       stdout: 'pipe',
       stderr: 'pipe',
     });

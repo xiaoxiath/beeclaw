@@ -1,7 +1,18 @@
 /**
  * Unified Error Handling
  *
- * 统一的错误处理和重试机制
+ * [E-P2-04] Extended with a structured error class hierarchy:
+ *   BeeclawError (base)
+ *   ├── NetworkError       — transient connectivity failures
+ *   ├── TimeoutError       — operation exceeded time limit
+ *   ├── RateLimitError     — provider throttling (includes retryAfter)
+ *   ├── AuthError          — credentials / permissions
+ *   ├── ValidationError    — bad input / schema mismatch
+ *   ├── NotFoundError      — resource does not exist
+ *   ├── ToolExecutionError — tool dispatch failures
+ *   └── ConfigError        — invalid configuration
+ *
+ * All subclasses set `category` and `retryable` automatically.
  */
 
 // ============================================================================
@@ -18,6 +29,8 @@ export enum ErrorCategory {
   NOT_FOUND = 'not_found',
   PERMISSION = 'permission',
   CANCELLED = 'cancelled',
+  TOOL_EXECUTION = 'tool_execution',
+  CONFIG = 'config',
 }
 
 /** @deprecated Use `unifiedRetry` from `infra/resilience/unified-retry.ts` instead. */
@@ -30,7 +43,7 @@ export interface RetryPolicy {
 }
 
 // ============================================================================
-// BeeclawError
+// BeeclawError — base class
 // ============================================================================
 
 export class BeeclawError extends Error {
@@ -87,6 +100,122 @@ export class BeeclawError extends Error {
     };
   }
 }
+
+// ============================================================================
+// [E-P2-04] Typed error subclasses
+// ============================================================================
+
+/** Transient network connectivity failure (retryable). */
+export class NetworkError extends BeeclawError {
+  constructor(message: string, options?: { cause?: Error; context?: Record<string, unknown> }) {
+    super(message, {
+      category: ErrorCategory.NETWORK,
+      retryable: true,
+      cause: options?.cause,
+      context: options?.context,
+    });
+    this.name = 'NetworkError';
+  }
+}
+
+/** Operation exceeded its time budget (retryable). */
+export class TimeoutError extends BeeclawError {
+  constructor(message: string, options?: { cause?: Error; timeoutMs?: number }) {
+    super(message, {
+      category: ErrorCategory.TIMEOUT,
+      retryable: true,
+      cause: options?.cause,
+      context: options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : undefined,
+    });
+    this.name = 'TimeoutError';
+  }
+}
+
+/** Provider-level throttling (retryable, respects retryAfter). */
+export class RateLimitError extends BeeclawError {
+  constructor(message: string, options?: { retryAfter?: number; cause?: Error }) {
+    super(message, {
+      category: ErrorCategory.RATE_LIMIT,
+      retryable: true,
+      retryAfter: options?.retryAfter,
+      cause: options?.cause,
+    });
+    this.name = 'RateLimitError';
+  }
+}
+
+/** Authentication or authorization failure (NOT retryable). */
+export class AuthError extends BeeclawError {
+  constructor(message: string, options?: { cause?: Error; code?: string }) {
+    super(message, {
+      category: ErrorCategory.AUTH,
+      retryable: false,
+      cause: options?.cause,
+      code: options?.code,
+    });
+    this.name = 'AuthError';
+  }
+}
+
+/** Input validation / schema mismatch (NOT retryable). */
+export class ValidationError extends BeeclawError {
+  constructor(message: string, options?: { cause?: Error; context?: Record<string, unknown> }) {
+    super(message, {
+      category: ErrorCategory.VALIDATION,
+      retryable: false,
+      cause: options?.cause,
+      context: options?.context,
+    });
+    this.name = 'ValidationError';
+  }
+}
+
+/** Resource does not exist (NOT retryable). */
+export class NotFoundError extends BeeclawError {
+  constructor(message: string, options?: { cause?: Error; resource?: string }) {
+    super(message, {
+      category: ErrorCategory.NOT_FOUND,
+      retryable: false,
+      cause: options?.cause,
+      context: options?.resource ? { resource: options.resource } : undefined,
+    });
+    this.name = 'NotFoundError';
+  }
+}
+
+/** Tool dispatch or execution failure (may be retryable depending on inner cause). */
+export class ToolExecutionError extends BeeclawError {
+  readonly toolName: string;
+
+  constructor(toolName: string, message: string, options?: { cause?: Error; retryable?: boolean }) {
+    super(message, {
+      category: ErrorCategory.TOOL_EXECUTION,
+      retryable: options?.retryable ?? false,
+      cause: options?.cause,
+      context: { toolName },
+    });
+    this.name = 'ToolExecutionError';
+    this.toolName = toolName;
+  }
+}
+
+/** Invalid configuration (NOT retryable). */
+export class ConfigError extends BeeclawError {
+  constructor(message: string, options?: { cause?: Error; key?: string }) {
+    super(message, {
+      category: ErrorCategory.CONFIG,
+      retryable: false,
+      cause: options?.cause,
+      context: options?.key ? { configKey: options.key } : undefined,
+    });
+    this.name = 'ConfigError';
+  }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
 /** @deprecated Use `unifiedRetry` from `infra/resilience/unified-retry.ts` instead. */
 export function isRetryableCategory(category: ErrorCategory): boolean {
   return [
@@ -187,6 +316,10 @@ export function formatErrorForUser(error: unknown): string {
         return '认证失败，请检查配置';
       case ErrorCategory.VALIDATION:
         return error.message;
+      case ErrorCategory.TOOL_EXECUTION:
+        return `工具执行失败: ${error.message}`;
+      case ErrorCategory.CONFIG:
+        return `配置错误: ${error.message}`;
       default:
         return error.message || '发生未知错误';
     }

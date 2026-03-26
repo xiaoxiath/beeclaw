@@ -10,9 +10,10 @@ import { join } from 'path';
 // Infra layer
 import { loadConfig, shouldShowTokenStats } from '../infra/config';
 import { setHookNotifier } from '../infra/config/hot-reload';
-import { initStores } from '../infra/db/store';
+import { bootstrapStores } from './bootstrap-stores';
 import { initDataConnection } from '../infra/db/connection';
 import { logger } from '../infra/observability/logger';
+import { Observability, createObservabilityHooks } from '../infra/observability/metrics';
 
 // Domain layer
 import { createAgent, getAllToolsForAI, SYSTEM_PROMPTS } from '../domain/agent';
@@ -41,6 +42,7 @@ import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience
 // Adapter layer
 import { initializeMCP, shutdownMCP } from '../adapter/mcp';
 import { getHookRunner, resetHookRunner } from '../adapter/plugins/hooks';
+import { registerPorts } from '../domain/ports';
 import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
@@ -231,9 +233,18 @@ export async function initApp(options: InitOptions = {}): Promise<{
     format: config.logging.format,
   });
 
+  // 2.5. Initialize observability system (D-P0-01)
+  Observability.configure({
+    level: config.logging.level as any || 'info',
+    structured: config.logging.format === 'json',
+    tracingEnabled: true,
+    metricsEnabled: true,
+  });
+  logger.debug('   📊 Observability: metrics and tracing initialized');
+
   // 3. Initialize memory stores
   const memoryPath = options.memoryPath || config.memory.path;
-  initStores({ basePath: memoryPath, autoInit: true });
+  bootstrapStores({ basePath: memoryPath, autoInit: true });
   logger.debug(`   📁 Memory: ${memoryPath}`);
 
   // 4.6. Initialize DataConnection (RFC-03: SQLite + Drizzle ORM)
@@ -455,6 +466,33 @@ export async function initApp(options: InitOptions = {}): Promise<{
   } catch (e) {
     logger.debug('   ⚠️  Hook bridge setup skipped (registry not ready)');
   }
+  // 9.9.1.5. Register observability hooks (D-P0-01)
+  try {
+    const obsHooks = createObservabilityHooks();
+    for (const [hookName, handler] of Object.entries(obsHooks)) {
+      _hookRunner.register(hookName as any, handler as any);
+    }
+    logger.debug('   📊 Observability hooks registered');
+  } catch (e) {
+    logger.debug('   ⚠️  Observability hooks registration skipped:', e);
+  }
+
+  // 9.9.2. Register domain port implementations (dependency inversion)
+  try {
+    const { getMCPManager } = await import('../adapter/mcp');
+    registerPorts({
+      mcpManager: () => getMCPManager(),
+      pluginRegistry: () => getPluginRegistry(),
+      hookRunnerFactory: (registry) => {
+        const { createHookRunner } = require('../adapter/plugins/hooks');
+        return createHookRunner(registry);
+      },
+    });
+    logger.debug('   🔌 Ports: domain port implementations registered');
+  } catch (e) {
+    logger.warn('   ⚠️  Ports registration failed:', e);
+  }
+
   // 9.10. Initialize timezone cache
   await initializeTimezoneCache();
   const resolvedLocation = resolveUserLocation();

@@ -5,6 +5,8 @@
  * 1. Rule-based matching (keyword patterns in user message)
  * 2. Semantic matching (embedding similarity, when available)
  * 3. Core tools always included
+ * 4. [G-P2-05] Context-aware weighting: tools used in the previous turn
+ *    receive a relevance boost so multi-step workflows are not interrupted.
  *
  * Configurable via `toolSelector` in beeclaw.json.
  * When strategy is 'all', this selector is bypassed entirely.
@@ -176,8 +178,24 @@ function cosineSim(a: number[], b: number[]): number {
 export class HybridToolSelector {
   private config: HybridToolSelectorConfig;
 
+  /**
+   * [G-P2-05] Tracks tool names used in the previous turn so we can boost
+   * their selection weight in the current turn. This helps multi-step
+   * workflows (e.g., search -> browse -> summarize) stay coherent.
+   */
+  private lastTurnTools: Set<string> = new Set();
+
   constructor(config: Partial<HybridToolSelectorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /**
+   * [G-P2-05] Record which tools were used this turn. Call after the
+   * agent's tool loop completes so the next invocation of select() can
+   * boost these tools.
+   */
+  recordToolUsage(toolNames: string[]): void {
+    this.lastTurnTools = new Set(toolNames);
   }
 
   /**
@@ -198,6 +216,11 @@ export class HybridToolSelector {
     // 1. Always include core tools
     const selectedNames = new Set<string>();
     for (const name of CORE_TOOL_NAMES) {
+      selectedNames.add(name);
+    }
+
+    // [G-P2-05] 1b. Include tools from the previous turn (context continuity)
+    for (const name of this.lastTurnTools) {
       selectedNames.add(name);
     }
 
@@ -228,16 +251,23 @@ export class HybridToolSelector {
 
     // Cap at maxTools
     if (filtered.length > this.config.maxTools) {
-      // Prioritize core tools
+      // Prioritize: core > last-turn > rest
       const core = filtered.filter(t => CORE_TOOL_NAMES.has(t.function.name));
-      const rest = filtered.filter(t => !CORE_TOOL_NAMES.has(t.function.name));
-      filtered = [...core, ...rest.slice(0, this.config.maxTools - core.length)];
+      const lastTurn = filtered.filter(
+        t => !CORE_TOOL_NAMES.has(t.function.name) && this.lastTurnTools.has(t.function.name),
+      );
+      const rest = filtered.filter(
+        t => !CORE_TOOL_NAMES.has(t.function.name) && !this.lastTurnTools.has(t.function.name),
+      );
+      const remaining = this.config.maxTools - core.length - lastTurn.length;
+      filtered = [...core, ...lastTurn, ...rest.slice(0, Math.max(0, remaining))];
     }
 
     const elapsed = Date.now() - startTime;
     logger.debug(`[HybridToolSelector] Selected ${filtered.length}/${allTools.length} tools in ${elapsed}ms`, {
       strategy: this.config.strategy,
       ruleMatches: selectedNames.size - CORE_TOOL_NAMES.size,
+      lastTurnBoost: this.lastTurnTools.size,
     });
 
     return filtered;
@@ -277,7 +307,13 @@ export class HybridToolSelector {
         const toolEmb = await getToolEmbedding(name, desc);
         if (!toolEmb) continue;
 
-        const sim = cosineSim(queryEmbedding, toolEmb);
+        let sim = cosineSim(queryEmbedding, toolEmb);
+
+        // [G-P2-05] Boost score for tools used in the previous turn
+        if (this.lastTurnTools.has(name)) {
+          sim = Math.min(1.0, sim + 0.15);
+        }
+
         scored.push({ name, score: sim });
       }
 

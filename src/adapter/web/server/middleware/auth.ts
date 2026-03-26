@@ -1,5 +1,6 @@
 import { Context, Next } from 'hono';
 import { createHash } from 'crypto';
+import { posix } from 'path';
 import type { WebConfig } from '@/infra/config/schema';
 
 function hashToken(token: string): string {
@@ -14,6 +15,10 @@ export function createAuthMiddleware(config: WebConfig) {
     if (authLevel === 'none') {
       return next();
     }
+
+    // Normalize path to prevent traversal bypass (e.g., /api/../admin)
+    const rawPath = new URL(c.req.url, 'http://localhost').pathname;
+    const normalizedPath = posix.normalize(decodeURIComponent(rawPath)).replace(/\/+/g, '/');
 
     // Token auth
     if (authLevel === 'token') {
@@ -38,7 +43,7 @@ export function createAuthMiddleware(config: WebConfig) {
 
       if (!token && !cookieHash) {
         // Check if this is an API request
-        if (c.req.path.startsWith('/api/')) {
+        if (normalizedPath.startsWith('/api/')) {
           return c.json({ error: 'Unauthorized', message: 'Token required' }, 401);
         }
         // Redirect to login page for HTML requests
@@ -46,14 +51,14 @@ export function createAuthMiddleware(config: WebConfig) {
       }
 
       if (token && token !== validToken) {
-        if (c.req.path.startsWith('/api/')) {
+        if (normalizedPath.startsWith('/api/')) {
           return c.json({ error: 'Unauthorized', message: 'Invalid token' }, 401);
         }
         return c.redirect('/login');
       }
 
       if (cookieHash && cookieHash !== expectedHash) {
-        if (c.req.path.startsWith('/api/')) {
+        if (normalizedPath.startsWith('/api/')) {
           return c.json({ error: 'Unauthorized', message: 'Invalid token' }, 401);
         }
         return c.redirect('/login');
@@ -67,7 +72,7 @@ export function createAuthMiddleware(config: WebConfig) {
       const authHeader = c.req.header('Authorization');
 
       if (!authHeader || !authHeader.startsWith('Basic ')) {
-        if (c.req.path.startsWith('/api/')) {
+        if (normalizedPath.startsWith('/api/')) {
           return c.json({ error: 'Unauthorized', message: 'Basic auth required' }, 401);
         }
         return c.redirect('/login');
@@ -80,7 +85,7 @@ export function createAuthMiddleware(config: WebConfig) {
       const validUser = validUsers.find(u => u.username === username && u.password === password);
 
       if (!validUser) {
-        if (c.req.path.startsWith('/api/')) {
+        if (normalizedPath.startsWith('/api/')) {
           return c.json({ error: 'Unauthorized', message: 'Invalid credentials' }, 401);
         }
         return c.redirect('/login');

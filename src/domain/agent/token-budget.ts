@@ -9,7 +9,7 @@ import type { ChatMessage } from './types';
 import {
   estimateMessageTokens, estimateTotalTokens, estimateTokens,
   compressToolResult, compressAssistantMessage,
-  type ContextConfig,
+  type AgentContextConfig,
 } from './context';
 import { compressMessages, shouldCompress } from './compression';
 import { getSimHasher } from './context/simhash';
@@ -32,7 +32,7 @@ export class TokenBudgetManager {
   private estimatedTokens: number;
 
   constructor(
-    private contextConfig: ContextConfig,
+    private contextConfig: AgentContextConfig,
     initialTokens: number,
   ) {
     this.estimatedTokens = initialTokens;

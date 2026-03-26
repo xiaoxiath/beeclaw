@@ -99,6 +99,13 @@ export class ConfigWatcher {
   private debounceTimer: Timer | null = null;
   private options: Required<ConfigWatcherOptions>;
 
+  /**
+   * [E-P2-06] Snapshot history for rollback support.
+   * Stores the last N config snapshots so that a bad reload can be reverted.
+   */
+  private snapshots: Array<{ config: AppConfig; timestamp: string }> = [];
+  private readonly maxSnapshots: number = 5;
+
   constructor(options: ConfigWatcherOptions = {}) {
     this.options = {
       debounceMs: options.debounceMs ?? 500,
@@ -166,6 +173,68 @@ export class ConfigWatcher {
   }
 
   /**
+   * [E-P2-06] Roll back to the previous configuration snapshot.
+   *
+   * Returns true if rollback succeeded, false if no snapshot is available.
+   * Notifies all listeners of the rolled-back changes.
+   */
+  rollback(): boolean {
+    if (this.snapshots.length === 0) {
+      logger.warn('[ConfigWatcher] No snapshots available for rollback');
+      return false;
+    }
+
+    const snapshot = this.snapshots.pop()!;
+    const oldConfig = this.currentConfig;
+    this.currentConfig = snapshot.config;
+
+    logger.info(
+      `[ConfigWatcher] Rolled back to snapshot from ${snapshot.timestamp}` +
+      ` (${this.snapshots.length} snapshots remaining)`,
+    );
+
+    // Notify listeners about the rollback
+    const timestamp = new Date().toISOString();
+    const change: ConfigChange = {
+      key: '*',
+      oldValue: oldConfig,
+      newValue: snapshot.config,
+      timestamp,
+    };
+
+    for (const listener of this.listeners) {
+      try {
+        listener(change);
+      } catch (error) {
+        logger.error('[ConfigWatcher] Listener error during rollback:', error);
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * [E-P2-06] Get the list of available snapshots (most recent last).
+   */
+  getSnapshots(): ReadonlyArray<{ config: AppConfig; timestamp: string }> {
+    return [...this.snapshots];
+  }
+
+  /**
+   * [E-P2-06] Push a snapshot onto the history stack, evicting the oldest
+   * if we exceed maxSnapshots.
+   */
+  private pushSnapshot(config: AppConfig): void {
+    this.snapshots.push({
+      config: JSON.parse(JSON.stringify(config)), // deep clone
+      timestamp: new Date().toISOString(),
+    });
+    while (this.snapshots.length > this.maxSnapshots) {
+      this.snapshots.shift();
+    }
+  }
+
+  /**
    * 处理文件变更
    */
   private handleFileChange(): void {
@@ -214,6 +283,11 @@ export class ConfigWatcher {
       if (changes.length === 0) {
         logger.debug('[ConfigWatcher] No changes detected');
         return;
+      }
+
+      // [E-P2-06] Save snapshot before applying new config (for rollback)
+      if (this.currentConfig) {
+        this.pushSnapshot(this.currentConfig);
       }
 
       // 更新配置

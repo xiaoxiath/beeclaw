@@ -24,5 +24,5 @@ export * from './executor';
 
 // Phase 5: Shared State Management
 export * from './state';
-export * from './state-tools';
+export * from './state-tools-consolidated';
 export * from './state-executor';

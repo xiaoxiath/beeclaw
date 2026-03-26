@@ -149,15 +149,17 @@ export async function handleHITLResponse(
  * 解析用户的决策（APPROVED/DENIED）
  */
 export function parseUserDecision(message: string): 'APPROVED' | 'DENIED' | null {
-  const normalized = message.trim().toUpperCase();
+  const normalized = message.trim().toLowerCase();
 
-  // 批准关键词
-  if (['APPROVED', 'YES', 'OK', 'CONFIRM', 'PROCEED', '批准', '同意', '确认', '继续'].includes(normalized)) {
+  // Strict whitelist: only exact matches accepted (no substring/contains matching)
+  const APPROVE_WORDS = new Set(['yes', 'confirm', 'approve']);
+  const DENY_WORDS = new Set(['no', 'deny', 'reject']);
+
+  if (APPROVE_WORDS.has(normalized)) {
     return 'APPROVED';
   }
 
-  // 拒绝关键词
-  if (['DENIED', 'NO', 'CANCEL', 'REJECT', 'ABORT', '拒绝', '取消', '否决', '停止'].includes(normalized)) {
+  if (DENY_WORDS.has(normalized)) {
     return 'DENIED';
   }
 
@@ -191,8 +193,10 @@ export function parseUserChoice(input: string, options: string[]): number | null
  * 解析用户确认（yes/no）
  */
 export function parseUserConfirmation(input: string): boolean {
-  const normalized = input.trim().toUpperCase();
-  return ['YES', 'OK', 'CONFIRM', 'SURE', '是', '对', '确认', '好的'].includes(normalized);
+  const normalized = input.trim().toLowerCase();
+  // Strict whitelist: only exact full-word matches
+  const CONFIRM_WORDS = new Set(['yes', 'confirm', 'approve']);
+  return CONFIRM_WORDS.has(normalized);
 }
 
 /**

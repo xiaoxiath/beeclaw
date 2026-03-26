@@ -108,6 +108,8 @@ export interface IChannelClient {
 // Port Registry (Dependency Injection Container)
 // ============================================================================
 
+const _warnedPorts = new Set<string>();
+
 const _ports: {
   mcpManager: (() => IMCPManager) | null;
   pluginRegistry: (() => IPluginRegistry) | null;
@@ -145,12 +147,22 @@ export function registerPorts(ports: Partial<typeof _ports>): void {
 
 /** Get MCP Manager instance (or null if not registered) */
 export function getMCPManagerPort(): IMCPManager | null {
-  return _ports.mcpManager?.() ?? null;
+  const instance = _ports.mcpManager?.() ?? null;
+  if (!instance && !_warnedPorts.has('mcpManager')) {
+    _warnedPorts.add('mcpManager');
+    console.warn('[Ports] mcpManager port not registered. Call registerPorts() during app init.');
+  }
+  return instance;
 }
 
 /** Get Plugin Registry instance (or null if not registered) */
 export function getPluginRegistryPort(): IPluginRegistry | null {
-  return _ports.pluginRegistry?.() ?? null;
+  const instance = _ports.pluginRegistry?.() ?? null;
+  if (!instance && !_warnedPorts.has('pluginRegistry')) {
+    _warnedPorts.add('pluginRegistry');
+    console.warn('[Ports] pluginRegistry port not registered. Call registerPorts() during app init.');
+  }
+  return instance;
 }
 
 /**
@@ -166,10 +178,44 @@ export function getHookRunnerPort(): IHookRunner | null {
 
 /** Get Channel Client instance (or null if not registered) */
 export function getChannelClientPort(): IChannelClient | null {
-  return _ports.channelClient?.() ?? null;
+  const instance = _ports.channelClient?.() ?? null;
+  if (!instance && !_warnedPorts.has('channelClient')) {
+    _warnedPorts.add('channelClient');
+    console.warn('[Ports] channelClient port not registered. Call registerPorts() during app init.');
+  }
+  return instance;
 }
 
 /** Get Message Controller Factory (or null if not registered) */
 export function getMessageControllerFactory(): MessageControllerFactory | null {
   return _ports.messageControllerFactory ?? null;
+}
+
+// ============================================================================
+// Health Monitor Port (A-P0-02)
+// ============================================================================
+
+/** Health Monitor Port — abstracts periodic health monitoring for data sources */
+export interface IHealthMonitor {
+  hasIssues(): boolean;
+  buildHealthContext(): string;
+  getStatus(): {
+    isRunning: boolean;
+    lastProbeTime: Date | null;
+    currentHealthy: boolean;
+    unhealthySources: string[];
+  };
+}
+
+// Add to port registry
+let _healthMonitor: (() => IHealthMonitor | null) | null = null;
+
+/** Register health monitor port implementation. */
+export function registerHealthMonitorPort(factory: () => IHealthMonitor | null): void {
+  _healthMonitor = factory;
+}
+
+/** Get health monitor instance (or null if not registered). */
+export function getHealthMonitorPort(): IHealthMonitor | null {
+  return _healthMonitor?.() ?? null;
 }

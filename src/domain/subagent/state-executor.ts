@@ -14,8 +14,8 @@ import type {
   StateListParams,
   StateLockParams,
   StateUnlockParams,
-} from './state-tools';
-import { formatStateEntry, formatStateStats } from './state-tools';
+} from './state-tools-consolidated';
+import { formatStateEntry, formatStateStats } from './state-tools-consolidated';
 import type { ToolResult } from '../tools/builtin';
 
 /**

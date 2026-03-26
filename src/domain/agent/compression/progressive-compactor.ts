@@ -1,6 +1,13 @@
 /**
  * Progressive Compactor
  *
+ * The recommended entry-point for context compression.
+ *
+ * Integration:
+ *   1. Get instance:  `const compactor = getProgressiveCompactor();`
+ *   2. Call:          `const result = await compactor.compact(messages, currentTurn);`
+ *   3. The compactor automatically selects compression level per age-zone.
+ *
  * Implements progressive compaction strategy inspired by LSM-Tree:
  * - Messages are grouped into age zones (hot/warm/cool/cold)
  * - Older zones are compressed more aggressively

@@ -1,6 +1,5 @@
 /**
- * @deprecated Use ProgressiveCompactor instead. This module will be removed in v2.0.
- * TieredCompressor is now used internally by ProgressiveCompactor only.
+ * @internal Used internally by ProgressiveCompactor — not part of the public API.
  * For new code, use ProgressiveCompactor.compact() which handles age-zone-based
  * compression automatically.
  *
@@ -15,6 +14,9 @@
  * L1 (Format): 10-30% compression, ~99% retention, <1ms
  * L2 (Extractive): 30-60% compression, ~85% retention, ~10ms
  * L3 (Abstractive): 60-90% compression, ~70% retention, ~1s
+ *
+ * [G-P1-04] L3 compression now gracefully degrades to L2 result on failure
+ * instead of propagating the error upward.
  */
 
 import type {
@@ -30,7 +32,7 @@ import { L3AbstractiveCompressor, getL3Compressor } from './l3-abstractive-compr
 import { estimateTokens } from '../context';
 import { logger } from '../../../infra/observability/logger';
 
-/** @deprecated Use ProgressiveCompactor instead */
+/** @internal Used by ProgressiveCompactor only. */
 export class TieredCompressor {
   private l1: L1FormatCompressor;
   private l2: L2ExtractiveCompressor;
@@ -160,24 +162,50 @@ export class TieredCompressor {
       };
     }
 
-    // Apply L3
+    // Apply L3 — [G-P1-04] with fallback to L2 result on failure
+    const l2FallbackResult = result; // Snapshot after L1+L2 for fallback
     const l3Target = targetTokens ?? Math.ceil(estimateTokens(result) * 0.3);
-    const l3Result = await this.l3.compress(result, l3Target);
-    result = l3Result.compressed;
-    methods.push(l3Result.method);
 
-    const latencyMs = Date.now() - startTime;
-    this.updateStats('L1+L2+L3', totalOriginalTokens, estimateTokens(result), latencyMs);
+    try {
+      const l3Result = await this.l3.compress(result, l3Target);
+      result = l3Result.compressed;
+      methods.push(l3Result.method);
 
-    return {
-      compressed: result,
-      originalTokens: totalOriginalTokens,
-      compressedTokens: estimateTokens(result),
-      ratio: totalOriginalTokens > 0 ? 1 - estimateTokens(result) / totalOriginalTokens : 0,
-      infoRetention: 0.70,
-      method: methods.join(' -> '),
-      latencyMs,
-    };
+      const latencyMs = Date.now() - startTime;
+      this.updateStats('L1+L2+L3', totalOriginalTokens, estimateTokens(result), latencyMs);
+
+      return {
+        compressed: result,
+        originalTokens: totalOriginalTokens,
+        compressedTokens: estimateTokens(result),
+        ratio: totalOriginalTokens > 0 ? 1 - estimateTokens(result) / totalOriginalTokens : 0,
+        infoRetention: 0.70,
+        method: methods.join(' -> '),
+        latencyMs,
+      };
+    } catch (l3Error) {
+      // [G-P1-04] L3 (LLM abstractive) failed — degrade gracefully to L2 result.
+      // This prevents compression failures from crashing the agent loop.
+      logger.warn(
+        '[TieredCompressor] L3 abstractive compression failed, degrading to L2 result:',
+        l3Error instanceof Error ? l3Error.message : l3Error,
+      );
+      methods.push('L3_FALLBACK_TO_L2');
+
+      const latencyMs = Date.now() - startTime;
+      const compressedTokens = estimateTokens(l2FallbackResult);
+      this.updateStats('L1+L2', totalOriginalTokens, compressedTokens, latencyMs);
+
+      return {
+        compressed: l2FallbackResult,
+        originalTokens: totalOriginalTokens,
+        compressedTokens,
+        ratio: totalOriginalTokens > 0 ? 1 - compressedTokens / totalOriginalTokens : 0,
+        infoRetention: 0.85, // L2 retention level
+        method: methods.join(' -> '),
+        latencyMs,
+      };
+    }
   }
 
   /**
@@ -267,8 +295,7 @@ export class TieredCompressor {
 let tieredInstance: TieredCompressor | null = null;
 
 /**
- * @deprecated Use getProgressiveCompactor() instead.
- * Get tiered compressor instance
+ * @internal Get tiered compressor instance (used by ProgressiveCompactor).
  */
 export function getTieredCompressor(): TieredCompressor {
   if (!tieredInstance) {
@@ -278,16 +305,15 @@ export function getTieredCompressor(): TieredCompressor {
 }
 
 /**
- * @deprecated Use resetProgressiveCompactor() instead.
- * Reset tiered compressor (for testing)
+ * @internal Reset tiered compressor (for testing).
  */
 export function resetTieredCompressor(): void {
   tieredInstance = null;
 }
 
 /**
- * @deprecated Configure via ProgressiveCompactor constructor instead.
- * Configure tiered compressor with LLM client
+ * Configure tiered compressor with LLM client.
+ * Called from app layer during bootstrap.
  */
 export function configureTieredCompressor(client: CompressionLLMClient): void {
   getTieredCompressor().setLLMClient(client);

@@ -1,173 +1,106 @@
 /**
- * Store Manager
+ * Store Manager — Infrastructure Layer
  *
- * Unified initialization for all Beeclaw stores
+ * Provides database-directory bootstrapping and base-path management.
+ * Does NOT import domain modules; domain-specific store creation is
+ * handled by app/bootstrap-stores.ts (dependency inversion).
  */
 
 import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { DEFAULT_MEMORY_BASE_PATH } from '../../types';
-import { MemoryStore, getMemoryStore, resetMemoryStore } from '../../domain/memory/store';
-import { GoalStore, getGoalStore, resetGoalStore } from '../../domain/agent/goal/store';
-import { Scheduler, getScheduler, resetScheduler } from '../../domain/proactive/scheduler';
-import { NotificationManager, getNotificationManager, resetNotificationManager } from '../../domain/proactive/notifications';
-import { getCompressionEngine, resetCompressionEngine } from '../../domain/memory/compression';
-import { PersonaStore, getPersonaStore, resetPersonaStore } from '../../domain/agent/persona/store';
-import { SkillStore, getSkillStore, resetSkillStore } from '../../domain/skills/store';
-import type { MemoryConfig } from '../../domain/memory/types';
 
 export interface StoreManagerConfig {
   basePath: string;
   autoInit?: boolean;
 }
 
-export interface Stores {
-  memory: MemoryStore;
-  goal: GoalStore;
-  scheduler: Scheduler;
-  notifications: NotificationManager;
-  persona: PersonaStore;
-  skill: SkillStore;
+export interface StoreManager {
+  basePath: string;
 }
 
-let stores: Stores | null = null;
-let config: StoreManagerConfig | null = null;
+let _manager: StoreManager | null = null;
+let _config: StoreManagerConfig | null = null;
 
 /**
- * Initialize all stores with unified configuration
+ * Initialize the store manager (directory creation only).
+ *
+ * Domain store instances are created by app/bootstrap-stores.ts.
  */
-export function initStores(storeConfig?: StoreManagerConfig): Stores {
-  if (stores) {
-    return stores;
-  }
+export function initStoreManager(storeConfig?: StoreManagerConfig): StoreManager {
+  if (_manager) return _manager;
 
-  config = storeConfig || { basePath: DEFAULT_MEMORY_BASE_PATH, autoInit: true };
+  _config = storeConfig || { basePath: DEFAULT_MEMORY_BASE_PATH, autoInit: true };
+  const { basePath, autoInit = true } = _config;
 
-  const { basePath, autoInit = true } = config;
-
-  // Ensure base directory exists
   if (autoInit && !existsSync(basePath)) {
     mkdirSync(basePath, { recursive: true });
   }
 
-  // Initialize memory config
-  const memoryConfig: MemoryConfig = {
-    type: 'filesystem',
-    path: basePath,
-    tools: {
-      enabled: ['memory_ls', 'memory_grep', 'memory_read', 'memory_write', 'memory_record'],
-      autoRecord: true,
-    },
-    retention: {
-      conversations: '90d',
-      facts: 'forever',
-      decisions: 'forever',
-    },
-  };
-
-  // Initialize all stores in correct order
-  const memory = getMemoryStore(memoryConfig);
-  const goal = getGoalStore(join(basePath, 'goals'));
-  const scheduler = getScheduler(join(basePath, 'proactive'));
-  const notifications = getNotificationManager(join(basePath, 'proactive'));
-  const persona = getPersonaStore(basePath);
-  const skill = getSkillStore(join(basePath, 'skills'));
-
-  // Initialize compression engine
-  getCompressionEngine(basePath);
-
-  stores = { memory, goal, scheduler, notifications, persona, skill };
-
-  return stores;
+  _manager = { basePath };
+  return _manager;
 }
 
 /**
- * Get all stores (must call initStores first)
- */
-export function getStores(): Stores {
-  if (!stores) {
-    throw new Error('Stores not initialized. Call initStores() first.');
-  }
-  return stores;
-}
-
-/**
- * Get store configuration
+ * Get store configuration.
  */
 export function getStoreConfig(): StoreManagerConfig | null {
-  return config;
+  return _config;
 }
 
 /**
- * Get base path for all stores
+ * Get base path for all stores.
  */
 export function getBasePath(): string {
-  return config?.basePath || DEFAULT_MEMORY_BASE_PATH;
+  return _config?.basePath || DEFAULT_MEMORY_BASE_PATH;
 }
 
 /**
- * Reset all stores (for testing)
+ * Reset store manager (for testing).
  */
+export function resetStoreManager(): void {
+  _manager = null;
+  _config = null;
+}
+
+/**
+ * Check if store manager is initialized.
+ */
+export function isStoreManagerInitialized(): boolean {
+  return _manager !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Backward-compatible aliases
+//
+// Several modules still import initStores / getStores / resetStores from this
+// path.  The real domain-aware implementations now live in
+// app/bootstrap-stores.ts, but we re-export thin wrappers here so that
+// existing call-sites keep working until they are migrated.
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use bootstrapStores() from app/bootstrap-stores instead. */
+export function initStores(storeConfig?: StoreManagerConfig): any {
+  // Lazy-import to avoid pulling domain code at module-evaluation time
+  // when callers only need the infra helpers.
+  const { bootstrapStores } = require('../../app/bootstrap-stores');
+  return bootstrapStores(storeConfig);
+}
+
+/** @deprecated Use getStores() from app/bootstrap-stores instead. */
+export function getStores(): any {
+  const { getStores: _getStores } = require('../../app/bootstrap-stores');
+  return _getStores();
+}
+
+/** @deprecated Use resetAllStores() from app/bootstrap-stores instead. */
 export function resetStores(): void {
-  resetMemoryStore();
-  resetGoalStore();
-  resetScheduler();
-  resetNotificationManager();
-  resetCompressionEngine();
-  resetPersonaStore();
-  resetSkillStore();
-  stores = null;
-  config = null;
+  const { resetAllStores } = require('../../app/bootstrap-stores');
+  resetAllStores();
+  resetStoreManager();
 }
 
-/**
- * Check if stores are initialized
- */
+/** @deprecated */
 export function isStoresInitialized(): boolean {
-  return stores !== null;
-}
-
-/**
- * Get individual stores with lazy initialization
- */
-export function getMemoryStoreLazy(): MemoryStore {
-  if (!stores) {
-    initStores();
-  }
-  return stores!.memory;
-}
-
-export function getGoalStoreLazy(): GoalStore {
-  if (!stores) {
-    initStores();
-  }
-  return stores!.goal;
-}
-
-export function getSchedulerLazy(): Scheduler {
-  if (!stores) {
-    initStores();
-  }
-  return stores!.scheduler;
-}
-
-export function getNotificationsLazy(): NotificationManager {
-  if (!stores) {
-    initStores();
-  }
-  return stores!.notifications;
-}
-
-export function getPersonaStoreLazy(): PersonaStore {
-  if (!stores) {
-    initStores();
-  }
-  return stores!.persona;
-}
-
-export function getSkillStoreLazy(): SkillStore {
-  if (!stores) {
-    initStores();
-  }
-  return stores!.skill;
+  const { isStoresBootstrapped } = require('../../app/bootstrap-stores');
+  return isStoresBootstrapped();
 }

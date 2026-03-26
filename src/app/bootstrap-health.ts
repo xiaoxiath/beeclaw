@@ -14,6 +14,7 @@ import { getMCPManager } from '../adapter/mcp';
 import { setupHealthChecker } from '../domain/tools';
 import { getSearchOrchestrator } from '../domain/search';
 import { logger } from '../infra/observability/logger';
+import { registerHealthMonitorPort } from '../domain/ports';
 import { getCompressionStats } from '../domain/agent/compression';
 import { getContextHealthDashboard } from '../domain/agent/context/health-dashboard';
 
@@ -136,6 +137,9 @@ export function bootstrapHealthCheck(): {
 
   _healthChecker = healthChecker;
   _healthMonitor = healthMonitor;
+  
+  // Register port so domain layer can access health monitor via ports
+  registerHealthMonitorPort(() => _healthMonitor);
 
   logger.info('[Bootstrap] Health check subsystem initialized successfully');
 

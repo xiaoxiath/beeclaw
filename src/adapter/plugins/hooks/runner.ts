@@ -173,11 +173,14 @@ export class HookRunner {
           // 合并结果到事件
           currentEvent = { ...currentEvent, ...result } as T;
         }
-      } catch (error) {
-        this.handleHookError(hookName, reg, error);
+      } catch (err) {
+        // B-P2-08: Always log, never let a single plugin break the pipeline
+        console.warn(`[HookRunner] Plugin hook '${reg.id}' (${hookName}) failed:`, err);
+        this.handleHookError(hookName, reg, err);
         if (!this.catchErrors) {
-          throw error;
+          throw err;
         }
+        // Return safe default — continue with unmodified event
       }
     }
 
@@ -206,11 +209,14 @@ export class HookRunner {
       hooks.map(async (reg) => {
         try {
           await reg.handler(event, ctx);
-        } catch (error) {
-          this.handleHookError(hookName, reg, error);
+        } catch (err) {
+          // B-P2-08: Always log, never let a single plugin break the pipeline
+          console.warn(\`[HookRunner] Plugin hook '\${reg.id}' (\${hookName}) failed:\`, err);
+          this.handleHookError(hookName, reg, err);
           if (!this.catchErrors) {
-            throw error;
+            throw err;
           }
+          // Swallow error — continue with other hooks
         }
       }),
     );
@@ -247,18 +253,21 @@ export class HookRunner {
         // 不支持异步结果
         if (result instanceof Promise) {
           this.logger.warn?.(
-            `[hooks] ${hookName} handler ${reg.id} returned Promise in sync context`,
+            \`[hooks] \${hookName} handler \${reg.id} returned Promise in sync context\`,
           );
           continue;
         }
         if (result !== undefined && result !== null) {
           currentEvent = { ...currentEvent, ...result } as T;
         }
-      } catch (error) {
-        this.handleHookError(hookName, reg, error);
+      } catch (err) {
+        // B-P2-08: Always log, never let a single plugin break the pipeline
+        console.warn(\`[HookRunner] Plugin hook '\${reg.id}' (\${hookName}) failed:\`, err);
+        this.handleHookError(hookName, reg, err);
         if (!this.catchErrors) {
-          throw error;
+          throw err;
         }
+        // Return safe default — continue with unmodified event
       }
     }
 
@@ -276,15 +285,20 @@ export class HookRunner {
     _event: PluginHookBeforeModelResolveEvent,
     ctx: PluginHookAgentContext,
   ): Promise<PluginHookBeforeModelResolveResult> {
-    const hookCtx: HookContext = {
-      ...ctx,
-      timestamp: new Date().toISOString(),
-    };
-    return this.runSequential<PluginHookBeforeModelResolveResult>(
-      'before_model_resolve',
-      {} as PluginHookBeforeModelResolveResult,
-      hookCtx,
-    );
+    try {
+      const hookCtx: HookContext = {
+        ...ctx,
+        timestamp: new Date().toISOString(),
+      };
+      return await this.runSequential<PluginHookBeforeModelResolveResult>(
+        'before_model_resolve',
+        {} as PluginHookBeforeModelResolveResult,
+        hookCtx,
+      );
+    } catch (err) {
+      console.warn('[HookRunner] before_model_resolve failed:', err);
+      return {} as PluginHookBeforeModelResolveResult;
+    }
   }
 
   /**
@@ -294,15 +308,20 @@ export class HookRunner {
     _event: PluginHookBeforePromptBuildEvent,
     ctx: PluginHookAgentContext,
   ): Promise<PluginHookBeforePromptBuildResult> {
-    const hookCtx: HookContext = {
-      ...ctx,
-      timestamp: new Date().toISOString(),
-    };
-    return this.runSequential<PluginHookBeforePromptBuildResult>(
-      'before_prompt_build',
-      {} as PluginHookBeforePromptBuildResult,
-      hookCtx,
-    );
+    try {
+      const hookCtx: HookContext = {
+        ...ctx,
+        timestamp: new Date().toISOString(),
+      };
+      return await this.runSequential<PluginHookBeforePromptBuildResult>(
+        'before_prompt_build',
+        {} as PluginHookBeforePromptBuildResult,
+        hookCtx,
+      );
+    } catch (err) {
+      console.warn('[HookRunner] before_prompt_build failed:', err);
+      return {} as PluginHookBeforePromptBuildResult;
+    }
   }
 
   /**
@@ -312,20 +331,25 @@ export class HookRunner {
     event: PluginHookMessageSendingEvent,
     ctx: { channelId: string; accountId?: string },
   ): Promise<{ content: string; cancelled: boolean }> {
-    const hookCtx: HookContext = {
-      ...ctx,
-      timestamp: new Date().toISOString(),
-    };
-    const result = await this.runSequential<PluginHookMessageSendingResult>(
-      'message_sending',
-      {} as PluginHookMessageSendingResult,
-      hookCtx,
-    );
+    try {
+      const hookCtx: HookContext = {
+        ...ctx,
+        timestamp: new Date().toISOString(),
+      };
+      const result = await this.runSequential<PluginHookMessageSendingResult>(
+        'message_sending',
+        {} as PluginHookMessageSendingResult,
+        hookCtx,
+      );
 
-    return {
-      content: result.content ?? event.content,
-      cancelled: result.cancel ?? false,
-    };
+      return {
+        content: result.content ?? event.content,
+        cancelled: result.cancel ?? false,
+      };
+    } catch (err) {
+      console.warn('[HookRunner] message_sending failed:', err);
+      return { content: event.content, cancelled: false };
+    }
   }
 
   /**
@@ -335,21 +359,26 @@ export class HookRunner {
     event: PluginHookBeforeToolCallEvent,
     ctx: { agentId?: string; sessionKey?: string; toolName: string },
   ): Promise<{ params: Record<string, unknown>; blocked: boolean; blockReason?: string }> {
-    const hookCtx: HookContext = {
-      ...ctx,
-      timestamp: new Date().toISOString(),
-    };
-    const result = await this.runSequential<PluginHookBeforeToolCallResult>(
-      'before_tool_call',
-      {} as PluginHookBeforeToolCallResult,
-      hookCtx,
-    );
+    try {
+      const hookCtx: HookContext = {
+        ...ctx,
+        timestamp: new Date().toISOString(),
+      };
+      const result = await this.runSequential<PluginHookBeforeToolCallResult>(
+        'before_tool_call',
+        {} as PluginHookBeforeToolCallResult,
+        hookCtx,
+      );
 
-    return {
-      params: result.params ?? event.params,
-      blocked: result.block ?? false,
-      blockReason: result.blockReason,
-    };
+      return {
+        params: result.params ?? event.params,
+        blocked: result.block ?? false,
+        blockReason: result.blockReason,
+      };
+    } catch (err) {
+      console.warn('[HookRunner] before_tool_call failed:', err);
+      return { params: event.params, blocked: false };
+    }
   }
 
   /**
@@ -359,20 +388,25 @@ export class HookRunner {
     event: PluginHookToolResultPersistEvent,
     ctx: { agentId?: string; sessionKey?: string; toolName?: string; toolCallId?: string },
   ): PluginHookToolResultPersistEvent {
-    const hookCtx: HookContext = {
-      ...ctx,
-      timestamp: new Date().toISOString(),
-    };
-    const result = this.runSync<PluginHookToolResultPersistResult>(
-      'tool_result_persist',
-      {} as PluginHookToolResultPersistResult,
-      hookCtx,
-    );
+    try {
+      const hookCtx: HookContext = {
+        ...ctx,
+        timestamp: new Date().toISOString(),
+      };
+      const result = this.runSync<PluginHookToolResultPersistResult>(
+        'tool_result_persist',
+        {} as PluginHookToolResultPersistResult,
+        hookCtx,
+      );
 
-    if (result.message) {
-      return { ...event, message: result.message };
+      if (result.message) {
+        return { ...event, message: result.message };
+      }
+      return event;
+    } catch (err) {
+      console.warn('[HookRunner] tool_result_persist failed:', err);
+      return event;
     }
-    return event;
   }
 
   /**
@@ -382,20 +416,25 @@ export class HookRunner {
     event: PluginHookBeforeMessageWriteEvent,
     ctx: { agentId?: string; sessionKey?: string },
   ): { message: typeof event.message; blocked: boolean } {
-    const hookCtx: HookContext = {
-      ...ctx,
-      timestamp: new Date().toISOString(),
-    };
-    const result = this.runSync<PluginHookBeforeMessageWriteResult>(
-      'before_message_write',
-      {} as PluginHookBeforeMessageWriteResult,
-      hookCtx,
-    );
+    try {
+      const hookCtx: HookContext = {
+        ...ctx,
+        timestamp: new Date().toISOString(),
+      };
+      const result = this.runSync<PluginHookBeforeMessageWriteResult>(
+        'before_message_write',
+        {} as PluginHookBeforeMessageWriteResult,
+        hookCtx,
+      );
 
-    return {
-      message: result.message ?? event.message,
-      blocked: result.block ?? false,
-    };
+      return {
+        message: result.message ?? event.message,
+        blocked: result.block ?? false,
+      };
+    } catch (err) {
+      console.warn('[HookRunner] before_message_write failed:', err);
+      return { message: event.message, blocked: false };
+    }
   }
 
   // ============================================================================

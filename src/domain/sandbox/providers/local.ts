@@ -22,6 +22,20 @@ import type {
 import { logger } from '../../../infra/observability/logger';
 
 /**
+ * Security: Validate that a resolved file path stays within the sandbox base directory.
+ * Prevents path traversal attacks (e.g., ../../etc/passwd).
+ */
+function assertPathSafe(filePath: string, baseDir: string): string {
+  const resolved = path.resolve(baseDir, filePath);
+  let real: string;
+  try { real = fs.realpathSync(resolved); } catch { real = resolved; }
+  if (!real.startsWith(path.resolve(baseDir))) {
+    throw new Error(`Path traversal blocked: ${filePath}`);
+  }
+  return real;
+}
+
+/**
  * Local Sandbox Instance
  */
 class LocalSandbox implements Sandbox {
@@ -243,7 +257,7 @@ class LocalSandbox implements Sandbox {
       throw new Error('Sandbox has been destroyed');
     }
 
-    const fullPath = path.join(this.workspacePath, filePath);
+    const fullPath = assertPathSafe(filePath, this.workspacePath);
     const dir = path.dirname(fullPath);
 
     // Ensure directory exists
@@ -259,7 +273,7 @@ class LocalSandbox implements Sandbox {
       throw new Error('Sandbox has been destroyed');
     }
 
-    const fullPath = path.join(this.workspacePath, filePath);
+    const fullPath = assertPathSafe(filePath, this.workspacePath);
 
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File not found: ${filePath}`);
@@ -273,7 +287,7 @@ class LocalSandbox implements Sandbox {
       throw new Error('Sandbox has been destroyed');
     }
 
-    const fullPath = path.join(this.workspacePath, dirPath);
+    const fullPath = assertPathSafe(dirPath, this.workspacePath);
 
     if (!fs.existsSync(fullPath)) {
       return [];

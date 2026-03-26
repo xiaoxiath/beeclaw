@@ -3,6 +3,10 @@
  *
  * Main orchestrator for task decomposition and execution.
  * Now supports cooperative cancellation via AbortController.
+ *
+ * [G-P1-03] Added maxTokens budget enforcement: when cumulative token usage
+ * across all sub-agents exceeds the configured budget, pending subtasks are
+ * skipped and running subtasks are aborted.
  */
 
 import { logger } from '../../infra/observability/logger';
@@ -130,6 +134,10 @@ export class TaskOrchestrator {
    * Creates an AbortController whose signal is propagated to every spawned
    * subagent. When the global timeout fires, all running subagents receive
    * the abort signal for cooperative cancellation.
+   *
+   * [G-P1-03] Token budget: when opts.maxTokens > 0, cumulative token usage
+   * is tracked after each subtask completes. If the budget is exceeded,
+   * remaining subtasks are skipped/aborted.
    */
   async execute(
     decomposition: TaskDecomposition,
@@ -139,6 +147,11 @@ export class TaskOrchestrator {
     const startTime = Date.now();
     const globalTimeout = opts.timeout || 300000;
 
+    // [G-P1-03] Token budget tracking
+    const tokenBudget = opts.maxTokens ?? 0; // 0 = unlimited
+    let cumulativeTokens = 0;
+    let budgetExceeded = false;
+
     // ---------------------------------------------------------------
     // AbortController: propagates cancellation to all child subagents
     // ---------------------------------------------------------------
@@ -147,6 +160,9 @@ export class TaskOrchestrator {
 
     logger.info(`[Orchestrator] Starting execution of ${decomposition.subtasks.length} subtasks`);
     logger.debug(`[Orchestrator] Max parallelism: ${opts.maxParallelism}`);
+    if (tokenBudget > 0) {
+      logger.info(`[Orchestrator] Token budget: ${tokenBudget}`);
+    }
 
     // Initialize scheduler
     const scheduler = new DAGScheduler(opts.maxParallelism);
@@ -189,11 +205,36 @@ export class TaskOrchestrator {
             scheduler.completeTask(task.id, result);
             results.set(task.id, result);
 
+            // [G-P1-03] Track cumulative token usage
+            cumulativeTokens += result.tokensUsed;
+            if (tokenBudget > 0 && cumulativeTokens >= tokenBudget && !budgetExceeded) {
+              budgetExceeded = true;
+              logger.warn(
+                `[Orchestrator] Token budget exceeded: ${cumulativeTokens}/${tokenBudget}. ` +
+                `Aborting remaining subtasks.`,
+              );
+              abortController.abort();
+
+              // Skip all pending subtasks
+              for (const state of scheduler.getTaskStates().values()) {
+                if (state.status === 'pending') {
+                  scheduler.skipTask(state.subtask.id);
+                  errors.push({
+                    subtaskId: state.subtask.id,
+                    error: `Skipped: token budget exceeded (${cumulativeTokens}/${tokenBudget})`,
+                  });
+                }
+              }
+            }
+
             logger.info(`[Orchestrator] Subtask ${task.id} completed successfully`);
             opts.onSubtaskComplete?.(task.id, result);
           } else {
             const errorMsg = result.error || 'Unknown error';
             logger.error(`[Orchestrator] Subtask ${task.id} failed:`, errorMsg);
+
+            // Still count tokens from failed attempts
+            cumulativeTokens += result.tokensUsed;
 
             const state = scheduler.getTaskState(task.id);
             if (state && state.retryCount < opts.maxRetries!) {
@@ -255,6 +296,12 @@ export class TaskOrchestrator {
         break;
       }
 
+      // [G-P1-03] Budget exceeded — stop scheduling new tasks
+      if (budgetExceeded) {
+        logger.info('[Orchestrator] Token budget exceeded — waiting for running subtasks to settle');
+        break;
+      }
+
       const readyTasks = scheduler.getParallelizableTasks();
 
       if (readyTasks.length === 0) {
@@ -294,6 +341,9 @@ export class TaskOrchestrator {
     const success = scheduler.isSuccessful();
 
     logger.info(`[Orchestrator] Execution ${success ? 'completed' : 'finished with errors'} in ${duration}ms`);
+    if (tokenBudget > 0) {
+      logger.info(`[Orchestrator] Token usage: ${cumulativeTokens}/${tokenBudget}`);
+    }
 
     const output = this.aggregateOutput(decomposition, results);
     const stats = this.calculateStats(results, duration, scheduler);

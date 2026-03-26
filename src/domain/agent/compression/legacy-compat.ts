@@ -4,6 +4,11 @@
  * @deprecated This module re-exports the old hybridCompress API.
  * New code should use compressMessages from './agent-integration' or
  * ProgressiveCompactor directly. This file will be removed in v2.0.
+ *
+ * MIGRATION GUIDE:
+ *   - hybridCompress()  -> import { compressMessages } from './agent-integration'
+ *   - LegacyCompressionResult -> import { CompressionResult } from './types'
+ *   - For fine-grained control, use ProgressiveCompactor.compact() directly.
  */
 
 import type { AIProvider, CompressionConfig } from '../../../infra/config/schema';

@@ -8,7 +8,35 @@
  * continuous monitoring without requiring the agent to manually trigger checks.
  */
 import { Logger } from '../../types';
-import { DataSourceHealthChecker, HealthCheckResult } from '../../domain/tools/datasource-health';
+
+// ---------------------------------------------------------------------------
+// Interfaces — Dependency Inversion
+//
+// The monitor depends on *interfaces* rather than the concrete
+// DataSourceHealthChecker class so the infra layer never imports from domain.
+// The app layer (bootstrap-health.ts) injects the concrete instance.
+// ---------------------------------------------------------------------------
+
+/** Minimal shape of a single source health entry. */
+export interface HealthSource {
+  name: string;
+  type: string;
+  healthy: boolean;
+  error?: string;
+}
+
+/** Result of a health check run. */
+export interface HealthCheckResult {
+  overallHealthy: boolean;
+  sources: HealthSource[];
+  recommendations: string[];
+}
+
+/** Interface the monitor requires from its health-checker dependency. */
+export interface IHealthChecker {
+  runHealthCheck(options?: Record<string, unknown>): Promise<HealthCheckResult>;
+  getLastResult(): HealthCheckResult | undefined;
+}
 
 export interface PeriodicHealthMonitorConfig {
   /** Check interval in milliseconds (default: 5 minutes) */
@@ -29,7 +57,7 @@ const DEFAULT_CONFIG: PeriodicHealthMonitorConfig = {
 
 export class PeriodicHealthMonitor {
   private config: PeriodicHealthMonitorConfig;
-  private healthChecker: DataSourceHealthChecker;
+  private healthChecker: IHealthChecker;
   private logger?: Logger;
   private intervalId?: NodeJS.Timeout;
   private isRunning = false;
@@ -37,7 +65,7 @@ export class PeriodicHealthMonitor {
   private previousResult?: HealthCheckResult;
 
   constructor(
-    healthChecker: DataSourceHealthChecker,
+    healthChecker: IHealthChecker,
     config?: Partial<PeriodicHealthMonitorConfig>,
     logger?: Logger,
   ) {

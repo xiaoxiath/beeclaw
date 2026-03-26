@@ -220,7 +220,10 @@ export function estimateTotalTokens(messages: Array<{
 /**
  * Context management configuration
  */
-export interface ContextConfig {
+/** @deprecated Use AgentContextConfig instead */
+export type ContextConfig = AgentContextConfig;
+
+export interface AgentContextConfig {
   /** Maximum tokens for context (default: 120000, leaving room for response) */
   maxTokens: number;
   /** Minimum recent messages to always keep (default: 6) */
@@ -231,7 +234,7 @@ export interface ContextConfig {
   compressionThreshold: number;
 }
 
-export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
+export const DEFAULT_CONTEXT_CONFIG: AgentContextConfig = {
   maxTokens: 120000,
   keepRecent: 6,
   keepSystem: true,
@@ -315,8 +318,8 @@ export function getModelContextWindow(model: string): number {
 export function calculateContextConfig(
   model: string,
   responseMaxTokens?: number,
-  customConfig?: Partial<ContextConfig>
-): ContextConfig {
+  customConfig?: Partial<AgentContextConfig>
+): AgentContextConfig {
   const modelContextWindow = getModelContextWindow(model);
 
   // Reserve tokens for response

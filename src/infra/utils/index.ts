@@ -96,3 +96,39 @@ export function sanitizeForCard(input: string): string {
     .replace(/'/g, '&#x27;')
     .replace(/\//g, '&#x2F;');
 }
+
+// ────────────────────────────────────────────
+// Safe JSON Parse (B-P1-04)
+// ────────────────────────────────────────────
+
+/**
+ * Parse JSON with multiple fallback strategies:
+ * 1. Direct JSON.parse
+ * 2. Extract from markdown code blocks (```json ... ```)
+ * 3. Extract first JSON object/array from text
+ *
+ * @param text - The text to parse
+ * @param fallback - Optional fallback value if all strategies fail
+ * @returns Parsed value or fallback
+ */
+export function safeJsonParse<T = unknown>(text: string, fallback?: T): T | undefined {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // 尝试从 markdown 代码块提取
+    const match = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (match) {
+      try {
+        return JSON.parse(match[1]) as T;
+      } catch { /* continue */ }
+    }
+    // 尝试提取第一个 JSON 对象/数组
+    const objMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (objMatch) {
+      try {
+        return JSON.parse(objMatch[1]) as T;
+      } catch { /* continue */ }
+    }
+    return fallback;
+  }
+}

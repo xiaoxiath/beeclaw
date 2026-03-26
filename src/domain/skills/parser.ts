@@ -7,6 +7,7 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { SkillFrontmatter } from './types';
 import { SkillFrontmatterSchema } from './types';
+import { safeJsonParse } from '../../infra/utils';
 
 export class SkillParser {
   /**
@@ -38,6 +39,14 @@ export class SkillParser {
       lineWidth: 0,
     }).trim();
     return `---\n${yamlContent}\n---\n\n${body.trim()}\n`;
+  }
+
+  /**
+   * B-P1-04: Parse JSON content from LLM responses that may contain markdown
+   * code blocks or other surrounding text.
+   */
+  parseJsonFromLLM<T = unknown>(text: string, fallback?: T): T | undefined {
+    return safeJsonParse<T>(text, fallback);
   }
 }
 

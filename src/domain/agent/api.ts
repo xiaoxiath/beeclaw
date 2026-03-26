@@ -42,6 +42,132 @@ function getProviderConfig(provider: AIProvider): { baseUrl: string; path: strin
   return config;
 }
 
+// ============================================================================
+// B-P0-03: Anthropic API Format Conversion
+// ============================================================================
+
+/**
+ * Convert OpenAI-format messages and tools to Anthropic format.
+ */
+function convertToAnthropicFormat(
+  messages: ChatMessage[],
+  tools?: OpenAITool[],
+): { system?: string; messages: Record<string, unknown>[]; tools?: Record<string, unknown>[] } {
+  let systemPrompt: string | undefined;
+  const anthropicMessages: Record<string, unknown>[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      // Anthropic uses a top-level `system` field instead of system messages
+      systemPrompt = systemPrompt
+        ? `${systemPrompt}\n\n${msg.content}`
+        : (msg.content as string);
+      continue;
+    }
+
+    if (msg.role === 'assistant') {
+      const content: unknown[] = [];
+      if (msg.content) {
+        content.push({ type: 'text', text: msg.content });
+      }
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        for (const tc of msg.tool_calls) {
+          let input: unknown = {};
+          try { input = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input,
+          });
+        }
+      }
+      anthropicMessages.push({ role: 'assistant', content });
+      continue;
+    }
+
+    if (msg.role === 'tool') {
+      // Anthropic expects tool results inside a user message with type tool_result
+      anthropicMessages.push({
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: (msg as any).tool_call_id,
+          content: msg.content,
+        }],
+      });
+      continue;
+    }
+
+    // user messages
+    anthropicMessages.push({ role: msg.role, content: msg.content });
+  }
+
+  // Convert tools
+  let anthropicTools: Record<string, unknown>[] | undefined;
+  if (tools && tools.length > 0) {
+    anthropicTools = tools.map(t => ({
+      name: t.function.name,
+      description: t.function.description || '',
+      input_schema: t.function.parameters,
+    }));
+  }
+
+  return {
+    ...(systemPrompt ? { system: systemPrompt } : {}),
+    messages: anthropicMessages,
+    ...(anthropicTools ? { tools: anthropicTools } : {}),
+  };
+}
+
+/**
+ * Convert Anthropic response to OpenAI-compatible AIResponse format.
+ */
+function convertFromAnthropicFormat(response: Record<string, unknown>): AIResponse {
+  const content = response.content as Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> || [];
+  let textContent = '';
+  const toolCalls: ToolCall[] = [];
+
+  for (const block of content) {
+    if (block.type === 'text' && block.text) {
+      textContent += block.text;
+    } else if (block.type === 'tool_use') {
+      toolCalls.push({
+        id: block.id || `call_${Date.now()}`,
+        type: 'function',
+        function: {
+          name: block.name || '',
+          arguments: JSON.stringify(block.input || {}),
+        },
+      });
+    }
+  }
+
+  return {
+    id: (response.id as string) || '',
+    object: 'chat.completion',
+    created: Date.now(),
+    model: (response.model as string) || '',
+    choices: [{
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: textContent || null,
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      },
+      finish_reason: toolCalls.length > 0 ? 'tool_calls' : ((response.stop_reason as string) || 'stop'),
+    }],
+    usage: response.usage as any,
+  } as AIResponse;
+}
+
+/**
+ * Check if a provider is Anthropic-type.
+ */
+function isAnthropicProvider(provider: AIProvider): boolean {
+  return provider.type === 'anthropic';
+}
+
 // Call AI API
 export async function callAI(options: {
   provider: AIProvider;
@@ -56,6 +182,45 @@ export async function callAI(options: {
   const { provider, model, messages, tools, temperature, topP, maxTokens, stream } = options;
 
   const { baseUrl, path, extraBody } = getProviderConfig(provider);
+
+  // B-P0-03: Anthropic provider uses a different request/response format
+  if (isAnthropicProvider(provider)) {
+    const anthropicPayload = convertToAnthropicFormat(messages, tools);
+    const body: Record<string, unknown> = {
+      model,
+      ...anthropicPayload,
+      max_tokens: maxTokens || 4096,
+    };
+    if (temperature !== undefined) body.temperature = temperature;
+    if (topP !== undefined) body.top_p = topP;
+
+    const engine = getRetryEngine();
+    const retryResult = await engine.execute<Response>(
+      'ai_api_call',
+      async () => {
+        const res = await fetch(`${baseUrl}${path}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': provider.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Anthropic API error: ${res.status} - ${errorText}`);
+        }
+        return res;
+      },
+      RETRY_STRATEGIES.agent,
+    );
+    if (!retryResult.success) {
+      throw retryResult.error?.originalError ?? new Error('Anthropic API call failed');
+    }
+    const jsonResponse = await retryResult.value!.json();
+    return convertFromAnthropicFormat(jsonResponse);
+  }
 
   const body: Record<string, unknown> = {
     model,
@@ -166,27 +331,53 @@ export async function* streamAI(options: {
 
   const { baseUrl, path } = getProviderConfig(provider);
 
-  const body: Record<string, unknown> = {
-    model,
-    messages,
-    stream: true,
-  };
+  // B-P0-03: Anthropic streaming uses a different format; skip for now (non-stream fallback)
+  const isAnthropic = isAnthropicProvider(provider);
 
-  // Add sampling parameters
-  if (temperature !== undefined) {
-    body.temperature = temperature;
-  }
-  if (topP !== undefined) {
-    body.top_p = topP;
-  }
-  if (maxTokens !== undefined) {
-    body.max_tokens = maxTokens;
+  const body: Record<string, unknown> = isAnthropic
+    ? {
+        model,
+        ...convertToAnthropicFormat(messages, tools),
+        max_tokens: maxTokens || 4096,
+        stream: true,
+      }
+    : {
+        model,
+        messages,
+        stream: true,
+      };
+
+  if (!isAnthropic) {
+    // Add sampling parameters
+    if (temperature !== undefined) {
+      body.temperature = temperature;
+    }
+    if (topP !== undefined) {
+      body.top_p = topP;
+    }
+    if (maxTokens !== undefined) {
+      body.max_tokens = maxTokens;
+    }
+
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+      body.tool_choice = 'auto';
+    }
+  } else {
+    if (temperature !== undefined) body.temperature = temperature;
+    if (topP !== undefined) body.top_p = topP;
   }
 
-  if (tools && tools.length > 0) {
-    body.tools = tools;
-    body.tool_choice = 'auto';
-  }
+  const headers: Record<string, string> = isAnthropic
+    ? {
+        'Content-Type': 'application/json',
+        'x-api-key': provider.apiKey,
+        'anthropic-version': '2023-06-01',
+      }
+    : {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${provider.apiKey}`,
+      };
 
   const engine = getRetryEngine();
   const retryResult = await engine.execute<Response>(
@@ -194,10 +385,7 @@ export async function* streamAI(options: {
     async () => {
       const res = await fetch(`${baseUrl}${path}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${provider.apiKey}`,
-        },
+        headers,
         body: JSON.stringify(body),
       });
 
@@ -221,6 +409,9 @@ export async function* streamAI(options: {
 
   const decoder = new TextDecoder();
 
+  // B-P0-01: Collect tool_calls from streamed deltas
+  const toolCallChunks = new Map<number, { id: string; type: string; function: { name: string; arguments: string } }>();
+
   try {
     let buffer = '';
     while (true) {
@@ -237,13 +428,43 @@ export async function* streamAI(options: {
 
         if (trimmed.startsWith('data: ')) {
           const data = trimmed.slice(6);
-          if (data === '[DONE]') return;
+          if (data === '[DONE]') {
+            // B-P0-01: Before returning, yield collected tool_calls as a special JSON message
+            if (toolCallChunks.size > 0) {
+              const collectedToolCalls = Array.from(toolCallChunks.values());
+              yield `\n<!--tool_calls:${JSON.stringify(collectedToolCalls)}-->`;
+            }
+            return;
+          }
 
           try {
             const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content;
+            const delta = parsed.choices?.[0]?.delta;
+            const content = delta?.content;
             if (content) {
               yield content;
+            }
+
+            // B-P0-01: Collect tool_calls from delta chunks
+            if (delta?.tool_calls && Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                const existing = toolCallChunks.get(idx);
+                if (!existing) {
+                  toolCallChunks.set(idx, {
+                    id: tc.id || '',
+                    type: tc.type || 'function',
+                    function: {
+                      name: tc.function?.name || '',
+                      arguments: tc.function?.arguments || '',
+                    },
+                  });
+                } else {
+                  if (tc.id) existing.id = tc.id;
+                  if (tc.function?.name) existing.function.name += tc.function.name;
+                  if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+                }
+              }
             }
           } catch (error) {
             logger.debug('Skip invalid JSON:', error);
@@ -252,15 +473,44 @@ export async function* streamAI(options: {
           // Some providers return raw JSON without "data: " prefix
           try {
             const parsed = JSON.parse(trimmed);
-            const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content;
+            const delta = parsed.choices?.[0]?.delta;
+            const content = delta?.content || parsed.choices?.[0]?.message?.content;
             if (content) {
               yield content;
+            }
+
+            // B-P0-01: Also collect tool_calls from non-prefixed JSON
+            if (delta?.tool_calls && Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                const existing = toolCallChunks.get(idx);
+                if (!existing) {
+                  toolCallChunks.set(idx, {
+                    id: tc.id || '',
+                    type: tc.type || 'function',
+                    function: {
+                      name: tc.function?.name || '',
+                      arguments: tc.function?.arguments || '',
+                    },
+                  });
+                } else {
+                  if (tc.id) existing.id = tc.id;
+                  if (tc.function?.name) existing.function.name += tc.function.name;
+                  if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+                }
+              }
             }
           } catch (error) {
             logger.debug('Skip invalid JSON:', error);
           }
         }
       }
+    }
+
+    // B-P0-01: If stream ended without [DONE], still yield collected tool_calls
+    if (toolCallChunks.size > 0) {
+      const collectedToolCalls = Array.from(toolCallChunks.values());
+      yield `\n<!--tool_calls:${JSON.stringify(collectedToolCalls)}-->`;
     }
   } finally {
     reader.releaseLock();
