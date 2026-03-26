@@ -8,7 +8,7 @@
  *
  * Existing call-sites using `getHookRunner()` / `registerHook()` should migrate to
  * `createHookRunner(registry)` from `../hook-runner`. This file is retained because
- * several modules (app/index.ts, unified-init.ts, subagent/registry.ts) still depend
+ * several modules (app/index.ts, subagent/registry.ts) still depend
  * on the singleton pattern.
  *
  * Original design: OpenClaw-style hook runner with sequential, parallel, and sync modes.

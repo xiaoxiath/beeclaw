@@ -1,6 +1,6 @@
 {
   "$schema": "./beeclaw.schema.json",
-  "$comment": "Beeclaw v6 - 完整配置示例",
+  "$comment": "Beeclaw v6 - 完整配置示例。注意：运行时以 src/infra/config/schema.ts 中的 Zod schema 为准（Single Source of Truth）。beeclaw.schema.json 仅用于编辑器智能提示，可能滞后于 Zod schema，如有冲突请以 Zod schema 为准。",
 
   "providers": [
     {

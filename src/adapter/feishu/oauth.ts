@@ -208,14 +208,6 @@ export async function saveUserToken(
   // 缓存到内存（快速访问）
   cache.set(cacheKey, token, token.expiresIn);
 
-  // TODO: 持久化到数据库
-  // await db.userTokens.upsert({
-  //   where: { openId },
-  //   create: { openId, ...token },
-  //   update: token,
-  // });
-
-  logger.info(`💾 Saved user token for ${openId}, expires at ${new Date(token.expiresAt).toISOString()}`);
 }
 
 /**
@@ -245,12 +237,6 @@ export async function getUserToken(
     }
     return token;
   }
-
-  // 2. TODO: 从数据库获取
-  // token = await db.userTokens.findUnique({ where: { openId } });
-  // if (token) {
-  //   cache.set(cacheKey, token, token.expiresIn);
-  // }
 
   return null;
 }

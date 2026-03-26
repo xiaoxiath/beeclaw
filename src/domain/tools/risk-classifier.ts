@@ -64,15 +64,10 @@ const DEFAULT_TOOL_RISKS: Record<string, ToolRiskConfig> = {
   },
 
   // HIGH - External actions, file modifications
-  Bash: {
+  shell: {
     level: ToolRiskLevel.HIGH,
     requiresConfirmation: true,
     timeoutMs: 600000, // 10 minutes
-  },
-  shell_exec: {
-    level: ToolRiskLevel.HIGH,
-    requiresConfirmation: true,
-    timeoutMs: 600000,
   },
   feishu_send_message: {
     level: ToolRiskLevel.HIGH,
@@ -147,7 +142,7 @@ export class ToolRiskClassifier {
     }
 
     // 4. Dynamic risk assessment for specific tools
-    if (toolName === 'Bash' || toolName === 'shell_exec') {
+    if (toolName === 'shell') {
       return this.classifyBashCommand(params);
     }
 
@@ -160,7 +155,7 @@ export class ToolRiskClassifier {
   }
 
   /**
-   * Dynamic risk assessment for Bash commands
+   * Dynamic risk assessment for shell commands
    */
   private classifyBashCommand(params: Record<string, unknown>): ToolRiskConfig {
     const cmd = (params?.command || params?.cmd || '') as string;
@@ -212,7 +207,7 @@ export class ToolRiskClassifier {
       }
     }
 
-    // Default Bash commands: HIGH risk
+    // Default shell commands: HIGH risk
     return {
       level: ToolRiskLevel.HIGH,
       requiresConfirmation: true,

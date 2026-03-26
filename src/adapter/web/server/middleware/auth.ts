@@ -1,5 +1,10 @@
 import { Context, Next } from 'hono';
+import { createHash } from 'crypto';
 import type { WebConfig } from '@/infra/config/schema';
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 export function createAuthMiddleware(config: WebConfig) {
   return async (c: Context, next: Next) => {
@@ -16,7 +21,7 @@ export function createAuthMiddleware(config: WebConfig) {
       const token = authHeader?.replace('Bearer ', '') || c.req.query('token');
 
       // Also check cookie for token
-      const cookieToken = c.req.header('Cookie')
+      const cookieHash = c.req.header('Cookie')
         ?.split(';')
         .find(c => c.trim().startsWith('auth_token='))
         ?.split('=')[1];
@@ -29,7 +34,9 @@ export function createAuthMiddleware(config: WebConfig) {
         return next();
       }
 
-      if (!token && !cookieToken) {
+      const expectedHash = hashToken(validToken);
+
+      if (!token && !cookieHash) {
         // Check if this is an API request
         if (c.req.path.startsWith('/api/')) {
           return c.json({ error: 'Unauthorized', message: 'Token required' }, 401);
@@ -45,7 +52,7 @@ export function createAuthMiddleware(config: WebConfig) {
         return c.redirect('/login');
       }
 
-      if (cookieToken && cookieToken !== validToken) {
+      if (cookieHash && cookieHash !== expectedHash) {
         if (c.req.path.startsWith('/api/')) {
           return c.json({ error: 'Unauthorized', message: 'Invalid token' }, 401);
         }

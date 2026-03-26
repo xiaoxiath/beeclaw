@@ -1,5 +1,4 @@
 /**
-export { cosineSimilarity } from '../../infra/utils';
  * P3-#9: 向量存储与语义搜索
  * 
  * 原始问题：indexer.ts 中的 MemoryIndex 仅包含 keywords 关键词索引，
@@ -27,6 +26,9 @@ export { cosineSimilarity } from '../../infra/utils';
  *   await store.addDocument('facts/user-pref.md', content);
  *   const results = await store.search('用户的编程偏好', 5);
  */
+
+// Re-export cosine similarity function for convenience
+export { cosineSimilarity } from '../../infra/utils';
 
 // ─── 类型定义 ─────────────────────────────────────────────
 

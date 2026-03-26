@@ -6,6 +6,7 @@
 
 import type { ContentBlock } from '../../../types/content-block';
 import { logger } from '../../../infra/observability/logger';
+import { sanitizeForCard } from '../../../infra/utils';
 
 /**
  * 风险等级对应的颜色
@@ -18,21 +19,6 @@ const RISK_COLORS = {
 } as const;
 
 type RiskLevel = keyof typeof RISK_COLORS;
-
-/**
- * Sanitize user input for safe interpolation into card lark_md content.
- * SECURITY FIX (P0): Applied at [CR-Sec] marked locations.
- */
-function sanitizeForCard(input: string): string {
-  if (!input) return '';
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;');
-}
 
 /**
  * 渲染确认请求卡片

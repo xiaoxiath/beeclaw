@@ -21,12 +21,12 @@ export default new Hono()
       const uptime = Math.floor((Date.now() - appStartTime) / 1000); // in seconds
 
       // Get agent stats if available
-      let tokenUsage = 0;
+      let tokenUsage: number | null = null; // TODO: Wire to actual token tracking
       try {
         const _agent = getAgent();
         // Agent might have token stats in the future
         // For now, we'll return 0
-        tokenUsage = 0;
+        // TODO: Wire to actual token tracking
       } catch {
         // Agent not initialized yet
       }

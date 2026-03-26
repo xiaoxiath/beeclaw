@@ -75,3 +75,24 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 
   return dotProduct / denominator;
 }
+
+// ────────────────────────────────────────────
+// Card Content Sanitization
+// ────────────────────────────────────────────
+
+/**
+ * Sanitize user input for safe interpolation into Feishu card lark_md content.
+ *
+ * SECURITY FIX (P0): Prevents injection attacks by escaping HTML-like
+ * characters that could be interpreted by the Feishu card renderer.
+ */
+export function sanitizeForCard(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}

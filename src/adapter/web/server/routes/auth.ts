@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import type { WebConfig } from '@/infra/config/schema';
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 const loginSchema = z.object({
   token: z.string().optional(),
@@ -161,9 +166,10 @@ export function createAuthRoutes(config: WebConfig) {
           return c.json({ error: 'Unauthorized', message: 'Invalid token' }, 401);
         }
 
-        // Set cookie
-        setCookie(c, 'auth_token', token, {
+        // Set cookie with hashed token value
+        setCookie(c, 'auth_token', hashToken(token), {
           httpOnly: true,
+          sameSite: 'Lax',
           secure: process.env.NODE_ENV === 'production',
           maxAge: 60 * 60 * 24 * 7, // 7 days
           path: '/',
@@ -181,9 +187,10 @@ export function createAuthRoutes(config: WebConfig) {
           return c.json({ error: 'Unauthorized', message: 'Invalid credentials' }, 401);
         }
 
-        // Set cookie
-        setCookie(c, 'auth_token', Buffer.from(`${username}:${password}`).toString('base64'), {
+        // Set cookie with hashed credentials
+        setCookie(c, 'auth_token', hashToken(`${username}:${password}`), {
           httpOnly: true,
+          sameSite: 'Lax',
           secure: process.env.NODE_ENV === 'production',
           maxAge: 60 * 60 * 24 * 7, // 7 days
           path: '/',
@@ -199,6 +206,7 @@ export function createAuthRoutes(config: WebConfig) {
     .post('/logout', async (c) => {
       setCookie(c, 'auth_token', '', {
         httpOnly: true,
+        sameSite: 'Lax',
         maxAge: 0,
         path: '/',
       });
@@ -213,30 +221,30 @@ export function createAuthRoutes(config: WebConfig) {
         return c.json({ authenticated: true, level: 'none' });
       }
 
-      const cookieToken = c.req.header('Cookie')
+      const cookieHash = c.req.header('Cookie')
         ?.split(';')
         .find(c => c.trim().startsWith('auth_token='))
         ?.split('=')[1];
 
-      if (!cookieToken) {
+      if (!cookieHash) {
         return c.json({ authenticated: false }, 401);
       }
 
       if (authLevel === 'token') {
         const validToken = config.auth?.token || process.env.WEB_AUTH_TOKEN;
-        if (cookieToken === validToken) {
+        if (validToken && cookieHash === hashToken(validToken)) {
           return c.json({ authenticated: true, level: 'token' });
         }
       }
 
       if (authLevel === 'basic') {
-        const credentials = Buffer.from(cookieToken, 'base64').toString();
-        const [username, password] = credentials.split(':');
         const validUsers = config.auth?.basicUsers || [];
-        const validUser = validUsers.find(u => u.username === username && u.password === password);
+        const validUser = validUsers.find(u =>
+          cookieHash === hashToken(`${u.username}:${u.password}`)
+        );
 
         if (validUser) {
-          return c.json({ authenticated: true, level: 'basic', user: username });
+          return c.json({ authenticated: true, level: 'basic', user: validUser.username });
         }
       }
 

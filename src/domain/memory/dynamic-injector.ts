@@ -13,6 +13,7 @@
 import { logger } from '../../infra/observability/logger';
 import { hybridSearch, SEARCH_PROFILES } from './hybrid-search';
 import { getMemoryStore } from './store';
+import { getVectorStore, getEmbeddingProvider } from './vector-store';
 import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import { JudgmentStatsTracker } from '../agent/judgment-stats';
 import type { AIProvider } from '../../infra/config/schema';
@@ -279,11 +280,32 @@ export class DynamicMemoryInjector {
         return items.slice(0, maxResults);
       };
 
+      // 构建向量搜索函数（当 embedding provider 可用时启用）
+      let vectorSearchFn: ((q: string, maxResults: number) => Promise<Array<{ path: string; snippet: string; score: number }>>) | undefined;
+
+      const embeddingProvider = getEmbeddingProvider();
+      if (embeddingProvider) {
+        vectorSearchFn = async (q: string, maxResults: number) => {
+          try {
+            const vectorStore = getVectorStore();
+            const results = await vectorStore.search(q, maxResults);
+            return results.map(r => ({
+              path: r.metadata?.source || r.id,
+              snippet: r.text,
+              score: r.score,
+            }));
+          } catch (error) {
+            logger.warn('[DynamicInjector] Vector search failed, skipping:', error);
+            return [];
+          }
+        };
+      }
+
       // 执行混合搜索
       const result = await hybridSearch(
         query,
         keywordSearch,
-        undefined, // 向量搜索暂时不启用
+        vectorSearchFn,
         (path) => {
           // 获取文件时间戳
           const stat = memoryStore.stat(path);

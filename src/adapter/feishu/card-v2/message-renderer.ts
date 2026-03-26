@@ -26,21 +26,8 @@ import {
   type CollapsiblePanel,
 } from './types/elements';
 import { IconToken, Color } from './types/styles';
+import { sanitizeForCard } from '../../../infra/utils';
 
-/**
- * Sanitize user input for safe interpolation into card content.
- * SECURITY FIX (P0): Applied at [CR-Sec] marked locations.
- */
-function sanitizeCardInput(input: string): string {
-  if (!input) return '';
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;');
-}
 
 /**
  * Render options
@@ -373,7 +360,7 @@ export function renderEmptyCard(message?: string): Card {
  */
 // SECURITY: [CR-Sec] Error messages sanitized before interpolation
 export function renderErrorCard(error: string): Card {
-  const safeError = sanitizeCardInput(error);
+  const safeError = sanitizeForCard(error);
   const body = createCardBody([
     createDivElement({
       text: createPlainTextElement(`❌ Error: ${safeError}`),

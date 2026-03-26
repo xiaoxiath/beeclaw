@@ -1,5 +1,14 @@
+/**
+ * Beeclaw Configuration Schema (Zod) — Single Source of Truth
+ *
+ * This file is the canonical definition for all configuration options.
+ * - beeclaw.schema.json: generated/manual JSON Schema for editor autocompletion (may lag behind)
+ * - beeclaw.example.json: example config referencing this schema
+ *
+ * When adding new config fields, update this file FIRST, then sync beeclaw.schema.json.
+ */
 import { z } from 'zod';
-import { SandboxConfigSchema } from '../../domain/sandbox/types';
+import { SandboxConfigSchema } from '../../types/sandbox-config';
 
 // Server configuration schema
 export const ServerConfigSchema = z.object({

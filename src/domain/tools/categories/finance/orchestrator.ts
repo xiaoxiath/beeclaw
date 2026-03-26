@@ -9,7 +9,7 @@ import { FinanceDataProvider } from './base';
 import { TushareProvider } from './providers/tushare';
 import { SinaProvider } from './providers/sina';
 import { EastmoneyProvider } from './providers/eastmoney';
-import { TTLCache } from '../../../../infra/utils/ttl-cache';
+import { MemoryCache } from '../../../../infra/cache';
 import type {
   FinanceDataSource,
   FinanceConfig,
@@ -34,15 +34,14 @@ const FALLBACK_CHAIN: Record<string, FinanceDataSource[]> = {
 export class FinanceOrchestrator {
   private providers: Map<FinanceDataSource, FinanceDataProvider> = new Map();
   private config: FinanceConfig;
-  // Use shared TTLCache instead of manual implementation
-  private cache: TTLCache<unknown> = new TTLCache({ maxSize: 1000 });
+  private cache: MemoryCache = new MemoryCache(1000);
 
-  // Default TTL in milliseconds
+  // Default TTL in seconds
   private defaultTTL = {
-    quote: 60 * 1000,      // 1 minute for real-time quotes
-    history: 60 * 60 * 1000, // 1 hour for historical data
-    financial: 24 * 60 * 60 * 1000, // 24 hours for financial data
-    info: 24 * 60 * 60 * 1000, // 24 hours for company info
+    quote: 60,              // 1 minute for real-time quotes
+    history: 60 * 60,       // 1 hour for historical data
+    financial: 24 * 60 * 60, // 24 hours for financial data
+    info: 24 * 60 * 60,     // 24 hours for company info
   };
 
   constructor(config?: FinanceConfig) {
@@ -87,7 +86,7 @@ export class FinanceOrchestrator {
       return null;
     }
 
-    return this.cache.get(key) as T | null;
+    return (this.cache.get<T>(key) as T) ?? null;
   }
 
   private setCache<T>(key: string, data: T, ttl: number): void {

@@ -135,13 +135,13 @@ export async function executeRequestDeepAnalysis(
   const { sessionId, userId, chatId, originalMessage } = context;
 
   try {
-    // Import feishu client dynamically to avoid circular dependencies
-    const { getFeishuWSClient } = await import('../../adapter/feishu');
+    // Use port interface to send quick reply (avoids domain → adapter import)
+    const { getChannelClientPort } = await import('../ports');
 
-    // 1. Send quick reply to Feishu
-    const client = getFeishuWSClient();
+    // 1. Send quick reply via port interface
+    const client = getChannelClientPort();
     if (client && chatId) {
-      await client.sendTextMessage(chatId, 'chat_id', quick_response);
+      await client.sendTextMessage?.(chatId, 'chat_id', quick_response);
       logger.debug(`[DeepAnalysis] Quick reply sent to chat: ${chatId}`);
     }
 

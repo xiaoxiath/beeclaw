@@ -22,7 +22,8 @@ import { initSubagentRuntime, initTaskOrchestrator, initSharedState } from '../d
 import { initializeTimezoneCache, resolveUserLocation, resolveUserTimezone } from '../domain/tools/timezone';
 import { setCompressionLLMProvider } from '../domain/memory/compression';
 import { configureTieredCompressor } from '../domain/agent/compression';
-import { setEmbeddingProvider, getVectorStore } from '../domain/memory/vector-store';
+import { setEmbeddingProvider, getVectorStore, cosineSimilarity } from '../domain/memory/vector-store';
+import { setSimilarityProvider } from '../domain/memory/scoring';
 import { getLifecycleManager } from '../domain/memory/lifecycle-manager';
 import { getReflectionEngine } from '../domain/agent/reflection-engine';
 import { getSkillDiscoveryEngine } from '../domain/agent/skill-discovery';
@@ -32,6 +33,7 @@ import { listSessions, sendProactiveMessage } from '../domain/session';
 // import { recoverUnansweredSessions } from '../domain/session/recovery'; // DISABLED: redundant with permanent deduplication
 import { createEmbeddingProvider } from '../domain/memory/embeddings';
 import { TieredLLMRouter } from '../infra/ai/tiered-router';
+import { getHybridToolSelector } from '../domain/agent/hybrid-tool-selector';
 import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
 import { getSkillStore } from '../domain/skills';
 import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience-config';
@@ -610,6 +612,25 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
       // Load existing index if available
       await vectorStore.load();
+
+      // Mount embedding-based similarity provider for memory scoring
+      setSimilarityProvider({
+        async computeSimilarity(text1: string, text2: string): Promise<number> {
+          const [emb1, emb2] = await Promise.all([
+            embeddingProvider.embed(text1),
+            embeddingProvider.embed(text2),
+          ]);
+          return cosineSimilarity(emb1, emb2);
+        },
+        async batchComputeSimilarity(query: string, texts: string[]): Promise<number[]> {
+          const [queryEmb, textEmbs] = await Promise.all([
+            embeddingProvider.embed(query),
+            embeddingProvider.embedBatch(texts),
+          ]);
+          return textEmbs.map(emb => cosineSimilarity(queryEmb, emb));
+        },
+      });
+      logger.info('[App] Similarity provider mounted for memory scoring');
     } catch (error) {
       logger.error('[App] Failed to initialize embedding provider', error);
 
@@ -645,6 +666,18 @@ export async function initApp(options: InitOptions = {}): Promise<{
     basePath: memoryPath,
     autoCleanupIntervalMs: 86400000, // Clean up every 24 hours
   });
+
+  // Initialize HybridToolSelector with config
+  if (config.toolSelector) {
+    getHybridToolSelector({
+      strategy: (config.toolSelector.strategy as any) || 'hybrid',
+      maxTools: config.toolSelector.maxTools || 30,
+      rulesEnabled: config.toolSelector.rules?.enabled !== false,
+      semanticEnabled: config.toolSelector.semantic?.enabled !== false,
+      fallbackToCore: config.toolSelector.semantic?.fallbackToCore !== false,
+    });
+    logger.info(`[App] HybridToolSelector initialized with strategy: ${config.toolSelector.strategy || 'hybrid'}`);
+  }
 
   // Initialize reflection engine (optional)
   getReflectionEngine({
@@ -708,36 +741,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
   // 11.5. Web server is now started by WebAdapter (not here)
   // See: src/adapter/web/adapter.ts and src/entries/web.ts
-
-  // 11.6. Session recovery (DISABLED - permanent deduplication makes this redundant)
-  // NOTE: With permanent session-based message deduplication (commit 2d0d19a),
-  // recovery mechanism is no longer needed and causes duplicate replies.
-  // Feishu message re-delivery is now handled by processedMessageIds deduplication.
-  //
-  // if (options.enableRecovery !== false && process.env.ENABLE_RECOVERY !== 'false') {
-  //   const recoveryConfig = config.recovery || {
-  //     enabled: true,
-  //     maxAge: 300000,  // 5 minutes
-  //     minAge: 10000,   // 10 seconds
-  //     channels: ['feishu'],
-  //     batchSize: 5,
-  //     delayMs: 2000,
-  //     startupDelay: 10000,
-  //   };
-  //
-  //   if (recoveryConfig.enabled) {
-  //     logger.debug(`   ⏰ Session recovery enabled (delay: ${recoveryConfig.startupDelay / 1000}s)`);
-  //
-  //     setTimeout(async () => {
-  //       await recoverUnansweredSessions(recoveryConfig, {
-  //         getFeishuClient: getFeishuWSClient,
-  //         sendProactiveMessage,
-  //         getAllSessions: () => listSessions(),
-  //       });
-  //     }, recoveryConfig.startupDelay);
-  //   }
-  // }
-
   // 10. Initialize sandbox system
   const sandboxConfig = (config as any).sandbox || {};
 

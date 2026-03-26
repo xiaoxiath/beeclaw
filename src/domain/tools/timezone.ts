@@ -72,8 +72,8 @@ export function resolveUserTimezone(): string {
         return cachedTz;
       }
     }
-  } catch (_error) {
-    // Config not loaded, use default
+  } catch (error) {
+    logger.warn('Timezone config load failed', { error });
   }
 
   // 3. Default fallback
@@ -96,8 +96,8 @@ export function resolveUserLocation(): string {
     if (config.weather?.defaultLocation) {
       return config.weather.defaultLocation;
     }
-  } catch (_error) {
-    // Config not loaded, use default
+  } catch (error) {
+    logger.warn('Timezone config load failed', { error });
   }
 
   // 3. Default

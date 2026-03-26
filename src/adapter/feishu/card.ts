@@ -6,24 +6,7 @@
 
 import { sendCardMessage } from './send';
 
-
-/**
- * Sanitize user input for safe interpolation into Feishu card lark_md content.
- *
- * SECURITY FIX (P0): Prevents injection attacks by escaping HTML-like
- * characters that could be interpreted by the Feishu card renderer.
- * Applied at all [CR-Sec] marked locations.
- */
-function sanitizeForCard(input: string): string {
-  if (!input) return '';
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;');
-}
+import { sanitizeForCard } from '../../infra/utils';
 
 /**
  * Card builder for creating interactive cards

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://beeclaw.dev/schema/config.json",
   "title": "Beeclaw Configuration",
-  "description": "Beeclaw v6 Configuration Schema",
+  "description": "Beeclaw v6 Configuration Schema. NOTE: Runtime validation uses the Zod schema in src/infra/config/schema.ts (single source of truth). This JSON Schema is for editor autocompletion only and may lag behind. When in doubt, refer to the Zod schema.",
   "type": "object",
   "properties": {
     "$schema": {

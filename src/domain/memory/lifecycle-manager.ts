@@ -323,6 +323,49 @@ export class MemoryLifecycleManager {
   }
 
   /**
+   * 每次 recordConversation 后的轻量级检查。
+   * 仅在会话数达到阈值时触发异步清理，避免阻塞主流程。
+   */
+  private _recordCount = 0;
+  private _cleanupInProgress = false;
+  private static readonly RECORDS_BETWEEN_CHECKS = 50;
+
+  async checkAfterRecord(): Promise<void> {
+    this._recordCount++;
+
+    // Only check every N records to avoid overhead
+    if (this._recordCount < MemoryLifecycleManager.RECORDS_BETWEEN_CHECKS) {
+      return;
+    }
+    this._recordCount = 0;
+
+    // Prevent concurrent cleanup runs
+    if (this._cleanupInProgress) {
+      return;
+    }
+
+    // Quick check: is the conversations directory over capacity?
+    const convPolicy = this.getPolicy('conversations');
+    if (!convPolicy.maxFiles) return;
+
+    const convDir = path.join(this.config.basePath, 'conversations');
+    if (!fs.existsSync(convDir)) return;
+
+    try {
+      const fileCount = this.walkDirectory(convDir).length;
+      if (fileCount <= convPolicy.maxFiles) return;
+
+      // Over capacity — trigger async cleanup (non-blocking)
+      this._cleanupInProgress = true;
+      this.runCleanup({ categories: ['conversations'], dryRun: false })
+        .catch(() => { /* swallow — already logged inside runCleanup */ })
+        .finally(() => { this._cleanupInProgress = false; });
+    } catch {
+      // Ignore filesystem errors in lightweight check
+    }
+  }
+
+  /**
    * 执行清理
    */
   async runCleanup(options?: {

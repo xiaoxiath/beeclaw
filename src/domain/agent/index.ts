@@ -8,6 +8,7 @@ import { callAI, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext, buildVolatileContext } from './tools';
 import { logger } from '../../infra/observability/logger';
 import { getMemoryStore, getDynamicMemoryInjector } from '../memory';
+import { getLifecycleManager } from '../memory/lifecycle-manager';
 import { getSkillStore } from '../skills/store';
 // Task 3: Use port interfaces instead of direct adapter imports
 import { getHookRunnerPort } from '../ports';
@@ -44,6 +45,7 @@ import { SkillRunner } from './skill-runner';
 
 // Phase 5: Extracted tool executor (from createDefaultToolExecutor / _executeToolInner)
 import { createDefaultToolExecutor } from './tool-executor';
+import { getHybridToolSelector } from './hybrid-tool-selector';
 
 /**
  * Safely parse JSON with fallback
@@ -435,10 +437,21 @@ export class Agent {
       });
     }
 
-    const systemPrompt = this.messages.find(m => m.role === 'system');
-    if (systemPrompt) {
-      this.messages = [systemPrompt];
-      this.estimatedTokens = estimateMessageTokens(systemPrompt);
+    // Preserve all leading system-role messages (system prompt + time context, etc.)
+    const systemMessages: ChatMessage[] = [];
+    for (const m of this.messages) {
+      if (m.role === 'system') {
+        systemMessages.push(m);
+      } else {
+        break;
+      }
+    }
+
+    if (systemMessages.length > 0) {
+      this.messages = systemMessages;
+      this.estimatedTokens = systemMessages.reduce(
+        (sum, m) => sum + estimateMessageTokens(m), 0
+      );
     } else {
       this.messages = [];
       this.estimatedTokens = 0;
@@ -826,8 +839,21 @@ export class Agent {
     // Prevents race between rule-based trimming and LLM summarization
     await this.manageContextCompression();
 
-    // Get all available tools - LLM will decide which ones to use
-    const tools = options?.tools || this.options.tools || getAllToolsForAI();
+    // Get all available tools, then optionally filter via HybridToolSelector
+    let tools = options?.tools || this.options.tools || getAllToolsForAI();
+    try {
+      const selector = getHybridToolSelector();
+      const messageText = typeof enrichedMessage === 'string'
+        ? enrichedMessage
+        : Array.isArray(enrichedMessage)
+          ? enrichedMessage.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' ')
+          : '';
+      if (messageText) {
+        tools = await selector.select(tools, messageText);
+      }
+    } catch (error) {
+      logger.debug('[Agent] HybridToolSelector failed, using all tools', error);
+    }
 
     // [P1+P2 优化] 智能选择控制模式
     // Standard agent loop
@@ -1303,6 +1329,14 @@ export class Agent {
         user: userMessageStr,
         assistant: finalContent,
       });
+
+      // Trigger lightweight lifecycle check after recording
+      try {
+        const lifecycleManager = getLifecycleManager();
+        await lifecycleManager.checkAfterRecord();
+      } catch {
+        // Lifecycle check is optional, don't block main flow
+      }
     } catch (error) {
       logger.debug('Memory might not be initialized:', error);
     }
@@ -1503,8 +1537,21 @@ export class Agent {
     // [AUDIT FIX M-04] Coordinated context compression strategy
     await this.manageContextCompression();
 
-    // Get all available tools - LLM will decide which ones to use
-    const tools = options?.tools || this.options.tools || getAllToolsForAI();
+    // Get all available tools, then optionally filter via HybridToolSelector
+    let tools = options?.tools || this.options.tools || getAllToolsForAI();
+    try {
+      const selector = getHybridToolSelector();
+      const messageText = typeof userMessage === 'string'
+        ? userMessage
+        : Array.isArray(userMessage)
+          ? userMessage.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(' ')
+          : '';
+      if (messageText) {
+        tools = await selector.select(tools, messageText);
+      }
+    } catch (error) {
+      logger.debug('[Agent.chatStream] HybridToolSelector failed, using all tools', error);
+    }
 
     // [AUDIT FIX M-01] Skill enforcement matching (same as chat())
     if (this.skillEnforcement) {
@@ -1659,6 +1706,14 @@ export class Agent {
         user: userMessage,
         assistant: finalContent,
       });
+
+      // Trigger lightweight lifecycle check after recording
+      try {
+        const lifecycleManager = getLifecycleManager();
+        await lifecycleManager.checkAfterRecord();
+      } catch {
+        // Lifecycle check is optional, don't block main flow
+      }
     } catch (error) {
       logger.debug('Memory might not be initialized:', error);
     }
@@ -1747,7 +1802,7 @@ export function createAgent(options: {
   }
 
   // Merge params with legacy options (params take precedence)
-  const _mergedOptions = {
+  const mergedOptions = {
     ...options,
     temperature: options.params?.temperature ?? options.temperature,
     topP: options.params?.top_p ?? options.topP,
@@ -1755,22 +1810,10 @@ export function createAgent(options: {
   };
 
   return new Agent({
-    ...options,
+    ...mergedOptions,
     systemPrompt,
     autoRefreshMemory: options.autoRefreshMemory ?? false,
     contextConfig: options.contextConfig,
     tokenStatsConfig: options.tokenStatsConfig,
   } as AgentOptions & { contextConfig?: Partial<ContextConfig>; tokenStatsConfig?: Partial<TokenStatsConfig> });
-}
-
-// Quick chat function
-export async function quickChat(options: {
-  provider: AIProvider;
-  model: string;
-  message: string;
-  systemPrompt?: string;
-  tools?: OpenAITool[];
-}): Promise<string> {
-  const agent = createAgent(options);
-  return agent.chat(options.message);
 }
