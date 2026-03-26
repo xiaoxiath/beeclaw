@@ -92,12 +92,12 @@ export class MCPClientManager {
   private async reconnect(serverId: string): Promise<boolean> {
     const attempts = this.reconnectAttempts.get(serverId) ?? 0;
     if (attempts >= MCPClientManager.MAX_RECONNECT) {
-      logger.error(\`[MCP] Max reconnect attempts (\${MCPClientManager.MAX_RECONNECT}) reached for \${serverId}\`);
+      logger.error(`[MCP] Max reconnect attempts (${MCPClientManager.MAX_RECONNECT}) reached for ${serverId}`);
       return false;
     }
     this.reconnectAttempts.set(serverId, attempts + 1);
     const delay = Math.min(MCPClientManager.BASE_DELAY * Math.pow(2, attempts), 30000);
-    logger.info(\`[MCP] Reconnecting to \${serverId} (attempt \${attempts + 1}/\${MCPClientManager.MAX_RECONNECT}, delay \${delay}ms)\`);
+    logger.info(`[MCP] Reconnecting to ${serverId} (attempt ${attempts + 1}/${MCPClientManager.MAX_RECONNECT}, delay ${delay}ms)`);
     await new Promise(r => setTimeout(r, delay));
     try {
       const connection = this.connections.get(serverId);
@@ -435,7 +435,7 @@ export class MCPClientManager {
             };
           } catch (retryError) {
             const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
-            return { success: false, error: \`Retry after reconnect failed: \${retryMsg}\` };
+            return { success: false, error: `Retry after reconnect failed: ${retryMsg}` };
           }
         }
       }
