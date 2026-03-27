@@ -39,7 +39,8 @@ describe('NotificationManager', () => {
   describe('init', () => {
     test('initializes storage', () => {
       manager.init();
-      expect(existsSync(join(TEST_NOTIFICATIONS_PATH, 'notifications'))).toBe(true);
+      // init() ensures basePath directory exists (no 'notifications' subdirectory)
+      expect(existsSync(TEST_NOTIFICATIONS_PATH)).toBe(true);
     });
 
     test('is idempotent', () => {

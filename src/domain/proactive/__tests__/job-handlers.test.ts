@@ -36,6 +36,7 @@ mock.module('../../memory', () => ({
     getCoreContext: () => ({ user: 'Test user', facts: 'Some facts' }),
     getRecentConversations: mock(() => Promise.resolve([])),
     record: mock(() => Promise.resolve()),
+    getBasePath: () => '/tmp/test-memory',
   }),
 }));
 
@@ -195,13 +196,16 @@ describe('job-handlers', () => {
   });
 
   describe('handleSendReminderJob', () => {
-    it('sends reminder via notification when no client', async () => {
+    it('sends reminder via notification when no client and no chatId', async () => {
+      // Override config to return no chatId so the else (pushNotification) branch is taken
+      mockGetConfig.mockReturnValueOnce({ defaultPushTarget: { channel: 'feishu', chatId: undefined, userId: 'user-1' } });
+
       await handleSendReminderJob({
         taskType: 'send_reminder',
         params: { message: 'Remember this!' },
       } as any);
 
-      // Should use pushNotification fallback
+      // pushNotification fallback path is taken when chatId is falsy
       expect(mockLogger.debug).toHaveBeenCalled();
     });
 

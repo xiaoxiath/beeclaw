@@ -7,7 +7,7 @@ import {
 } from '../triggers';
 import type { Pattern } from '../types';
 import { resetNotificationManager, getNotificationManager } from '../notifications';
-import { getGoalStore, resetGoalStore } from '../../goal/store';
+import { getGoalStore, resetGoalStore } from '../../agent/goal/store';
 
 const TEST_TRIGGERS_PATH = './test-triggers-data';
 
@@ -28,12 +28,20 @@ describe('Proactive Triggers', () => {
     const goalStore = getGoalStore(TEST_TRIGGERS_PATH);
     goalStore.init();
 
+    // Use dynamic dates so goal.stalled() tests work regardless of when they run.
+    // triggers.ts uses Date.now() internally (not baseContext.now), so updatedAt
+    // values must be relative to the real current time.
+    const daysMs = 24 * 60 * 60 * 1000;
+    const goal1UpdatedAt = new Date(Date.now() - 20 * daysMs).toISOString(); // 20 days ago: stalled(7)=true, stalled(30)=false
+    const goal2UpdatedAt = new Date(Date.now() - 2 * daysMs).toISOString();  // 2 days ago: not stalled
+    const goal3UpdatedAt = new Date(Date.now() - 10 * daysMs).toISOString(); // 10 days ago (completed, not checked)
+
     baseContext = {
-      now: new Date('2026-03-02T10:30:00'), // Monday 10:30 AM
+      now: new Date('2026-03-02T10:30:00'), // Monday 10:30 AM (used for time.hour/day checks)
       goals: [
-        { id: 'goal-1', title: 'Goal 1', progress: 30, state: 'active', updatedAt: '2026-02-15T00:00:00' },
-        { id: 'goal-2', title: 'Goal 2', progress: 70, state: 'active', updatedAt: '2026-03-01T00:00:00' },
-        { id: 'goal-3', title: 'Goal 3', progress: 100, state: 'completed', updatedAt: '2026-02-20T00:00:00' },
+        { id: 'goal-1', title: 'Goal 1', progress: 30, state: 'active', updatedAt: goal1UpdatedAt },
+        { id: 'goal-2', title: 'Goal 2', progress: 70, state: 'active', updatedAt: goal2UpdatedAt },
+        { id: 'goal-3', title: 'Goal 3', progress: 100, state: 'completed', updatedAt: goal3UpdatedAt },
       ],
     };
   });
@@ -165,13 +173,13 @@ describe('Proactive Triggers', () => {
       });
 
       test('evaluates goal.stalled(7) with stalled goal', () => {
-        // goal-1 was updated on 2026-02-15, more than 7 days ago from 2026-03-02
+        // goal-1 was updated 20 days ago, more than 7 days
         const result = evaluateCondition('goal.stalled(7)', baseContext);
         expect(result).toBe(true);
       });
 
       test('evaluates goal.stalled(30) with stalled goal', () => {
-        // goal-1 was updated on 2026-02-15, more than 30 days ago? No, about 15 days
+        // goal-1 was updated 20 days ago, less than 30 days
         const result = evaluateCondition('goal.stalled(30)', baseContext);
         expect(result).toBe(false);
       });

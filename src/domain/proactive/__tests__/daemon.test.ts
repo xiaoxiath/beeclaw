@@ -3,7 +3,7 @@ import { rmSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { Daemon, getDaemon, resetDaemon } from '../daemon';
 import { setCliDeliveryHandler } from '../pusher';
-import { initStores, resetStores } from '../../store';
+import { initStores, resetStores } from '../../../infra/db/store';
 
 const TEST_DAEMON_PATH = './test-daemon-data';
 

@@ -46,3 +46,5 @@ reports/
 output/
 tmp/
 temp/
+memory/.vector-index.json
+beeclaw.json.bak

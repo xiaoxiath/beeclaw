@@ -108,10 +108,12 @@ describe('SandboxManager', () => {
   test('should block dangerous commands', async () => {
     const { sandbox } = await manager.acquire({ sessionId: 'test-session' });
 
-    const result = await sandbox.exec('rm -rf /');
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Command blocked by security policy');
+    try {
+      await sandbox.exec('rm -rf /');
+      expect(true).toBe(false); // Should not reach here
+    } catch (error: any) {
+      expect(error.message).toContain('Command blocked by security policy');
+    }
   });
 
   test('should write and read files', async () => {
@@ -162,7 +164,7 @@ describe('SandboxManager', () => {
       await sandbox.readFile('../../../etc/passwd');
       expect(true).toBe(false); // Should not reach here
     } catch (error) {
-      expect(error.message.toLowerCase()).toContain('path traversal detected');
+      expect(error.message.toLowerCase()).toContain('path traversal blocked');
     }
   });
 });

@@ -18,7 +18,7 @@ import type { SubagentResult } from '../types';
 import {
   formatStateEntry,
   formatStateStats,
-} from '../state-tools';
+} from '../state-tools-consolidated';
 import type { StateEntry, StateStats } from '../state';
 
 describe('Subagent Tools', () => {

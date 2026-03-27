@@ -498,10 +498,14 @@ describe('ReflectionEngine', () => {
 
   describe('time distribution', () => {
     test('should track hour distribution', async () => {
+      // Build timestamps using local time so getHours() returns expected values
+      const d1 = new Date(); d1.setHours(10, 0, 0, 0);
+      const d2 = new Date(); d2.setHours(10, 30, 0, 0);
+      const d3 = new Date(); d3.setHours(11, 0, 0, 0);
       const conversations: ConversationRecord[] = [
-        { timestamp: '2024-01-01T10:00:00Z', userMessage: '1', assistantMessage: 'R' },
-        { timestamp: '2024-01-01T10:30:00Z', userMessage: '2', assistantMessage: 'R' },
-        { timestamp: '2024-01-01T11:00:00Z', userMessage: '3', assistantMessage: 'R' },
+        { timestamp: d1.toISOString(), userMessage: '1', assistantMessage: 'R' },
+        { timestamp: d2.toISOString(), userMessage: '2', assistantMessage: 'R' },
+        { timestamp: d3.toISOString(), userMessage: '3', assistantMessage: 'R' },
       ];
 
       const result = await engine.reflect(conversations);

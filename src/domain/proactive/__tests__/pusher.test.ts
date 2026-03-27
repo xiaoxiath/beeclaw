@@ -11,7 +11,7 @@ import {
   registerDeliveryHandler,
   pushPendingNotifications,
 } from '../pusher';
-import { initStores, resetStores } from '../../store';
+import { initStores, resetStores } from '../../../infra/db/store';
 
 const TEST_PUSHER_PATH = './test-pusher-data';
 

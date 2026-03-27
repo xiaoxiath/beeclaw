@@ -2,13 +2,46 @@
  * Tests for new notification tools
  */
 
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test';
+import { existsSync, mkdirSync, rmSync } from 'fs';
+
+// Re-mock pusher to ensure it's not clobbered by other test files' mocks.
+// Provide a working implementation that goes through the real NotificationManager.
+let notifCounter = 0;
+mock.module('../pusher', () => {
+  // Dynamic import to get the lazy notifications getter
+  const { getNotificationsLazy } = require('../notifications');
+  return {
+    pushNotification: async (options: any) => {
+      try {
+        const manager = getNotificationsLazy();
+        const result = manager.create({
+          userId: 'cli-user',
+          message: options.message,
+          priority: options.priority || 'normal',
+          category: options.category,
+          scheduledFor: options.scheduledFor,
+          expiresAt: options.expiresAt,
+          channels: options.channels || ['cli'],
+          metadata: options.metadata || {},
+        });
+        if (!result.success || !result.data) {
+          return { success: false, error: result.error };
+        }
+        const notification = result.data as any;
+        return { success: true, notificationId: notification.id, delivered: false };
+      } catch (error: any) {
+        return { success: false, error: error.message || 'Unknown error' };
+      }
+    },
+  };
+});
+
 import {
   executeProactiveTool,
   PROACTIVE_TOOL_NAMES,
 } from '../tools';
-import { initStores, resetStores } from '../../store';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { initStores, resetStores } from '../../../infra/db/store';
 
 const TEST_DATA_PATH = './test-notification-data';
 
@@ -52,7 +85,8 @@ describe('Notification Tools', () => {
         category: 'test',
       });
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      // pushNotification returns { success, notificationId, delivered }
+      expect((result as any).notificationId).toBeDefined();
     });
 
     test('requires message parameter', async () => {
@@ -77,8 +111,8 @@ describe('Notification Tools', () => {
       });
       expect(sendResult.success).toBe(true);
 
-      // Then mark it as read
-      const notifId = (sendResult.data as any).id;
+      // pushNotification returns notificationId at the top level
+      const notifId = (sendResult as any).notificationId;
       const result = await executeProactiveTool('notification_mark_read', {
         id: notifId,
       });
@@ -101,8 +135,8 @@ describe('Notification Tools', () => {
       });
       expect(sendResult.success).toBe(true);
 
-      // Then delete it
-      const notifId = (sendResult.data as any).id;
+      // pushNotification returns notificationId at the top level
+      const notifId = (sendResult as any).notificationId;
       const result = await executeProactiveTool('notification_delete', {
         id: notifId,
       });
