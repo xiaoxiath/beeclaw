@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.3] - 2026-03-15
+## [v2.1.3] - 2026-03-15
 
 ### Fixed
 - Drive tool parameter passing error in Feishu adapter (`folder_token` parameter)
@@ -25,14 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored hybrid tool selector to use FastLLMJudge
 - Enhanced pattern selector with better error handling
 
-## [2.1.2] - 2026-03-14
+## [v2.1.2] - 2026-03-14
 
 ### Changed
 - Rewrote all 7 cookbook examples from developer-perspective to conversational guides
 - Users now interact with Beeclaw through natural conversation instead of manual configuration
 - Average time to complete cookbook examples reduced by 50%
 
-## [2.1.1] - 2026-03-14
+## [v2.1.1] - 2026-03-14
 
 ### Added
 - Cookbook case library expansion (4 new examples)
@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced memory workflow examples
 - Improved plugin development documentation
 
-## [2.1.0] - 2026-03-13
+## [v2.1.0] - 2026-03-13
 
 ### Added
 - Feishu Card V2 support with streaming messages
@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session recovery after crashes
 - Context compression edge cases
 
-## [2.0.0] - 2026-03-06
+## [v2.0.0] - 2026-03-06
 
 ### Added
 - Unified initialization system with `initApp()`
@@ -80,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deprecated Feishu tools (moved to skills)
 - Old session management code
 
-## [1.0.0] - 2025-12-01
+## [v1.0.0] - 2025-12-01
 
 ### Added
 - Initial release of Beeclaw

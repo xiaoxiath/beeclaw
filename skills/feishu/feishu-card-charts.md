@@ -3,6 +3,7 @@ name: feishu-card-charts
 description: Create interactive data visualization charts in Feishu Card V2 messages
 maturity: mature
 tags: [feishu, card-v2, charts, visualization, vchart]
+version: 1.0.0
 ---
 
 # Feishu Card V2 Charts

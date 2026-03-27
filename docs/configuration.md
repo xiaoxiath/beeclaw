@@ -1,7 +1,7 @@
 # Beeclaw 配置指南
 
 > **最新版本**: v6
-> **配置文档**: [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md)
+> 本文档涵盖 Beeclaw 的所有配置方式。
 
 本文档涵盖 Beeclaw 的所有配置方式，包括环境变量、配置文件和用户偏好设置。
 
@@ -20,7 +20,7 @@ export ZHIPU_API_KEY=your_key_here
 bun run cli
 ```
 
-**→ [完整配置示例](../beeclaw.example.json)** · **[v6 配置详解](./CONFIGURATION-FINAL.md)**
+**→ [完整配置示例](../beeclaw.example.json)** 
 
 ---
 
@@ -72,7 +72,7 @@ agent      → 用户实体（单个）
 | **4** | toolSelector | 工具选择 | ⚪ 可选 |
 | **5** | user | 用户配置 | ⚪ 可选 |
 
-**→ [详细配置说明](./CONFIGURATION-FINAL.md)** · **[概念说明](./CONFIGURATION-CONCEPTS.md)**
+<!-- 详细配置说明已整合到本文档中 -->
 
 ---
 
@@ -584,8 +584,8 @@ pm2 start beeclaw
 
 ## 更多帮助
 
-- **完整配置文档**: [CONFIGURATION-FINAL.md](./CONFIGURATION-FINAL.md)
-- **配置概念说明**: [CONFIGURATION-CONCEPTS.md](./CONFIGURATION-CONCEPTS.md)
+- **完整配置示例**: [beeclaw.example.json](../beeclaw.example.json)
+- **系统架构**: [architecture.md](./architecture.md)
 - **配置示例**: [../beeclaw.example.json](../beeclaw.example.json)
 - **Schema 定义**: [../beeclaw.schema.json](../beeclaw.schema.json)
-- **环境变量 vs 配置文件**: [env-vs-config.md](./env-vs-config.md)
+- **快速开始**: [getting-started.md](./getting-started.md)

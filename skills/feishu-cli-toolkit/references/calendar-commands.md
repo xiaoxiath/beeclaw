@@ -2,7 +2,7 @@
 
 ## 时间格式
 
-所有时间参数统一使用 **RFC3339** 格式：`2024-01-21T14:00:00+08:00`
+所有时间参数统一使用 **RFC3339** 格式：`2026-01-21T14:00:00+08:00`
 
 ## 日历操作
 
@@ -32,8 +32,8 @@ feishu-cli calendar primary [-o json]
 feishu-cli calendar create-event \
   --calendar-id <id> \
   --summary "会议标题" \
-  --start "2024-01-21T14:00:00+08:00" \
-  --end "2024-01-21T15:00:00+08:00" \
+  --start "2026-01-21T14:00:00+08:00" \
+  --end "2026-01-21T15:00:00+08:00" \
   [--description "会议描述"] \
   [--location "会议室名称"]
 ```
@@ -45,8 +45,8 @@ feishu-cli calendar create-event \
 ```bash
 feishu-cli calendar list-events \
   --calendar-id <id> \
-  [--start "2024-01-01T00:00:00+08:00"] \
-  [--end "2024-01-31T23:59:59+08:00"] \
+  [--start "2026-01-01T00:00:00+08:00"] \
+  [--end "2026-01-31T23:59:59+08:00"] \
   [--page-size 50] \
   [--page-token <token>]
 ```
@@ -64,8 +64,8 @@ feishu-cli calendar update-event \
   --calendar-id <id> \
   --event-id <event_id> \
   [--summary "新标题"] \
-  [--start "2024-01-21T15:00:00+08:00"] \
-  [--end "2024-01-21T16:00:00+08:00"] \
+  [--start "2026-01-21T15:00:00+08:00"] \
+  [--end "2026-01-21T16:00:00+08:00"] \
   [--description "新描述"] \
   [--location "新地点"]
 ```
@@ -82,8 +82,8 @@ feishu-cli calendar delete-event --calendar-id <id> --event-id <event_id>
 feishu-cli calendar event-search \
   --calendar-id <id> \
   --query "关键词" \
-  [--start "2024-01-01T00:00:00+08:00"] \
-  [--end "2024-12-31T23:59:59+08:00"] \
+  [--start "2026-01-01T00:00:00+08:00"] \
+  [--end "2026-12-31T23:59:59+08:00"] \
   [--page-size 20]
 ```
 
@@ -122,8 +122,8 @@ feishu-cli calendar attendee list <calendar_id> <event_id> \
 
 ```bash
 feishu-cli calendar freebusy \
-  --start "2024-01-01T00:00:00+08:00" \
-  --end "2024-01-02T00:00:00+08:00" \
+  --start "2026-01-01T00:00:00+08:00" \
+  --end "2026-01-02T00:00:00+08:00" \
   --user-id <user_id>
 ```
 

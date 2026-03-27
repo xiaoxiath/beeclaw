@@ -2,6 +2,7 @@
 name: beeclaw-reflection
 description: Beeclaw's core reflection skill for learning from failures. TRIGGER THIS SKILL whenever a skill execution fails, the user corrects your behavior, you notice repetitive patterns (3+ similar tasks), or the user expresses frustration. This skill enables continuous improvement through structured failure analysis.
 tags: [beeclaw, evolution, learning, improvement]
+version: 1.0.0
 ---
 
 # Beeclaw Reflection & Evolution

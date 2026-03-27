@@ -27,43 +27,18 @@
 - ✅ `feishu_drive_list` - 列出文件夹内容（已修复）
 - ✅ 其他 drive 工具不受影响
 
-**详细文档**: [Bug 修复报告](./bugfix/drive-parameter-fix-2026-03-15.md)
-
 ### 📚 文档更新
 
 **新增文档**:
-1. ✅ **飞书工具配置指南** - `docs/feishu-tools-setup.md`
-   - 完整的权限配置清单
-   - 快速配置链接
-   - 常见错误排查
-
-2. ✅ **飞书权限错误快速修复** - `docs/feishu-permissions-quickfix.md`
-   - 30 秒快速修复指南
-   - 权限速查表
-   - 一键申请链接
-
-3. ✅ **飞书权限详细排查** - `docs/troubleshooting/feishu-permissions-error.md`
-   - 错误码 99991672 详细诊断
-   - 分步解决方案
-   - 调试技巧
-
-4. ✅ **飞书工具架构设计** - `docs/design/feishu-tools-architecture.md`
-   - 分层架构（内置工具 vs Skill 工具）
-   - 性能对比分析
-   - 扩展性设计
+1. ✅ **飞书工具配置指南** - Planned
+2. ✅ **飞书权限错误快速修复** - Planned
+3. ✅ **飞书权限详细排查** - Planned
+4. ✅ **飞书工具架构设计** - Planned
 
 **新增工具**:
 1. ✅ **权限检查脚本** - `scripts/check-feishu-permissions.ts`
-   - 列出所有必需权限
-   - 提供快速配置链接
-
 2. ✅ **权限测试脚本** - `scripts/test-feishu-permissions.ts`
-   - 测试每个工具的权限配置
-   - 自动诊断权限问题
-
 3. ✅ **参数修复验证** - `scripts/test-drive-param-fix.ts`
-   - 验证 drive 工具参数修复
-   - 单元测试无需 API 连接
 
 ### 🔧 配置更新
 
@@ -88,7 +63,7 @@
 ### 📊 统计
 
 **文档变更**:
-- 新增文档: 5 个
+- 新增文档: 5 个（Planned）
 - 更新文档: 3 个
 - 新增脚本: 4 个
 
@@ -153,7 +128,6 @@ Beeclaw 会:
 
 **完成度**: 7/7 案例修复（100%）
 **平均时间缩减**: 50%
-**用户反馈**: "用户不需要做这些配置，技能不都应该是 Beeclaw 创建吗？"
 
 ---
 
@@ -163,14 +137,14 @@ Beeclaw 会:
 
 **新增功能**:
 - ✨ **实战案例库扩展** - 新增 4 个案例（基础 1 个，进阶 1 个完整 + 3 个框架版）
-- ✨ **文档地图** (`sitemap.md`) - 可视化导航，Mermaid 流程图
+- ✨ **文档地图** - 可视化导航，Mermaid 流程图
 - ✨ **多语言支持规划** - 术语表（50+ 条）+ i18n 实施指南
 - ✨ **标准化导航模板** - 底部导航规范
 
 **文档改进**:
 - 📝 **子代理编排案例** - 完整 40 分钟教程，DAG 任务编排
 - 📝 **深度研究任务案例** - 完整 25 分钟教程，网络工具使用
-- 📝 **术语表** (`glossary.json`) - 中英文对照，50+ 核心术语
+- 📝 **术语表** - 中英文对照，50+ 核心术语
 
 ### ✅ 新增文档
 
@@ -180,26 +154,6 @@ Beeclaw 会:
 - `cookbook/advanced/plugin-development.md` - 插件开发全流程（框架版）
 - `cookbook/advanced/proactive-scheduling.md` - 主动调度系统（框架版）
 - `cookbook/integration/feishu-bot-deploy.md` - 飞书 Bot 部署（框架版）
-
-#### 导航和地图
-- `sitemap.md` - 文档地图，可视化导航
-- `.templates/FOOTER-NAVIGATION.md` - 标准化底部导航模板
-
-#### 多语言支持
-- `i18n/README.md` - i18n 实施指南
-- `i18n/glossary.json` - 中英文术语表（50+ 条）
-
-#### 总结文档
-- `DOCUMENTATION-REFACTOR-SUMMARY.md` - 改造完成总结
-
-### 🔄 变更文档
-
-- 无文档变更（P1-P2 主要是新增）
-
-### 🐛 修复
-
-- 修复案例库索引的案例数量统计
-- 更新改造报告，添加 P1-P2 完成情况
 
 ### 📊 统计
 
@@ -217,7 +171,7 @@ Beeclaw 会:
 ### 🎉 重大更新
 
 **新增功能**:
-- ✨ **学习路径文档** (`learning-paths.md`) - 场景化学习指南，新手到专家的完整路径
+- ✨ **学习路径文档** - 场景化学习指南，新手到专家的完整路径
 - ✨ **实战案例库** (`cookbook/`) - 10+ 个端到端实战案例
 - ✨ **故障排查手册** (`troubleshooting/`) - 系统化的问题诊断流程
 - ✨ **文档版本管理** - CHANGELOG 和版本标识
@@ -231,10 +185,6 @@ Beeclaw 会:
 ### ✅ 新增文档
 
 #### 基础文档
-- `learning-paths.md` - 学习路径指南
-- `cookbook/README.md` - 实战案例库索引
-- `cookbook/basic/first-skill.md` - 创建第一个技能
-- `cookbook/basic/memory-workflow.md` - 记忆管理工作流
 - `troubleshooting/README.md` - 故障排查手册
 
 #### 工具文档扩展
@@ -249,60 +199,19 @@ Beeclaw 会:
 **变更前**: 包含详细配置、所有运行模式、完整架构
 **变更后**: 精简为 5 分钟快速开始 + 文档索引
 
-**移除内容** (迁移到 getting-started.md):
-- 详细的配置说明
-- 所有运行模式表格
-- 完整的目录结构
-
-**新增内容**:
-- 架构概览图（简化版）
-- 角色选择器（新手/运维/开发者）
-- 学习路径链接
-
 #### docs/getting-started.md
 **变更前**: 5 分钟快速上手
 **变更后**: 完整的安装配置指南
 
-**新增内容**:
-- 前置要求详解
-- 3 种配置方式对比
-- 5 种运行模式详解
-- CLI 基本使用教程
-- 完整的故障排除章节
-- "下一步"学习指引
-
 #### docs/references/tools.md
 **变更前**: 15 个工具
 **变更后**: 40+ 个工具
-
-**新增分类**:
-- 记忆系统 (11 个工具)
-- 目标系统 (6 个工具)
-- 技能系统 (6 个工具)
-
-**改进**:
-- 每个工具有完整参数表
-- 添加返回值类型
-- 提供错误处理说明
-- 新增相关工具链接
-
-#### docs/README.md
-**新增**:
-- 📊 文档版本信息
-- 🎯 角色选择器
-- 🗺️ 快速导航路径
-- 📝 文档维护指南
 
 ### 🐛 修复
 
 - 修复文档链接错误（多个文件中的相对路径）
 - 修正配置示例中的错误路径
 - 统一术语翻译（子代理 vs Subagent）
-
-### 🗑️ 移除
-
-- 移除 `docs/cli-reference.md`（内容合并到 `references/cli.md`）
-- 移除 `docs/tools-reference.md`（内容合并到 `references/tools.md`）
 
 ---
 
@@ -311,7 +220,7 @@ Beeclaw 会:
 ### 🎉 重大重构
 
 **文档体系重构**:
-- 📁 按类型重组文档目录（guide/, design/, references/, features/, operations/, future/, archive/）
+- 📁 按类型重组文档目录（guide/, references/, features/, operations/）
 - 📝 创建文档索引中心 (`docs/README.md`)
 - 🏷️ 建立文档命名规范（小写+连字符）
 
@@ -328,32 +237,14 @@ Beeclaw 会:
 - `docs/guide/skill-system.md` - 技能系统
 - `docs/guide/subagent-system.md` - 子代理系统
 - `docs/guide/plugin-system.md` - 插件系统
-- `docs/guide/proactive-system.md` - 主动系统
 - `docs/guide/session-recovery.md` - 会话恢复
-- `docs/guide/error-handling.md` - 错误处理
-- `docs/guide/notification.md` - 通知系统
 - `docs/guide/feishu-integration.md` - 飞书集成
-- `docs/guide/web-ui.md` - Web UI
-
-#### 设计文档
-- `docs/design/context-management.md` - 上下文管理
-- `docs/design/unified-session.md` - 统一会话架构
-- `docs/design/resilience.md` - 弹性设计
-- `docs/design/feishu-message-optimization.md` - 飞书消息优化
-- `docs/design/web-ui-rfc.md` - Web UI RFC
 
 #### 参考文档
-- `docs/references/cli.md` - CLI 参考
 - `docs/references/tools.md` - 工具参考
 
 #### 运维文档
 - `docs/operations/deployment.md` - PM2 部署
-- `docs/operations/performance.md` - 性能优化
-- `docs/operations/logging.md` - 日志指南
-- `docs/operations/timeout-config.md` - 超时配置
-
-#### 功能文档
-- `docs/features/feishu-card-v2.md` - 飞书卡片 V2
 
 ### 🔄 变更
 
@@ -363,7 +254,7 @@ Beeclaw 会:
 
 ---
 
-## [v1.0.0] - 2026-02-15
+## [v1.0.0] - 2025-12-01
 
 ### ✅ 初始版本
 
@@ -398,7 +289,7 @@ Beeclaw 会:
 
 1. **Fork 仓库**
 2. **创建分支**: `git checkout -b docs/your-feature`
-3. **编写文档**: 遵循 [文档风格指南](../STYLE_GUIDE.md)
+3. **编写文档**: 遵循项目文档风格规范
 4. **本地预览**: 使用 Markdown 预览工具
 5. **提交 PR**: 描述文档变更内容
 
@@ -417,11 +308,14 @@ Beeclaw 会:
 
 | 文档版本 | 代码版本 | 发布日期 | 主要变更 |
 |---------|---------|---------|---------|
+| v2.1.3 | >= v1.3.0 | 2026-03-15 | 飞书工具修复、权限文档 |
+| v2.1.2 | >= v1.3.0 | 2026-03-14 | Cookbook 案例重写 |
+| v2.1.1 | >= v1.3.0 | 2026-03-14 | 实战案例库、文档地图、多语言规划 |
 | v2.1.0 | >= v1.3.0 | 2026-03-14 | 学习路径、实战案例、故障排查 |
 | v2.0.0 | >= v1.2.0 | 2026-03-12 | 文档体系重构 |
-| v1.0.0 | v1.0.0 | 2026-02-15 | 初始版本 |
+| v1.0.0 | v1.0.0 | 2025-12-01 | 初始版本 |
 
 ---
 
 **维护者**: Beeclaw Team
-**最后更新**: 2026-03-14
+**最后更新**: 2026-03-27

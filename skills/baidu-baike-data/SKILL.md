@@ -3,6 +3,8 @@ name: baidu-baike-data
 description: The Baidu Baike Component is a knowledge service tool designed to query authoritative encyclopedia explanations for various nouns. Its core function is given a specific "noun" (object, person, location, concept, event, etc.) provided by the user, it returns a standardized, detailed entry explanation sourced from Baidu Baike.
 homepage: https://baike.baidu.com/
 metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["python3"] ,"env":["BAIDU_API_KEY"]},"primaryEnv":"BAIDU_API_KEY" } }
+version: 1.0.0
+tags: [search, knowledge, baidu, encyclopedia]
 ---
 
 # Baidu Baike

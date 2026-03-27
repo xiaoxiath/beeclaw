@@ -639,7 +639,7 @@ const compressed = result.compressed;
 
 ## 更多资源
 
-- [Context Engineering 章节](../../../ch05-context-engineering.md) - 理论背景
+- [Context Engineering 章节](../context.ts) - 上下文管理模块（理论背景）
 - [测试用例](./__tests__/) - 完整测试覆盖
 - [API 类型定义](./types.ts) - TypeScript 类型
 

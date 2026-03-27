@@ -1,6 +1,7 @@
 # Architecture Refactoring Plan
 
-**Status**: Planning Phase
+> **Status**: Planning — All phases pending, no work has started yet.
+
 **Priority**: Medium-term improvement
 **Risk Level**: High (requires careful migration)
 
@@ -183,8 +184,8 @@ export class FeishuSessionUIAdapter implements ISessionUIController {
 ## Timeline
 
 **Total Duration**: 8 weeks
-**Start Date**: TBD
-**Completion Target**: TBD
+**Start Date**: TBD - Pending team discussion
+**Completion Target**: TBD - Pending team discussion
 
 **Milestones**:
 - Week 2: Interface definitions complete
@@ -199,4 +200,4 @@ export class FeishuSessionUIAdapter implements ISessionUIController {
 
 - [Clean Architecture by Robert C. Martin](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 - [Dependency Inversion Principle](https://en.wikipedia.org/wiki/Dependency_inversion_principle)
-- REVIEW-REPORT.md - Section: 七、架构问题汇总
+- [REVIEW-REPORT.md](./REVIEW-REPORT.md) - Section: 七、架构问题汇总

@@ -12,6 +12,7 @@ description: "Guide for Human-in-the-Loop (HITL) interactions - requesting user 
 
 **DO NOT proceed without user confirmation in these scenarios.** This skill ensures safe, user-aligned execution."
 tags: [hitl, confirmation, approval, safety, user-interaction]
+version: 1.0.0
 ---
 
 # Human-in-the-Loop (HITL) Interaction Guide

@@ -74,4 +74,4 @@
 ## 相关文档
 
 - [飞书集成](./feishu-integration.md)
-- [错误处理](./error-handling.md)
+- [故障排查](../troubleshooting/README.md)

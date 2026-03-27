@@ -2,6 +2,7 @@
 name: beeclaw-preference-learning
 description: Beeclaw's dynamic preference learning system. This skill automatically detects and learns user preferences from conversation patterns. TRIGGER when user expresses format preferences ("don't use emoji", "be concise"), identifies their role ("I'm a frontend engineer"), gives feedback on output style, or establishes habits/rituals. Preferences are stored in facts/preferences.md and applied to all future interactions.
 tags: [beeclaw, memory, personalization, learning]
+version: 1.0.0
 ---
 
 # Beeclaw Preference Learning

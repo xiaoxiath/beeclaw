@@ -3,6 +3,8 @@ name: baidu-scholar-search-skill
 description: Baidu Scholar Search - Search Chinese and English academic literature (journals, conferences, papers, etc.)
 homepage: https://xueshu.baidu.com/
 metadata: { "openclaw": { "emoji": "🔬", "requires": { "bins": ["curl"] ,"env":["BAIDU_API_KEY"]},"primaryEnv":"BAIDU_API_KEY" }  }
+version: 1.0.0
+tags: [search, academic, baidu, scholar]
 ---
 
 # Baidu Scholar Search Skill

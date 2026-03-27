@@ -2,6 +2,7 @@
 name: beeclaw-reflection-trigger
 description: Beeclaw's trigger detection system. This skill runs automatically to detect when reflection should be invoked. Understanding these patterns helps you recognize when something needs improvement. Triggers include user corrections, frustration signals, skill failures, and repetitive patterns.
 tags: [beeclaw, evolution, triggers, detection]
+version: 1.0.0
 ---
 
 # Beeclaw Reflection Trigger Detection

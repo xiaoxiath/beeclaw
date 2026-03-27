@@ -2,6 +2,7 @@
 name: beeclaw-self-evolution
 description: Beeclaw's self-evolution skill for periodic self-reflection and SOUL.md updates. TRIGGER THIS SKILL when scheduled self-reflection time arrives, or when explicitly asked to reflect on own behavior. This skill enables autonomous growth by periodically reviewing lessons learned and distilling them into core principles.
 tags: [beeclaw, evolution, self-improvement, reflection]
+version: 1.0.0
 ---
 
 # Beeclaw Self-Evolution

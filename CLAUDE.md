@@ -21,9 +21,16 @@ bun lint                 # Lint code
 ### Development Setup
 ```bash
 bun install
+
+# Option A: Configuration file
 cp beeclaw.example.json beeclaw.json
-export ZHIPU_API_KEY=your-key
-export LARK_BEECLAW_APPID=... # for Feishu bot
+# Edit beeclaw.json to fill in API keys
+
+# Option B: Environment variables
+cp .env.example .env && echo 'ZHIPU_API_KEY=your_key' >> .env
+
+# For Feishu bot mode
+export LARK_BEECLAW_APPID=...
 export LARK_BEECLAW_AS=...
 ```
 

@@ -123,8 +123,8 @@ proactive_list({ type: 'schedules' })
 
 ## Related Documentation
 
-- [Daily Reflection vs Memory Compression Analysis](./daily-reflection-vs-compression.md)
-- [Visual Comparison](./reflection-comparison-visual.md)
+- [Daily Reflection vs Memory Compression Analysis](../analysis/daily-reflection-vs-compression.md)
+- [Visual Comparison](../analysis/reflection-comparison-visual.md)
 
 ## References
 

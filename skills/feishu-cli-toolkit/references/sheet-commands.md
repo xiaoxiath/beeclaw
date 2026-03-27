@@ -164,3 +164,9 @@ feishu-cli sheet protect <token> <sheet_id> [--lock/--unlock]
 | 频率限制 | 100 次/分钟 |
 | V3 写入 | 单次最多 10 个范围 |
 | 范围格式 | `SheetID!A1:C10`，支持整列 `A:C` 和整行 `1:3` |
+
+## 权限要求
+
+| 权限 | 说明 |
+|------|------|
+| `sheets:spreadsheet` | 电子表格读写操作 |

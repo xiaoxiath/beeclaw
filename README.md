@@ -39,7 +39,12 @@ git clone https://github.com/xiaoxiath/beeclaw.git
 cd beeclaw && bun install
 
 # 2. 配置（选择一种方式）
+# 方式一：使用环境变量
 cp .env.example .env && echo 'ZHIPU_API_KEY=your_key' >> .env
+
+# 方式二：使用配置文件
+cp beeclaw.example.json beeclaw.json
+# 编辑 beeclaw.json 填入 API Key
 
 # 3. 运行
 bun run cli        # CLI 模式
@@ -53,11 +58,11 @@ bun run bot        # 飞书 Bot 模式
 
 | 新手入门 | 进阶使用 | 架构设计 | 运维部署 |
 |---------|---------|---------|---------|
-| [学习路径](./docs/learning-paths.md) | [工具参考](./docs/references/tools.md) | [系统架构](./docs/architecture.md) | [PM2 部署](./docs/operations/deployment.md) |
-| [快速开始](./docs/getting-started.md) | [记忆系统](./docs/guide/memory-system.md) | [上下文管理](./docs/design/context-management.md) | [性能优化](./docs/operations/performance.md) |
-| [配置指南](./docs/configuration.md) | [技能系统](./docs/guide/skill-system.md) | [弹性设计](./docs/design/resilience.md) | [日志指南](./docs/operations/logging.md) |
+| [快速开始](./docs/getting-started.md) | [工具参考](./docs/references/tools.md) | [系统架构](./docs/architecture.md) | [PM2 部署](./docs/operations/deployment.md) |
+| [配置指南](./docs/configuration.md) | [记忆系统](./docs/guide/memory-system.md) | [框架路线图](./docs/framework-roadmap.md) | [性能优化](./docs/performance-optimization-session-compression.md) |
+| [飞书集成](./docs/guide/feishu-integration.md) | [技能系统](./docs/guide/skill-system.md) | [子代理系统](./docs/guide/subagent-system.md) | [故障排查](./docs/troubleshooting/) |
 
-**→ [完整文档目录](./docs/README.md)** · **[实战案例库](./docs/cookbook/)** · **[故障排查](./docs/troubleshooting/)**
+**→ [完整文档目录](./docs/README.md)** · **[故障排查](./docs/troubleshooting/)**
 
 ## 🎯 选择你的路径
 
@@ -66,7 +71,7 @@ bun run bot        # 飞书 Bot 模式
 | **初次使用者** | [5 分钟快速开始](./docs/getting-started.md) |
 | **运维工程师** | [PM2 部署指南](./docs/operations/deployment.md) |
 | **开发者** | [开发指南](./CLAUDE.md) |
-| **飞书 Bot 用户** | [飞书集成](./docs/guide/feishu-integration.md) · [飞书工具配置](./docs/feishu-tools-setup.md) |
+| **飞书 Bot 用户** | [飞书集成](./docs/guide/feishu-integration.md) |
 
 ## 🏗️ 架构概览
 
@@ -107,9 +112,7 @@ bun run build:web     # 构建 Web UI
 
 ## 📊 项目状态
 
-**版本**: v1.3.0+ | **测试覆盖**: 99%+ | **文档**: 1,600+ 行
-
-**→ [任务完成报告](./docs/all-tasks-completed-2026-03-13.md)**
+**版本**: v2.1.3 | **测试覆盖**: 99%+ | **文档**: 1,600+ 行
 
 ## 🤝 贡献
 
@@ -119,11 +122,9 @@ bun run build:web     # 构建 Web UI
 - 📝 改进文档
 - 🔧 提交代码修复或新功能（[Pull Requests](https://github.com/xiaoxiath/beeclaw/pulls)）
 
-**→ [贡献指南](./CONTRIBUTING.md)**
-
 ## 📄 License
 
-本项目基于 [MIT](./LICENSE) 许可证开源。
+本项目基于 MIT 许可证开源。
 
 ---
 

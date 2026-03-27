@@ -10,6 +10,8 @@ description: "Create new skills, modify and improve existing skills, and measure
 - User wants to create a reusable procedure
 
 **DO NOT manually create SKILL.md files.** Always use this skill to ensure proper structure with scripts/, references/, evals/ and automated workflow detection."
+version: 1.0.0
+tags: [development, skill, automation]
 ---
 
 # Skill Creator

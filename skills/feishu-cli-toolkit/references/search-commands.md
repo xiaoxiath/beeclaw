@@ -143,3 +143,10 @@ feishu-cli search docs "产品需求" --user-access-token u-xxx
 2. **搜索范围**：只能搜索用户有权访问的文档
 3. **分页**：使用 `--offset` 和 `--count` 控制（offset + count < 200）
 
+## 权限要求
+
+| 权限 | 说明 |
+|------|------|
+| User Access Token | 所有搜索 API 均需要 User Access Token |
+| `search:docs:read` | 搜索云文档 |
+| `search:message` | 搜索消息 |

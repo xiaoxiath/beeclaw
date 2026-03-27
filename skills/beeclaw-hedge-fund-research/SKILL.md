@@ -11,6 +11,8 @@ description: |
   - 评估投资风险回报比
 
   触发词：股票分析、投研报告、投资备忘录、hedge fund、股票研究、交易策略、基本面分析、技术分析、估值分析
+version: 1.0.0
+tags: [finance, research, investment, analysis]
 ---
 
 # 对冲基金投研决策流程

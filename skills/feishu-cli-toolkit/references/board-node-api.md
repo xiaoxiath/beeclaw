@@ -275,3 +275,10 @@ feishu-cli board create-notes <new_board_id> '[{"type":"image",...,"image":{"tok
 | 浅蓝进展 | `#cce5ff` | 状态-进展中 |
 | 橙色成熟 | `#ffc285` | 二级状态-成熟 |
 | 浅橙进展 | `#fff0e3` | 二级状态-进展中 |
+
+## 权限要求
+
+| 权限 | 说明 |
+|------|------|
+| `board:board` | 画板节点操作 |
+| `drive:drive` | 素材上传（画板图片） |

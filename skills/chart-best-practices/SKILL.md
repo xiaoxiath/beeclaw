@@ -6,6 +6,7 @@ tags: [visualization, charts, data-presentation, best-practices, feishu, vchart]
 triggers:
   - when_user_mentions: [chart, charts, graph, visualize, visualization, 图表, 可视化, 数据可视化, 画图, 绘图]
   - when_tool_is_called: create_chart
+version: 1.0.0
 ---
 
 # Chart Visualization Best Practices

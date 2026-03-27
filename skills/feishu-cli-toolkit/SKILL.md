@@ -9,6 +9,8 @@ description: >-
 argument-hint: <module> <command> [args]
 user-invocable: true
 allowed-tools: Bash, Read, Write
+version: 1.0.0
+tags: [feishu, cli, productivity, toolkit]
 ---
 
 # 飞书综合工具箱
@@ -91,7 +93,7 @@ feishu-cli sheet replace <token> <sheet_id> "查找词" "替换词" --range "A1:
 
 ## 2. 日历和日程
 
-管理飞书日历、日程、参与人和忙闲查询。时间格式统一使用 RFC3339（如 `2024-01-01T10:00:00+08:00`）。
+管理飞书日历、日程、参与人和忙闲查询。时间格式统一使用 RFC3339（如 `2026-01-01T10:00:00+08:00`）。
 
 ### 常用命令
 
@@ -105,8 +107,8 @@ feishu-cli calendar primary                 # 获取主日历
 feishu-cli calendar create-event \
   --calendar-id <id> \
   --summary "团队周会" \
-  --start "2024-01-21T14:00:00+08:00" \
-  --end "2024-01-21T15:00:00+08:00" \
+  --start "2026-01-21T14:00:00+08:00" \
+  --end "2026-01-21T15:00:00+08:00" \
   --description "讨论本周进展"
 
 feishu-cli calendar list-events <calendar_id> --start-time <RFC3339> --end-time <RFC3339>
@@ -126,8 +128,8 @@ feishu-cli calendar attendee list <calendar_id> <event_id>
 
 # 忙闲查询
 feishu-cli calendar freebusy \
-  --start "2024-01-01T00:00:00+08:00" \
-  --end "2024-01-02T00:00:00+08:00" \
+  --start "2026-01-01T00:00:00+08:00" \
+  --end "2026-01-02T00:00:00+08:00" \
   --user-id <user_id>
 ```
 
@@ -145,7 +147,7 @@ feishu-cli calendar freebusy \
 
 ```bash
 # 任务 CRUD
-feishu-cli task create --summary "完成代码审查" --description "详细描述" --due "2024-02-01"
+feishu-cli task create --summary "完成代码审查" --description "详细描述" --due "2026-02-01"
 feishu-cli task list [--completed | --uncompleted]
 feishu-cli task get <task_id>
 feishu-cli task update <task_id> --summary "新标题"

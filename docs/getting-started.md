@@ -49,7 +49,7 @@ bun install
 ```
 
 <details>
-<summary>🔍 遇到依赖问题？</summary>
+<summary>遇到依赖问题？</summary>
 
 ```bash
 # 清理并重新安装
@@ -78,7 +78,7 @@ ZHIPU_API_KEY=your_key_here
 ```
 
 <details>
-<summary>📖 如何获取 API Key？</summary>
+<summary>如何获取 API Key？</summary>
 
 | Provider | 获取方式 | 费用 |
 |----------|---------|------|
@@ -168,7 +168,7 @@ cp beeclaw.example.json beeclaw.json
 | `agents[].temperature` | 生成温度 (0-2) | 0.7 |
 
 <details>
-<summary>🔧 高级配置选项</summary>
+<summary>高级配置选项</summary>
 
 ```json
 {
@@ -263,7 +263,7 @@ bun run bot --daemon
 - ✅ 主动推送通知
 
 <details>
-<summary>📖 飞书 Bot 配置详解</summary>
+<summary>飞书 Bot 配置详解</summary>
 
 详见 [飞书集成指南](./guide/feishu-integration.md)
 
@@ -313,7 +313,7 @@ bun run pm2:stop
 ```
 
 <details>
-<summary>🔧 PM2 配置详解</summary>
+<summary>PM2 配置详解</summary>
 
 详见 [PM2 部署指南](./operations/deployment.md)
 
@@ -475,15 +475,9 @@ PORT=3001 bun run bot
 ```
 
 <details>
-<summary>📖 更多故障排查</summary>
+<summary>更多故障排查</summary>
 
-详见 [故障排查手册](./troubleshooting/)
-
-- [启动问题](./troubleshooting/startup-issues.md)
-- [记忆系统问题](./troubleshooting/memory-issues.md)
-- [飞书集成问题](./troubleshooting/feishu-issues.md)
-- [性能问题](./troubleshooting/performance-issues.md)
-- [错误代码参考](./troubleshooting/error-codes.md)
+详见 [故障排查手册](./troubleshooting/README.md)
 
 </details>
 
@@ -491,35 +485,25 @@ PORT=3001 bun run bot
 
 ## 下一步
 
-### 📚 深入学习
+### 深入学习
 
-- **[学习路径](./learning-paths.md)** - 系统化学习指南
 - **[配置指南](./configuration.md)** - 完整配置选项
 - **[工具参考](./references/tools.md)** - 所有内置工具
 
-### 🎯 实战练习
-
-- **[创建第一个技能](./cookbook/basic/first-skill.md)**
-- **[记忆管理工作流](./cookbook/basic/memory-workflow.md)**
-- **[深度研究任务](./cookbook/basic/research-task.md)**
-
-### 🏗️ 架构理解
+### 架构理解
 
 - **[系统架构](./architecture.md)** - 核心设计理念
 - **[记忆系统](./guide/memory-system.md)** - 记忆存储设计
-- **[上下文管理](./design/context-management.md)** - Token 管理
+- **[Framework 转型规划](./framework-roadmap.md)** - 框架化路线图
 
-### 🚀 生产部署
+### 生产部署
 
 - **[PM2 部署](./operations/deployment.md)** - 生产环境部署
-- **[性能优化](./operations/performance.md)** - 性能调优
-- **[日志指南](./operations/logging.md)** - 日志排查
 
 ---
 
 ## 相关文档
 
 - [配置指南](./configuration.md) - 详细配置选项
-- [CLI 参考](./references/cli.md) - 命令行详解
 - [飞书集成](./guide/feishu-integration.md) - Bot 配置
-- [故障排查](./troubleshooting/) - 问题诊断
+- [故障排查](./troubleshooting/README.md) - 问题诊断

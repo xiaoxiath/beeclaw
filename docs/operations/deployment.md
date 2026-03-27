@@ -126,4 +126,4 @@ tar -czf beeclaw-backup-$DATE.tar.gz \
 ## 相关文档
 
 - [配置指南](../configuration.md)
-- [性能优化](./performance.md)
+- [配置指南](../configuration.md)

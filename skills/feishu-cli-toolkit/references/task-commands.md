@@ -10,7 +10,7 @@
 feishu-cli task create \
   --summary "任务标题" \
   [--description "详细描述"] \
-  [--due "2024-02-01"] \
+  [--due "2026-02-01"] \
   [--origin-href "https://example.com"] \
   [--origin-platform "feishu-cli"]
 ```
@@ -35,7 +35,7 @@ feishu-cli task get <task_id> [-o json]
 feishu-cli task update <task_id> \
   [--summary "新标题"] \
   [--description "新描述"] \
-  [--due "2024-03-01"]
+  [--due "2026-03-01"]
 ```
 
 ### 完成任务

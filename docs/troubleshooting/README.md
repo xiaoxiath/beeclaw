@@ -2,6 +2,18 @@
 
 > Beeclaw 常见问题和解决方案
 
+## 文档索引
+
+| 文档 | 说明 |
+|------|------|
+| [技能执行问题](./skill-execution-bugs.md) | 技能使用流程中的已知问题和解决方案 |
+| [图表渲染调试](./chart-rendering.md) | `create_chart` 工具图表未渲染到飞书消息的排查 |
+| [会话队列超时修复](./session-queue-timeout-fix.md) | 消息在会话队列中超时过期的修复方案 |
+| [定时任务错峰执行](./stagger-reflection-compression.md) | Daily Reflection 与 Memory Compression 同时执行的冲突修复 |
+| [Extraction 与 Session 错误](./extraction-session-errors.md) | ExtractionManager 和 Session 相关错误分析 |
+
+---
+
 ## 快速诊断
 
 ### 1. 服务无法启动
@@ -121,4 +133,4 @@ bun run config:validate
 ## 相关文档
 
 - [部署指南](../operations/deployment.md)
-- [错误处理](../guide/error-handling.md)
+- [飞书集成](../guide/feishu-integration.md)

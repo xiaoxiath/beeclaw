@@ -40,7 +40,7 @@ bun run dev
 
 ## 贡献指南
 
-欢迎贡献！请查看 [CONTRIBUTING.md](../../CONTRIBUTING.md) 了解如何参与开发。
+欢迎贡献！请通过 GitHub Issue 或 Pull Request 参与开发。
 
 ## 许可证
 
