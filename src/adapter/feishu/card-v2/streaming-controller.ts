@@ -21,11 +21,13 @@ export interface StreamingControllerOptions {
 
   /**
    * Parent message ID (to reply to)
+   * Optional: if not provided, sends a new message (proactive mode)
    */
-  parentMessageId: string;
+  parentMessageId?: string;
 
   /**
    * Chat ID
+   * Required for proactive mode (when parentMessageId is not provided)
    */
   chatId: string;
 
@@ -169,12 +171,25 @@ export class StreamingMessageController {
       // Debug: Log the full card JSON
       logger.debug('[StreamingController] Card JSON:', JSON.stringify(card, null, 2));
 
-      // Send message
-      const messageId = await this.options.client.replyCard(
-        this.options.parentMessageId,
-        card,
-        { replyInThread: this.options.replyInThread }
-      );
+      let messageId: string;
+
+      if (this.options.parentMessageId) {
+        // Reply mode: reply to existing message
+        messageId = await this.options.client.replyCard(
+          this.options.parentMessageId,
+          card,
+          { replyInThread: this.options.replyInThread }
+        );
+        logger.debug('[StreamingController] Card sent as reply');
+      } else {
+        // Proactive mode: send new message to chat
+        messageId = await this.options.client.sendCard(
+          this.options.chatId,
+          'chat_id',
+          card
+        );
+        logger.debug('[StreamingController] Card sent as proactive message');
+      }
 
       this.state.messageId = messageId;
       this.state.initialized = true;

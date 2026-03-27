@@ -40,13 +40,14 @@ import { getSkillStore } from '../domain/skills';
 import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience-config';
 
 // Adapter layer
-import { initializeMCP, shutdownMCP } from '../adapter/mcp';
+import { initializeMCP, shutdownMCP, getMCPManager } from '../adapter/mcp';
 import { getHookRunner, resetHookRunner } from '../adapter/plugins/hooks';
 import { registerPorts } from '../domain/ports';
 import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
 import { FeishuChannel } from '../adapter/feishu/channel';
+import { StreamingMessageController } from '../adapter/feishu/card-v2/streaming-controller';
 
 // App layer
 import { needsOnboarding, runOnboardingWizard, quickSetup } from './onboarding';
@@ -479,7 +480,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
   // 9.9.2. Register domain port implementations (dependency inversion)
   try {
-    const { getMCPManager } = await import('../adapter/mcp');
     registerPorts({
       mcpManager: () => getMCPManager(),
       pluginRegistry: () => getPluginRegistry(),
@@ -487,6 +487,8 @@ export async function initApp(options: InitOptions = {}): Promise<{
         const { createHookRunner } = require('../adapter/plugins/hooks');
         return createHookRunner(registry);
       },
+      channelClient: () => getFeishuWSClient(),
+      messageControllerFactory: (options) => new StreamingMessageController(options),
     });
     logger.debug('   🔌 Ports: domain port implementations registered');
   } catch (e) {

@@ -776,14 +776,18 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     const feishuConfig = config?.feishu;
     const useCardV2 = feishuConfig?.useCardV2 ?? false;
 
-    if (channel === 'feishu' && useCardV2 && options.context?.parentMessageId) {
+    // Card V2 requires either parentMessageId (reply mode) or chatId (proactive mode)
+    const hasChatId = !!options.context?.chatId;
+    const canUseCardV2 = channel === 'feishu' && useCardV2 && hasChatId;
+
+    if (canUseCardV2) {
       const controllerFactory = getMessageControllerFactory();
       const channelClient = getChannelClientPort();
 
       if (controllerFactory && channelClient) {
         streamingController = controllerFactory({
           client: channelClient,
-          parentMessageId: options.context.parentMessageId as string,
+          parentMessageId: options.context?.parentMessageId as string | undefined,
           chatId: (options.context.chatId as string) || '',
           debounceMs: 500,
         });
@@ -793,7 +797,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
           type: 'thinking',
           thinking: 'Thinking...',
         });
-        logger.info('[Session] ⚡ Card V2 initialized with early "Thinking..." placeholder');
+        logger.info('[Session] ⚡ Card V2 initialized with early "Thinking..." placeholder', {
+          mode: options.context?.parentMessageId ? 'reply' : 'proactive',
+        });
       }
     }
   } catch (error) {

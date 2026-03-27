@@ -93,7 +93,7 @@ export interface IMessageController {
 /** Message Controller Factory — creates controller instances for a chat context */
 export type MessageControllerFactory = (options: {
   client: any;
-  parentMessageId: string;
+  parentMessageId?: string;  // Optional: if provided, uses reply mode; otherwise proactive mode
   chatId: string;
   debounceMs?: number;
 }) => IMessageController;
