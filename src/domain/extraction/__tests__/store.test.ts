@@ -115,7 +115,7 @@ describe('KnowledgeStore', () => {
 
     test('should handle malformed metadata gracefully', () => {
       // Write file with malformed metadata
-      const filePath = path.join(testDir, 'facts', 'personal.md');
+      const filePath = path.join(testDir, 'facts', 'profile.md');
       const content = `# 个人信息
 
 > 最后更新: 2024-01-01
@@ -224,7 +224,7 @@ describe('KnowledgeStore', () => {
     test('should handle errors gracefully', () => {
       // Make directory read-only to cause error
       const factsDir = path.join(testDir, 'facts');
-      const filePath = path.join(factsDir, 'personal.md');
+      const filePath = path.join(factsDir, 'profile.md');
 
       const item = createTestKnowledge();
 
@@ -309,7 +309,7 @@ describe('KnowledgeStore', () => {
 
       store.store([item]);
 
-      const filePath = path.join(testDir, 'facts', 'personal.md');
+      const filePath = path.join(testDir, 'facts', 'profile.md');
       const content = fs.readFileSync(filePath, 'utf-8');
 
       expect(content).toContain('# 个人信息');
@@ -402,7 +402,7 @@ describe('KnowledgeStore', () => {
 
     test('should handle items without metadata', () => {
       // Write file without metadata
-      const filePath = path.join(testDir, 'facts', 'personal.md');
+      const filePath = path.join(testDir, 'facts', 'profile.md');
       const content = `# 个人信息
 
 > 最后更新: 2024-01-01

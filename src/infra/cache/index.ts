@@ -142,8 +142,8 @@ class MemoryCache {
       }
     }
     // Second pass: if still over limit, remove oldest entries
-    if (this.store.size > this.maxSize) {
-      const excess = this.store.size - this.maxSize;
+    if (this.store.size >= this.maxSize) {
+      const excess = this.store.size - this.maxSize + 1;
       const keys = [...this.store.keys()];
       for (let i = 0; i < excess; i++) {
         this.store.delete(keys[i]);

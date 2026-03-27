@@ -13,7 +13,7 @@
     "dev:web": "bun scripts/build-web.ts --watch",
     "clean:web": "rm -rf src/web/client/dist",
     "build:embeddings": "bun run scripts/build-tool-embeddings.ts",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "test:tool-selector": "bun test src/domain/agent/__tests__/hybrid-tool-selector.test.ts",
     "example:tool-selector": "bun run examples/hybrid-tool-selector.ts",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
@@ -42,7 +42,9 @@
     "check:daemon": "./scripts/check-daemon.sh",
     "check:daemon:fix": "./scripts/check-daemon.sh --fix",
     "typecheck": "bunx tsc --noEmit",
-    "test:coverage": "bun test --coverage"
+    "test:coverage": "bun test --isolate --coverage",
+    "test:ci": "bun test --isolate --bail 5",
+    "test:fast": "bun test"
   },
   "dependencies": {
     "@hono/zod-validator": "0.7.6",

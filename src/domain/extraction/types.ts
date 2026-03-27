@@ -80,6 +80,7 @@ export interface ExtractionConfig {
   maxExtractionsPerRun: number;    // 每次最多提取条数
   notifyOnHighConfidence: boolean; // 高置信度时通知用户
   sensitivePatterns: string[];     // 敏感信息正则模式
+  skipSensitiveContent: boolean;   // 是否跳过含敏感内容
 }
 
 // 默认配置
@@ -102,4 +103,5 @@ export const DEFAULT_EXTRACTION_CONFIG: ExtractionConfig = {
     'ghp_[a-zA-Z0-9]',  // GitHub tokens
     'xox[bB]-',  // Slack tokens
   ],
+  skipSensitiveContent: true,
 };

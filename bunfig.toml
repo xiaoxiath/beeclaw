@@ -1,6 +1,4 @@
-# Bun configuration
-[install]
-exact = true
-
-[run]
-# Enable hot reload in development
+[test]
+# 每个测试文件在独立进程运行，避免 mock.module() 全局泄漏
+isolate = true
+timeout = 30000
