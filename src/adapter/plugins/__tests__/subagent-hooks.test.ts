@@ -1,10 +1,12 @@
 /**
  * Test: Subagent hooks integration
+ *
+ * Fixed: bypass loadPlugins() (jiti path resolution fails in vitest)
+ * and directly use getOrCreatePluginRegistry() + createApi() to register hooks.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resetPluginRegistry, getPluginRegistry, getOrCreatePluginRegistry } from "../registry";
-import { loadPlugins } from "../loader";
+import { resetPluginRegistry, getOrCreatePluginRegistry } from "../registry";
 import { createHookRunner } from "../hook-runner";
 
 describe("Subagent Hooks Integration", () => {
@@ -13,13 +15,15 @@ describe("Subagent Hooks Integration", () => {
   });
 
   it("should have subagent hook methods", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    expect(result.loaded).toContain("test-plugin");
+    api.on("subagent_spawning", async (event: any) => event);
+    api.on("subagent_spawned", async (event: any) => {});
+    api.on("subagent_delivery_target", async (event: any) => event);
+    api.on("subagent_ended", async (event: any) => {});
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -30,11 +34,16 @@ describe("Subagent Hooks Integration", () => {
   });
 
   it("should trigger subagent_spawning hook with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("subagent_spawning", async (event: any) => {
+      hookCalled(event);
+      return event;
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -50,16 +59,21 @@ describe("Subagent Hooks Integration", () => {
     // Should not throw and can return modified data
     const result = await hookRunner.runSubagentSpawning(eventData);
 
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
     // Result can be undefined or modified event data
     expect(result === undefined || typeof result === "object").toBe(true);
   });
 
   it("should trigger subagent_spawned hook with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("subagent_spawned", async (event: any) => {
+      hookCalled(event);
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -73,15 +87,20 @@ describe("Subagent Hooks Integration", () => {
 
     // Should not throw (void hook)
     await hookRunner.runSubagentSpawned(eventData);
-    expect(true).toBe(true);
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
   });
 
   it("should trigger subagent_delivery_target hook with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("subagent_delivery_target", async (event: any) => {
+      hookCalled(event);
+      return event;
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -99,16 +118,21 @@ describe("Subagent Hooks Integration", () => {
     // Should not throw and can return modified data
     const result = await hookRunner.runSubagentDeliveryTarget(eventData);
 
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
     // Result can be undefined or modified event data
     expect(result === undefined || typeof result === "object").toBe(true);
   });
 
   it("should trigger subagent_ended hook with correct event data for success", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("subagent_ended", async (event: any) => {
+      hookCalled(event);
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -122,15 +146,19 @@ describe("Subagent Hooks Integration", () => {
 
     // Should not throw (void hook)
     await hookRunner.runSubagentEnded(eventData);
-    expect(true).toBe(true);
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
   });
 
   it("should trigger subagent_ended hook with correct event data for failure", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("subagent_ended", async (event: any) => {
+      hookCalled(event);
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -144,7 +172,7 @@ describe("Subagent Hooks Integration", () => {
 
     // Should not throw (void hook)
     await hookRunner.runSubagentEnded(eventData);
-    expect(true).toBe(true);
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
   });
 
   it("should handle subagent hooks with no registered handlers", async () => {

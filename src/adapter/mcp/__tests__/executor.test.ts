@@ -3,20 +3,28 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const mockIsMCPToolName = vi.fn((name: string) => name.startsWith('mcp__'));
-const mockParseMCPToolName = vi.fn((name: string) => {
-  if (!name.startsWith('mcp__')) return null;
-  const parts = name.replace('mcp__', '').split('__');
-  return { serverId: parts[0], toolName: parts.slice(1).join('__') };
+const {
+  mockIsMCPToolName,
+  mockParseMCPToolName,
+  mockExecuteTool,
+  mockGetMCPManager,
+} = vi.hoisted(() => {
+  const mockExecuteTool = vi.fn(async () => ({
+    success: true,
+    data: { result: 'ok' },
+    error: undefined,
+  }));
+  const mockGetMCPManager = vi.fn(() => ({
+    executeTool: mockExecuteTool,
+  }));
+  const mockIsMCPToolName = vi.fn((name: string) => name.startsWith('mcp__'));
+  const mockParseMCPToolName = vi.fn((name: string) => {
+    if (!name.startsWith('mcp__')) return null;
+    const parts = name.replace('mcp__', '').split('__');
+    return { serverId: parts[0], toolName: parts.slice(1).join('__') };
+  });
+  return { mockIsMCPToolName, mockParseMCPToolName, mockExecuteTool, mockGetMCPManager };
 });
-const mockExecuteTool = vi.fn(async () => ({
-  success: true,
-  data: { result: 'ok' },
-  error: undefined,
-}));
-const mockGetMCPManager = vi.fn(() => ({
-  executeTool: mockExecuteTool,
-}));
 
 vi.mock('../client', () => ({
   getMCPManager: mockGetMCPManager,

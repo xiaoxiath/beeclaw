@@ -239,12 +239,14 @@ describe('SkillStore', () => {
 });
 
 describe('Skill Tools', () => {
+  let store: SkillStore;
+
   beforeEach(() => {
     if (existsSync(TEST_SKILLS_PATH)) {
       rmSync(TEST_SKILLS_PATH, { recursive: true });
     }
     resetSkillStore();
-    getSkillStore(TEST_SKILLS_PATH);
+    store = getSkillStore(TEST_SKILLS_PATH);
   });
 
   afterEach(() => {
@@ -254,7 +256,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_list tool', async () => {
-    await executeSkillTool('skill_ensure', {
+    store.create({
       name: 'test',
       description: 'Test skill',
     });
@@ -262,10 +264,11 @@ describe('Skill Tools', () => {
     const result = await executeSkillTool('skill_list', {});
     expect(result.success).toBe(true);
     expect(Array.isArray(result.data)).toBe(true);
+
   });
 
   test('skill_get tool', async () => {
-    await executeSkillTool('skill_ensure', {
+    store.create({
       name: 'get-test',
       description: 'Test',
       content: 'Skill content',
@@ -276,7 +279,7 @@ describe('Skill Tools', () => {
     expect((result.data as any).name).toBe('get-test');
   });
 
-  test('skill_ensure tool', async () => {
+  test('skill_ensure returns NEW_SKILL_REQUIRES_CREATOR for new skills', async () => {
     const result = await executeSkillTool('skill_ensure', {
       name: 'new-skill',
       description: 'A new skill',
@@ -284,12 +287,15 @@ describe('Skill Tools', () => {
       tags: ['new', 'test'],
     });
 
-    expect(result.success).toBe(true);
-    expect((result.data as any).name).toBe('new-skill');
+    // New skills require the skill-creator workflow
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('NEW_SKILL_REQUIRES_CREATOR');
+    expect((result.data as any).needsSkillCreator).toBe(true);
+    expect((result.data as any).skillName).toBe('new-skill');
   });
 
-  test('skill_ensure tool', async () => {
-    await executeSkillTool('skill_ensure', {
+  test('skill_ensure updates existing skill', async () => {
+    store.create({
       name: 'update-me',
       description: 'Original',
     });
@@ -300,11 +306,12 @@ describe('Skill Tools', () => {
     });
 
     expect(result.success).toBe(true);
-    expect((result.data as any).description).toBe('Updated description');
+    expect((result.data as any).action).toBe('updated');
+    expect((result.data as any).name).toBe('update-me');
   });
 
   test('skill_delete tool', async () => {
-    await executeSkillTool('skill_ensure', {
+    store.create({
       name: 'delete-me',
       description: 'To delete',
     });
@@ -314,7 +321,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_record tool', async () => {
-    await executeSkillTool('skill_ensure', {
+    store.create({
       name: 'record-test',
       description: 'Test',
     });
@@ -329,7 +336,7 @@ describe('Skill Tools', () => {
   });
 
   test('skill_maturity tool', async () => {
-    await executeSkillTool('skill_ensure', {
+    store.create({
       name: 'maturity-test',
       description: 'Test',
     });
@@ -616,8 +623,6 @@ describe('P2 Features', () => {
     }
   });
 
-
-
-
+  test.todo('P2 features to be implemented');
 });
 

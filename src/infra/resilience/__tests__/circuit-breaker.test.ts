@@ -7,7 +7,7 @@ import {
   CircuitBreaker,
   CircuitBreakerRegistry,
   CircuitOpenError
-} from '../../circuit-breaker';
+} from '../circuit-breaker';
 
 describe('CircuitBreaker', () => {
   let breaker: CircuitBreaker;

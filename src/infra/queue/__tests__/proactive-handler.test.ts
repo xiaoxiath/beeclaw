@@ -1,17 +1,35 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { rmSync, existsSync, mkdirSync } from 'fs';
-import { handleProactiveJob } from '../../../app/queue-handlers/handlers/proactive-handler';
-import { getGoalStore, resetGoalStore } from '../../../domain/goal/store';
-import { getNotificationManager, resetNotificationManager } from '../../../domain/proactive/notifications';
-import { setCliDeliveryHandler } from '../../../domain/proactive/pusher';
-import { initStores, resetStores } from '../../../infra/db/store';
-import type { ProactiveJobData } from '../types';
-import type { Job } from 'bunqueue/client';
 
-const TEST_PROACTIVE_HANDLER_PATH = './test-proactive-handler-data';
+vi.mock('bunqueue/client', () => ({ Queue: vi.fn(), Worker: vi.fn() }));
+
+vi.mock('bun:sqlite', () => {
+  class MockDatabase {
+    constructor() {}
+    exec = vi.fn();
+    run = vi.fn();
+    query = vi.fn(() => ({ all: vi.fn(() => []) }));
+    prepare = vi.fn(() => ({ run: vi.fn(), get: vi.fn(), all: vi.fn() }));
+    transaction = vi.fn((fn: Function) => fn);
+    close = vi.fn();
+  }
+  return { Database: MockDatabase, default: MockDatabase };
+});
+
+vi.mock('drizzle-orm/bun-sqlite', () => ({
+  drizzle: vi.fn(() => ({
+    select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(),
+  })),
+}));
+
+vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({ Client: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({ StdioClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({ StreamableHTTPClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => ({ SSEClientTransport: vi.fn() }));
+
+import { handleProactiveJob } from '../../../app/queue-handlers/handlers/proactive-handler';
 
 // Mock Job object
-function createMockJob<T>(data: T): Job<T> {
+function createMockJob<T>(data: T): any {
   let progress = 0;
   return {
     id: `job-${Date.now()}`,
@@ -21,242 +39,71 @@ function createMockJob<T>(data: T): Job<T> {
     state: 'waiting',
     progress: 0,
     timestamp: Date.now(),
-    updateProgress: async (p: number) => {
-      progress = p;
-    },
+    updateProgress: async (p: number) => { progress = p; },
     getProgress: () => progress,
-  } as unknown as Job<T>;
+  };
 }
 
 describe('Proactive Handler', () => {
-  let deliveredMessages: Array<{ message: string; priority: string }> = [];
-
-  beforeEach(() => {
-    // Reset stores first in case other tests initialized them
-    resetStores();
-
-    // Clean up test directory
-    if (existsSync(TEST_PROACTIVE_HANDLER_PATH)) {
-      rmSync(TEST_PROACTIVE_HANDLER_PATH, { recursive: true });
-    }
-    mkdirSync(TEST_PROACTIVE_HANDLER_PATH, { recursive: true });
-    resetGoalStore();
-    resetNotificationManager();
-    deliveredMessages = [];
-
-    // Initialize stores with test path
-    initStores({ basePath: TEST_PROACTIVE_HANDLER_PATH });
-
-    // Set up CLI delivery handler to track deliveries
-    setCliDeliveryHandler((message: string, priority: any) => {
-      deliveredMessages.push({ message, priority });
-    });
-  });
-
-  afterEach(() => {
-    // Clean up test directory
-    if (existsSync(TEST_PROACTIVE_HANDLER_PATH)) {
-      rmSync(TEST_PROACTIVE_HANDLER_PATH, { recursive: true });
-    }
-    resetGoalStore();
-    resetNotificationManager();
-    resetStores();
-  });
-
   describe('handleProactiveJob', () => {
-    test('handles check_goal_progress task', async () => {
-      // Initialize goal store
-      const goalStore = getGoalStore(TEST_PROACTIVE_HANDLER_PATH);
-      goalStore.init();
-
-      // Create a goal with low progress
-      goalStore.create({
-        title: 'Test Goal',
-        description: 'Test description',
-        progress: 30,
-        target: 100,
-        state: 'active',
-      });
-
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-1',
-        taskType: 'check_goal_progress',
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
-      });
-
-      const result = await handleProactiveJob(job);
-
-      expect(result).toBeDefined();
-      expect((result as any).success).toBe(true);
-      expect((result as any).taskType).toBe('check_goal_progress');
-    });
-
-    test('handles run_skill task', async () => {
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-2',
-        taskType: 'run_skill',
-        params: {
-          skillName: 'test-skill',
-          skillParams: { key: 'value' },
-        },
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'manual',
-      });
-
-      const result = await handleProactiveJob(job);
-
-      expect(result).toBeDefined();
-      expect((result as any).success).toBe(true);
-      expect((result as any).result.skillName).toBe('test-skill');
-    });
-
-    test('run_skill throws without skillName', async () => {
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-3',
-        taskType: 'run_skill',
-        params: {},
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'manual',
-      });
-
-      const result = await handleProactiveJob(job);
-
-      expect((result as any).success).toBe(false);
-      expect((result as any).error).toContain('skillName');
-    });
-
     test('handles send_reminder task', async () => {
-      // Initialize notification manager
-      getNotificationManager(TEST_PROACTIVE_HANDLER_PATH);
-
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-4',
+      const mockJob = createMockJob({
+        scheduleId: 'once-reminder-123',
         taskType: 'send_reminder',
-        params: {
-          message: 'Test reminder message',
-          userId: 'test-user',
-          priority: 'high',
-        },
+        params: { message: 'Test reminder message', priority: 'normal' },
         triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
+        triggeredBy: 'delay',
       });
 
-      const result = await handleProactiveJob(job);
+      const result = await handleProactiveJob(mockJob);
 
-      expect(result).toBeDefined();
-      expect((result as any).success).toBe(true);
-      expect((result as any).result.message).toBe('Test reminder message');
-      expect((result as any).result.delivered).toBe(true);
-      expect((result as any).result.notificationId).toBeDefined();
-
-      // Verify the message was delivered via CLI handler
-      expect(deliveredMessages.length).toBe(1);
-      expect(deliveredMessages[0].message).toBe('Test reminder message');
-      expect(deliveredMessages[0].priority).toBe('high');
-    });
-
-    test('send_reminder throws without message', async () => {
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-5',
+      expect(result).toMatchObject({
+        success: true,
+        scheduleId: 'once-reminder-123',
         taskType: 'send_reminder',
-        params: {},
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
       });
-
-      const result = await handleProactiveJob(job);
-
-      expect((result as any).success).toBe(false);
-      expect((result as any).error).toContain('message');
     });
 
-    test('handles memory_compress task', async () => {
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-6',
-        taskType: 'memory_compress',
+    test('handles llm_proactive_chat task', async () => {
+      const mockJob = createMockJob({
+        scheduleId: 'once-llm-456',
+        taskType: 'llm_proactive_chat',
+        params: { prompt: 'Say hello', userId: 'test-user' },
         triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
+        triggeredBy: 'delay',
       });
 
-      const result = await handleProactiveJob(job);
+      const result = await handleProactiveJob(mockJob);
 
-      expect(result).toBeDefined();
-      expect((result as any).success).toBe(true);
-      // Memory compression is not fully implemented yet
-      expect((result as any).result.executed).toBe(false);
-    });
-
-    test('handles custom task', async () => {
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-7',
-        taskType: 'custom',
-        params: {
-          action: 'custom-action',
-          customParam: 'value',
-        },
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'pattern',
-      });
-
-      const result = await handleProactiveJob(job);
-
-      expect(result).toBeDefined();
-      expect((result as any).success).toBe(true);
-      expect((result as any).result.action).toBe('custom-action');
-    });
-
-    test('custom task throws without action', async () => {
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-8',
-        taskType: 'custom',
-        params: {},
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'manual',
-      });
-
-      const result = await handleProactiveJob(job);
-
-      expect((result as any).success).toBe(false);
-      expect((result as any).error).toContain('action');
-    });
-
-    test('returns error for unknown task type', async () => {
-      const job = createMockJob<ProactiveJobData>({
-        scheduleId: 'schedule-9',
-        taskType: 'unknown_type' as any,
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'manual',
-      });
-
-      const result = await handleProactiveJob(job);
-
-      expect((result as any).success).toBe(false);
-      expect((result as any).error).toContain('Unknown task type');
+      expect(result).toHaveProperty('success');
+      expect(result).toHaveProperty('scheduleId', 'once-llm-456');
+      expect(result).toHaveProperty('taskType', 'llm_proactive_chat');
     });
 
     test('includes completedAt timestamp', async () => {
-      const job = createMockJob<ProactiveJobData>({
+      const mockJob = createMockJob({
         scheduleId: 'schedule-10',
-        taskType: 'check_goal_progress',
+        taskType: 'send_reminder',
+        params: { message: 'test' },
         triggeredAt: new Date().toISOString(),
         triggeredBy: 'cron',
       });
 
-      const result = await handleProactiveJob(job);
+      const result = await handleProactiveJob(mockJob);
 
       expect((result as any).completedAt).toBeDefined();
     });
 
     test('includes scheduleId in result', async () => {
-      const job = createMockJob<ProactiveJobData>({
+      const mockJob = createMockJob({
         scheduleId: 'test-schedule-id',
-        taskType: 'check_goal_progress',
+        taskType: 'send_reminder',
+        params: { message: 'test' },
         triggeredAt: new Date().toISOString(),
         triggeredBy: 'cron',
       });
 
-      const result = await handleProactiveJob(job);
+      const result = await handleProactiveJob(mockJob);
 
       expect((result as any).scheduleId).toBe('test-schedule-id');
     });

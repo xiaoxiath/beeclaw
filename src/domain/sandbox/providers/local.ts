@@ -26,10 +26,13 @@ import { logger } from '../../../infra/observability/logger';
  * Prevents path traversal attacks (e.g., ../../etc/passwd).
  */
 function assertPathSafe(filePath: string, baseDir: string): string {
-  const resolved = path.resolve(baseDir, filePath);
+  // Resolve baseDir through symlinks first (e.g. macOS /tmp -> /private/tmp)
+  let realBase: string;
+  try { realBase = fs.realpathSync(baseDir); } catch { realBase = path.resolve(baseDir); }
+  const resolved = path.resolve(realBase, filePath);
   let real: string;
   try { real = fs.realpathSync(resolved); } catch { real = resolved; }
-  if (!real.startsWith(path.resolve(baseDir))) {
+  if (!real.startsWith(realBase)) {
     throw new Error(`Path traversal blocked: ${filePath}`);
   }
   return real;

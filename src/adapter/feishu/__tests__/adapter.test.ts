@@ -13,10 +13,17 @@ vi.mock('../../../infra/observability/logger', () => ({
   },
 }));
 
-const mockRegisterChannel = vi.fn(() => {});
-const mockInitFeishuWSIntegration = vi.fn(() => Promise.resolve());
-const mockGetFeishuWSClient = vi.fn(() => null as any);
-const mockStopClient = vi.fn(() => {});
+const {
+  mockRegisterChannel,
+  mockInitFeishuWSIntegration,
+  mockGetFeishuWSClient,
+  mockStopClient,
+} = vi.hoisted(() => ({
+  mockRegisterChannel: vi.fn(() => {}),
+  mockInitFeishuWSIntegration: vi.fn(() => Promise.resolve()),
+  mockGetFeishuWSClient: vi.fn(() => null as any),
+  mockStopClient: vi.fn(() => {}),
+}));
 
 vi.mock('../../../app/routes/proactive', () => ({
   initFeishuWSIntegration: mockInitFeishuWSIntegration,

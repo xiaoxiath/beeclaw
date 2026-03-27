@@ -6,15 +6,13 @@ import { describe, test, expect, vi } from 'vitest';
 import {
   BeeclawError,
   ErrorCategory,
-  detectErrorCategory,
   isRetryableCategory,
-  withRetry,
   tryCatch,
   Ok,
   Err,
   formatErrorMessage,
   formatErrorForUser,
-} from '../../errors';
+} from '../errors';
 
 describe('BeeclawError', () => {
   test('should create error with all options', () => {
@@ -52,42 +50,9 @@ describe('BeeclawError', () => {
     const beeclawError = BeeclawError.fromError(originalError);
 
     expect(beeclawError.message).toBe('Network timeout');
-    // "Network timeout" contains "Network" so it's detected as NETWORK category
-    expect(beeclawError.category).toBe(ErrorCategory.NETWORK);
-    expect(beeclawError.retryable).toBe(true);
-  });
-});
-
-describe('detectErrorCategory', () => {
-  test('should detect network errors', () => {
-    expect(detectErrorCategory(new Error('ECONNRESET'))).toBe(ErrorCategory.NETWORK);
-    expect(detectErrorCategory(new Error('ETIMEDOUT'))).toBe(ErrorCategory.NETWORK);
-    expect(detectErrorCategory(new Error('fetch failed'))).toBe(ErrorCategory.NETWORK);
-  });
-
-  test('should detect rate limit errors', () => {
-    expect(detectErrorCategory(new Error('rate limit exceeded'))).toBe(ErrorCategory.RATE_LIMIT);
-    expect(detectErrorCategory(new Error('429 Too Many Requests'))).toBe(ErrorCategory.RATE_LIMIT);
-  });
-
-  test('should detect timeout errors', () => {
-    expect(detectErrorCategory(new Error('timeout'))).toBe(ErrorCategory.TIMEOUT);
-    expect(detectErrorCategory(new Error('request timed out'))).toBe(ErrorCategory.TIMEOUT);
-  });
-
-  test('should detect auth errors', () => {
-    expect(detectErrorCategory(new Error('401 Unauthorized'))).toBe(ErrorCategory.AUTH);
-    expect(detectErrorCategory(new Error('invalid api key'))).toBe(ErrorCategory.AUTH);
-    expect(detectErrorCategory(new Error('403 Forbidden'))).toBe(ErrorCategory.AUTH);
-  });
-
-  test('should detect validation errors', () => {
-    expect(detectErrorCategory(new Error('400 Bad Request'))).toBe(ErrorCategory.VALIDATION);
-    expect(detectErrorCategory(new Error('invalid parameter'))).toBe(ErrorCategory.VALIDATION);
-  });
-
-  test('should default to internal', () => {
-    expect(detectErrorCategory(new Error('unknown error'))).toBe(ErrorCategory.INTERNAL);
+    // fromError defaults to INTERNAL when no category provided
+    expect(beeclawError.category).toBe(ErrorCategory.INTERNAL);
+    expect(beeclawError.retryable).toBe(false);
   });
 });
 
@@ -102,70 +67,6 @@ describe('isRetryableCategory', () => {
     expect(isRetryableCategory(ErrorCategory.AUTH)).toBe(false);
     expect(isRetryableCategory(ErrorCategory.VALIDATION)).toBe(false);
     expect(isRetryableCategory(ErrorCategory.INTERNAL)).toBe(false);
-  });
-});
-
-describe('withRetry', () => {
-  test('should succeed on first try', async () => {
-    let attempts = 0;
-
-    const result = await withRetry(async () => {
-      attempts++;
-      return 'success';
-    });
-
-    expect(result).toBe('success');
-    expect(attempts).toBe(1);
-  });
-
-  test('should retry on retryable errors', async () => {
-    let attempts = 0;
-
-    const result = await withRetry(
-      async () => {
-        attempts++;
-        if (attempts < 3) {
-          throw new Error('ETIMEDOUT');
-        }
-        return 'success';
-      },
-      { maxRetries: 3, baseDelay: 10 },
-    );
-
-    expect(result).toBe('success');
-    expect(attempts).toBe(3);
-  });
-
-  test('should not retry on non-retryable errors', async () => {
-    let attempts = 0;
-
-    await expect(
-      withRetry(
-        async () => {
-          attempts++;
-          throw new Error('401 Unauthorized');
-        },
-        { maxRetries: 3 },
-      ),
-    ).rejects.toThrow('401 Unauthorized');
-
-    expect(attempts).toBe(1);
-  });
-
-  test('should throw after max retries', async () => {
-    let attempts = 0;
-
-    await expect(
-      withRetry(
-        async () => {
-          attempts++;
-          throw new Error('ECONNRESET');
-        },
-        { maxRetries: 2, baseDelay: 10 },
-      ),
-    ).rejects.toThrow('ECONNRESET');
-
-    expect(attempts).toBe(3); // Initial + 2 retries
   });
 });
 

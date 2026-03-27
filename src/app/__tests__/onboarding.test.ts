@@ -1,21 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Create mock functions that we can control per-test
-const mockExistsSync = vi.fn(() => false);
-const mockWriteFileSync = vi.fn();
+// Use vi.hoisted to create mock functions accessible inside vi.mock factories
+const { mockExistsSync, mockWriteFileSync } = vi.hoisted(() => ({
+  mockExistsSync: vi.fn(() => false),
+  mockWriteFileSync: vi.fn(),
+}));
 
-// Mock fs module
 vi.mock('fs', () => ({
   existsSync: mockExistsSync,
   writeFileSync: mockWriteFileSync,
 }));
 
-// Mock path module (needed for join)
 vi.mock('path', () => ({
   join: (...args: string[]) => args.join('/'),
 }));
 
-// Mock readline
 vi.mock('readline', () => ({
   createInterface: vi.fn(() => ({
     question: vi.fn((_q: string, cb: Function) => cb('test answer')),
@@ -23,7 +22,6 @@ vi.mock('readline', () => ({
   })),
 }));
 
-// Mock logger
 vi.mock('../../infra/observability/logger', () => ({
   logger: {
     info: vi.fn(),

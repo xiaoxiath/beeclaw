@@ -1,7 +1,19 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rmSync, existsSync } from 'fs';
+import { execSync } from 'child_process';
 import { Scheduler, getScheduler, resetScheduler } from '../scheduler';
 import { evaluateCondition } from '../triggers';
+
+
+function safeCleanDir(dirPath: string) {
+  if (existsSync(dirPath)) {
+    try {
+      rmSync(dirPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    } catch {
+      try { execSync(`rm -rf ${dirPath}`); } catch { /* ignore */ }
+    }
+  }
+}
 
 const TEST_PROACTIVE_PATH = './test-proactive-data';
 
@@ -10,18 +22,14 @@ describe('Scheduler', () => {
 
   beforeEach(() => {
     // Clean up test directory
-    if (existsSync(TEST_PROACTIVE_PATH)) {
-      rmSync(TEST_PROACTIVE_PATH, { recursive: true });
-    }
+    safeCleanDir(TEST_PROACTIVE_PATH);
     resetScheduler();
     scheduler = getScheduler(TEST_PROACTIVE_PATH);
   });
 
   afterEach(() => {
     // Clean up test directory
-    if (existsSync(TEST_PROACTIVE_PATH)) {
-      rmSync(TEST_PROACTIVE_PATH, { recursive: true });
-    }
+    safeCleanDir(TEST_PROACTIVE_PATH);
     scheduler.stopAll();
   });
 

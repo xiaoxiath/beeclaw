@@ -1,32 +1,45 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+// Use vi.hoisted() to declare mock variables that can be referenced in vi.mock factories
+// (vi.mock calls are hoisted to the top of the file, so regular const declarations aren't available)
+const {
+  mockLogger,
+  mockGetConfig,
+  mockSendProactiveMessage,
+  mockInjectProactiveResult,
+  mockGetRecentSessionHistory,
+  mockGetSkillStore,
+  mockCompress,
+} = vi.hoisted(() => ({
+  mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+  mockGetConfig: vi.fn(() => ({
+    defaultPushTarget: { channel: 'feishu', chatId: 'chat-1', userId: 'user-1' },
+  })),
+  mockSendProactiveMessage: vi.fn(() => Promise.resolve({ success: true, response: 'Mock response' })),
+  mockInjectProactiveResult: vi.fn(),
+  mockGetRecentSessionHistory: vi.fn(() => []),
+  mockGetSkillStore: vi.fn(() => ({
+    get: vi.fn((name: string) => name === 'test-skill' ? {
+      description: 'Test skill',
+      content: 'Do something',
+    } : null),
+  })),
+  mockCompress: vi.fn(() => Promise.resolve({ processed: 5, summarized: 2, archived: 1 })),
+}));
+
 // Mock all dependencies
-const mockLogger = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
 vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger }));
 
-const mockGetConfig = vi.fn(() => ({
-  defaultPushTarget: { channel: 'feishu', chatId: 'chat-1', userId: 'user-1' },
-}));
 vi.mock('../../../infra/config', () => ({ getConfig: mockGetConfig }));
 
-const mockSendProactiveMessage = vi.fn(() => Promise.resolve({ success: true, response: 'Mock response' }));
-const mockInjectProactiveResult = vi.fn();
-const mockGetRecentSessionHistory = vi.fn(() => []);
 vi.mock('../../session', () => ({
   sendProactiveMessage: mockSendProactiveMessage,
   injectProactiveResult: mockInjectProactiveResult,
   getRecentSessionHistory: mockGetRecentSessionHistory,
 }));
 
-const mockGetSkillStore = vi.fn(() => ({
-  get: vi.fn((name: string) => name === 'test-skill' ? {
-    description: 'Test skill',
-    content: 'Do something',
-  } : null),
-}));
 vi.mock('../../skills/store', () => ({ getSkillStore: mockGetSkillStore }));
 
-const mockCompress = vi.fn(() => Promise.resolve({ processed: 5, summarized: 2, archived: 1 }));
 vi.mock('../../memory/compression', () => ({
   getCompressionEngine: () => ({ compress: mockCompress }),
 }));

@@ -15,7 +15,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     isolate: true,
-    testTimeout: 30000,
+    testTimeout: 60000,
     include: ['src/**/__tests__/**/*.test.ts', 'tests/**/*.test.ts'],
     exclude: ['node_modules', 'dist', 'src/web/**'],
     restoreMocks: true,

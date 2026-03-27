@@ -1,10 +1,12 @@
 /**
  * Test: Remaining core hooks (before_reset, before_model_resolve, tool_result_persist, before_message_write)
+ *
+ * Fixed: bypass loadPlugins() (jiti path resolution fails in vitest)
+ * and directly use getOrCreatePluginRegistry() + createApi() to register hooks.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resetPluginRegistry, getPluginRegistry, getOrCreatePluginRegistry } from "../registry";
-import { loadPlugins } from "../loader";
+import { resetPluginRegistry, getOrCreatePluginRegistry } from "../registry";
 import { createHookRunner } from "../hook-runner";
 
 describe("Remaining Core Hooks", () => {
@@ -13,13 +15,11 @@ describe("Remaining Core Hooks", () => {
   });
 
   it("should have before_reset hook method", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
+    api.on("before_reset", async (event: any) => {});
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    expect(result.loaded).toContain("test-plugin");
-
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -27,13 +27,11 @@ describe("Remaining Core Hooks", () => {
   });
 
   it("should have before_model_resolve hook method", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
+    api.on("before_model_resolve", async (event: any) => event);
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    expect(result.loaded).toContain("test-plugin");
-
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -41,13 +39,11 @@ describe("Remaining Core Hooks", () => {
   });
 
   it("should have tool_result_persist hook method", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
+    api.on("tool_result_persist", (event: any) => event);
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    expect(result.loaded).toContain("test-plugin");
-
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -55,13 +51,11 @@ describe("Remaining Core Hooks", () => {
   });
 
   it("should have before_message_write hook method", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
+    api.on("before_message_write", (event: any) => event);
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    expect(result.loaded).toContain("test-plugin");
-
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -69,11 +63,13 @@ describe("Remaining Core Hooks", () => {
   });
 
   it("should trigger before_reset hook with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("before_reset", async (event: any) => { hookCalled(event); });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -82,18 +78,21 @@ describe("Remaining Core Hooks", () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Should not throw
     await hookRunner.runBeforeReset(eventData);
-
-    expect(true).toBe(true);
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
   });
 
   it("should trigger before_model_resolve hook with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("before_model_resolve", async (event: any) => {
+      hookCalled(event);
+      return event;
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -109,16 +108,22 @@ describe("Remaining Core Hooks", () => {
     // Should not throw and can return modified data
     const result = await hookRunner.runBeforeModelResolve(eventData);
 
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
     // Result can be undefined or modified event data
     expect(result === undefined || typeof result === "object").toBe(true);
   });
 
   it("should trigger tool_result_persist hook with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const hookCalled = vi.fn();
+    api.on("tool_result_persist", (event: any) => {
+      hookCalled(event);
+      return event;
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {
@@ -131,16 +136,19 @@ describe("Remaining Core Hooks", () => {
     // Should not throw and can return modified result
     const result = hookRunner.runToolResultPersist(eventData);
 
-    // Result should be the same or modified
+    expect(hookCalled).toHaveBeenCalledWith(eventData);
     expect(result).toBeDefined();
   });
 
   it("should trigger before_message_write hook with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    api.on("before_message_write", (event: any) => {
+      return event;
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     const eventData = {

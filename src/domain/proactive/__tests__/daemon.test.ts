@@ -1,9 +1,23 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rmSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+
+// Mock job-handlers to cut off the transitive bun:sqlite import chain
+// (daemon -> job-handlers -> ../session -> ../../infra/db/connection -> bun:sqlite)
+vi.mock('../job-handlers', () => ({
+  handleLlmProactiveChatJob: vi.fn(),
+  handleSelfEvolutionJob: vi.fn(),
+  handleMemoryCompressJob: vi.fn(),
+  handleGoalProgressCheckJob: vi.fn(),
+  handleCustomJob: vi.fn(),
+  handleSendReminderJob: vi.fn(),
+  handleRunSkillJob: vi.fn(),
+}));
+
 import { Daemon, getDaemon, resetDaemon } from '../daemon';
 import { setCliDeliveryHandler } from '../pusher';
-import { initStores, resetStores } from '../../../infra/db/store';
+import { getScheduler, resetScheduler } from '../scheduler';
+import { getNotificationManager, resetNotificationManager } from '../notifications';
 
 const TEST_DAEMON_PATH = './test-daemon-data';
 
@@ -12,8 +26,9 @@ describe('Daemon', () => {
   let deliveredMessages: Array<{ message: string; priority: string }> = [];
 
   beforeEach(() => {
-    // Reset stores first in case other tests initialized them
-    resetStores();
+    // Reset domain stores
+    resetScheduler();
+    resetNotificationManager();
 
     // Clean up test directory
     if (existsSync(TEST_DAEMON_PATH)) {
@@ -22,8 +37,9 @@ describe('Daemon', () => {
     mkdirSync(TEST_DAEMON_PATH, { recursive: true });
     resetDaemon();
 
-    // Initialize stores with test path
-    initStores({ basePath: TEST_DAEMON_PATH });
+    // Initialize domain stores with test path
+    getScheduler(join(TEST_DAEMON_PATH, 'proactive'));
+    getNotificationManager(join(TEST_DAEMON_PATH, 'proactive'));
 
     // Set up CLI delivery handler to track deliveries
     deliveredMessages = [];
@@ -46,7 +62,8 @@ describe('Daemon', () => {
       rmSync(TEST_DAEMON_PATH, { recursive: true });
     }
     resetDaemon();
-    resetStores();
+    resetScheduler();
+    resetNotificationManager();
   });
 
   describe('constructor', () => {
@@ -116,7 +133,6 @@ describe('Daemon', () => {
 
     test('pushes pending notifications during periodic check', async () => {
       // Create a notification directly in the manager (not pushed yet)
-      const { getNotificationManager } = await import('../notifications');
       const manager = getNotificationManager();
       manager.create({
         userId: 'cli-user',

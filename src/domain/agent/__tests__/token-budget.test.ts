@@ -12,13 +12,17 @@ vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-const mockEstimateMessageTokens = vi.fn((msg: any) => {
-  const c = typeof msg.content === 'string' ? msg.content : '';
-  return Math.ceil(c.length / 3);
+const { mockEstimateMessageTokens, mockEstimateTotalTokens } = vi.hoisted(() => {
+  const mockEstimateMessageTokens = vi.fn((msg: any) => {
+    const c = typeof msg.content === 'string' ? msg.content : '';
+    return Math.ceil(c.length / 3);
+  });
+  const mockEstimateTotalTokens = vi.fn((msgs: any[]) =>
+    msgs.reduce((s: number, m: any) => s + mockEstimateMessageTokens(m), 0),
+  );
+  return { mockEstimateMessageTokens, mockEstimateTotalTokens };
 });
-const mockEstimateTotalTokens = vi.fn((msgs: any[]) =>
-  msgs.reduce((s: number, m: any) => s + mockEstimateMessageTokens(m), 0),
-);
+
 vi.mock('../context', () => ({
   estimateMessageTokens: mockEstimateMessageTokens,
   estimateTotalTokens: mockEstimateTotalTokens,
@@ -121,27 +125,26 @@ describe('TokenBudgetManager', () => {
 
   describe('trimContextIfNeeded', () => {
     it('does nothing when under threshold', () => {
-      manager.setTokens(3000); // 30% of 10000, threshold 70%
+      manager.setTokens(3000);
       const messages: any[] = [
         { role: 'system', content: 'sys' },
         { role: 'user', content: 'hello' },
       ];
       manager.trimContextIfNeeded(messages);
-      expect(messages.length).toBe(2); // unchanged
+      expect(messages.length).toBe(2);
     });
 
     it('compresses messages when over threshold', () => {
-      manager.setTokens(8000); // 80% > 70%
+      manager.setTokens(8000);
       const messages: any[] = [
         { role: 'system', content: 'sys' },
-        { role: 'tool', content: 'a'.repeat(300) }, // > 200 chars, will compress
+        { role: 'tool', content: 'a'.repeat(300) },
         { role: 'user', content: 'latest1' },
         { role: 'user', content: 'latest2' },
         { role: 'user', content: 'latest3' },
         { role: 'user', content: 'latest4' },
       ];
       manager.trimContextIfNeeded(messages);
-      // Should have compressed the tool message
       expect(messages.length).toBeGreaterThanOrEqual(2);
     });
   });
@@ -153,18 +156,17 @@ describe('TokenBudgetManager', () => {
         content: `msg${i}`,
       }));
       await manager.manageContextCompression(messages);
-      expect(messages.length).toBe(5); // unchanged
+      expect(messages.length).toBe(5);
     });
 
     it('runs deduplication and compression for long conversations', async () => {
-      manager.setTokens(9000); // 90% — shouldCompress returns true
+      manager.setTokens(9000);
       const messages: any[] = Array.from({ length: 15 }, (_, i) => ({
         role: i % 2 === 0 ? 'user' : 'assistant',
         content: `message content ${i} with some text`,
       }));
 
       await manager.manageContextCompression(messages);
-      // After compression, messages should be trimmed (keepRecent=4)
       expect(messages.length).toBeLessThanOrEqual(15);
     });
 
@@ -178,7 +180,6 @@ describe('TokenBudgetManager', () => {
         content: `msg ${i}`,
       }));
 
-      // Should not throw
       await expect(manager.manageContextCompression(messages)).resolves.toBeUndefined();
     });
   });

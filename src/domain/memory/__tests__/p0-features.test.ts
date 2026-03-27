@@ -1,204 +1,233 @@
 /**
- * P0 任务完成总结
+ * P0 Feature Tests
  *
- * 已实现：
- * 1. ✅ 短期记忆缓存（Short-Term Memory Cache）
- * 2. ✅ 动态记忆注入（Dynamic Memory Injector）
- * 3. ✅ 集成到 MemoryStore
- *
- * 实施时间：约 2 天（符合预期）
+ * Tests for:
+ * 1. Short-Term Memory Cache
+ * 2. Dynamic Memory Injector
+ * 3. Integration behavior
  */
 
-import { getMemoryStore, getShortTermCache, getDynamicMemoryInjector } from '../index';
-import { resetMemoryStore, resetShortTermCache, resetDynamicMemoryInjector } from '../index';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// 测试配置
-const testConfig = {
-  path: '/tmp/beeclaw-test-memory-p0',
-  type: 'filesystem' as const,
-  tools: {
-    enabled: [],
-    autoRecord: false,
+// ── Mocks ──────────────────────────────────────────────────────────────────
+
+vi.mock('../hybrid-search', () => ({
+  hybridSearch: vi.fn(async () => ({ items: [], searchTimeMs: 0 })),
+  SEARCH_PROFILES: {
+    precise: { keywordWeight: 0.7, vectorWeight: 0.3, timeDecay: 0.1, maxResults: 10 },
+    semantic: { keywordWeight: 0.3, vectorWeight: 0.7, timeDecay: 0.1, maxResults: 10 },
+    recent: { keywordWeight: 0.2, vectorWeight: 0.3, timeDecay: 0.5, maxResults: 10 },
+    balanced: { keywordWeight: 0.5, vectorWeight: 0.5, timeDecay: 0.2, maxResults: 10 },
   },
-  retention: {
-    conversations: '90d',
-    facts: '180d',
-    decisions: '365d',
+}));
+
+vi.mock('../store', () => ({
+  getMemoryStore: vi.fn(() => ({
+    grep: vi.fn(() => ({ success: true, data: '' })),
+    stat: vi.fn(() => ({ success: true, mtime: new Date('2024-01-01') })),
+    record: vi.fn(async () => ({ success: true, data: 'recorded' })),
+    recordConversation: vi.fn(async () => ({ success: true, data: 'conversation recorded' })),
+    getRecentConversations: vi.fn(async () => []),
+  })),
+  resetMemoryStore: vi.fn(),
+}));
+
+vi.mock('../vector-store', () => ({
+  getVectorStore: vi.fn(() => ({
+    search: vi.fn(async () => []),
+  })),
+  getEmbeddingProvider: vi.fn(() => null),
+}));
+
+vi.mock('../../agent/fast-llm-judge', () => ({
+  getFastLLMJudge: vi.fn(() => ({
+    judge: vi.fn(async (opts: any) => ({
+      result: opts.defaultValue,
+      failed: false,
+    })),
+  })),
+}));
+
+vi.mock('../../agent/judgment-stats', () => ({
+  JudgmentStatsTracker: class {
+    incrementLlmCalls() {}
+    incrementErrors() {}
+    getStats() { return { llmCalls: 0, errors: 0 }; }
   },
-};
+}));
 
-// 清理测试环境
-async function cleanup() {
-  resetMemoryStore();
-  resetShortTermCache();
-  resetDynamicMemoryInjector();
-}
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
-// 测试 1: 短期记忆缓存
-async function testShortTermCache() {
-  console.log('\n=== 测试 1: 短期记忆缓存 ===\n');
+import { ShortTermMemoryCache, resetShortTermCache, getShortTermCache } from '../short-term-cache';
+import {
+  DynamicMemoryInjector,
+  resetDynamicMemoryInjector,
+} from '../dynamic-injector';
 
-  await cleanup();
-  const memoryStore = getMemoryStore(testConfig);
-  const cache = getShortTermCache();
+const fakeProvider: any = { type: 'openai', model: 'gpt-4o-mini' };
 
-  // 1.1 添加对话到缓存
-  console.log('1.1 添加对话到缓存...');
-  await cache.addConversation('user1', {
-    timestamp: new Date().toISOString(),
-    source: 'cli',
-    user: '你好',
-    assistant: '你好！有什么可以帮助你的吗？',
+// ── Test 1: Short-Term Memory Cache ────────────────────────────────────────
+
+describe('Short-Term Memory Cache (P0)', () => {
+  let cache: ShortTermMemoryCache;
+
+  beforeEach(() => {
+    cache = new ShortTermMemoryCache();
   });
-  console.log('✓ 对话已添加到缓存');
 
-  // 1.2 从缓存获取最近对话
-  console.log('\n1.2 从缓存获取最近对话...');
-  const cached = await cache.getRecentConversations('user1', 5);
-  if (cached && cached.length > 0) {
-    console.log('✓ 缓存命中:', cached.length, '条对话');
-    console.log('  示例:', cached[0].user.slice(0, 30));
-  } else {
-    console.log('✗ 缓存未命中（这是正常的，因为首次访问）');
-  }
-
-  // 1.3 再次获取（应该命中缓存）
-  console.log('\n1.3 再次获取（应该命中缓存）...');
-  const cached2 = await cache.getRecentConversations('user1', 5);
-  if (cached2 && cached2.length > 0) {
-    console.log('✓ 缓存命中:', cached2.length, '条对话');
-  } else {
-    console.log('✗ 缓存未命中');
-  }
-
-  // 1.4 查看缓存统计
-  console.log('\n1.4 缓存统计信息:');
-  const stats = cache.getStats();
-  console.log('  - 命中率:', stats.hitRate);
-  console.log('  - 命中次数:', stats.hits);
-  console.log('  - 未命中次数:', stats.misses);
-  console.log('  - 当前大小:', `${(stats.currentSize / 1024).toFixed(2)} KB`);
-  console.log('  - 用户数量:', stats.userCount);
-}
-
-// 测试 2: 动态记忆注入
-async function testDynamicInjection() {
-  console.log('\n\n=== 测试 2: 动态记忆注入 ===\n');
-
-  await cleanup();
-  const memoryStore = getMemoryStore(testConfig);
-  const injector = getDynamicMemoryInjector();
-
-  // 2.1 记录一些历史对话
-  console.log('2.1 记录历史对话...');
-  await memoryStore.record({
-    category: 'preferences',
-    content: '用户喜欢使用 TypeScript 进行开发',
+  afterEach(() => {
+    cache.dispose();
   });
-  await memoryStore.recordConversation({
-    timestamp: new Date(Date.now() - 86400000).toISOString(), // 昨天
-    source: 'cli',
-    user: '帮我创建一个 React 项目',
-    assistant: '好的，我帮你创建一个 TypeScript + React 项目...',
-    metadata: {
-      decision: '使用 TypeScript 模板',
-    },
+
+  it('should add and retrieve conversations', async () => {
+    await cache.addConversation('user1', {
+      timestamp: new Date().toISOString(),
+      source: 'cli',
+      user: '你好',
+      assistant: '你好！有什么可以帮助你的吗？',
+    });
+
+    const cached = await cache.getRecentConversations('user1', 5);
+    expect(cached).not.toBeNull();
+    expect(cached!.length).toBe(1);
+    expect(cached![0].user).toBe('你好');
   });
-  console.log('✓ 历史对话已记录');
 
-  // 2.2 测试不需要注入的查询
-  console.log('\n2.2 测试不需要注入的查询...');
-  const normalQuery = '今天天气怎么样？';
-  const enriched1 = await injector.inject(normalQuery);
-  if (enriched1 === normalQuery) {
-    console.log('✓ 正确识别：普通查询不需要注入');
-  } else {
-    console.log('✗ 错误：普通查询不应该注入');
-  }
-
-  // 2.3 测试需要注入的查询
-  console.log('\n2.3 测试需要注入的查询...');
-  const recallQuery = '之前创建的 React 项目怎么样了？';
-  const enriched2 = await injector.inject(recallQuery);
-  if (enriched2 !== recallQuery && enriched2.includes('[相关历史记忆]')) {
-    console.log('✓ 正确注入历史记忆');
-    console.log('  原始查询长度:', recallQuery.length);
-    console.log('  增强后长度:', enriched2.length);
-    console.log('  增强内容预览:', enriched2.slice(0, 100) + '...');
-  } else {
-    console.log('✗ 未注入历史记忆');
-    console.log('  增强后内容:', enriched2.slice(0, 200));
-  }
-
-  // 2.4 查看注入器统计
-  console.log('\n2.4 注入器统计信息:');
-  const stats = injector.getStats();
-  console.log('  - 注入次数:', stats.injections);
-  console.log('  - 错误次数:', stats.errors);
-  console.log('  - 是否启用:', stats.enabled);
-}
-
-// 测试 3: MemoryStore 集成
-async function testMemoryStoreIntegration() {
-  console.log('\n\n=== 测试 3: MemoryStore 集成 ===\n');
-
-  await cleanup();
-  const memoryStore = getMemoryStore(testConfig);
-
-  // 3.1 记录对话（应该自动更新缓存）
-  console.log('3.1 记录对话（应该自动更新缓存）...');
-  const result = await memoryStore.recordConversation({
-    timestamp: new Date().toISOString(),
-    source: 'cli',
-    user: '测试对话记录',
-    assistant: '这是测试回复',
+  it('should return null on cache miss', async () => {
+    const cached = await cache.getRecentConversations('nonexistent', 5);
+    expect(cached).toBeNull();
   });
-  console.log('✓ 对话已记录:', result.data);
 
-  // 3.2 获取最近对话（应该命中缓存）
-  console.log('\n3.2 获取最近对话（应该命中缓存）...');
-  const conversations = await memoryStore.getRecentConversations('cli', 5);
-  console.log('✓ 获取到', conversations.length, '条对话');
+  it('should hit cache on second access', async () => {
+    await cache.addConversation('user1', {
+      timestamp: new Date().toISOString(),
+      source: 'cli',
+      user: 'test',
+      assistant: 'response',
+    });
 
-  // 3.3 查看缓存统计
-  console.log('\n3.3 缓存统计信息:');
-  const cache = getShortTermCache();
-  const stats = cache.getStats();
-  console.log('  - 命中率:', stats.hitRate);
-  console.log('  - 用户数量:', stats.userCount);
-}
+    // First access: cache hit (since we just added)
+    const cached1 = await cache.getRecentConversations('user1', 5);
+    expect(cached1).not.toBeNull();
 
-// 运行所有测试
-async function runAllTests() {
-  console.log('========================================');
-  console.log('  P0 任务功能测试');
-  console.log('========================================');
+    // Second access: also cache hit
+    const cached2 = await cache.getRecentConversations('user1', 5);
+    expect(cached2).not.toBeNull();
+  });
 
-  try {
-    await testShortTermCache();
-    await testDynamicInjection();
-    await testMemoryStoreIntegration();
+  it('should track cache stats', async () => {
+    // Miss
+    await cache.getRecentConversations('user1', 5);
+    
+    // Add conversation
+    await cache.addConversation('user1', {
+      timestamp: new Date().toISOString(),
+      source: 'cli',
+      user: 'test',
+      assistant: 'response',
+    });
 
-    console.log('\n\n========================================');
-    console.log('  ✅ 所有测试完成！');
-    console.log('========================================\n');
+    // Hit
+    await cache.getRecentConversations('user1', 5);
 
-    console.log('验收标准检查：');
-    console.log('  [✓] 短期记忆缓存已实现');
-    console.log('  [✓] 缓存命中率统计功能');
-    console.log('  [✓] 动态记忆注入已实现');
-    console.log('  [✓] MemoryStore 集成完成');
-    console.log('  [ ] 缓存命中率 > 70%（需要实际使用数据验证）');
-    console.log('  [ ] 加载速度提升 3-5 倍（需要性能基准测试）');
-    console.log('  [ ] 内存占用 < 50MB（需要长时间运行验证）');
+    const stats = cache.getStats();
+    expect(stats.hits).toBeGreaterThanOrEqual(1);
+    expect(stats.misses).toBeGreaterThanOrEqual(1);
+    expect(stats.userCount).toBe(1);
+    expect(typeof stats.hitRate).toBe('string');
+  });
 
-  } catch (error) {
-    console.error('\n\n❌ 测试失败:', error);
-    process.exit(1);
-  }
+  it('should clear user cache', async () => {
+    await cache.addConversation('user1', {
+      timestamp: new Date().toISOString(),
+      source: 'cli',
+      user: 'test',
+      assistant: 'response',
+    });
 
-  await cleanup();
-}
+    cache.clearUser('user1');
 
-// 运行测试
-runAllTests();
+    const cached = await cache.getRecentConversations('user1', 5);
+    expect(cached).toBeNull();
+  });
+
+  it('should limit conversations per user', async () => {
+    const smallCache = new ShortTermMemoryCache({ conversationsPerUser: 3 });
+
+    for (let i = 0; i < 5; i++) {
+      await smallCache.addConversation('user1', {
+        timestamp: new Date().toISOString(),
+        source: 'cli',
+        user: `message ${i}`,
+        assistant: `response ${i}`,
+      });
+    }
+
+    const cached = await smallCache.getRecentConversations('user1', 10);
+    expect(cached).not.toBeNull();
+    expect(cached!.length).toBeLessThanOrEqual(3);
+
+    smallCache.dispose();
+  });
+});
+
+// ── Test 2: Dynamic Memory Injector ────────────────────────────────────────
+
+describe('Dynamic Memory Injector (P0)', () => {
+  let injector: DynamicMemoryInjector;
+
+  beforeEach(() => {
+    resetDynamicMemoryInjector();
+    injector = new DynamicMemoryInjector(fakeProvider);
+  });
+
+  it('should not inject for normal queries (no history keywords)', async () => {
+    const normalQuery = '今天天气怎么样？';
+    const result = await injector.inject(normalQuery);
+    expect(result).toBe(normalQuery);
+  });
+
+  it('should attempt injection for queries with history keywords', async () => {
+    const recallQuery = '之前创建的 React 项目怎么样了？';
+    const result = await injector.inject(recallQuery);
+    // Even if no memories are found, the function should not crash
+    expect(typeof result).toBe('string');
+  });
+
+  it('should return stats', () => {
+    const stats = injector.getStats();
+    expect(stats).toHaveProperty('injections');
+    expect(stats).toHaveProperty('enabled');
+    expect(stats.enabled).toBe(true);
+  });
+});
+
+// ── Test 3: Singleton management ───────────────────────────────────────────
+
+describe('Singleton management (P0)', () => {
+  beforeEach(() => {
+    resetShortTermCache();
+    resetDynamicMemoryInjector();
+  });
+
+  it('getShortTermCache returns a ShortTermMemoryCache instance', () => {
+    const cache = getShortTermCache();
+    expect(cache).toBeInstanceOf(ShortTermMemoryCache);
+    resetShortTermCache();
+  });
+
+  it('resetShortTermCache clears the singleton', () => {
+    const cache1 = getShortTermCache();
+    resetShortTermCache();
+    const cache2 = getShortTermCache();
+    expect(cache1).not.toBe(cache2);
+    resetShortTermCache();
+  });
+});

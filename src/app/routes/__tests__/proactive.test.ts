@@ -1,64 +1,72 @@
 /**
  * Tests for routes/proactive.ts
- *
- * Tests the exported functions: initProactiveApi and initFeishuWSIntegration.
- * All external dependencies are mocked to test initialization logic only.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// ---- Mocks ----
-
-const mockInitSessionManager = vi.fn(() => {});
-const mockSendProactiveMessage = vi.fn(() => Promise.resolve({ success: true }));
-const mockConfirmDelivery = vi.fn(() => {});
-const mockIsMessageProcessed = vi.fn(() => false);
-const mockMarkMessageProcessing = vi.fn(() => {});
-const mockMarkMessageCompleted = vi.fn(() => {});
-const mockMarkMessageFailed = vi.fn(() => {});
-const mockGetCachedAgentResponse = vi.fn(() => null);
-
-const mockPushNotification = vi.fn(() =>
-  Promise.resolve({ success: true })
-);
-
-const mockEvaluatePatterns = vi.fn(() => []);
-
-const mockGoalStore = {
-  list: vi.fn(() => []),
-};
-
-const mockWsClient = {
-  onMessage: vi.fn((_handler: any) => {}),
-  start: vi.fn(() => Promise.resolve()),
-  connected: true,
-  isEnabled: true,
-};
-
-const mockInitFeishuWSClient = vi.fn(() => mockWsClient);
-const mockGetFeishuWSClient = vi.fn(() => mockWsClient);
-
-const mockLogger = {
-  debug: vi.fn(() => {}),
-  info: vi.fn(() => {}),
-  warn: vi.fn(() => {}),
-  error: vi.fn(() => {}),
-};
-
-const mockCheckPreferenceTriggers = vi.fn(() => null);
-const mockRecordQuery = vi.fn(() => {});
-
-const mockGetMessageGateway = vi.fn(() => ({
-  replyMessage: vi.fn(() => Promise.resolve({ success: true })),
-}));
-
-const mockSessionMessageQueue = {
-  getInstance: vi.fn(() => ({
-    enqueue: vi.fn((_key: string, fn: () => Promise<void>) => fn()),
-  })),
-};
-
-const mockRenderMessageCard = vi.fn(() => ({ card: 'mock-card' }));
+// Use vi.hoisted for all mock variables referenced inside vi.mock factories
+const {
+  mockInitSessionManager,
+  mockSendProactiveMessage,
+  mockConfirmDelivery,
+  mockIsMessageProcessed,
+  mockMarkMessageProcessing,
+  mockMarkMessageCompleted,
+  mockMarkMessageFailed,
+  mockGetCachedAgentResponse,
+  mockPushNotification,
+  mockEvaluatePatterns,
+  mockGoalStore,
+  mockWsClient,
+  mockInitFeishuWSClient,
+  mockGetFeishuWSClient,
+  mockLogger,
+  mockCheckPreferenceTriggers,
+  mockRecordQuery,
+  mockGetMessageGateway,
+  mockSessionMessageQueue,
+  mockRenderMessageCard,
+} = vi.hoisted(() => {
+  const wsClient = {
+    onMessage: vi.fn((_handler: any) => {}),
+    start: vi.fn(() => Promise.resolve()),
+    connected: true,
+    isEnabled: true,
+  };
+  return {
+    mockInitSessionManager: vi.fn(() => {}),
+    mockSendProactiveMessage: vi.fn(() => Promise.resolve({ success: true })),
+    mockConfirmDelivery: vi.fn(() => {}),
+    mockIsMessageProcessed: vi.fn(() => false),
+    mockMarkMessageProcessing: vi.fn(() => {}),
+    mockMarkMessageCompleted: vi.fn(() => {}),
+    mockMarkMessageFailed: vi.fn(() => {}),
+    mockGetCachedAgentResponse: vi.fn(() => null),
+    mockPushNotification: vi.fn(() => Promise.resolve({ success: true })),
+    mockEvaluatePatterns: vi.fn(() => []),
+    mockGoalStore: { list: vi.fn(() => []) },
+    mockWsClient: wsClient,
+    mockInitFeishuWSClient: vi.fn(() => wsClient),
+    mockGetFeishuWSClient: vi.fn(() => wsClient),
+    mockLogger: {
+      debug: vi.fn(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+    },
+    mockCheckPreferenceTriggers: vi.fn(() => null),
+    mockRecordQuery: vi.fn(() => {}),
+    mockGetMessageGateway: vi.fn(() => ({
+      replyMessage: vi.fn(() => Promise.resolve({ success: true })),
+    })),
+    mockSessionMessageQueue: {
+      getInstance: vi.fn(() => ({
+        enqueue: vi.fn((_key: string, fn: () => Promise<void>) => fn()),
+      })),
+    },
+    mockRenderMessageCard: vi.fn(() => ({ card: 'mock-card' })),
+  };
+});
 
 vi.mock('../../../domain/session', () => ({
   initSessionManager: mockInitSessionManager,
@@ -109,7 +117,6 @@ vi.mock('../../../adapter/feishu/card-v2/message-renderer', () => ({
   renderMessageCard: mockRenderMessageCard,
 }));
 
-// Import after mocks
 import { initProactiveApi, initFeishuWSIntegration } from '../proactive';
 
 describe('routes/proactive', () => {

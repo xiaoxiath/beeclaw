@@ -1,46 +1,42 @@
 /**
  * Tests for proactive-handler.ts
- *
- * Mocks all external dependencies (logger, stores, feishu, session, notifications)
- * and tests each task type handler path.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// ---- Mocks ----
-
-const mockLogger = {
-  debug: vi.fn(() => {}),
-  info: vi.fn(() => {}),
-  warn: vi.fn(() => {}),
-  error: vi.fn(() => {}),
-};
-
-const mockGoalStore = {
-  list: vi.fn(() => []),
-};
-
-const mockNotificationManager = {
-  create: vi.fn(() => ({ id: 'notif-1' })),
-};
-
-const mockPushNotification = vi.fn(() =>
-  Promise.resolve({ success: true, notificationId: 'notif-push-1', delivered: ['cli'] })
-);
-
-const mockGetFeishuWSClient = vi.fn(() => null);
-
-const mockSendProactiveMessage = vi.fn(() =>
-  Promise.resolve({ success: true, response: 'Hello!', sessionId: 'sess-1' })
-);
-
-const mockGetSessionSummary = vi.fn(() => 'recent conversation summary');
-
-const mockGetMemoryStore = vi.fn(() => ({
-  getCoreContext: vi.fn(() => ({ user: 'Test User', facts: 'Some facts' })),
+// Use vi.hoisted for all mock variables referenced inside vi.mock factories
+const {
+  mockLogger,
+  mockGoalStore,
+  mockNotificationManager,
+  mockPushNotification,
+  mockGetFeishuWSClient,
+  mockSendProactiveMessage,
+  mockGetSessionSummary,
+  mockGetMemoryStore,
+  mockRenderMessageCard,
+} = vi.hoisted(() => ({
+  mockLogger: {
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+  },
+  mockGoalStore: { list: vi.fn(() => []) },
+  mockNotificationManager: { create: vi.fn(() => ({ id: 'notif-1' })) },
+  mockPushNotification: vi.fn(() =>
+    Promise.resolve({ success: true, notificationId: 'notif-push-1', delivered: ['cli'] })
+  ),
+  mockGetFeishuWSClient: vi.fn(() => null),
+  mockSendProactiveMessage: vi.fn(() =>
+    Promise.resolve({ success: true, response: 'Hello!', sessionId: 'sess-1' })
+  ),
+  mockGetSessionSummary: vi.fn(() => 'recent conversation summary'),
+  mockGetMemoryStore: vi.fn(() => ({
+    getCoreContext: vi.fn(() => ({ user: 'Test User', facts: 'Some facts' })),
+  })),
+  mockRenderMessageCard: vi.fn(() => ({ card: 'mock-card' })),
 }));
-
-const mockRenderMessageCard = vi.fn(() => ({ card: 'mock-card' }));
 
 vi.mock('../../../../infra/observability/logger', () => ({
   logger: mockLogger,
@@ -75,10 +71,8 @@ vi.mock('../../../../adapter/feishu/card-v2/message-renderer', () => ({
   renderMessageCard: mockRenderMessageCard,
 }));
 
-// Import after mocks
 import { handleProactiveJob } from '../proactive-handler';
 
-// Helper to create a fake job object
 function fakeJob(data: Record<string, unknown>) {
   return {
     data: {

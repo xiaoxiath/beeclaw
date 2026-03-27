@@ -13,11 +13,13 @@ vi.mock('../../../infra/observability/logger', () => ({
   },
 }));
 
-const mockSendTextMessage = vi.fn(() => Promise.resolve({ data: { message_id: 'msg_123' } }));
-const mockReplyTextSmart = vi.fn(() => Promise.resolve());
-const mockGetFeishuWSClient = vi.fn(() => ({
-  sendTextMessage: mockSendTextMessage,
-  replyTextSmart: mockReplyTextSmart,
+const { mockSendTextMessage, mockReplyTextSmart, mockGetFeishuWSClient } = vi.hoisted(() => ({
+  mockSendTextMessage: vi.fn(() => Promise.resolve({ data: { message_id: 'msg_123' } })),
+  mockReplyTextSmart: vi.fn(() => Promise.resolve()),
+  mockGetFeishuWSClient: vi.fn(() => ({
+    sendTextMessage: (() => Promise.resolve({ data: { message_id: 'msg_123' } })) as any,
+    replyTextSmart: (() => Promise.resolve()) as any,
+  })),
 }));
 
 vi.mock('../index', () => ({

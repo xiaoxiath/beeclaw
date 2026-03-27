@@ -12,9 +12,11 @@ vi.mock('../../../infra/observability/logger', () => ({
   },
 }));
 
-const mockSetDecision = vi.fn(() => {});
-const mockSetUserInput = vi.fn(() => {});
-const mockResume = vi.fn(() => {});
+const { mockSetDecision, mockSetUserInput, mockResume } = vi.hoisted(() => ({
+  mockSetDecision: vi.fn(() => {}),
+  mockSetUserInput: vi.fn(() => {}),
+  mockResume: vi.fn(() => {}),
+}));
 
 vi.mock('../../../domain/session/hitl-manager', () => ({
   setDecision: mockSetDecision,

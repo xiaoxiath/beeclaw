@@ -19,9 +19,12 @@ vi.mock('../../context', () => ({
     }, 0),
 }));
 
-const mockCallAI = vi.fn(async () => ({
-  choices: [{ message: { content: '## Summary\nCompressed content here' } }],
+const { mockCallAI } = vi.hoisted(() => ({
+  mockCallAI: vi.fn(async () => ({
+    choices: [{ message: { content: '## Summary\nCompressed content here' } }],
+  })),
 }));
+
 vi.mock('../../api', () => ({ callAI: mockCallAI }));
 
 import { hybridCompress, type LegacyCompressionResult } from '../legacy-compat';
@@ -64,7 +67,7 @@ describe('legacy-compat hybridCompress', () => {
     const result = await hybridCompress(messages, provider, {
       maxTokens: 100,
       currentTokens: 90,
-      config: { keepRecent: 10 }, // keepRecent > messages.length
+      config: { keepRecent: 10 },
     });
     expect(result.method).toBe('none');
   });
@@ -76,7 +79,6 @@ describe('legacy-compat hybridCompress', () => {
       currentTokens: 90,
       config: { keepRecent: 2 },
     });
-    // With 4 messages and keepRecent 2, old messages < 5 → rule-based
     expect(result.method).toBe('rule');
     expect(result.keptMessages.length).toBe(2);
   });

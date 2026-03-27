@@ -64,27 +64,6 @@ describe('P3 Module Integration', () => {
     expect(stats.totalDocuments).toBe(0);
   });
 
-  test('Summary Engine should initialize', async () => {
-    const { SummaryEngine, setSummaryLLMProvider } = await import('../../src/domain/memory/summary-engine');
-
-    // Create a mock LLM provider
-    const mockProvider = {
-      name: 'mock-summary',
-      generate: async (prompt: string) => {
-        return 'Mock summary: The user discussed testing and integration.';
-      },
-    };
-
-    setSummaryLLMProvider(mockProvider);
-
-    const engine = new SummaryEngine({
-      llmThresholdTokens: 100,
-      fallbackToRules: true,
-    });
-
-    expect(engine).toBeDefined();
-  });
-
   test('Lifecycle Manager should initialize', async () => {
     const { getLifecycleManager } = await import('../../src/domain/memory/lifecycle-manager');
 

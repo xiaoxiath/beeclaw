@@ -7,9 +7,9 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// ---- Mocks ----
+// ---- Use vi.hoisted for mocks referenced in vi.mock factories ----
 
-const mockMemoryStore = {
+const mockMemoryStore = vi.hoisted(() => ({
   ls: vi.fn(() => ({ success: true, data: ['file1.md', 'file2.md'] })),
   grep: vi.fn(() => ({ success: true, data: [{ file: 'facts/user.md', line: 'match' }] })),
   read: vi.fn(() => ({ success: true, data: 'file content' })),
@@ -19,13 +19,13 @@ const mockMemoryStore = {
   rebuildIndex: vi.fn(() => ({ success: true, data: 'Index rebuilt' })),
   getIndexStats: vi.fn(() => ({ factsKeywords: 100, knowledgeKeywords: 50 })),
   searchByKeyword: vi.fn(() => ({ success: true, data: [] })),
-};
+}));
 
-const mockCompressionEngine = {
+const mockCompressionEngine = vi.hoisted(() => ({
   getStats: vi.fn(() => ({ totalFiles: 10, compressedFiles: 3 })),
-};
+}));
 
-const mockScoreImportance = vi.fn(() => ({ score: 0.8, recommendation: 'keep' }));
+const mockScoreImportance = vi.hoisted(() => vi.fn(() => ({ score: 0.8, recommendation: 'keep' })));
 
 vi.mock('../store', () => ({
   getMemoryStore: () => mockMemoryStore,

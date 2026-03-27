@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../../circuit-breaker';
+import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../circuit-breaker';
 
 describe('Circuit Breaker Integration', () => {
   let registry: ReturnType<typeof getCircuitBreakerRegistry>;

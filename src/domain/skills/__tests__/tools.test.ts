@@ -66,7 +66,7 @@ describe('skills/tools', () => {
   describe('getAllSkillTools', () => {
     it('should return the skillTools object', () => {
       const tools = getAllSkillTools();
-      expect(tools).toBe(skillTools);
+      expect(tools).toEqual(Object.values(skillTools));
     });
   });
 

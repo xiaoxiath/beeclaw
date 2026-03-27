@@ -116,7 +116,7 @@ describe('AIProviderSchema', () => {
     const result = AIProviderSchema.parse({
       name: 'test',
       apiKey: 'key',
-      models: {},  // models is required but can be empty
+      models: {},
     });
     expect(result.type).toBe('openai');
     expect(result.models).toEqual({});
@@ -144,6 +144,7 @@ describe('AIProviderSchema', () => {
         name: `${type}-provider`,
         type,
         apiKey: 'key',
+        models: {},
       });
       expect(result.type).toBe(type);
     }
@@ -153,46 +154,41 @@ describe('AIProviderSchema', () => {
 describe('AgentConfigSchema', () => {
   test('accepts valid agent config', () => {
     const result = AgentConfigSchema.parse({
-      id: 'agent-1',
       name: 'Test Agent',
-      provider: 'openai',
-      model: 'gpt-4',
+      role: 'chat',
       systemPrompt: 'You are helpful.',
-      temperature: 0.7,
-      maxTokens: 2000,
+      params: {
+        temperature: 0.7,
+        max_tokens: 2000,
+      },
       tools: ['tool1', 'tool2'],
     });
-    expect(result.id).toBe('agent-1');
     expect(result.name).toBe('Test Agent');
-    expect(result.temperature).toBe(0.7);
+    expect(result.role).toBe('chat');
+    expect(result.params?.temperature).toBe(0.7);
   });
 
-  test('validates temperature range', () => {
+  test('validates temperature range in params', () => {
     expect(() => AgentConfigSchema.parse({
-      id: 'agent-1',
-      name: 'Test',
-      provider: 'openai',
-      model: 'gpt-4',
-      temperature: 3, // Invalid: > 2
+      role: 'chat',
+      params: {
+        temperature: 3, // Invalid: > 2
+      },
     })).toThrow();
   });
 
-  test('validates topP range', () => {
+  test('validates topP range in params', () => {
     expect(() => AgentConfigSchema.parse({
-      id: 'agent-1',
-      name: 'Test',
-      provider: 'openai',
-      model: 'gpt-4',
-      topP: 1.5, // Invalid: > 1
+      role: 'chat',
+      params: {
+        top_p: 1.5, // Invalid: > 1
+      },
     })).toThrow();
   });
 
   test('applies default tools array', () => {
     const result = AgentConfigSchema.parse({
-      id: 'agent-1',
-      name: 'Test',
-      provider: 'openai',
-      model: 'gpt-4',
+      role: 'chat',
     });
     expect(result.tools).toEqual([]);
   });
@@ -380,8 +376,8 @@ describe('AppConfigSchema', () => {
       server: { port: 8080, host: '127.0.0.1' },
       auth: { enabled: true, tokens: ['token'] },
       cors: { enabled: true, origins: ['*'] },
-      providers: [{ name: 'openai', apiKey: 'key' }],
-      agents: [{ id: 'a1', name: 'Agent', provider: 'openai', model: 'gpt-4' }],
+      providers: [{ name: 'openai', apiKey: 'key', models: {} }],
+      agents: [{ name: 'Agent', role: 'chat' }],
       sessionStorage: { type: 'sqlite' },
       memory: { path: './mem' },
       skills: { userPath: './skills' },

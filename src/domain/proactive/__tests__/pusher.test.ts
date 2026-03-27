@@ -11,7 +11,7 @@ import {
   registerDeliveryHandler,
   pushPendingNotifications,
 } from '../pusher';
-import { initStores, resetStores } from '../../../infra/db/store';
+import { getNotificationManager, resetNotificationManager } from '../notifications';
 
 const TEST_PUSHER_PATH = './test-pusher-data';
 
@@ -19,8 +19,8 @@ describe('Pusher', () => {
   let deliveredMessages: string[] = [];
 
   beforeEach(() => {
-    // Reset stores first in case other tests initialized them
-    resetStores();
+    // Reset notification manager
+    resetNotificationManager();
 
     // Clean up test directory
     if (existsSync(TEST_PUSHER_PATH)) {
@@ -29,8 +29,8 @@ describe('Pusher', () => {
     mkdirSync(TEST_PUSHER_PATH, { recursive: true });
     deliveredMessages = [];
 
-    // Initialize stores with test path
-    initStores({ basePath: TEST_PUSHER_PATH });
+    // Initialize notification manager with test path
+    getNotificationManager(TEST_PUSHER_PATH);
 
     // Set up CLI delivery handler
     setCliDeliveryHandler((message: string, _priority: string) => {
@@ -39,7 +39,7 @@ describe('Pusher', () => {
   });
 
   afterEach(() => {
-    resetStores();
+    resetNotificationManager();
     if (existsSync(TEST_PUSHER_PATH)) {
       rmSync(TEST_PUSHER_PATH, { recursive: true });
     }
@@ -138,7 +138,6 @@ describe('Pusher', () => {
 
       expect(result.success).toBe(true);
       expect(result.delivered).toBe(true);
-      // The notification is delivered immediately, so we check the result
       expect(result.notificationId).toBeDefined();
     });
   });

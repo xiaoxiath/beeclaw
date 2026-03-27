@@ -5,6 +5,16 @@ import { loadConfig, getConfig, reloadConfig, resetConfig } from '../index';
 
 const TEST_CONFIG_DIR = './test-config-data';
 
+// A valid llmRouter that passes LLMRouterConfigSchema validation.
+// DEFAULT_CONFIG has llmRouter without required "tiers", causing safeParse to fail.
+// Including this in test configs ensures the merged config passes validation.
+const VALID_LLM_ROUTER = {
+  enabled: true,
+  tiers: {},
+  fallbackEnabled: true,
+  costTracking: true,
+};
+
 // Store original env values
 const originalEnv: Record<string, string | undefined> = {};
 
@@ -64,6 +74,7 @@ describe('Config Loading', () => {
       const configContent = {
         server: { port: 9999 },
         auth: { enabled: true },
+        llmRouter: VALID_LLM_ROUTER,
       };
 
       writeFileSync(
@@ -84,7 +95,9 @@ describe('Config Loading', () => {
         providers: [{
           name: 'test',
           apiKey: '${TEST_API_KEY}',
+          models: {},
         }],
+        llmRouter: VALID_LLM_ROUTER,
       };
 
       writeFileSync(
@@ -104,7 +117,9 @@ describe('Config Loading', () => {
         providers: [{
           name: 'test',
           apiKey: '${NONEXISTENT_VAR}',
+          models: {},
         }],
+        llmRouter: VALID_LLM_ROUTER,
       };
 
       writeFileSync(
@@ -140,7 +155,13 @@ describe('Config Loading', () => {
 
   describe('reloadConfig', () => {
     test('reloads config from disk', async () => {
-      // First load
+      // First load with valid llmRouter so validation passes
+      writeFileSync(
+        join(TEST_CONFIG_DIR, 'beeclaw.json'),
+        JSON.stringify({ llmRouter: VALID_LLM_ROUTER }),
+        'utf-8'
+      );
+
       await loadConfig(TEST_CONFIG_DIR);
       let config = getConfig();
       expect(config.server.port).toBe(3000);
@@ -148,7 +169,7 @@ describe('Config Loading', () => {
       // Write new config
       writeFileSync(
         join(TEST_CONFIG_DIR, 'beeclaw.json'),
-        JSON.stringify({ server: { port: 7777 } }),
+        JSON.stringify({ server: { port: 7777 }, llmRouter: VALID_LLM_ROUTER }),
         'utf-8'
       );
 
@@ -164,10 +185,20 @@ describe('Environment Variable Parsing', () => {
 
   beforeEach(() => {
     // Reset config cache
+    resetConfig();
+
     if (existsSync(TEST_CONFIG_DIR)) {
       rmSync(TEST_CONFIG_DIR, { recursive: true });
     }
     mkdirSync(TEST_CONFIG_DIR, { recursive: true });
+
+    // Write a base config with valid llmRouter so that validation passes
+    // when env vars are merged in
+    writeFileSync(
+      join(TEST_CONFIG_DIR, 'beeclaw.json'),
+      JSON.stringify({ llmRouter: VALID_LLM_ROUTER }),
+      'utf-8'
+    );
   });
 
   afterEach(() => {
@@ -234,7 +265,7 @@ describe('Environment Variable Parsing', () => {
   test('env overrides file config', async () => {
     writeFileSync(
       join(TEST_CONFIG_DIR, 'beeclaw.json'),
-      JSON.stringify({ server: { port: 5000 } }),
+      JSON.stringify({ server: { port: 5000 }, llmRouter: VALID_LLM_ROUTER }),
       'utf-8'
     );
 
@@ -282,6 +313,7 @@ describe('Deep Merge', () => {
       JSON.stringify({
         server: { port: 8000 },
         cors: { origins: ['http://localhost'] },
+        llmRouter: VALID_LLM_ROUTER,
       }),
       'utf-8'
     );
@@ -300,7 +332,8 @@ describe('Deep Merge', () => {
     writeFileSync(
       join(TEST_CONFIG_DIR, 'beeclaw.json'),
       JSON.stringify({
-        providers: [{ name: 'p1', apiKey: 'k1' }],
+        providers: [{ name: 'p1', apiKey: 'k1', models: {} }],
+        llmRouter: VALID_LLM_ROUTER,
       }),
       'utf-8'
     );
@@ -313,6 +346,8 @@ describe('Deep Merge', () => {
 
 describe('Validation', () => {
   beforeEach(() => {
+    resetConfig();
+
     if (existsSync(TEST_CONFIG_DIR)) {
       rmSync(TEST_CONFIG_DIR, { recursive: true });
     }
@@ -348,6 +383,7 @@ describe('Validation', () => {
           name: 'test',
           apiKey: 'key',
           type: 'invalid-type', // Invalid type
+          models: {},
         }],
       }),
       'utf-8'

@@ -3,10 +3,67 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { SandboxManager } from '../manager';
-import type { SandboxConfig } from '../types';
 import { rmSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { spawn } from 'child_process';
+
+// Provide a global Bun mock that mimics Bun.spawn using Node's child_process
+if (!(globalThis as any).Bun) {
+  (globalThis as any).Bun = {
+    spawn(cmd: string[], options: any) {
+      const proc = spawn(cmd[0], cmd.slice(1), {
+        cwd: options.cwd,
+        env: options.env,
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      const stdoutReadable = new ReadableStream<Uint8Array>({
+        start(controller) {
+          proc.stdout!.on('data', (chunk: Buffer) => {
+            controller.enqueue(new Uint8Array(chunk));
+          });
+          proc.stdout!.on('end', () => {
+            try { controller.close(); } catch {}
+          });
+          proc.stdout!.on('error', (err) => {
+            try { controller.error(err); } catch {}
+          });
+        },
+      });
+
+      const stderrReadable = new ReadableStream<Uint8Array>({
+        start(controller) {
+          proc.stderr!.on('data', (chunk: Buffer) => {
+            controller.enqueue(new Uint8Array(chunk));
+          });
+          proc.stderr!.on('end', () => {
+            try { controller.close(); } catch {}
+          });
+          proc.stderr!.on('error', (err) => {
+            try { controller.error(err); } catch {}
+          });
+        },
+      });
+
+      const exited = new Promise<number>((resolve) => {
+        proc.on('close', (code) => resolve(code ?? 1));
+        proc.on('error', () => resolve(1));
+      });
+
+      return {
+        stdout: stdoutReadable,
+        stderr: stderrReadable,
+        kill: () => proc.kill('SIGKILL'),
+        exited,
+        pid: proc.pid,
+      };
+    },
+  };
+}
+
+import { SandboxManager } from '../manager';
+import type { SandboxConfig } from '../types';
 
 describe('SandboxManager', () => {
   const testWorkspaceBase = join(__dirname, '__test_workspaces__');
@@ -163,7 +220,7 @@ describe('SandboxManager', () => {
     try {
       await sandbox.readFile('../../../etc/passwd');
       expect(true).toBe(false); // Should not reach here
-    } catch (error) {
+    } catch (error: any) {
       expect(error.message.toLowerCase()).toContain('path traversal blocked');
     }
   });

@@ -12,6 +12,29 @@
  */
 
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+
+// Mock bun-only and problematic ESM modules to allow tests to run in Node.js
+vi.mock('bun:sqlite', () => {
+  const MockDatabase = vi.fn(() => ({
+    exec: vi.fn(), run: vi.fn(),
+    query: vi.fn(() => ({ all: vi.fn(() => []) })),
+    prepare: vi.fn(() => ({ run: vi.fn(), get: vi.fn(), all: vi.fn(() => []) })),
+    transaction: vi.fn((fn: Function) => fn),
+    close: vi.fn(),
+  }));
+  return { Database: MockDatabase, default: MockDatabase };
+});
+vi.mock('drizzle-orm/bun-sqlite', () => ({
+  drizzle: vi.fn(() => ({
+    select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(),
+  })),
+}));
+vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({ Client: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({ StdioClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({ StreamableHTTPClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => ({ SSEClientTransport: vi.fn() }));
+vi.mock('bunqueue/client', () => ({ Queue: vi.fn(), Worker: vi.fn() }));
+
 import { sendProactiveMessage, getOrCreateSession, saveSession, listSessions, confirmDelivery, deleteSession } from '../index';
 import { createAgent } from '../../agent';
 import { unlinkSync, existsSync } from 'fs';
@@ -125,8 +148,10 @@ describe('Conversation History Loading', () => {
 
     expect(hasOurAssistantMessage).toBe(true);
     expect(agentMessages[0].role).toBe('system');
-    expect(agentMessages[1].role).toBe('user');
-    expect(agentMessages[1].content).toBe('1+1等于几');
+    // Agent may insert additional system messages (e.g., time context), so find user message by role
+    const userMessages = agentMessages.filter(m => m.role === 'user');
+    expect(userMessages.length).toBeGreaterThanOrEqual(1);
+    expect(userMessages[0].content).toBe('1+1等于几');
   });
 });
 

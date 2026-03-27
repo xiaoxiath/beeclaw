@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { LoopDetector, type LoopDetectorConfig } from '../../loop-detector';
+import { LoopDetector, type LoopDetectorConfig } from '../loop-detector';
 
 describe('LoopDetector', () => {
   let detector: LoopDetector;

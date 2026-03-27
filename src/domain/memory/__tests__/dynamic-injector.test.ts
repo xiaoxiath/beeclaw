@@ -2,22 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const mockJudge = {
-  judge: vi.fn(async (opts: any) => ({
-    result: opts.defaultValue,
-    failed: false,
-  })),
-};
-
-const mockMemoryStore = {
-  grep: vi.fn(() => ({ success: true, data: '' })),
-  stat: vi.fn(() => ({ success: true, mtime: new Date('2024-01-01') })),
-};
-
-const mockVectorStore = {
-  search: vi.fn(async () => []),
-};
-
 vi.mock('../hybrid-search', () => ({
   hybridSearch: vi.fn(async () => ({ items: [], searchTimeMs: 0 })),
   SEARCH_PROFILES: {
@@ -29,24 +13,36 @@ vi.mock('../hybrid-search', () => ({
 }));
 
 vi.mock('../store', () => ({
-  getMemoryStore: vi.fn(() => mockMemoryStore),
+  getMemoryStore: vi.fn(() => ({
+    grep: vi.fn(() => ({ success: true, data: '' })),
+    stat: vi.fn(() => ({ success: true, mtime: new Date('2024-01-01') })),
+  })),
 }));
 
 vi.mock('../vector-store', () => ({
-  getVectorStore: vi.fn(() => mockVectorStore),
+  getVectorStore: vi.fn(() => ({
+    search: vi.fn(async () => []),
+  })),
   getEmbeddingProvider: vi.fn(() => null),
 }));
 
+const mockJudgeFn = vi.fn(async (opts: any) => ({
+  result: opts.defaultValue,
+  failed: false,
+}));
+
 vi.mock('../../agent/fast-llm-judge', () => ({
-  getFastLLMJudge: vi.fn(() => mockJudge),
+  getFastLLMJudge: vi.fn(() => ({
+    judge: mockJudgeFn,
+  })),
 }));
 
 vi.mock('../../agent/judgment-stats', () => ({
-  JudgmentStatsTracker: vi.fn(() => ({
-    incrementLlmCalls: vi.fn(),
-    incrementErrors: vi.fn(),
-    getStats: vi.fn(() => ({ llmCalls: 0, errors: 0 })),
-  })),
+  JudgmentStatsTracker: class {
+    incrementLlmCalls() {}
+    incrementErrors() {}
+    getStats() { return { llmCalls: 0, errors: 0 }; }
+  },
 }));
 
 vi.mock('../../../infra/observability/logger', () => ({
@@ -78,7 +74,11 @@ describe('DynamicMemoryInjector', () => {
   beforeEach(() => {
     injector = new DynamicMemoryInjector(fakeProvider);
     // reset mocks
-    mockJudge.judge.mockReset();
+    mockJudgeFn.mockReset();
+    mockJudgeFn.mockImplementation(async (opts: any) => ({
+      result: opts.defaultValue,
+      failed: false,
+    }));
     (hybridSearch as any).mockReset();
   });
 
@@ -95,35 +95,35 @@ describe('DynamicMemoryInjector', () => {
       const result = await injector.inject('今天天气怎么样');
       expect(result).toBe('今天天气怎么样');
       // LLM should NOT be called
-      expect(mockJudge.judge).not.toHaveBeenCalled();
+      expect(mockJudgeFn).not.toHaveBeenCalled();
     });
 
     it('detects Chinese history keywords', async () => {
-      mockJudge.judge.mockImplementation(async (opts: any) => ({
+      mockJudgeFn.mockImplementation(async (opts: any) => ({
         result: { needsContext: false, intent: 'general', reasoning: 'test' },
         failed: false,
       }));
 
       const keywords = ['之前', '上次', '继续', '回顾', '对比'];
       for (const kw of keywords) {
-        mockJudge.judge.mockClear();
+        mockJudgeFn.mockClear();
         await injector.inject(`请${kw}处理`);
-        expect(mockJudge.judge).toHaveBeenCalled();
+        expect(mockJudgeFn).toHaveBeenCalled();
       }
     });
 
     it('detects English history keywords', async () => {
-      mockJudge.judge.mockImplementation(async (opts: any) => ({
+      mockJudgeFn.mockImplementation(async (opts: any) => ({
         result: { needsContext: false, intent: 'general', reasoning: 'test' },
         failed: false,
       }));
 
       await injector.inject('remember what we discussed last time');
-      expect(mockJudge.judge).toHaveBeenCalled();
+      expect(mockJudgeFn).toHaveBeenCalled();
     });
 
     it('returns original when LLM says no context needed', async () => {
-      mockJudge.judge.mockImplementation(async (opts: any) => ({
+      mockJudgeFn.mockImplementation(async (opts: any) => ({
         result: { needsContext: false, intent: 'general', reasoning: 'not needed' },
         failed: false,
       }));
@@ -133,7 +133,7 @@ describe('DynamicMemoryInjector', () => {
     });
 
     it('injects memories when LLM says context needed and memories found', async () => {
-      mockJudge.judge.mockImplementation(async () => ({
+      mockJudgeFn.mockImplementation(async () => ({
         result: { needsContext: true, intent: 'recall', reasoning: 'user recalls' },
         failed: false,
       }));
@@ -153,7 +153,7 @@ describe('DynamicMemoryInjector', () => {
     });
 
     it('returns original when memories found is empty', async () => {
-      mockJudge.judge.mockImplementation(async () => ({
+      mockJudgeFn.mockImplementation(async () => ({
         result: { needsContext: true, intent: 'recall', reasoning: 'user recalls' },
         failed: false,
       }));
@@ -168,7 +168,7 @@ describe('DynamicMemoryInjector', () => {
     });
 
     it('returns original on retrieval error', async () => {
-      mockJudge.judge.mockImplementation(async () => ({
+      mockJudgeFn.mockImplementation(async () => ({
         result: { needsContext: true, intent: 'recall', reasoning: 'test' },
         failed: false,
       }));
@@ -186,7 +186,7 @@ describe('DynamicMemoryInjector', () => {
 
   describe('context building', () => {
     beforeEach(() => {
-      mockJudge.judge.mockImplementation(async () => ({
+      mockJudgeFn.mockImplementation(async () => ({
         result: { needsContext: true, intent: 'recall', reasoning: 'test' },
         failed: false,
       }));
@@ -217,7 +217,7 @@ describe('DynamicMemoryInjector', () => {
     });
 
     it('adds intent hint for recall', async () => {
-      mockJudge.judge.mockImplementation(async () => ({
+      mockJudgeFn.mockImplementation(async () => ({
         result: { needsContext: true, intent: 'recall', reasoning: 'test' },
         failed: false,
       }));
@@ -231,7 +231,7 @@ describe('DynamicMemoryInjector', () => {
     });
 
     it('adds intent hint for continue', async () => {
-      mockJudge.judge.mockImplementation(async () => ({
+      mockJudgeFn.mockImplementation(async () => ({
         result: { needsContext: true, intent: 'continue', reasoning: 'test' },
         failed: false,
       }));
@@ -263,7 +263,7 @@ describe('DynamicMemoryInjector', () => {
 
   describe('snippet cleaning', () => {
     beforeEach(() => {
-      mockJudge.judge.mockImplementation(async () => ({
+      mockJudgeFn.mockImplementation(async () => ({
         result: { needsContext: true, intent: 'recall', reasoning: 'test' },
         failed: false,
       }));

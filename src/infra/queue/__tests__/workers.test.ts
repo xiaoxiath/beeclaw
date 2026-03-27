@@ -1,8 +1,32 @@
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, mkdirSync, rmSync } from 'fs';
-import { createJobProcessor } from '../../../app/queue-handlers/workers';
+import { describe, test, expect, vi } from 'vitest';
 
-const TEST_WORKERS_PATH = './test-workers-data';
+vi.mock('bunqueue/client', () => ({ Queue: vi.fn(), Worker: vi.fn() }));
+
+vi.mock('bun:sqlite', () => {
+  class MockDatabase {
+    constructor() {}
+    exec = vi.fn();
+    run = vi.fn();
+    query = vi.fn(() => ({ all: vi.fn(() => []) }));
+    prepare = vi.fn(() => ({ run: vi.fn(), get: vi.fn(), all: vi.fn() }));
+    transaction = vi.fn((fn: Function) => fn);
+    close = vi.fn();
+  }
+  return { Database: MockDatabase, default: MockDatabase };
+});
+
+vi.mock('drizzle-orm/bun-sqlite', () => ({
+  drizzle: vi.fn(() => ({
+    select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(),
+  })),
+}));
+
+vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({ Client: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({ StdioClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({ StreamableHTTPClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => ({ SSEClientTransport: vi.fn() }));
+
+import { createJobProcessor } from '../../../app/queue-handlers/workers';
 
 // Mock Job object
 function createMockJob<T>(data: T) {
@@ -15,29 +39,12 @@ function createMockJob<T>(data: T) {
     state: 'waiting',
     progress: 0,
     timestamp: Date.now(),
-    updateProgress: async (p: number) => {
-      progress = p;
-    },
+    updateProgress: async (p: number) => { progress = p; },
     getProgress: () => progress,
   };
 }
 
 describe('Queue Workers', () => {
-  beforeEach(() => {
-    // Clean up test directory
-    if (existsSync(TEST_WORKERS_PATH)) {
-      rmSync(TEST_WORKERS_PATH, { recursive: true });
-    }
-    mkdirSync(TEST_WORKERS_PATH, { recursive: true });
-  });
-
-  afterEach(() => {
-    // Clean up test directory
-    if (existsSync(TEST_WORKERS_PATH)) {
-      rmSync(TEST_WORKERS_PATH, { recursive: true });
-    }
-  });
-
   describe('createJobProcessor', () => {
     test('creates processor that calls handler with job data', async () => {
       const handler = async (data: { query: string }) => {
@@ -50,19 +57,6 @@ describe('Queue Workers', () => {
       const result = await processor(job as any);
 
       expect(result).toEqual({ result: 'processed: test query' });
-    });
-
-    test('updates progress to 10 at start', async () => {
-      const handler = async () => {
-        return 'done';
-      };
-
-      const processor = createJobProcessor(handler);
-      const job = createMockJob({});
-
-      await processor(job as any);
-
-      expect(job.getProgress()).toBe(100);
     });
 
     test('updates progress to 100 at end', async () => {

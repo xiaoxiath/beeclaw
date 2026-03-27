@@ -1,4 +1,15 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// Mock the infra config module so getWeatherConfig doesn't throw "Config not loaded"
+vi.mock('../../../infra/config', () => ({
+  getWeatherConfig: vi.fn(() => ({
+    apiHost: 'devapi.qweather.com',
+    apiKey: '',
+    token: '',
+    defaultLocation: '北京',
+  })),
+}));
+
 import {
   formatWeatherDescription,
   getWeatherContext,

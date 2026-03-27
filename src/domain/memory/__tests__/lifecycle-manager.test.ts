@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// ── Mock fs ────────────────────────────────────────────────────────────────
+// ── Use vi.hoisted to define mocks that are available in vi.mock factories ──
 
-const mockFs = {
+const mockFs = vi.hoisted(() => ({
   existsSync: vi.fn(() => false),
   readdirSync: vi.fn(() => []),
   statSync: vi.fn(() => ({
@@ -17,11 +17,11 @@ const mockFs = {
   unlinkSync: vi.fn(),
   copyFileSync: vi.fn(),
   mkdirSync: vi.fn(),
-};
+}));
 
 vi.mock('fs', () => ({ default: mockFs, ...mockFs }));
-vi.mock('path', () => {
-  const actual = require('path');
+vi.mock('path', async () => {
+  const actual = await vi.importActual<typeof import('path')>('path');
   return { default: actual, ...actual };
 });
 

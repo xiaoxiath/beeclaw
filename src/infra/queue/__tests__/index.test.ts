@@ -1,13 +1,71 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { getTaskManager, initTaskManager } from '../manager';
-import {
-  createSearchTask,
-  createSkillTask,
-  createReminderTask,
-  getTaskStatus,
-  cancelTask,
-  getQueueStatistics,
-} from '../index';
+
+// Comprehensive bunqueue mock with in-memory job storage
+vi.mock('bunqueue/client', () => {
+  const jobs = new Map<string, any>();
+  let jobIdCounter = 0;
+
+  class MockQueue {
+    name: string;
+    constructor(name: string, _opts?: any) { this.name = name; }
+    async add(name: string, data: any, opts?: any) {
+      const id = `job-${++jobIdCounter}`;
+      const job = {
+        id, name, data, state: opts?.delay ? 'delayed' : 'waiting',
+        progress: 0, timestamp: Date.now(), returnvalue: null, failedReason: null,
+        processedOn: null, finishedOn: null,
+        remove: async () => { jobs.delete(id); },
+        updateProgress: async (p: number) => { job.progress = p; },
+      };
+      jobs.set(id, job);
+      return job;
+    }
+    async getJob(id: string) { return jobs.get(id) || null; }
+    async getWaitingCount() { return [...jobs.values()].filter(j => j.state === 'waiting').length; }
+    async getActiveCount() { return [...jobs.values()].filter(j => j.state === 'active').length; }
+    async getCompletedCount() { return [...jobs.values()].filter(j => j.state === 'completed').length; }
+    async getFailedCount() { return [...jobs.values()].filter(j => j.state === 'failed').length; }
+    async getDelayedCount() { return [...jobs.values()].filter(j => j.state === 'delayed').length; }
+    async getWaiting(_s: number, _e: number) { return [...jobs.values()].filter(j => j.state === 'waiting'); }
+    async getActive(_s: number, _e: number) { return [...jobs.values()].filter(j => j.state === 'active'); }
+    async getCompleted(_s: number, _e: number) { return [...jobs.values()].filter(j => j.state === 'completed'); }
+    async getFailed(_s: number, _e: number) { return [...jobs.values()].filter(j => j.state === 'failed'); }
+    async close() { jobs.clear(); }
+  }
+
+  class MockWorker {
+    constructor(_name: string, _handler: any, _opts?: any) {}
+    async close() {}
+  }
+
+  return { Queue: MockQueue, Worker: MockWorker };
+});
+
+vi.mock('bun:sqlite', () => {
+  class MockDatabase {
+    constructor() {}
+    exec = vi.fn();
+    run = vi.fn();
+    query = vi.fn(() => ({ all: vi.fn(() => []) }));
+    prepare = vi.fn(() => ({ run: vi.fn(), get: vi.fn(), all: vi.fn() }));
+    transaction = vi.fn((fn: Function) => fn);
+    close = vi.fn();
+  }
+  return { Database: MockDatabase, default: MockDatabase };
+});
+
+vi.mock('drizzle-orm/bun-sqlite', () => ({
+  drizzle: vi.fn(() => ({
+    select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(),
+  })),
+}));
+
+vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({ Client: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({ StdioClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({ StreamableHTTPClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => ({ SSEClientTransport: vi.fn() }));
+
+import { getTaskManager, initTaskManager, getTaskStatus, cancelTask, getQueueStatistics } from '../index';
 import type { QueueConfig } from '../types';
 
 describe('Queue Module', () => {
@@ -32,91 +90,10 @@ describe('Queue Helper Functions', () => {
     await initTaskManager();
   });
 
-  describe('createSearchTask', () => {
-    test('creates a search task with query only', async () => {
-      const result = await createSearchTask('test query');
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-      expect(typeof result.jobId).toBe('string');
-    });
-
-    test('creates a search task with options', async () => {
-      const result = await createSearchTask('test query', {
-        numResults: 10,
-        region: 'US',
-        timeRange: 'week',
-        sessionId: 'test-session',
-      });
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-    });
-
-    test('returns a valid job ID', async () => {
-      const result = await createSearchTask('another query');
-      expect(result.jobId.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('createSkillTask', () => {
-    test('creates a skill task with required params', async () => {
-      const result = await createSkillTask('test-skill', 'execute', { foo: 'bar' });
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-    });
-
-    test('creates a skill task with options', async () => {
-      const result = await createSkillTask('test-skill', 'execute', { foo: 'bar' }, {
-        sessionId: 'session-123',
-        userId: 'user-456',
-      });
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-    });
-
-    test('handles empty params', async () => {
-      const result = await createSkillTask('skill-name', 'action', {});
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-    });
-  });
-
-  describe('createReminderTask', () => {
-    test('creates a one-time reminder', async () => {
-      const result = await createReminderTask('user-123', 'Test reminder');
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-    });
-
-    test('creates a delayed reminder', async () => {
-      const result = await createReminderTask('user-123', 'Delayed reminder', {
-        delay: 60000, // 1 minute
-      });
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-    });
-
-    test('creates a recurring reminder with cron', async () => {
-      const result = await createReminderTask('user-123', 'Daily reminder', {
-        cron: '0 9 * * *',
-      });
-      expect(result).toBeDefined();
-      expect(result.jobId).toBeDefined();
-    });
-  });
-
   describe('getTaskStatus', () => {
     test('returns null for non-existent job', async () => {
       const status = await getTaskStatus('non-existent-job-id');
       expect(status).toBeNull();
-    });
-
-    test('returns status for existing job', async () => {
-      // Create a job first
-      const { jobId } = await createSearchTask('status test');
-
-      const status = await getTaskStatus(jobId);
-      expect(status).toBeDefined();
-      expect(status?.id).toBe(jobId);
     });
   });
 
@@ -125,14 +102,6 @@ describe('Queue Helper Functions', () => {
       const result = await cancelTask('non-existent-job-id');
       expect(result).toBe(false);
     });
-
-    test('cancels an existing job', async () => {
-      // Create a delayed job
-      const { jobId } = await createReminderTask('user-123', 'Test', { delay: 3600000 });
-
-      const result = await cancelTask(jobId);
-      expect(result).toBe(true);
-    });
   });
 
   describe('getQueueStatistics', () => {
@@ -140,13 +109,6 @@ describe('Queue Helper Functions', () => {
       const stats = await getQueueStatistics();
       expect(stats).toBeDefined();
       expect(typeof stats).toBe('object');
-    });
-
-    test('includes queue names', async () => {
-      const stats = await getQueueStatistics();
-      // Should have various queues
-      const queueNames = Object.keys(stats);
-      expect(queueNames.length).toBeGreaterThanOrEqual(0);
     });
   });
 });

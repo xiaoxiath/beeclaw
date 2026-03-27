@@ -7,10 +7,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock fs to control security checks
-const mockRealpathSync = vi.fn((p: string) => p);
-const mockStatSync = vi.fn(() => ({
-  mode: 0o755,
-  uid: process.getuid ? process.getuid() : 1000,
+const { mockRealpathSync, mockStatSync } = vi.hoisted(() => ({
+  mockRealpathSync: vi.fn((p: string) => p),
+  mockStatSync: vi.fn(() => ({
+    mode: 0o755,
+    uid: process.getuid ? process.getuid() : 1000,
+  })),
 }));
 
 vi.mock('fs', () => ({

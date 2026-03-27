@@ -1,4 +1,33 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+
+// Mock the Lark SDK to prevent bun: protocol error
+vi.mock('@larksuiteoapi/node-sdk', () => ({
+  Client: vi.fn().mockImplementation(() => ({})),
+  WSClient: vi.fn().mockImplementation(() => ({
+    start: vi.fn(),
+  })),
+  LoggerLevel: { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 },
+}));
+
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock('../send', () => ({
+  sendPostMessage: vi.fn(),
+  sendMarkdownMessage: vi.fn(),
+  sendMarkdownCard: vi.fn(),
+}));
+
+vi.mock('../card-callback-handler', () => ({
+  CardCallbackHandler: vi.fn().mockImplementation(() => ({})),
+}));
+
 import { FeishuWSClient } from '../ws-client';
 
 describe('FeishuWSClient Card Methods', () => {

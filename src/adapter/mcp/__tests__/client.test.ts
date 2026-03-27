@@ -3,6 +3,36 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// Mock the MCP SDK packages that aren't installed
+vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
+  Client: vi.fn().mockImplementation(() => ({
+    connect: vi.fn(),
+    close: vi.fn(),
+    listTools: vi.fn().mockResolvedValue({ tools: [] }),
+    listResources: vi.fn().mockResolvedValue({ resources: [] }),
+    listPrompts: vi.fn().mockResolvedValue({ prompts: [] }),
+    callTool: vi.fn(),
+    readResource: vi.fn(),
+    getPrompt: vi.fn(),
+  })),
+}));
+
+vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
+  StdioClientTransport: vi.fn(),
+}));
+
+vi.mock('@modelcontextprotocol/sdk/types.js', () => ({}));
+
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 import { MCPClientManager } from '../client';
 
 describe('MCPClientManager', () => {

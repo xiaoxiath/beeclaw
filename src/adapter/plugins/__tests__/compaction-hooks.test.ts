@@ -1,10 +1,12 @@
 /**
  * Test: Compaction hooks integration
+ *
+ * Fixed: bypass loadPlugins() (jiti path resolution fails in vitest)
+ * and directly use getOrCreatePluginRegistry() + createApi() to register hooks.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resetPluginRegistry, getPluginRegistry } from "../registry";
-import { loadPlugins } from "../loader";
+import { resetPluginRegistry, getOrCreatePluginRegistry } from "../registry";
 import { createHookRunner } from "../hook-runner";
 
 describe("Compaction Hooks Integration", () => {
@@ -13,13 +15,13 @@ describe("Compaction Hooks Integration", () => {
   });
 
   it("should have before_compaction hook method", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    expect(result.loaded).toContain("test-plugin");
+    // Register a before_compaction hook
+    api.on("before_compaction", async (event: any) => event);
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -27,13 +29,13 @@ describe("Compaction Hooks Integration", () => {
   });
 
   it("should have after_compaction hook method", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    expect(result.loaded).toContain("test-plugin");
+    // Register an after_compaction hook
+    api.on("after_compaction", async (event: any) => {});
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -41,11 +43,21 @@ describe("Compaction Hooks Integration", () => {
   });
 
   it("should trigger compaction hooks with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const beforeCalled = vi.fn();
+    const afterCalled = vi.fn();
+
+    api.on("before_compaction", async (event: any) => {
+      beforeCalled(event);
+      return event;
+    });
+    api.on("after_compaction", async (event: any) => {
+      afterCalled(event);
+    });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     // Test before_compaction event data
@@ -60,6 +72,7 @@ describe("Compaction Hooks Integration", () => {
 
     // Should not throw
     await hookRunner.runBeforeCompaction(beforeEventData);
+    expect(beforeCalled).toHaveBeenCalledWith(beforeEventData);
 
     // Test after_compaction event data
     const afterEventData = {
@@ -72,7 +85,6 @@ describe("Compaction Hooks Integration", () => {
 
     // Should not throw
     await hookRunner.runAfterCompaction(afterEventData);
-
-    expect(true).toBe(true);
+    expect(afterCalled).toHaveBeenCalledWith(afterEventData);
   });
 });

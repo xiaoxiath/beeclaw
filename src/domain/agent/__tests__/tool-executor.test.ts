@@ -9,8 +9,36 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Mocks — must come before importing the module under test
 // ---------------------------------------------------------------------------
 
-const mockCBExecute = vi.fn(async (_name: string, fn: () => Promise<any>) => fn());
-const mockRegisterToolConfig = vi.fn(() => {});
+const {
+  mockCBExecute,
+  mockRegisterToolConfig,
+  mockExecuteMemoryTool,
+  mockExecuteSkillTool,
+  mockGetSkillStore,
+  mockExecuteGoalTool,
+  mockExecuteProactiveTool,
+  mockExecutePersonaTool,
+  mockExecuteBuiltinTool,
+  mockIsBuiltinTool,
+  mockMCPExecuteTool,
+  mockGetMCPManagerPort,
+  mockGetPluginRegistryPort,
+} = vi.hoisted(() => ({
+  mockCBExecute: vi.fn(async (_name: string, fn: () => Promise<any>) => fn()),
+  mockRegisterToolConfig: vi.fn(() => {}),
+  mockExecuteMemoryTool: vi.fn(async () => ({ success: true, data: 'mem' })),
+  mockExecuteSkillTool: vi.fn(async () => ({ success: true, data: 'skill' })),
+  mockGetSkillStore: vi.fn(() => ({ getBasePath: () => '/skills' })),
+  mockExecuteGoalTool: vi.fn(async () => ({ success: true, data: 'goal' })),
+  mockExecuteProactiveTool: vi.fn(async () => ({ success: true, data: 'proactive' })),
+  mockExecutePersonaTool: vi.fn(async () => ({ success: true, data: 'persona' })),
+  mockExecuteBuiltinTool: vi.fn(async () => ({ success: true, data: 'builtin' })),
+  mockIsBuiltinTool: vi.fn((name: string) => ['web_search', 'deep_research', 'get_weather'].includes(name)),
+  mockMCPExecuteTool: vi.fn(async () => ({ success: true, data: 'mcp-result' })),
+  mockGetMCPManagerPort: vi.fn(() => null),
+  mockGetPluginRegistryPort: vi.fn(() => null),
+}));
+
 vi.mock('../../../infra/resilience/circuit-breaker', () => ({
   getCircuitBreakerRegistry: () => ({
     execute: mockCBExecute,
@@ -26,34 +54,16 @@ vi.mock('../../../infra/resilience/circuit-breaker', () => ({
   CIRCUIT_BREAKER_PRESETS: { mcp_tool: { failureThreshold: 3, cooldownMs: 60000 } },
 }));
 
-const mockExecuteMemoryTool = vi.fn(async () => ({ success: true, data: 'mem' }));
 vi.mock('../../memory/tools', () => ({ executeMemoryTool: mockExecuteMemoryTool }));
-
-const mockExecuteSkillTool = vi.fn(async () => ({ success: true, data: 'skill' }));
 vi.mock('../../skills/tools', () => ({ executeSkillTool: mockExecuteSkillTool }));
-
-const mockGetSkillStore = vi.fn(() => ({ getBasePath: () => '/skills' }));
 vi.mock('../../skills/store', () => ({ getSkillStore: mockGetSkillStore }));
-
-const mockExecuteGoalTool = vi.fn(async () => ({ success: true, data: 'goal' }));
 vi.mock('../goal/tools', () => ({ executeGoalTool: mockExecuteGoalTool }));
-
-const mockExecuteProactiveTool = vi.fn(async () => ({ success: true, data: 'proactive' }));
 vi.mock('../../proactive/tools', () => ({ executeProactiveTool: mockExecuteProactiveTool }));
-
-const mockExecutePersonaTool = vi.fn(async () => ({ success: true, data: 'persona' }));
 vi.mock('../persona/tools', () => ({ executePersonaTool: mockExecutePersonaTool }));
-
-const mockExecuteBuiltinTool = vi.fn(async () => ({ success: true, data: 'builtin' }));
-const mockIsBuiltinTool = vi.fn((name: string) => ['web_search', 'deep_research', 'get_weather'].includes(name));
 vi.mock('../../tools', () => ({
   executeBuiltinTool: mockExecuteBuiltinTool,
   isBuiltinTool: mockIsBuiltinTool,
 }));
-
-const mockMCPExecuteTool = vi.fn(async () => ({ success: true, data: 'mcp-result' }));
-const mockGetMCPManagerPort = vi.fn(() => ({ executeTool: mockMCPExecuteTool }));
-const mockGetPluginRegistryPort = vi.fn(() => null);
 vi.mock('../../ports', () => ({
   getMCPManagerPort: mockGetMCPManagerPort,
   getPluginRegistryPort: mockGetPluginRegistryPort,
@@ -241,7 +251,6 @@ describe('tool-executor', () => {
   describe('circuit breaker', () => {
     it('wraps feishu_ tools with circuit breaker', async () => {
       const executor = createDefaultToolExecutor();
-      // feishu_ returns migration error, but should still go through CB
       await executor('feishu_test', {});
       expect(mockCBExecute).toHaveBeenCalled();
     });
@@ -279,7 +288,6 @@ describe('tool-executor', () => {
       mockIsBuiltinTool.mockReturnValue(false);
       const executor = createDefaultToolExecutor();
       await executor('memory_read', {});
-      // CB execute should not be called for memory_ tools
       expect(mockCBExecute).not.toHaveBeenCalled();
     });
   });

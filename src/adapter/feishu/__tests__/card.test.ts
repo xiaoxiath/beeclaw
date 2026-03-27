@@ -27,7 +27,10 @@ vi.mock('../../../infra/utils', () => ({
 }));
 
 // Mock sendCardMessage
-const mockSendCardMessage = vi.fn(() => Promise.resolve({ messageId: 'msg_card' }));
+const { mockSendCardMessage } = vi.hoisted(() => ({
+  mockSendCardMessage: vi.fn(() => Promise.resolve({ messageId: 'msg_card' })),
+}));
+
 vi.mock('../send', () => ({
   sendCardMessage: mockSendCardMessage,
 }));

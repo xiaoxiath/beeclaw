@@ -5,11 +5,63 @@
  */
 
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+
+// ── Mocks (must be before imports) ─────────────────────────────────────────
+
+vi.mock('../hybrid-search', () => ({
+  hybridSearch: vi.fn(async () => ({ items: [], searchTimeMs: 0 })),
+  SEARCH_PROFILES: {
+    precise: { keywordWeight: 0.7, vectorWeight: 0.3, timeDecay: 0.1, maxResults: 10 },
+    semantic: { keywordWeight: 0.3, vectorWeight: 0.7, timeDecay: 0.1, maxResults: 10 },
+    recent: { keywordWeight: 0.2, vectorWeight: 0.3, timeDecay: 0.5, maxResults: 10 },
+    balanced: { keywordWeight: 0.5, vectorWeight: 0.5, timeDecay: 0.2, maxResults: 10 },
+  },
+}));
+
+vi.mock('../store', () => ({
+  getMemoryStore: vi.fn(() => ({
+    grep: vi.fn(() => ({ success: true, data: '' })),
+    stat: vi.fn(() => ({ success: true, mtime: new Date('2024-01-01') })),
+  })),
+}));
+
+vi.mock('../vector-store', () => ({
+  getVectorStore: vi.fn(() => ({
+    search: vi.fn(async () => []),
+  })),
+  getEmbeddingProvider: vi.fn(() => null),
+}));
+
+vi.mock('../../agent/fast-llm-judge', () => ({
+  getFastLLMJudge: vi.fn(() => ({
+    judge: vi.fn(async (opts: any) => ({
+      result: { needsContext: false, intent: 'general', reasoning: 'test' },
+      failed: false,
+    })),
+  })),
+}));
+
+vi.mock('../../agent/judgment-stats', () => ({
+  JudgmentStatsTracker: class {
+    incrementLlmCalls() {}
+    incrementErrors() {}
+    getStats() { return { llmCalls: 0, errors: 0 }; }
+  },
+}));
+
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 import { DynamicMemoryInjector } from '../dynamic-injector';
-import type { AIProvider } from '../../../infra/config/schema';
 
 // Mock provider
-const mockProvider: AIProvider = {
+const mockProvider: any = {
   name: 'test',
   type: 'zhipu',
   apiKey: 'test-key',
@@ -19,10 +71,8 @@ const mockProvider: AIProvider = {
 
 describe('DynamicMemoryInjector - Keyword Pre-filtering', () => {
   let injector: DynamicMemoryInjector;
-  let llmCallCount: number = 0;
 
   beforeEach(() => {
-    llmCallCount = 0;
     injector = new DynamicMemoryInjector(mockProvider, {
       enabled: true,
       maxMemories: 5,
@@ -45,10 +95,6 @@ describe('DynamicMemoryInjector - Keyword Pre-filtering', () => {
       const result = await injector.inject(msg);
       expect(result).toBe(msg); // Should return original message without injection
     }
-
-    const stats = injector.getStats();
-    console.log('Stats:', stats);
-    // These messages should NOT trigger LLM calls due to keyword pre-filtering
   });
 
   test('should process messages with history keywords', async () => {
@@ -63,7 +109,8 @@ describe('DynamicMemoryInjector - Keyword Pre-filtering', () => {
     for (const msg of messages) {
       const result = await injector.inject(msg);
       // May or may not inject depending on LLM judgment, but should at least try
-      console.log(`Message: "${msg}" -> Injected: ${result !== msg}`);
+      // The important thing is it doesn't crash
+      expect(typeof result).toBe('string');
     }
   });
 
@@ -78,13 +125,14 @@ describe('DynamicMemoryInjector - Keyword Pre-filtering', () => {
     ];
 
     for (const { msg, shouldCheck } of testCases) {
-      const statsBefore = injector.getStats();
-      await injector.inject(msg);
-      const statsAfter = injector.getStats();
-
-      // If shouldCheck is true, the message might be processed further
-      // If shouldCheck is false, it should be skipped immediately
-      console.log(`"${msg}" -> Expected check: ${shouldCheck}`);
+      const result = await injector.inject(msg);
+      if (!shouldCheck) {
+        // Messages without history keywords should be returned unchanged
+        expect(result).toBe(msg);
+      } else {
+        // Messages with history keywords should at least be processed (even if no injection)
+        expect(typeof result).toBe('string');
+      }
     }
   });
 });

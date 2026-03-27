@@ -2,61 +2,79 @@
  * Tests for new notification tools
  */
 
-import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, test, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { existsSync, mkdirSync, rmSync } from 'fs';
+import { join } from 'path';
 
-// Re-mock pusher to ensure it's not clobbered by other test files' mocks.
-// Provide a working implementation that goes through the real NotificationManager.
-let notifCounter = 0;
-vi.mock('../pusher', () => {
-  // Dynamic import to get the lazy notifications getter
-  const { getNotificationsLazy } = require('../notifications');
-  return {
-    pushNotification: async (options: any) => {
-      try {
-        const manager = getNotificationsLazy();
-        const result = manager.create({
-          userId: 'cli-user',
-          message: options.message,
-          priority: options.priority || 'normal',
-          category: options.category,
-          scheduledFor: options.scheduledFor,
-          expiresAt: options.expiresAt,
-          channels: options.channels || ['cli'],
-          metadata: options.metadata || {},
-        });
-        if (!result.success || !result.data) {
-          return { success: false, error: result.error };
-        }
-        const notification = result.data as any;
-        return { success: true, notificationId: notification.id, delivered: false };
-      } catch (error: any) {
-        return { success: false, error: error.message || 'Unknown error' };
-      }
-    },
-  };
-});
+// Mock bunqueue/client to avoid directory import error in Node/vitest
+vi.mock('../../../infra/queue/manager', () => ({
+  getTaskManager: vi.fn(() => null),
+}));
+
+// Mock pusher — the factory must not use require() which fails with CJS path resolution.
+const { mockPushNotification } = vi.hoisted(() => ({
+  mockPushNotification: vi.fn(),
+}));
+
+vi.mock('../pusher', () => ({
+  pushNotification: mockPushNotification,
+}));
 
 import {
   executeProactiveTool,
   PROACTIVE_TOOL_NAMES,
 } from '../tools';
-import { initStores, resetStores } from '../../../infra/db/store';
+import { getNotificationManager, resetNotificationManager } from '../notifications';
+import { getScheduler, resetScheduler } from '../scheduler';
 
 const TEST_DATA_PATH = './test-notification-data';
 
+let manager: ReturnType<typeof getNotificationManager>;
+
+function wireUpPushMock() {
+  mockPushNotification.mockImplementation(async (options: any) => {
+    try {
+      const result = manager.create({
+        userId: 'cli-user',
+        message: options.message,
+        priority: options.priority || 'normal',
+        category: options.category,
+        scheduledFor: options.scheduledFor,
+        expiresAt: options.expiresAt,
+        channels: options.channels || ['cli'],
+        metadata: options.metadata || {},
+      });
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error };
+      }
+      const notification = result.data as any;
+      return { success: true, notificationId: notification.id, delivered: false };
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Unknown error' };
+    }
+  });
+}
+
 describe('Notification Tools', () => {
   beforeAll(() => {
-    resetStores();
+    resetNotificationManager();
+    resetScheduler();
     if (existsSync(TEST_DATA_PATH)) {
       rmSync(TEST_DATA_PATH, { recursive: true });
     }
     mkdirSync(TEST_DATA_PATH, { recursive: true });
-    initStores({ basePath: TEST_DATA_PATH });
+    manager = getNotificationManager(join(TEST_DATA_PATH, 'proactive'));
+    getScheduler(join(TEST_DATA_PATH, 'proactive'));
+  });
+
+  // Re-wire mock before each test since vitest config has mockReset: true
+  beforeEach(() => {
+    wireUpPushMock();
   });
 
   afterAll(() => {
-    resetStores();
+    resetNotificationManager();
+    resetScheduler();
     if (existsSync(TEST_DATA_PATH)) {
       rmSync(TEST_DATA_PATH, { recursive: true });
     }
@@ -85,7 +103,6 @@ describe('Notification Tools', () => {
         category: 'test',
       });
       expect(result.success).toBe(true);
-      // pushNotification returns { success, notificationId, delivered }
       expect((result as any).notificationId).toBeDefined();
     });
 
@@ -111,7 +128,6 @@ describe('Notification Tools', () => {
       });
       expect(sendResult.success).toBe(true);
 
-      // pushNotification returns notificationId at the top level
       const notifId = (sendResult as any).notificationId;
       const result = await executeProactiveTool('notification_mark_read', {
         id: notifId,
@@ -135,7 +151,6 @@ describe('Notification Tools', () => {
       });
       expect(sendResult.success).toBe(true);
 
-      // pushNotification returns notificationId at the top level
       const notifId = (sendResult as any).notificationId;
       const result = await executeProactiveTool('notification_delete', {
         id: notifId,

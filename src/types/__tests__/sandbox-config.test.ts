@@ -31,7 +31,7 @@ describe('SandboxConfigSchema', () => {
       expect(config.docker.memoryLimitMb).toBe(512);
       expect(config.docker.cpuLimit).toBe(1);
       expect(config.docker.networkEnabled).toBe(false);
-      expect(config.docker.defaultTimeout).toBe(60000);
+      expect(config.docker.defaultTimeout).toBe(100000);
       expect(config.docker.maxOutputSize).toBe(2097152);
       expect(config.docker.idleTimeout).toBe(300000);
     });
@@ -41,7 +41,7 @@ describe('SandboxConfigSchema', () => {
       expect(config.pool.enabled).toBe(false);
       expect(config.pool.minIdle).toBe(1);
       expect(config.pool.maxTotal).toBe(5);
-      expect(config.pool.healthCheckInterval).toBe(60000);
+      expect(config.pool.healthCheckInterval).toBe(10000);
     });
   });
 

@@ -4,9 +4,75 @@
  * Tests process-based sandboxing with command filtering and resource limits
  */
 
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
+
+// Provide a global Bun mock that mimics Bun.spawn using Node's child_process
+// Bun.spawn returns { stdout: ReadableStream, stderr: ReadableStream, kill(), exited: Promise<number> }
+function createBunSpawnMock() {
+  return function bunSpawn(cmd: string[], options: any) {
+    const proc = spawn(cmd[0], cmd.slice(1), {
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // Convert Node streams to Web ReadableStreams
+    const stdoutReadable = new ReadableStream<Uint8Array>({
+      start(controller) {
+        proc.stdout!.on('data', (chunk: Buffer) => {
+          controller.enqueue(new Uint8Array(chunk));
+        });
+        proc.stdout!.on('end', () => {
+          try { controller.close(); } catch {}
+        });
+        proc.stdout!.on('error', (err) => {
+          try { controller.error(err); } catch {}
+        });
+      },
+    });
+
+    const stderrReadable = new ReadableStream<Uint8Array>({
+      start(controller) {
+        proc.stderr!.on('data', (chunk: Buffer) => {
+          controller.enqueue(new Uint8Array(chunk));
+        });
+        proc.stderr!.on('end', () => {
+          try { controller.close(); } catch {}
+        });
+        proc.stderr!.on('error', (err) => {
+          try { controller.error(err); } catch {}
+        });
+      },
+    });
+
+    const exited = new Promise<number>((resolve) => {
+      proc.on('close', (code) => {
+        resolve(code ?? 1);
+      });
+      proc.on('error', () => {
+        resolve(1);
+      });
+    });
+
+    return {
+      stdout: stdoutReadable,
+      stderr: stderrReadable,
+      kill: () => proc.kill('SIGKILL'),
+      exited,
+      pid: proc.pid,
+    };
+  };
+}
+
+// Install global Bun mock before module is imported
+(globalThis as any).Bun = {
+  spawn: createBunSpawnMock(),
+};
+
 import { LocalSandboxProvider } from '../providers/local';
 import type { SandboxConfig } from '../types';
 

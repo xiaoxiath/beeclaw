@@ -1,10 +1,12 @@
 /**
  * Test: Agent and Session lifecycle hooks integration
+ *
+ * Fixed: bypass loadPlugins() (jiti path resolution fails in vitest)
+ * and directly use getOrCreatePluginRegistry() + createApi() to register hooks.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resetPluginRegistry, getPluginRegistry, getOrCreatePluginRegistry } from "../registry";
-import { loadPlugins } from "../loader";
+import { resetPluginRegistry, getOrCreatePluginRegistry } from "../registry";
 import { createHookRunner } from "../hook-runner";
 
 describe("Agent and Session Lifecycle Hooks", () => {
@@ -13,13 +15,16 @@ describe("Agent and Session Lifecycle Hooks", () => {
   });
 
   it("should have agent lifecycle hook methods", async () => {
-    const result = await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    expect(result.loaded).toContain("test-plugin");
+    // Register lifecycle hooks
+    api.on("before_agent_start", async (event: any) => {});
+    api.on("agent_end", async (event: any) => {});
+    api.on("session_start", async (event: any) => {});
+    api.on("session_end", async (event: any) => {});
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
 
-    const registry = getPluginRegistry();
     const hookRunner = createHookRunner(registry);
 
     expect(hookRunner).toBeDefined();
@@ -30,11 +35,16 @@ describe("Agent and Session Lifecycle Hooks", () => {
   });
 
   it("should trigger agent lifecycle hooks with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const beforeAgentCalled = vi.fn();
+    const agentEndCalled = vi.fn();
+
+    api.on("before_agent_start", async (event: any) => { beforeAgentCalled(event); });
+    api.on("agent_end", async (event: any) => { agentEndCalled(event); });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     // Test before_agent_start event data
@@ -45,8 +55,8 @@ describe("Agent and Session Lifecycle Hooks", () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Should not throw
     await hookRunner.runBeforeAgentStart(beforeAgentEventData);
+    expect(beforeAgentCalled).toHaveBeenCalledWith(beforeAgentEventData);
 
     // Test agent_end event data
     const agentEndEventData = {
@@ -57,18 +67,21 @@ describe("Agent and Session Lifecycle Hooks", () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Should not throw
     await hookRunner.runAgentEnd(agentEndEventData);
-
-    expect(true).toBe(true);
+    expect(agentEndCalled).toHaveBeenCalledWith(agentEndEventData);
   });
 
   it("should trigger session lifecycle hooks with correct event data", async () => {
-    await loadPlugins({
-      discovery: { bundledDir: "./plugins" },
-    });
+    const { registry, createApi } = getOrCreatePluginRegistry();
+    const api = createApi("test-plugin");
 
-    const registry = getPluginRegistry();
+    const sessionStartCalled = vi.fn();
+    const sessionEndCalled = vi.fn();
+
+    api.on("session_start", async (event: any) => { sessionStartCalled(event); });
+    api.on("session_end", async (event: any) => { sessionEndCalled(event); });
+    registry.plugins.set("test-plugin", { id: "test-plugin" });
+
     const hookRunner = createHookRunner(registry);
 
     // Test session_start event data
@@ -80,8 +93,8 @@ describe("Agent and Session Lifecycle Hooks", () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Should not throw
     await hookRunner.runSessionStart(sessionStartEventData);
+    expect(sessionStartCalled).toHaveBeenCalledWith(sessionStartEventData);
 
     // Test session_end event data
     const sessionEndEventData = {
@@ -92,10 +105,8 @@ describe("Agent and Session Lifecycle Hooks", () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Should not throw
     await hookRunner.runSessionEnd(sessionEndEventData);
-
-    expect(true).toBe(true);
+    expect(sessionEndCalled).toHaveBeenCalledWith(sessionEndEventData);
   });
 
   it("should handle hooks with no registered handlers", async () => {

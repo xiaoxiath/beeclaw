@@ -10,14 +10,24 @@ vi.mock('../../observability/logger', () => ({
   },
 }));
 
-// Mock fs - must mock before import
-const mockExistsSync = vi.fn(() => false);
-const mockWriteFileSync = vi.fn();
-const mockReadFileSync = vi.fn(() => '');
-const mockRenameSync = vi.fn();
-const mockUnlinkSync = vi.fn();
-const mockReaddirSync = vi.fn(() => []);
-const mockMkdirSync = vi.fn();
+// Use vi.hoisted to create mock functions that can be referenced inside vi.mock factories
+const {
+  mockExistsSync,
+  mockWriteFileSync,
+  mockReadFileSync,
+  mockRenameSync,
+  mockUnlinkSync,
+  mockReaddirSync,
+  mockMkdirSync,
+} = vi.hoisted(() => ({
+  mockExistsSync: vi.fn(() => false),
+  mockWriteFileSync: vi.fn(),
+  mockReadFileSync: vi.fn(() => ''),
+  mockRenameSync: vi.fn(),
+  mockUnlinkSync: vi.fn(),
+  mockReaddirSync: vi.fn(() => []),
+  mockMkdirSync: vi.fn(),
+}));
 
 vi.mock('fs', () => ({
   existsSync: mockExistsSync,
@@ -47,11 +57,8 @@ describe('atomic-fs', () => {
       mockExistsSync.mockReturnValue(false);
       writeFileAtomic('/data/test.json', '{"key":"value"}');
 
-      // Should create directory
       expect(mockMkdirSync).toHaveBeenCalledWith('/data', { recursive: true });
-      // Should write to temp file
       expect(mockWriteFileSync).toHaveBeenCalledWith('/data/test.json.tmp', '{"key":"value"}', 'utf-8');
-      // Should rename temp to final
       expect(mockRenameSync).toHaveBeenCalledWith('/data/test.json.tmp', '/data/test.json');
     });
 
@@ -61,9 +68,7 @@ describe('atomic-fs', () => {
 
       writeFileAtomic('/data/test.json', '{"new":"data"}');
 
-      // Should read existing file for backup
       expect(mockReadFileSync).toHaveBeenCalledWith('/data/test.json', 'utf-8');
-      // Should write backup
       expect(mockWriteFileSync).toHaveBeenCalledWith('/data/test.json.bak', '{"old":"data"}', 'utf-8');
     });
 
@@ -73,7 +78,6 @@ describe('atomic-fs', () => {
 
       writeFileAtomic('/data/test.json', '{"new":"data"}');
 
-      // Rename should still happen
       expect(mockRenameSync).toHaveBeenCalled();
     });
   });
@@ -94,7 +98,6 @@ describe('atomic-fs', () => {
     });
 
     it('should fall back to .bak when primary is corrupted', () => {
-      let callCount = 0;
       mockExistsSync.mockImplementation(() => true);
       mockReadFileSync.mockImplementation((path: string) => {
         if (path === '/data/test.json') throw new Error('corrupted');
@@ -139,7 +142,6 @@ describe('atomic-fs', () => {
       };
 
       const result = readFileWithRecovery('/data/test.json', validator);
-      // Backup also has wrong format per this validator... adjust:
       expect(result).toBeDefined();
     });
   });
@@ -184,7 +186,7 @@ describe('atomic-fs', () => {
       });
 
       const cleaned = cleanupTempFiles('/data');
-      expect(cleaned).toBe(1); // only b.tmp succeeded
+      expect(cleaned).toBe(1);
     });
   });
 });

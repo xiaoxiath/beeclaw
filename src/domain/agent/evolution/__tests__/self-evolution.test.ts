@@ -9,18 +9,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---- Mocks ----
 
-const mockLogger = {
-  debug: vi.fn(() => {}),
-  info: vi.fn(() => {}),
-  warn: vi.fn(() => {}),
-  error: vi.fn(() => {}),
-};
-
-const mockScheduler = {
-  init: vi.fn(() => {}),
-  listSchedules: vi.fn(() => []),
-  createSchedule: vi.fn(() => {}),
-};
+const { mockLogger, mockScheduler } = vi.hoisted(() => ({
+  mockLogger: {
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+  },
+  mockScheduler: {
+    init: vi.fn(() => {}),
+    listSchedules: vi.fn(() => []),
+    createSchedule: vi.fn(() => {}),
+  },
+}));
 
 vi.mock('../../../../infra/observability/logger', () => ({
   logger: mockLogger,

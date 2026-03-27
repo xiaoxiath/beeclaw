@@ -55,7 +55,7 @@ describe('storage', () => {
       const result = getSessionFilePath('/data', 'user@domain/path');
       expect(result).not.toContain('@');
       expect(result).not.toContain('/path');
-      expect(result).toEndWith('.json');
+      expect(result.endsWith('.json')).toBe(true);
     });
 
     it('should preserve allowed characters', () => {

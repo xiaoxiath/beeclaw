@@ -4,14 +4,24 @@ vi.mock('../../../infra/observability/logger', () => ({
   logger: { info: vi.fn(() => {}), warn: vi.fn(() => {}), error: vi.fn(() => {}), debug: vi.fn(() => {}) },
 }));
 
-// Mock fs to avoid real filesystem access
-const mockExistsSync = vi.fn(() => true);
-const mockMkdirSync = vi.fn(() => {});
-const mockReaddirSync = vi.fn(() => []);
-const mockReadFileSync = vi.fn(() => '');
-const mockWriteFileSync = vi.fn(() => {});
-const mockRmSync = vi.fn(() => {});
-const mockWatch = vi.fn(() => ({ on: vi.fn(() => {}), close: vi.fn(() => {}) }));
+// Mock fs to avoid real filesystem access - use vi.hoisted to avoid hoisting issues
+const {
+  mockExistsSync,
+  mockMkdirSync,
+  mockReaddirSync,
+  mockReadFileSync,
+  mockWriteFileSync,
+  mockRmSync,
+  mockWatch,
+} = vi.hoisted(() => ({
+  mockExistsSync: vi.fn(() => true),
+  mockMkdirSync: vi.fn(() => {}),
+  mockReaddirSync: vi.fn(() => []),
+  mockReadFileSync: vi.fn(() => ''),
+  mockWriteFileSync: vi.fn(() => {}),
+  mockRmSync: vi.fn(() => {}),
+  mockWatch: vi.fn(() => ({ on: vi.fn(() => {}), close: vi.fn(() => {}) })),
+}));
 
 vi.mock('fs', () => ({
   existsSync: mockExistsSync,
@@ -69,6 +79,7 @@ describe('SkillStore', () => {
   describe('get', () => {
     it('should return null for nonexistent skill', () => {
       store.init();
+      mockExistsSync.mockReturnValue(false);
       const skill = store.get('nonexistent');
       expect(skill).toBeNull();
     });

@@ -1,23 +1,58 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { FeishuClient, initFeishuClient, getFeishuClient, resetFeishuClient } from '../client';
-import type { MessageEvent, FeishuAuthConfig } from '../types';
 
-describe('FeishuClient', () => {
-  const testConfig: FeishuAuthConfig = {
+// Mock the Lark SDK to prevent actual connections
+vi.mock('@larksuiteoapi/node-sdk', () => ({
+  Client: vi.fn().mockImplementation(() => ({})),
+  WSClient: vi.fn().mockImplementation(() => ({
+    start: vi.fn(),
+  })),
+  LoggerLevel: { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 },
+}));
+
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock('../send', () => ({
+  sendPostMessage: vi.fn(),
+  sendMarkdownMessage: vi.fn(),
+  sendMarkdownCard: vi.fn(),
+}));
+
+vi.mock('../card-callback-handler', () => ({
+  CardCallbackHandler: vi.fn().mockImplementation(() => ({})),
+}));
+
+import {
+  FeishuWSClient,
+  initFeishuWSClient,
+  getFeishuWSClient,
+  resetFeishuWSClient,
+} from '../ws-client';
+import type { FeishuAuthConfig } from '../types';
+import type { MessageEventData } from '../ws-client';
+
+describe('FeishuWSClient', () => {
+  const testConfig = {
     enabled: true,
     appId: 'test_app_id',
     appSecret: 'test_app_secret',
   };
 
-  let client: FeishuClient;
+  let client: FeishuWSClient;
 
   beforeEach(() => {
-    resetFeishuClient();
-    client = new FeishuClient(testConfig);
+    resetFeishuWSClient();
+    client = new FeishuWSClient(testConfig);
   });
 
   afterEach(() => {
-    resetFeishuClient();
+    resetFeishuWSClient();
   });
 
   describe('constructor', () => {
@@ -27,7 +62,7 @@ describe('FeishuClient', () => {
     });
 
     test('respects enabled flag', () => {
-      const disabledClient = new FeishuClient({ ...testConfig, enabled: false });
+      const disabledClient = new FeishuWSClient({ ...testConfig, enabled: false });
       expect(disabledClient.isEnabled).toBe(false);
     });
   });
@@ -38,56 +73,60 @@ describe('FeishuClient', () => {
     });
 
     test('returns false when disabled', () => {
-      const disabledClient = new FeishuClient({ ...testConfig, enabled: false });
+      const disabledClient = new FeishuWSClient({ ...testConfig, enabled: false });
       expect(disabledClient.isEnabled).toBe(false);
     });
   });
 
   describe('parseMessageContent', () => {
     test('parses text message', () => {
-      const event = {
-        event: {
-          message: {
-            content: '{"text":"Hello World"}',
-            message_type: 'text',
-          },
+      const data = {
+        message: {
+          content: '{"text":"Hello World"}',
+          message_type: 'text',
+          message_id: 'msg_1',
+          create_time: '123',
+          chat_id: 'oc_1',
+          chat_type: 'p2p',
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const content = client.parseMessageContent(event);
+      const content = client.parseMessageContent(data);
       expect(content).toBe('Hello World');
     });
 
     test('parses plain text content', () => {
-      const event = {
-        event: {
-          message: {
-            content: 'Plain text message',
-            message_type: 'text',
-          },
+      const data = {
+        message: {
+          content: 'Plain text message',
+          message_type: 'text',
+          message_id: 'msg_1',
+          create_time: '123',
+          chat_id: 'oc_1',
+          chat_type: 'p2p',
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const content = client.parseMessageContent(event);
+      const content = client.parseMessageContent(data);
       expect(content).toBe('Plain text message');
     });
 
-    test('parses post message', () => {
-      const event = {
-        event: {
-          message: {
-            content: JSON.stringify({
-              zh_cn: {
-                title: '标题',
-                content: [[{ text: '段落内容' }]],
-              },
-            }),
-            message_type: 'post',
-          },
+    test('parses rich text message', () => {
+      const data = {
+        message: {
+          content: JSON.stringify({
+            title: '标题',
+            content: [[{ text: '段落内容' }]],
+          }),
+          message_type: 'post',
+          message_id: 'msg_1',
+          create_time: '123',
+          chat_id: 'oc_1',
+          chat_type: 'p2p',
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const content = client.parseMessageContent(event);
+      const content = client.parseMessageContent(data);
       expect(content).toContain('标题');
       expect(content).toContain('段落内容');
     });
@@ -95,93 +134,81 @@ describe('FeishuClient', () => {
 
   describe('extractUserId', () => {
     test('extracts open_id', () => {
-      const event = {
-        event: {
-          sender: {
-            sender_id: {
-              open_id: 'ou_xxx',
-              user_id: 'user_xxx',
-              union_id: 'on_xxx',
-            },
+      const data = {
+        sender: {
+          sender_id: {
+            open_id: 'ou_xxx',
+            user_id: 'user_xxx',
+            union_id: 'on_xxx',
           },
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const userId = client.extractUserId(event);
+      const userId = client.extractUserId(data);
       expect(userId).toBe('ou_xxx');
     });
 
     test('falls back to user_id', () => {
-      const event = {
-        event: {
-          sender: {
-            sender_id: {
-              user_id: 'user_xxx',
-              union_id: 'on_xxx',
-            },
+      const data = {
+        sender: {
+          sender_id: {
+            user_id: 'user_xxx',
+            union_id: 'on_xxx',
           },
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const userId = client.extractUserId(event);
+      const userId = client.extractUserId(data);
       expect(userId).toBe('user_xxx');
     });
 
     test('falls back to union_id', () => {
-      const event = {
-        event: {
-          sender: {
-            sender_id: {
-              union_id: 'on_xxx',
-            },
+      const data = {
+        sender: {
+          sender_id: {
+            union_id: 'on_xxx',
           },
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const userId = client.extractUserId(event);
+      const userId = client.extractUserId(data);
       expect(userId).toBe('on_xxx');
     });
 
     test('returns unknown when no ID available', () => {
-      const event = {
-        event: {
-          sender: {
-            sender_id: {},
-          },
+      const data = {
+        sender: {
+          sender_id: {},
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const userId = client.extractUserId(event);
+      const userId = client.extractUserId(data);
       expect(userId).toBe('unknown');
     });
   });
 
   describe('extractChatId', () => {
     test('extracts chat_id', () => {
-      const event = {
-        event: {
-          message: {
-            chat_id: 'oc_xxx',
-          },
+      const data = {
+        message: {
+          chat_id: 'oc_xxx',
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const chatId = client.extractChatId(event);
+      const chatId = client.extractChatId(data);
       expect(chatId).toBe('oc_xxx');
     });
   });
 
   describe('extractMessageId', () => {
     test('extracts message_id', () => {
-      const event = {
-        event: {
-          message: {
-            message_id: 'om_xxx',
-          },
+      const data = {
+        message: {
+          message_id: 'om_xxx',
         },
-      } as MessageEvent;
+      } as unknown as MessageEventData;
 
-      const messageId = client.extractMessageId(event);
+      const messageId = client.extractMessageId(data);
       expect(messageId).toBe('om_xxx');
     });
   });
@@ -211,36 +238,36 @@ describe('FeishuClient', () => {
   });
 });
 
-describe('FeishuClient Singleton', () => {
+describe('FeishuWSClient Singleton', () => {
   afterEach(() => {
-    resetFeishuClient();
+    resetFeishuWSClient();
   });
 
-  test('initFeishuClient creates instance', () => {
-    const client = initFeishuClient({
+  test('initFeishuWSClient creates instance', () => {
+    const client = initFeishuWSClient({
       enabled: true,
       appId: 'test',
-      appSecret: 'secret',
+      appSecret: 'test_secret',
     });
 
     expect(client).toBeDefined();
-    expect(getFeishuClient()).toBe(client);
+    expect(getFeishuWSClient()).toBe(client);
   });
 
-  test('getFeishuClient returns null when not initialized', () => {
-    resetFeishuClient();
-    expect(getFeishuClient()).toBeNull();
+  test('getFeishuWSClient returns null when not initialized', () => {
+    resetFeishuWSClient();
+    expect(getFeishuWSClient()).toBeNull();
   });
 
-  test('resetFeishuClient clears instance', () => {
-    initFeishuClient({
+  test('resetFeishuWSClient clears instance', () => {
+    initFeishuWSClient({
       enabled: true,
       appId: 'test',
-      appSecret: 'secret',
+      appSecret: 'test_secret',
     });
 
-    expect(getFeishuClient()).not.toBeNull();
-    resetFeishuClient();
-    expect(getFeishuClient()).toBeNull();
+    expect(getFeishuWSClient()).not.toBeNull();
+    resetFeishuWSClient();
+    expect(getFeishuWSClient()).toBeNull();
   });
 });

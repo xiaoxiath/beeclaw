@@ -1,11 +1,11 @@
 /**
- * Test three-layer configuration system (v4)
+ * Test configuration system (v6)
  */
 
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { ProviderResolver } from '../provider-resolver';
 import { ParamsMerger } from '../params-merger';
-import type { AIProvider, AgentConfig, LLMTierConfig } from '../schema';
+import type { AIProvider, AgentConfig, LLMTierConfig, RoleDefinition } from '../schema';
 
 describe('ParamsMerger', () => {
   test('should merge two params objects', () => {
@@ -42,9 +42,10 @@ describe('ParamsMerger', () => {
   });
 });
 
-describe('ProviderResolver (v4)', () => {
+describe('ProviderResolver (v6)', () => {
   let resolver: ProviderResolver;
   let providers: AIProvider[];
+  let roles: Record<string, RoleDefinition>;
 
   beforeEach(() => {
     providers = [
@@ -71,25 +72,30 @@ describe('ProviderResolver (v4)', () => {
             },
           },
         },
-        roles: {
-          chat: {
-            model: 'glm-5',
-            params: {
-              temperature: 0.7,
-              max_tokens: 4096,
-            },
-          },
-          fast: {
-            model: 'glm-4.7-flashx',
-            params: {
-              temperature: 0.3,
-              max_tokens: 1000,
-            },
-          },
-        },
       },
     ];
-    resolver = new ProviderResolver(providers);
+
+    // v6: roles are global, not per-provider
+    roles = {
+      chat: {
+        provider: 'zhipu',
+        model: 'glm-5',
+        params: {
+          temperature: 0.7,
+          max_tokens: 4096,
+        },
+      },
+      fast: {
+        provider: 'zhipu',
+        model: 'glm-4.7-flashx',
+        params: {
+          temperature: 0.3,
+          max_tokens: 1000,
+        },
+      },
+    };
+
+    resolver = new ProviderResolver(providers, roles);
   });
 
   test('should get default provider', () => {
@@ -98,7 +104,7 @@ describe('ProviderResolver (v4)', () => {
   });
 
   test('should resolve role', () => {
-    const result = resolver.resolveRole(undefined, 'chat');
+    const result = resolver.resolveRole('chat');
 
     expect(result.model).toBe('glm-5');
     expect(result.params.temperature).toBe(0.7);
@@ -106,42 +112,28 @@ describe('ProviderResolver (v4)', () => {
     expect(result.provider.name).toBe('zhipu');
   });
 
-  test('should merge model and role params', () => {
-    const result = resolver.resolveRole(undefined, 'chat');
+  test('should merge role params with usage params', () => {
+    const result = resolver.resolveRole('chat');
 
-    // Role overrides temperature
+    // Role sets temperature
     expect(result.params.temperature).toBe(0.7);
-    // Role overrides max_tokens
+    // Role sets max_tokens
     expect(result.params.max_tokens).toBe(4096);
-    // Model provides do_sample (not in role params)
-    expect(result.params.do_sample).toBe(true);
   });
 
-  test('should resolve agent with role', () => {
-    const agent: AgentConfig = {
-      id: 'test',
-      name: 'Test Agent',
-      role: 'chat',
-    };
-
-    const result = resolver.resolveAgent(agent);
+  test('should resolve role with usage params override', () => {
+    const result = resolver.resolveRole('chat', { temperature: 0.9 });
 
     expect(result.model).toBe('glm-5');
-    expect(result.params.temperature).toBe(0.7);
+    expect(result.params.temperature).toBe(0.9); // Usage override
+    expect(result.params.max_tokens).toBe(4096); // From role
     expect(result.provider.name).toBe('zhipu');
   });
 
-  test('should resolve agent with role and usage params', () => {
-    const agent: AgentConfig = {
-      id: 'test',
-      name: 'Test Agent',
-      role: 'chat',
-      params: {
-        temperature: 0.9,
-      },
-    };
+  test('should resolve role with agent-level params', () => {
+    const usageParams = { temperature: 0.9 };
 
-    const result = resolver.resolveAgent(agent);
+    const result = resolver.resolveRole('chat', usageParams);
 
     expect(result.model).toBe('glm-5');
     expect(result.params.temperature).toBe(0.9); // Agent override
@@ -163,32 +155,35 @@ describe('ProviderResolver (v4)', () => {
 
   test('should throw error for non-existent role', () => {
     expect(() => {
-      resolver.resolveRole(undefined, 'non-existent');
-    }).toThrow('Role "non-existent" not defined');
+      resolver.resolveRole('non-existent');
+    }).toThrow('Role "non-existent" not found');
   });
 
-  test('should throw error for non-existent provider', () => {
-    expect(() => {
-      resolver.resolveRole('non-existent', 'chat');
-    }).toThrow('Provider "non-existent" not found');
-  });
-
-  test('should throw error if agent has no role', () => {
-    const agent: AgentConfig = {
-      id: 'test',
-      name: 'Test Agent',
-    } as any;
+  test('should throw error for non-existent provider in role', () => {
+    // Create a resolver with a role that references a non-existent provider
+    const badRoles: Record<string, RoleDefinition> = {
+      chat: {
+        provider: 'non-existent',
+        model: 'some-model',
+      },
+    };
+    const badResolver = new ProviderResolver(providers, badRoles);
 
     expect(() => {
-      resolver.resolveAgent(agent);
-    }).toThrow('must have "role" specified');
+      badResolver.resolveRole('chat');
+    }).toThrow('Provider "non-existent"');
   });
 
-  test('should throw error if tier has no role', () => {
-    const tier: LLMTierConfig = {} as any;
+  test('should return undefined for non-existent role via getRole', () => {
+    const roleDef = resolver.getRole('non-existent');
+    expect(roleDef).toBeUndefined();
+  });
+
+  test('should throw error if tier role not found', () => {
+    const tier = { role: 'non-existent' } as LLMTierConfig;
 
     expect(() => {
       resolver.resolveTier(tier);
-    }).toThrow('must have "role" specified');
+    }).toThrow('not found');
   });
 });

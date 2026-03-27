@@ -3,6 +3,66 @@
  */
 
 import { describe, test, expect, vi } from 'vitest';
+
+// Standard mock block for bun: protocol and ESM resolution
+vi.mock('bun:sqlite', () => {
+  class MockDatabase {
+    constructor() {}
+    exec = vi.fn();
+    run = vi.fn();
+    query = vi.fn(() => ({ all: vi.fn(() => []) }));
+    prepare = vi.fn(() => ({ run: vi.fn(), get: vi.fn(), all: vi.fn() }));
+    transaction = vi.fn((fn: Function) => fn);
+    close = vi.fn();
+  }
+  return { Database: MockDatabase, default: MockDatabase };
+});
+vi.mock('drizzle-orm/bun-sqlite', () => ({
+  drizzle: vi.fn(() => ({
+    select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(),
+  })),
+}));
+vi.mock('bunqueue/client', () => ({ Queue: vi.fn(), Worker: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({ Client: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({ StdioClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({ StreamableHTTPClientTransport: vi.fn() }));
+vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => ({ SSEClientTransport: vi.fn() }));
+
+// ============================================================================
+// Mock problematic transitive import chains from ../builtin
+// All vi.mock paths resolve relative to THIS test file: src/domain/tools/__tests__/
+// ============================================================================
+
+// Cut: subagent/executor -> runtime -> ../agent -> ../../app -> bun:sqlite
+vi.mock('../../subagent/executor', () => ({
+  executeSpawnSubagent: vi.fn(),
+  executeSpawnParallel: vi.fn(),
+}));
+
+// Cut: deep-research-tools -> ../../app -> bun:sqlite
+vi.mock('../deep-research-tools', () => ({
+  DeepResearchSchema: {},
+  deepResearchTool: { name: 'deep_research', description: 'mock', parameters: {} },
+  executeDeepResearch: vi.fn(),
+}));
+
+// Cut: deep-analysis -> ../../infra/queue/manager -> bunqueue/client
+vi.mock('../deep-analysis', () => ({
+  requestDeepAnalysisTool: { name: 'request_deep_analysis', description: 'mock', parameters: {} },
+  executeRequestDeepAnalysis: vi.fn(),
+  getDeepAnalysisToolForAI: vi.fn(),
+  isDeepAnalysisTool: vi.fn(),
+  setDeepAnalysisContext: vi.fn(),
+  clearDeepAnalysisContext: vi.fn(),
+  getDeepAnalysisContext: vi.fn(),
+}));
+
+// Cut: sandbox/tools -> ./manager -> Bun.spawn
+vi.mock('../../sandbox/tools', () => ({
+  sandboxTools: {},
+  executeSandboxTool: vi.fn(),
+}));
+
 import { isCommandSafe } from '../builtin';
 
 // Note: We're testing the actual isCommandSafe function from builtin.ts

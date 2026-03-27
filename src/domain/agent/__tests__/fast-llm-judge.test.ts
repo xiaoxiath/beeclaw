@@ -13,21 +13,23 @@ vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-const mockCallAI = vi.fn(async () => ({
-  choices: [{ message: { content: '{"result": "ok"}' } }],
-}));
-vi.mock('../api', () => ({ callAI: mockCallAI }));
-
-const mockGetConfig = vi.fn(() => ({
-  llmRouter: {
-    tiers: {
-      fast: { role: 'fast-role', params: { max_tokens: 256 } },
+const { mockCallAI, mockGetConfig } = vi.hoisted(() => ({
+  mockCallAI: vi.fn(async () => ({
+    choices: [{ message: { content: '{"result": "ok"}' } }],
+  })),
+  mockGetConfig: vi.fn(() => ({
+    llmRouter: {
+      tiers: {
+        fast: { role: 'fast-role', params: { max_tokens: 256 } },
+      },
     },
-  },
-  roles: {
-    'fast-role': { model: 'glm-4-flash', params: { max_tokens: 512 } },
-  },
+    roles: {
+      'fast-role': { model: 'glm-4-flash', params: { max_tokens: 512 } },
+    },
+  })),
 }));
+
+vi.mock('../api', () => ({ callAI: mockCallAI }));
 vi.mock('../../../app', () => ({ getConfig_: mockGetConfig }));
 
 import {
@@ -51,9 +53,6 @@ describe('fast-llm-judge', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // getFastModelFromConfig
-  // -----------------------------------------------------------------------
   describe('getFastModelFromConfig', () => {
     it('returns model name from config', () => {
       const result = getFastModelFromConfig();
@@ -79,9 +78,6 @@ describe('fast-llm-judge', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // FastLLMJudge.judge — success
-  // -----------------------------------------------------------------------
   describe('judge — success', () => {
     it('returns validated result from LLM', async () => {
       mockCallAI.mockResolvedValue({
@@ -118,9 +114,6 @@ describe('fast-llm-judge', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // JSON parsing edge cases
-  // -----------------------------------------------------------------------
   describe('JSON parsing', () => {
     it('handles markdown code blocks', async () => {
       mockCallAI.mockResolvedValue({
@@ -171,9 +164,6 @@ describe('fast-llm-judge', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // judge — failure / default
-  // -----------------------------------------------------------------------
   describe('judge — failure', () => {
     it('returns default value when LLM call fails', async () => {
       mockCallAI.mockRejectedValue(new Error('API timeout'));
@@ -202,7 +192,7 @@ describe('fast-llm-judge', () => {
         taskName: 'test',
         promptTemplate: 'test',
         promptVariables: {},
-        validateOutput: () => null, // always fail
+        validateOutput: () => null,
         defaultValue: 'default',
       });
 
@@ -227,9 +217,6 @@ describe('fast-llm-judge', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // getStats
-  // -----------------------------------------------------------------------
   describe('getStats', () => {
     it('tracks judgment statistics', async () => {
       const judge = new FastLLMJudge(provider, 'glm-4-flash');
@@ -248,9 +235,6 @@ describe('fast-llm-judge', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Singleton
-  // -----------------------------------------------------------------------
   describe('singleton', () => {
     it('getFastLLMJudge requires provider on first call', () => {
       expect(() => getFastLLMJudge()).toThrow();
@@ -270,9 +254,6 @@ describe('fast-llm-judge', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // extractContent — reasoning_content fallback
-  // -----------------------------------------------------------------------
   describe('extractContent edge cases', () => {
     it('extracts from reasoning_content format', async () => {
       mockCallAI.mockResolvedValue({

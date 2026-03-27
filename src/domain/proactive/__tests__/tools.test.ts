@@ -1,13 +1,21 @@
 import { describe, test, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+
+// Mock bunqueue/client to avoid directory import error in Node/vitest
+vi.mock('../../../infra/queue/manager', () => ({
+  getTaskManager: vi.fn(() => null),
+}));
+
 import {
   proactiveTools,
   executeProactiveTool,
   getProactiveToolsForAI,
   PROACTIVE_TOOL_NAMES,
 } from '../tools';
-import { initStores, resetStores } from '../../../infra/db/store';
+import { getNotificationManager, resetNotificationManager } from '../notifications';
+import { getScheduler, resetScheduler } from '../scheduler';
 import { setCliDeliveryHandler } from '../pusher';
 import { existsSync, mkdirSync, rmSync } from 'fs';
+import { join } from 'path';
 
 const TEST_DATA_PATH = './test-proactive-data';
 
@@ -16,7 +24,8 @@ describe('Proactive Tools', () => {
 
   beforeAll(() => {
     // Reset stores first in case other tests initialized them
-    resetStores();
+    resetNotificationManager();
+    resetScheduler();
 
     // Clean up and create test directory
     if (existsSync(TEST_DATA_PATH)) {
@@ -24,8 +33,9 @@ describe('Proactive Tools', () => {
     }
     mkdirSync(TEST_DATA_PATH, { recursive: true });
 
-    // Initialize stores with test path
-    initStores({ basePath: TEST_DATA_PATH });
+    // Initialize domain stores with test path
+    getNotificationManager(join(TEST_DATA_PATH, 'proactive'));
+    getScheduler(join(TEST_DATA_PATH, 'proactive'));
   });
 
   beforeEach(() => {
@@ -40,11 +50,13 @@ describe('Proactive Tools', () => {
 
   afterAll(() => {
     // Clean up
-    resetStores();
+    resetNotificationManager();
+    resetScheduler();
     if (existsSync(TEST_DATA_PATH)) {
       rmSync(TEST_DATA_PATH, { recursive: true });
     }
   });
+
   describe('proactiveTools', () => {
     test('has proactive_schedule tool', () => {
       expect(proactiveTools.proactive_schedule).toBeDefined();
