@@ -4,7 +4,7 @@
  * Mocks globalThis.fetch to test TavilyProvider search behavior.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TavilyProvider } from '../tavily';
 import { SearchRegion } from '../../types';
 

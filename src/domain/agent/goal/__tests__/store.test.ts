@@ -4,7 +4,7 @@
  * Uses real filesystem with tmp directory for integration-style tests.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { GoalStore, getGoalStore, resetGoalStore } from '../store';

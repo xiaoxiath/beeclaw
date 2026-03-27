@@ -1,16 +1,16 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock upstream modules
-mock.module('../../search-tools', () => ({
+vi.mock('../../search-tools', () => ({
   webSearchTool: { name: 'web_search' },
-  executeWebSearch: mock(() => Promise.resolve({ success: true })),
+  executeWebSearch: vi.fn(() => Promise.resolve({ success: true })),
   webFetchTool: { name: 'web_fetch' },
-  executeWebFetch: mock(() => Promise.resolve({ success: true })),
+  executeWebFetch: vi.fn(() => Promise.resolve({ success: true })),
 }));
 
-mock.module('../../deep-research-tools', () => ({
+vi.mock('../../deep-research-tools', () => ({
   deepResearchTool: { name: 'deep_research' },
-  executeDeepResearch: mock(() => Promise.resolve({ success: true })),
+  executeDeepResearch: vi.fn(() => Promise.resolve({ success: true })),
   DeepResearchSchema: {},
 }));
 

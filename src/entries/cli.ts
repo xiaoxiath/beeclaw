@@ -76,6 +76,7 @@ async function main() {
 
     // 启动 CLI REPL 循环（导入现有的 cli 逻辑）
     // 注意：实际的 REPL 循环在 src/cli.ts 中
+    // eslint-disable-next-line no-restricted-syntax
     await import('../cli');
   } catch (error) {
     logger.error('❌ Failed to start Beeclaw CLI:', error);

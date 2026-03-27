@@ -4,7 +4,7 @@
  * Unit tests for the shared state management system
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SharedState, initSharedState, getSharedState, resetSharedState } from '../state';
 describe('SharedState', () => {
   let state: SharedState;

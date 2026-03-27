@@ -3,23 +3,23 @@
  *
  * Covers: TokenBudgetManager — getBudget, checkTurnBudget, trimContextIfNeeded, manageContextCompression
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-const mockEstimateMessageTokens = mock((msg: any) => {
+const mockEstimateMessageTokens = vi.fn((msg: any) => {
   const c = typeof msg.content === 'string' ? msg.content : '';
   return Math.ceil(c.length / 3);
 });
-const mockEstimateTotalTokens = mock((msgs: any[]) =>
+const mockEstimateTotalTokens = vi.fn((msgs: any[]) =>
   msgs.reduce((s: number, m: any) => s + mockEstimateMessageTokens(m), 0),
 );
-mock.module('../context', () => ({
+vi.mock('../context', () => ({
   estimateMessageTokens: mockEstimateMessageTokens,
   estimateTotalTokens: mockEstimateTotalTokens,
   estimateTokens: (text: string) => Math.ceil(text.length / 3),
@@ -27,21 +27,21 @@ mock.module('../context', () => ({
   compressAssistantMessage: (content: string, _tc: any) => content.length > 200 ? content.slice(0, 100) + '...[compressed]' : content,
 }));
 
-mock.module('../compression', () => ({
-  compressMessages: mock(async (msgs: any[], maxTokens: number, keepRecent: number) => ({
+vi.mock('../compression', () => ({
+  compressMessages: vi.fn(async (msgs: any[], maxTokens: number, keepRecent: number) => ({
     messages: msgs.slice(-keepRecent),
     stats: { originalTokens: 1000, compressedTokens: 300, ratio: 0.7 },
   })),
-  shouldCompress: mock((tokens: number, max: number) => tokens > max * 0.85),
+  shouldCompress: vi.fn((tokens: number, max: number) => tokens > max * 0.85),
 }));
 
-mock.module('../context/simhash', () => ({
+vi.mock('../context/simhash', () => ({
   getSimHasher: () => ({
     deduplicateItems: (items: any[], _threshold: number) => items,
   }),
 }));
 
-mock.module('../context/health-dashboard', () => ({
+vi.mock('../context/health-dashboard', () => ({
   getContextHealthDashboard: () => ({
     measure: () => ({ tokenUtilization: 0.5, messageCount: 10 }),
     checkAlerts: () => [],

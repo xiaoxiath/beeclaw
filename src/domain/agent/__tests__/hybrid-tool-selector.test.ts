@@ -4,17 +4,17 @@
  * Covers: HybridToolSelector — select, matchByRules, matchBySemantic,
  *         recordToolUsage, getHybridToolSelector, resetHybridToolSelector
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-const mockEmbed = mock(async (_text: string) => new Array(128).fill(0.1));
-mock.module('../memory/vector-store', () => ({
+const mockEmbed = vi.fn(async (_text: string) => new Array(128).fill(0.1));
+vi.mock('../memory/vector-store', () => ({
   getEmbeddingProvider: () => null, // Default: no embedding provider
 }));
 

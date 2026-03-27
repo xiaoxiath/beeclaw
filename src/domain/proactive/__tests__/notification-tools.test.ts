@@ -2,13 +2,13 @@
  * Tests for new notification tools
  */
 
-import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 
 // Re-mock pusher to ensure it's not clobbered by other test files' mocks.
 // Provide a working implementation that goes through the real NotificationManager.
 let notifCounter = 0;
-mock.module('../pusher', () => {
+vi.mock('../pusher', () => {
   // Dynamic import to get the lazy notifications getter
   const { getNotificationsLazy } = require('../notifications');
   return {

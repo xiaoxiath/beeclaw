@@ -1,10 +1,10 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock all heavy dependencies
-const mockSearch = mock(() => Promise.resolve([]));
-const mockExtract = mock(() => Promise.resolve('content'));
+const mockSearch = vi.fn(() => Promise.resolve([]));
+const mockExtract = vi.fn(() => Promise.resolve('content'));
 
-mock.module('../../search', () => ({
+vi.mock('../../search', () => ({
   getSearchOrchestrator: () => ({
     search: mockSearch,
   }),
@@ -13,8 +13,8 @@ mock.module('../../search', () => ({
   }),
 }));
 
-mock.module('../../search/research/deep-research-v2', () => ({
-  createDeepResearchHandler: mock((deps: any) => {
+vi.mock('../../search/research/deep-research-v2', () => ({
+  createDeepResearchHandler: vi.fn((deps: any) => {
     // Return an async function that simulates deep research
     return async (params: any) => ({
       report: `Research report on: ${params.topic}`,
@@ -23,27 +23,27 @@ mock.module('../../search/research/deep-research-v2', () => ({
   }),
 }));
 
-mock.module('../../agent/api', () => ({
-  callAI: mock(() => Promise.resolve({
+vi.mock('../../agent/api', () => ({
+  callAI: vi.fn(() => Promise.resolve({
     choices: [{ message: { content: 'AI response' } }],
   })),
 }));
 
-mock.module('../../../app', () => ({
+vi.mock('../../../app', () => ({
   getProvider: () => 'openai',
   getModel: () => 'gpt-4',
 }));
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    info: mock(),
-    error: mock(),
-    warn: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
-mock.module('../builtin', () => ({
+vi.mock('../builtin', () => ({
   cleanText: (t: string) => t.trim(),
 }));
 

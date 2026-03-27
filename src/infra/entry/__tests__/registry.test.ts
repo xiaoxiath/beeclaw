@@ -4,7 +4,7 @@
  * 测试 Entry Adapter 注册表的功能
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { adapterRegistry } from '../registry';
 import type { EntryAdapter } from '../types';
 

@@ -2,7 +2,7 @@
  * P0-2.4: Token Estimation Calibration Tests
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 
 describe('Token Estimation with Calibration', () => {
   // Reset calibration before each test

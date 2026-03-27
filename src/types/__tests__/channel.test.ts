@@ -5,7 +5,7 @@
  * Tests verify that the exports are accessible and that
  * objects conforming to the interfaces work correctly.
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 import type {
   ChannelType,

@@ -1,13 +1,13 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock the sandbox tools module
-mock.module('../../../sandbox/tools', () => ({
+vi.mock('../../../sandbox/tools', () => ({
   sandboxTools: [{ name: 'sandbox_exec' }],
   sandboxToolNames: ['sandbox_exec'],
-  executeSandboxTool: mock(() => Promise.resolve({ success: true })),
-  getSandboxToolsForAI: mock(() => []),
-  setCurrentSandboxSession: mock(),
-  getCurrentSandboxSession: mock(() => null),
+  executeSandboxTool: vi.fn(() => Promise.resolve({ success: true })),
+  getSandboxToolsForAI: vi.fn(() => []),
+  setCurrentSandboxSession: vi.fn(),
+  getCurrentSandboxSession: vi.fn(() => null),
 }));
 
 import {

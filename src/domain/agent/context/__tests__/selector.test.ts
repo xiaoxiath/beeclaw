@@ -4,7 +4,7 @@
  * 测试 RRI 三维评分、去重和 Lost-in-the-Middle 重排
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import {
   ContextSelector,
   ContextItem,

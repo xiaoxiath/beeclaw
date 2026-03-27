@@ -1,21 +1,21 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock upstream module
-mock.module('../../file-system-tools', () => ({
+vi.mock('../../file-system-tools', () => ({
   shellTool: { name: 'shell' },
-  executeShell: mock(() => Promise.resolve({ success: true })),
+  executeShell: vi.fn(() => Promise.resolve({ success: true })),
   ShellSchema: {},
   fileReadTool: { name: 'file_read' },
-  executeFileRead: mock(() => Promise.resolve({ success: true })),
+  executeFileRead: vi.fn(() => Promise.resolve({ success: true })),
   FileReadSchema: {},
   fileWriteTool: { name: 'file_write' },
-  executeFileWrite: mock(() => Promise.resolve({ success: true })),
+  executeFileWrite: vi.fn(() => Promise.resolve({ success: true })),
   FileWriteSchema: {},
   fileListTool: { name: 'file_list' },
-  executeFileList: mock(() => Promise.resolve({ success: true })),
+  executeFileList: vi.fn(() => Promise.resolve({ success: true })),
   FileListSchema: {},
   fileDeleteTool: { name: 'file_delete' },
-  executeFileDelete: mock(() => Promise.resolve({ success: true })),
+  executeFileDelete: vi.fn(() => Promise.resolve({ success: true })),
   FileDeleteSchema: {},
 }));
 

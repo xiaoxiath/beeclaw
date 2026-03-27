@@ -4,7 +4,7 @@
  * Tests automatic extraction trigger detection
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import {
   ExtractionTrigger,
   getExtractionTrigger,

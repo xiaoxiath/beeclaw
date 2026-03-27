@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(), debug: mock(), warn: mock(), error: mock() },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import {
@@ -208,17 +208,17 @@ describe('calculateTimeDecay', () => {
 // ── hybridSearch ──────────────────────────────────────────────────────────
 
 describe('hybridSearch', () => {
-  const kwSearch = mock((q: string, max: number) => [
+  const kwSearch = vi.fn((q: string, max: number) => [
     { path: 'a.md', snippet: 'keyword match A', matchedTerms: ['test'], score: 0.8 },
     { path: 'b.md', snippet: 'keyword match B', matchedTerms: ['test'], score: 0.5 },
   ]);
 
-  const vecSearch = mock(async (q: string, max: number) => [
+  const vecSearch = vi.fn(async (q: string, max: number) => [
     { path: 'a.md', snippet: 'vector match A', score: 0.7 },
     { path: 'c.md', snippet: 'vector match C', score: 0.6 },
   ]);
 
-  const getTs = mock((path: string) => new Date().toISOString());
+  const getTs = vi.fn((path: string) => new Date().toISOString());
 
   beforeEach(() => {
     kwSearch.mockClear();
@@ -269,7 +269,7 @@ describe('hybridSearch', () => {
   });
 
   it('falls back gracefully when vector search throws', async () => {
-    const failingVec = mock(async () => { throw new Error('vector down'); });
+    const failingVec = vi.fn(async () => { throw new Error('vector down'); });
     const result = await hybridSearch('test', kwSearch, failingVec as any, getTs, SEARCH_PROFILES.balanced);
     // Should still return keyword results
     expect(result.items.length).toBeGreaterThan(0);
@@ -290,7 +290,7 @@ describe('hybridSearch', () => {
 
   it('applies time decay when getTimestamp provided', async () => {
     // Return very old timestamps
-    const oldTs = mock(() => new Date('2020-01-01').toISOString());
+    const oldTs = vi.fn(() => new Date('2020-01-01').toISOString());
     const highDecay: SearchWeightProfile = {
       ...SEARCH_PROFILES.balanced,
       recencyDecay: 0.9,

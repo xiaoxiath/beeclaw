@@ -13,8 +13,8 @@
     "dev:web": "bun scripts/build-web.ts --watch",
     "clean:web": "rm -rf src/web/client/dist",
     "build:embeddings": "bun run scripts/build-tool-embeddings.ts",
-    "test": "bun test --isolate",
-    "test:tool-selector": "bun test src/domain/agent/__tests__/hybrid-tool-selector.test.ts",
+    "test": "vitest run",
+    "test:tool-selector": "vitest run src/domain/agent/__tests__/hybrid-tool-selector.test.ts",
     "example:tool-selector": "bun run examples/hybrid-tool-selector.ts",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
@@ -42,9 +42,10 @@
     "check:daemon": "./scripts/check-daemon.sh",
     "check:daemon:fix": "./scripts/check-daemon.sh --fix",
     "typecheck": "bunx tsc --noEmit",
-    "test:coverage": "bun test --isolate --coverage",
-    "test:ci": "bun test --isolate --bail 5",
-    "test:fast": "bun test"
+    "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --bail 5",
+    "test:fast": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hono/zod-validator": "0.7.6",
@@ -84,6 +85,7 @@
     "react-markdown": "10.1.0",
     "tailwind-merge": "3.5.0",
     "tailwindcss": "4.2.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.2"
   }
 }

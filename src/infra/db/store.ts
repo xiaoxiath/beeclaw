@@ -76,31 +76,40 @@ export function isStoreManagerInitialized(): boolean {
 // path.  The real domain-aware implementations now live in
 // app/bootstrap-stores.ts, but we re-export thin wrappers here so that
 // existing call-sites keep working until they are migrated.
+//
+// ⚠️ EXCEPTION: Dynamic require() is used here because bootstrap-stores.ts
+// imports from this file (infra/db/store.ts), creating a circular dependency.
+// A static import would cause module initialization failure.
 // ---------------------------------------------------------------------------
+
+type BootstrapStoresModule = typeof import('../../app/bootstrap-stores');
+let _bootstrapModule: BootstrapStoresModule | null = null;
+
+function lazyBootstrapStores(): BootstrapStoresModule {
+  if (!_bootstrapModule) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
+    _bootstrapModule = require('../../app/bootstrap-stores') as BootstrapStoresModule;
+  }
+  return _bootstrapModule;
+}
 
 /** @deprecated Use bootstrapStores() from app/bootstrap-stores instead. */
 export function initStores(storeConfig?: StoreManagerConfig): any {
-  // Lazy-import to avoid pulling domain code at module-evaluation time
-  // when callers only need the infra helpers.
-  const { bootstrapStores } = require('../../app/bootstrap-stores');
-  return bootstrapStores(storeConfig);
+  return lazyBootstrapStores().bootstrapStores(storeConfig);
 }
 
 /** @deprecated Use getStores() from app/bootstrap-stores instead. */
 export function getStores(): any {
-  const { getStores: _getStores } = require('../../app/bootstrap-stores');
-  return _getStores();
+  return lazyBootstrapStores().getStores();
 }
 
 /** @deprecated Use resetAllStores() from app/bootstrap-stores instead. */
 export function resetStores(): void {
-  const { resetAllStores } = require('../../app/bootstrap-stores');
-  resetAllStores();
+  lazyBootstrapStores().resetAllStores();
   resetStoreManager();
 }
 
 /** @deprecated */
 export function isStoresInitialized(): boolean {
-  const { isStoresBootstrapped } = require('../../app/bootstrap-stores');
-  return isStoresBootstrapped();
+  return lazyBootstrapStores().isStoresBootstrapped();
 }

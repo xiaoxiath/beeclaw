@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { StreamingMessageController } from '../streaming-controller';
 import {
   createToolUseBlock,
@@ -12,8 +12,8 @@ describe('StreamingMessageController', () => {
   beforeEach(() => {
     // Create mock client
     mockClient = {
-      replyCard: mock(() => Promise.resolve('msg_123')),
-      patchCard: mock(() => Promise.resolve()),
+      replyCard: vi.fn(() => Promise.resolve('msg_123')),
+      patchCard: vi.fn(() => Promise.resolve()),
     };
 
     controller = new StreamingMessageController({
@@ -50,7 +50,7 @@ describe('StreamingMessageController', () => {
     });
 
     test('should handle send error', async () => {
-      mockClient.replyCard = mock(() => Promise.reject(new Error('Send failed')));
+      mockClient.replyCard = vi.fn(() => Promise.reject(new Error('Send failed')));
 
       const block = createTextBlock('Test');
       await expect(controller.pushContent(block)).rejects.toThrow('Send failed');
@@ -171,7 +171,7 @@ describe('StreamingMessageController', () => {
       await controller.pushContent(createTextBlock('Initial'));
 
       // Simulate revoked error
-      mockClient.patchCard = mock(() =>
+      mockClient.patchCard = vi.fn(() =>
         Promise.reject({ code: 230011 })
       );
 
@@ -185,7 +185,7 @@ describe('StreamingMessageController', () => {
     test('should handle message revoked error (231003)', async () => {
       await controller.pushContent(createTextBlock('Initial'));
 
-      mockClient.patchCard = mock(() =>
+      mockClient.patchCard = vi.fn(() =>
         Promise.reject({ code: 231003 })
       );
 
@@ -199,7 +199,7 @@ describe('StreamingMessageController', () => {
       await controller.pushContent(createTextBlock('Initial'));
 
       let callCount = 0;
-      mockClient.patchCard = mock(() => {
+      mockClient.patchCard = vi.fn(() => {
         callCount++;
         if (callCount === 1) {
           return Promise.reject({ code: 500 });

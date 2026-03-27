@@ -2,7 +2,7 @@
  * Virtual Path Mapper Tests
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import { VirtualPathMapper } from '../path-mapper';
 
 describe('VirtualPathMapper', () => {

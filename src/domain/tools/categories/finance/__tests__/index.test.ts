@@ -1,30 +1,30 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock all downstream modules to avoid real initialization
-mock.module('../types', () => ({
+vi.mock('../types', () => ({
   default: {},
 }));
 
-mock.module('../base', () => ({
+vi.mock('../base', () => ({
   FinanceDataProvider: class {},
 }));
 
-mock.module('../providers/tushare', () => ({
+vi.mock('../providers/tushare', () => ({
   TushareProvider: class {},
 }));
 
-mock.module('../providers/sina', () => ({
+vi.mock('../providers/sina', () => ({
   SinaProvider: class {},
 }));
 
-mock.module('../providers/eastmoney', () => ({
+vi.mock('../providers/eastmoney', () => ({
   EastmoneyProvider: class {},
 }));
 
-mock.module('../orchestrator', () => ({
+vi.mock('../orchestrator', () => ({
   FinanceOrchestrator: class {},
-  getFinanceOrchestrator: mock(() => ({})),
-  initFinanceFromEnv: mock(),
+  getFinanceOrchestrator: vi.fn(() => ({})),
+  initFinanceFromEnv: vi.fn(),
 }));
 
 import {

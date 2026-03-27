@@ -4,7 +4,7 @@
  * Mocks globalThis.fetch to test BochaProvider search behavior.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BochaProvider } from '../bocha';
 import { SearchRegion } from '../../types';
 

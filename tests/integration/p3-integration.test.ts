@@ -7,7 +7,7 @@
  * Run with: bun test tests/integration/p3-integration.test.ts
  */
 
-import { describe, test, expect, beforeAll } from 'bun:test';
+import { describe, test, expect, beforeAll, vi } from 'vitest';
 
 describe('P3 Module Integration', () => {
   test('Logger should configure', async () => {

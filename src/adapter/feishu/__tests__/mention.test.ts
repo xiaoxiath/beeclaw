@@ -1,14 +1,14 @@
 /**
  * Tests for mention.ts
  */
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   getLogger: () => ({
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   }),
 }));
 

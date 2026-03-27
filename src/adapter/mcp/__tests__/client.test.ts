@@ -2,7 +2,7 @@
  * MCP Client Tests
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MCPClientManager } from '../client';
 
 describe('MCPClientManager', () => {

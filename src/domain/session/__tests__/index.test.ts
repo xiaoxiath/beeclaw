@@ -1,48 +1,48 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Heavy mocking for the session index module
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), error: mock(() => {}), warn: mock(() => {}), debug: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), error: vi.fn(() => {}), warn: vi.fn(() => {}), debug: vi.fn(() => {}) },
 }));
-mock.module('../../../infra/utils/atomic-fs', () => ({
-  writeFileAtomic: mock(() => {}), readFileWithRecovery: mock(() => null), cleanupTempFiles: mock(() => {}),
+vi.mock('../../../infra/utils/atomic-fs', () => ({
+  writeFileAtomic: vi.fn(() => {}), readFileWithRecovery: vi.fn(() => null), cleanupTempFiles: vi.fn(() => {}),
 }));
-mock.module('../../../infra/db', () => ({ getDataConnection: mock(() => ({})) }));
-mock.module('../../../infra/db/schema', () => ({ sessions: { id: 'id' } }));
-mock.module('drizzle-orm', () => ({ eq: mock(() => ({})) }));
-mock.module('../../ports', () => ({
-  getPluginRegistryPort: mock(() => null),
-  getHookRunnerPort: mock(() => null),
-  getChannelClientPort: mock(() => null),
-  getMessageControllerFactory: mock(() => null),
+vi.mock('../../../infra/db', () => ({ getDataConnection: vi.fn(() => ({})) }));
+vi.mock('../../../infra/db/schema', () => ({ sessions: { id: 'id' } }));
+vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => ({})) }));
+vi.mock('../../ports', () => ({
+  getPluginRegistryPort: vi.fn(() => null),
+  getHookRunnerPort: vi.fn(() => null),
+  getChannelClientPort: vi.fn(() => null),
+  getMessageControllerFactory: vi.fn(() => null),
 }));
-mock.module('../../agent', () => ({
-  createAgent: mock(() => ({ chat: mock(async () => 'response'), addMessage: mock(() => {}) })),
+vi.mock('../../agent', () => ({
+  createAgent: vi.fn(() => ({ chat: vi.fn(async () => 'response'), addMessage: vi.fn(() => {}) })),
   SYSTEM_PROMPTS: { default: 'You are helpful.' },
-  getAllToolsForAI: mock(() => []),
-  buildSystemPrompt: mock((s: string) => s),
-  formatSkillsForPrompt: mock(() => ''),
+  getAllToolsForAI: vi.fn(() => []),
+  buildSystemPrompt: vi.fn((s: string) => s),
+  formatSkillsForPrompt: vi.fn(() => ''),
 }));
-mock.module('../../agent/api', () => ({ callAI: mock(async () => ({ choices: [{ message: { content: 'summary' } }] })) }));
-mock.module('../../agent/fast-llm-judge', () => ({ getFastModelFromConfig: mock(() => null) }));
-mock.module('../../memory', () => ({ getMemoryStore: mock(() => ({ getCoreContext: () => ({}) })) }));
-mock.module('../../skills/store', () => ({ getSkillStore: mock(() => ({ list: () => [] })) }));
-mock.module('../../tools/deep-analysis', () => ({
-  setDeepAnalysisContext: mock(() => {}), clearDeepAnalysisContext: mock(() => {}),
+vi.mock('../../agent/api', () => ({ callAI: vi.fn(async () => ({ choices: [{ message: { content: 'summary' } }] })) }));
+vi.mock('../../agent/fast-llm-judge', () => ({ getFastModelFromConfig: vi.fn(() => null) }));
+vi.mock('../../memory', () => ({ getMemoryStore: vi.fn(() => ({ getCoreContext: () => ({}) })) }));
+vi.mock('../../skills/store', () => ({ getSkillStore: vi.fn(() => ({ list: () => [] })) }));
+vi.mock('../../tools/deep-analysis', () => ({
+  setDeepAnalysisContext: vi.fn(() => {}), clearDeepAnalysisContext: vi.fn(() => {}),
 }));
-mock.module('../../extraction', () => ({
-  initExtractionManager: mock(() => {}), getExtractionManager: mock(() => null),
-  resetExtractionManager: mock(() => {}),
+vi.mock('../../extraction', () => ({
+  initExtractionManager: vi.fn(() => {}), getExtractionManager: vi.fn(() => null),
+  resetExtractionManager: vi.fn(() => {}),
 }));
-mock.module('../../../infra/config/schema', () => ({}));
-mock.module('../../../infra/resilience/session-lock', () => ({
-  SessionMessageQueue: { getInstance: mock(() => ({ enqueue: mock(async (id: string, fn: Function) => fn()) })), resetInstance: mock(() => {}) },
+vi.mock('../../../infra/config/schema', () => ({}));
+vi.mock('../../../infra/resilience/session-lock', () => ({
+  SessionMessageQueue: { getInstance: vi.fn(() => ({ enqueue: vi.fn(async (id: string, fn: Function) => fn()) })), resetInstance: vi.fn(() => {}) },
 }));
-mock.module('../../../app', () => ({ getConfig_: mock(() => ({})) }));
-mock.module('../../../infra/resilience/smart-timeout', () => ({ SmartTimeout: class {} }));
-mock.module('../hitl-manager', () => ({ handleHITLResponse: mock(async () => null) }));
-mock.module('../../../infra/config/resilience-config', () => ({
-  resolveConfig: mock(() => ({ timeout: { turnTimeoutMs: 120000 } })),
+vi.mock('../../../app', () => ({ getConfig_: vi.fn(() => ({})) }));
+vi.mock('../../../infra/resilience/smart-timeout', () => ({ SmartTimeout: class {} }));
+vi.mock('../hitl-manager', () => ({ handleHITLResponse: vi.fn(async () => null) }));
+vi.mock('../../../infra/config/resilience-config', () => ({
+  resolveConfig: vi.fn(() => ({ timeout: { turnTimeoutMs: 120000 } })),
 }));
 
 import {

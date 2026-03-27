@@ -2,7 +2,7 @@
  * Sina Provider Tests
  */
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SinaProvider } from '../../providers/sina';
 
 describe('SinaProvider', () => {

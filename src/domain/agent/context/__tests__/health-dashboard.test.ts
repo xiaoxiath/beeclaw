@@ -2,7 +2,7 @@
  * Context Health Dashboard Tests
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import {
   ContextHealthDashboard,
   HealthMessage,

@@ -21,6 +21,7 @@ let Docker: any = null;
 async function getDockerModule(): Promise<any> {
   if (Docker) return Docker;
   try {
+    // eslint-disable-next-line no-restricted-syntax
     const mod = await import('dockerode');
     Docker = mod.default || mod;
     return Docker;

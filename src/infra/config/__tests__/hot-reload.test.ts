@@ -1,40 +1,40 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock dependencies before importing
-mock.module('fs', () => ({
-  watch: mock((_path: string, _opts: any, cb: Function) => {
+vi.mock('fs', () => ({
+  watch: vi.fn((_path: string, _opts: any, cb: Function) => {
     const watcher = {
-      close: mock(),
-      on: mock(),
+      close: vi.fn(),
+      on: vi.fn(),
     };
     // Store the callback for testing
     (globalThis as any).__fsWatchCallback = cb;
     (globalThis as any).__fsWatcher = watcher;
     return watcher;
   }),
-  existsSync: mock(() => true),
+  existsSync: vi.fn(() => true),
 }));
 
-mock.module('fs/promises', () => ({
-  readFile: mock(() => Promise.resolve(JSON.stringify({
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn(() => Promise.resolve(JSON.stringify({
     server: { port: 4000, host: '0.0.0.0' },
     logging: { level: 'debug', format: 'pretty' },
   }))),
 }));
 
-mock.module('../../observability/logger', () => ({
+vi.mock('../../observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
-mock.module('./schema', () => ({
+vi.mock('./schema', () => ({
   AppConfigSchema: {
-    safeParse: mock((data: any) => ({ success: true, data })),
-    parse: mock((data: any) => data),
+    safeParse: vi.fn((data: any) => ({ success: true, data })),
+    parse: vi.fn((data: any) => data),
   },
 }));
 
@@ -101,7 +101,7 @@ describe('hot-reload', () => {
     });
 
     it('should register and unregister change listeners', () => {
-      const listener = mock();
+      const listener = vi.fn();
       const unsubscribe = watcher.onChange(listener);
       expect(typeof unsubscribe).toBe('function');
       unsubscribe();
@@ -138,7 +138,7 @@ describe('hot-reload', () => {
     });
 
     it('should allow registering change listeners', () => {
-      const listener = mock();
+      const listener = vi.fn();
       const unsub = manager.onChange(listener);
       expect(typeof unsub).toBe('function');
       unsub();
@@ -153,7 +153,7 @@ describe('hot-reload', () => {
 
   describe('setHookNotifier', () => {
     it('should accept a notifier function', () => {
-      const notifier = mock(() => Promise.resolve());
+      const notifier = vi.fn(() => Promise.resolve());
       expect(() => setHookNotifier(notifier)).not.toThrow();
     });
   });

@@ -2,7 +2,7 @@
  * Eastmoney Provider Tests
  */
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EastmoneyProvider } from '../../providers/eastmoney';
 
 describe('EastmoneyProvider', () => {

@@ -5,7 +5,7 @@
  *         OCEAN utilities, linguisticStyleToPromptModifier,
  *         traitsToPromptModifier, validateTraitsProfile
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
   parseMBTI,

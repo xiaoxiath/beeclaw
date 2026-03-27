@@ -1,10 +1,10 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    debug: mock(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    debug: vi.fn(() => {}),
   },
 }));
 
@@ -14,14 +14,14 @@ describe('proactive-messaging', () => {
   // ─── injectProactiveResult ────────────────────────────────────────────
   describe('injectProactiveResult', () => {
     it('should return false when session is undefined', () => {
-      const saveFn = mock(() => {});
+      const saveFn = vi.fn(() => {});
       const result = injectProactiveResult(undefined, { source: 'test', content: 'hello' }, saveFn);
       expect(result).toBe(false);
       expect(saveFn).not.toHaveBeenCalled();
     });
 
     it('should inject message into session and call saveFn', () => {
-      const saveFn = mock(() => {});
+      const saveFn = vi.fn(() => {});
       const session: any = {
         id: 'test-session',
         messages: [],
@@ -44,7 +44,7 @@ describe('proactive-messaging', () => {
     });
 
     it('should use provided timestamp', () => {
-      const saveFn = mock(() => {});
+      const saveFn = vi.fn(() => {});
       const session: any = { id: 's1', messages: [], updatedAt: '' };
       const ts = new Date('2025-01-01T00:00:00Z').getTime();
 
@@ -54,7 +54,7 @@ describe('proactive-messaging', () => {
     });
 
     it('should use current time when no timestamp provided', () => {
-      const saveFn = mock(() => {});
+      const saveFn = vi.fn(() => {});
       const session: any = { id: 's1', messages: [], updatedAt: '' };
 
       injectProactiveResult(session, { source: 'cron', content: 'data' }, saveFn);

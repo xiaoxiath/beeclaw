@@ -1,46 +1,46 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../observability/logger', () => ({
+vi.mock('../../observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
 // Mock bun:sqlite
-mock.module('bun:sqlite', () => {
+vi.mock('bun:sqlite', () => {
   class MockDatabase {
     path: string;
     constructor(path: string) { this.path = path; }
-    run = mock();
-    query = mock(() => ({ all: mock(() => []) }));
-    transaction = mock((fn: Function) => fn);
-    close = mock();
+    run = vi.fn();
+    query = vi.fn(() => ({ all: vi.fn(() => []) }));
+    transaction = vi.fn((fn: Function) => fn);
+    close = vi.fn();
   }
   return { Database: MockDatabase };
 });
 
 // Mock drizzle-orm
-mock.module('drizzle-orm/bun-sqlite', () => ({
-  drizzle: mock((_sqlite: any, _opts?: any) => ({
-    select: mock(),
-    insert: mock(),
-    update: mock(),
-    delete: mock(),
+vi.mock('drizzle-orm/bun-sqlite', () => ({
+  drizzle: vi.fn((_sqlite: any, _opts?: any) => ({
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
   })),
 }));
 
 // Mock fs
-mock.module('fs', () => ({
-  existsSync: mock(() => true),
-  mkdirSync: mock(),
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => true),
+  mkdirSync: vi.fn(),
 }));
 
 // Mock schema
-mock.module('./schema', () => ({
+vi.mock('./schema', () => ({
   sessions: {},
   tasks: {},
 }));

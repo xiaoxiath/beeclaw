@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rmSync, existsSync } from 'fs';
 import { Scheduler, getScheduler, resetScheduler } from '../scheduler';
 import { evaluateCondition } from '../triggers';

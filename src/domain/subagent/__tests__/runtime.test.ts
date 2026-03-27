@@ -6,7 +6,7 @@
  * enabling comprehensive testing without real LLM calls.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   SubagentRuntime,
   initSubagentRuntime,

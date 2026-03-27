@@ -4,7 +4,7 @@
  * Uses real filesystem with tmp directory for store operations.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { PersonaStore, getPersonaStore, resetPersonaStore } from '../store';

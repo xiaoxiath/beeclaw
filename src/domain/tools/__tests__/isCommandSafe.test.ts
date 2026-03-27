@@ -2,7 +2,7 @@
  * isCommandSafe.test.ts — 测试命令白名单验证逻辑（使用 shell-quote）
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import { isCommandSafe } from '../builtin';
 
 // Note: We're testing the actual isCommandSafe function from builtin.ts

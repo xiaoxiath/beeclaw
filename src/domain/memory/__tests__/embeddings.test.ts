@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ── Mock fetch globally ────────────────────────────────────────────────────
 
-const mockFetch = mock(async () => new Response());
+const mockFetch = vi.fn(async () => new Response());
 globalThis.fetch = mockFetch as any;
 
 import {

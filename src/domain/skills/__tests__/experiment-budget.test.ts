@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import {
   ExperimentBudget,
   EXPERIMENT_BUDGET_PRESETS,

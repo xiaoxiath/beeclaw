@@ -1,11 +1,11 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock upstream module
-mock.module('../../builtin', () => ({
+vi.mock('../../builtin', () => ({
   spawnSubagentToolDef: { name: 'spawn_subagent' },
   spawnParallelToolDef: { name: 'spawn_parallel' },
-  executeSpawnSubagentTool: mock(() => Promise.resolve({ success: true })),
-  executeSpawnParallelTool: mock(() => Promise.resolve({ success: true })),
+  executeSpawnSubagentTool: vi.fn(() => Promise.resolve({ success: true })),
+  executeSpawnParallelTool: vi.fn(() => Promise.resolve({ success: true })),
 }));
 
 import {

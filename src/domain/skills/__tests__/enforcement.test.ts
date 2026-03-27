@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../store', () => ({
-  getSkillStore: mock(() => ({
-    search: mock(() => []),
-    get: mock(() => null),
+vi.mock('../store', () => ({
+  getSkillStore: vi.fn(() => ({
+    search: vi.fn(() => []),
+    get: vi.fn(() => null),
   })),
 }));
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), warn: mock(() => {}), debug: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), warn: vi.fn(() => {}), debug: vi.fn(() => {}) },
 }));
 
 import { SkillEnforcementEngine } from '../enforcement';

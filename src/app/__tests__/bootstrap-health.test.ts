@@ -1,71 +1,71 @@
-import { describe, it, expect, afterEach, mock } from 'bun:test';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 // Mock all domain dependencies
-mock.module('../../domain/tools/datasource-health', () => ({
+vi.mock('../../domain/tools/datasource-health', () => ({
   DataSourceHealthChecker: class {
     constructor() {}
-    registerCircuitBreaker = mock();
-    setWebSearchProbe = mock();
-    setMCPPingProbe = mock();
+    registerCircuitBreaker = vi.fn();
+    setWebSearchProbe = vi.fn();
+    setMCPPingProbe = vi.fn();
   },
 }));
 
-mock.module('../../infra/resilience/periodic-health-monitor', () => ({
+vi.mock('../../infra/resilience/periodic-health-monitor', () => ({
   PeriodicHealthMonitor: class {
     constructor() {}
-    stop = mock();
+    stop = vi.fn();
   },
 }));
 
-mock.module('../../infra/resilience/circuit-breaker', () => ({
-  getCircuitBreakerRegistry: mock(() => ({
-    getAllStats: mock(() => ({})),
-    getBreaker: mock(() => ({})),
+vi.mock('../../infra/resilience/circuit-breaker', () => ({
+  getCircuitBreakerRegistry: vi.fn(() => ({
+    getAllStats: vi.fn(() => ({})),
+    getBreaker: vi.fn(() => ({})),
   })),
 }));
 
-mock.module('../../adapter/mcp', () => ({
-  getMCPManager: mock(() => ({
-    getStatus: mock(() => []),
+vi.mock('../../adapter/mcp', () => ({
+  getMCPManager: vi.fn(() => ({
+    getStatus: vi.fn(() => []),
   })),
 }));
 
-mock.module('../../domain/tools', () => ({
-  setupHealthChecker: mock(),
+vi.mock('../../domain/tools', () => ({
+  setupHealthChecker: vi.fn(),
 }));
 
-mock.module('../../domain/search', () => ({
-  getSearchOrchestrator: mock(() => ({
-    search: mock(() => Promise.resolve([])),
+vi.mock('../../domain/search', () => ({
+  getSearchOrchestrator: vi.fn(() => ({
+    search: vi.fn(() => Promise.resolve([])),
   })),
 }));
 
-mock.module('../../infra/observability/logger', () => ({
+vi.mock('../../infra/observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
-mock.module('../../domain/ports', () => ({
-  registerHealthMonitorPort: mock(),
+vi.mock('../../domain/ports', () => ({
+  registerHealthMonitorPort: vi.fn(),
 }));
 
-mock.module('../../domain/agent/compression', () => ({
-  getCompressionStats: mock(() => ({
+vi.mock('../../domain/agent/compression', () => ({
+  getCompressionStats: vi.fn(() => ({
     totalCompressions: 10,
     avgRatio: 0.5,
     totalTokensSaved: 5000,
   })),
 }));
 
-mock.module('../../domain/agent/context/health-dashboard', () => ({
-  getContextHealthDashboard: mock(() => ({
-    getHistory: mock(() => []),
-    checkAlerts: mock(() => []),
-    trend: mock(() => 0),
+vi.mock('../../domain/agent/context/health-dashboard', () => ({
+  getContextHealthDashboard: vi.fn(() => ({
+    getHistory: vi.fn(() => []),
+    checkAlerts: vi.fn(() => []),
+    trend: vi.fn(() => 0),
   })),
 }));
 

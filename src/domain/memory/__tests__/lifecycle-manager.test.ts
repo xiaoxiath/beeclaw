@@ -1,26 +1,26 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ── Mock fs ────────────────────────────────────────────────────────────────
 
 const mockFs = {
-  existsSync: mock(() => false),
-  readdirSync: mock(() => []),
-  statSync: mock(() => ({
+  existsSync: vi.fn(() => false),
+  readdirSync: vi.fn(() => []),
+  statSync: vi.fn(() => ({
     isFile: () => true,
     size: 100,
     mtimeMs: Date.now() - 10000,
     birthtimeMs: Date.now() - 20000,
     ctimeMs: Date.now() - 20000,
   })),
-  readFileSync: mock(() => 'content'),
-  writeFileSync: mock(),
-  unlinkSync: mock(),
-  copyFileSync: mock(),
-  mkdirSync: mock(),
+  readFileSync: vi.fn(() => 'content'),
+  writeFileSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  copyFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
 };
 
-mock.module('fs', () => ({ default: mockFs, ...mockFs }));
-mock.module('path', () => {
+vi.mock('fs', () => ({ default: mockFs, ...mockFs }));
+vi.mock('path', () => {
   const actual = require('path');
   return { default: actual, ...actual };
 });

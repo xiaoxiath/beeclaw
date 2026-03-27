@@ -1,16 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), warn: mock(() => {}), error: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), warn: vi.fn(() => {}), error: vi.fn(() => {}) },
 }));
 
 // Mock fs.watch
 const mockWatcher = {
-  on: mock(() => mockWatcher),
-  close: mock(() => {}),
+  on: vi.fn(() => mockWatcher),
+  close: vi.fn(() => {}),
 };
-mock.module('fs', () => ({
-  watch: mock(() => mockWatcher),
+vi.mock('fs', () => ({
+  watch: vi.fn(() => mockWatcher),
 }));
 
 import { SkillWatcher } from '../watcher';
@@ -20,7 +20,7 @@ describe('SkillWatcher', () => {
   let watcher: SkillWatcher;
 
   beforeEach(() => {
-    onInvalidate = mock(() => {});
+    onInvalidate = vi.fn(() => {});
     watcher = new SkillWatcher('/tmp/skills', onInvalidate);
     mockWatcher.on.mockClear();
     mockWatcher.close.mockClear();

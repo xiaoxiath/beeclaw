@@ -5,7 +5,7 @@
  * in hot reload callbacks.
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import type { ConfigDiff } from '../../config/hot-reload';
 
 describe('ConfigDiff Type', () => {

@@ -1,51 +1,51 @@
-import { describe, it, expect, afterEach, mock } from 'bun:test';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 // Mock all domain store dependencies
-mock.module('../../infra/db/store', () => ({
-  initStoreManager: mock((config?: any) => ({
+vi.mock('../../infra/db/store', () => ({
+  initStoreManager: vi.fn((config?: any) => ({
     basePath: config?.basePath || './data/memory',
   })),
 }));
 
-mock.module('../../domain/memory/store', () => ({
+vi.mock('../../domain/memory/store', () => ({
   MemoryStore: class {},
-  getMemoryStore: mock(() => ({})),
-  resetMemoryStore: mock(),
+  getMemoryStore: vi.fn(() => ({})),
+  resetMemoryStore: vi.fn(),
 }));
 
-mock.module('../../domain/agent/goal/store', () => ({
+vi.mock('../../domain/agent/goal/store', () => ({
   GoalStore: class {},
-  getGoalStore: mock(() => ({})),
-  resetGoalStore: mock(),
+  getGoalStore: vi.fn(() => ({})),
+  resetGoalStore: vi.fn(),
 }));
 
-mock.module('../../domain/proactive/scheduler', () => ({
+vi.mock('../../domain/proactive/scheduler', () => ({
   Scheduler: class {},
-  getScheduler: mock(() => ({})),
-  resetScheduler: mock(),
+  getScheduler: vi.fn(() => ({})),
+  resetScheduler: vi.fn(),
 }));
 
-mock.module('../../domain/proactive/notifications', () => ({
+vi.mock('../../domain/proactive/notifications', () => ({
   NotificationManager: class {},
-  getNotificationManager: mock(() => ({})),
-  resetNotificationManager: mock(),
+  getNotificationManager: vi.fn(() => ({})),
+  resetNotificationManager: vi.fn(),
 }));
 
-mock.module('../../domain/memory/compression', () => ({
-  getCompressionEngine: mock(() => ({})),
-  resetCompressionEngine: mock(),
+vi.mock('../../domain/memory/compression', () => ({
+  getCompressionEngine: vi.fn(() => ({})),
+  resetCompressionEngine: vi.fn(),
 }));
 
-mock.module('../../domain/agent/persona/store', () => ({
+vi.mock('../../domain/agent/persona/store', () => ({
   PersonaStore: class {},
-  getPersonaStore: mock(() => ({})),
-  resetPersonaStore: mock(),
+  getPersonaStore: vi.fn(() => ({})),
+  resetPersonaStore: vi.fn(),
 }));
 
-mock.module('../../domain/skills/store', () => ({
+vi.mock('../../domain/skills/store', () => ({
   SkillStore: class {},
-  getSkillStore: mock(() => ({})),
-  resetSkillStore: mock(),
+  getSkillStore: vi.fn(() => ({})),
+  resetSkillStore: vi.fn(),
 }));
 
 import {

@@ -1,7 +1,7 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), error: mock(() => {}), debug: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), error: vi.fn(() => {}), debug: vi.fn(() => {}) },
 }));
 
 import { calcTool, executeCalc } from '../calc-tools';

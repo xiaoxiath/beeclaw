@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { MemoryStore } from '../store';

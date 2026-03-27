@@ -2,7 +2,7 @@
  * Test: Compaction hooks integration
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetPluginRegistry, getPluginRegistry } from "../registry";
 import { loadPlugins } from "../loader";
 import { createHookRunner } from "../hook-runner";

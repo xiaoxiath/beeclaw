@@ -1,35 +1,35 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../observability/logger', () => ({
+vi.mock('../../observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
 // Mock activity monitor
-mock.module('../../utils/activity-monitor', () => {
+vi.mock('../../utils/activity-monitor', () => {
   class MockActivityMonitor {
     private lastTime = Date.now();
-    record = mock((_type: string, _details?: string) => {
+    record = vi.fn((_type: string, _details?: string) => {
       this.lastTime = Date.now();
     });
-    isInactive = mock((_timeout: number) => false);
-    getInactiveTimeMs = mock(() => Date.now() - this.lastTime);
-    getStats = mock(() => ({
+    isInactive = vi.fn((_timeout: number) => false);
+    getInactiveTimeMs = vi.fn(() => Date.now() - this.lastTime);
+    getStats = vi.fn(() => ({
       totalEvents: 0,
       lastActivity: new Date(),
       inactiveTimeMs: 0,
       eventsByType: {},
     }));
-    reset = mock(() => {
+    reset = vi.fn(() => {
       this.lastTime = Date.now();
     });
-    formatReport = mock(() => '');
-    getRecentEvents = mock(() => []);
+    formatReport = vi.fn(() => '');
+    getRecentEvents = vi.fn(() => []);
   }
   return { ActivityMonitor: MockActivityMonitor };
 });
@@ -45,7 +45,7 @@ describe('SmartTimeout', () => {
 
   describe('constructor', () => {
     it('should create with valid config', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 5000,
@@ -55,7 +55,7 @@ describe('SmartTimeout', () => {
     });
 
     it('should use default timeout if value is too small', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 100, // too small, < 1000
         checkIntervalMs: 5000,
@@ -66,7 +66,7 @@ describe('SmartTimeout', () => {
     });
 
     it('should use default check interval if value is too small', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 100, // too small, < 1000
@@ -78,7 +78,7 @@ describe('SmartTimeout', () => {
 
   describe('start / stop', () => {
     it('should start and become active', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000, // long interval to avoid actual checks
@@ -89,7 +89,7 @@ describe('SmartTimeout', () => {
     });
 
     it('should stop and become inactive', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -101,7 +101,7 @@ describe('SmartTimeout', () => {
     });
 
     it('should not throw when starting twice', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -112,7 +112,7 @@ describe('SmartTimeout', () => {
     });
 
     it('should not throw when stopping without starting', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -124,7 +124,7 @@ describe('SmartTimeout', () => {
 
   describe('recordActivity', () => {
     it('should record activity without error', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -136,8 +136,8 @@ describe('SmartTimeout', () => {
     });
 
     it('should call onActivity callback if provided', () => {
-      const onTimeout = mock();
-      const onActivity = mock();
+      const onTimeout = vi.fn();
+      const onActivity = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -151,7 +151,7 @@ describe('SmartTimeout', () => {
 
   describe('getRuntimeMs', () => {
     it('should return elapsed time since construction', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -165,7 +165,7 @@ describe('SmartTimeout', () => {
 
   describe('getMonitor', () => {
     it('should return the internal activity monitor', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -179,7 +179,7 @@ describe('SmartTimeout', () => {
 
   describe('getInactiveTimeMs', () => {
     it('should return current inactive time', () => {
-      const onTimeout = mock();
+      const onTimeout = vi.fn();
       timeout = new SmartTimeout({
         inactivityTimeoutMs: 60000,
         checkIntervalMs: 60000,
@@ -193,14 +193,14 @@ describe('SmartTimeout', () => {
 
 describe('createSmartTimeout', () => {
   it('should create a SmartTimeout instance', () => {
-    const onTimeout = mock();
+    const onTimeout = vi.fn();
     const st = createSmartTimeout(onTimeout);
     expect(st).toBeInstanceOf(SmartTimeout);
     st.stop();
   });
 
   it('should create with custom options', () => {
-    const onTimeout = mock();
+    const onTimeout = vi.fn();
     const st = createSmartTimeout(onTimeout, {
       inactivityTimeoutMs: 120000,
       checkIntervalMs: 10000,

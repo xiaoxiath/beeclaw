@@ -4,7 +4,7 @@
  * All functions are deprecated stubs that return empty values.
  */
 
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 import {
   detectPreferenceExpressions,
   hasPreferenceExpression,

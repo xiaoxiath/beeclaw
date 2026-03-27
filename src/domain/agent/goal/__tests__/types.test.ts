@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('domain/agent/goal/types', () => {
   it('should export zod schemas', async () => {

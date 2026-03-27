@@ -1,18 +1,18 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 import { DeepResearchV2, createDeepResearchHandler } from '../deep-research-v2';
 import type { SearchFn, FetchFn, LLMCallFn } from '../deep-research-v2';
 
 describe('deep-research-v2', () => {
   // Shared mock dependencies
-  const mockSearchFn: SearchFn = mock(async (query) => [
+  const mockSearchFn: SearchFn = vi.fn(async (query) => [
     { title: `Result for ${query}`, url: `https://test.com/${query}`, snippet: 'Test snippet' },
   ]) as any;
 
-  const mockFetchFn: FetchFn = mock(async (url) => ({
+  const mockFetchFn: FetchFn = vi.fn(async (url) => ({
     content: `Content from ${url}`,
   })) as any;
 
-  const mockLLMCall: LLMCallFn = mock(async (messages) => {
+  const mockLLMCall: LLMCallFn = vi.fn(async (messages) => {
     // Return different outputs based on prompt context
     const lastMsg = messages[messages.length - 1]?.content || '';
     if (lastMsg.includes('aspect') || lastMsg.includes('维度')) {
@@ -39,7 +39,7 @@ describe('deep-research-v2', () => {
     });
 
     it('constructs with progress callback', () => {
-      const onProgress = mock();
+      const onProgress = vi.fn();
       const pipeline = new DeepResearchV2({
         config: { depth: 'standard' },
         searchFn: mockSearchFn,

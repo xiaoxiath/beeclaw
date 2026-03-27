@@ -5,43 +5,43 @@
  * all 11 tool definitions and execution.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---- Mocks ----
 
 const mockMemoryStore = {
-  ls: mock(() => ({ success: true, data: ['file1.md', 'file2.md'] })),
-  grep: mock(() => ({ success: true, data: [{ file: 'facts/user.md', line: 'match' }] })),
-  read: mock(() => ({ success: true, data: 'file content' })),
-  write: mock(() => Promise.resolve({ success: true, data: 'written' })),
-  record: mock(() => Promise.resolve({ success: true, data: 'recorded' })),
-  getBasePath: mock(() => '/tmp/test-memory'),
-  rebuildIndex: mock(() => ({ success: true, data: 'Index rebuilt' })),
-  getIndexStats: mock(() => ({ factsKeywords: 100, knowledgeKeywords: 50 })),
-  searchByKeyword: mock(() => ({ success: true, data: [] })),
+  ls: vi.fn(() => ({ success: true, data: ['file1.md', 'file2.md'] })),
+  grep: vi.fn(() => ({ success: true, data: [{ file: 'facts/user.md', line: 'match' }] })),
+  read: vi.fn(() => ({ success: true, data: 'file content' })),
+  write: vi.fn(() => Promise.resolve({ success: true, data: 'written' })),
+  record: vi.fn(() => Promise.resolve({ success: true, data: 'recorded' })),
+  getBasePath: vi.fn(() => '/tmp/test-memory'),
+  rebuildIndex: vi.fn(() => ({ success: true, data: 'Index rebuilt' })),
+  getIndexStats: vi.fn(() => ({ factsKeywords: 100, knowledgeKeywords: 50 })),
+  searchByKeyword: vi.fn(() => ({ success: true, data: [] })),
 };
 
 const mockCompressionEngine = {
-  getStats: mock(() => ({ totalFiles: 10, compressedFiles: 3 })),
+  getStats: vi.fn(() => ({ totalFiles: 10, compressedFiles: 3 })),
 };
 
-const mockScoreImportance = mock(() => ({ score: 0.8, recommendation: 'keep' }));
+const mockScoreImportance = vi.fn(() => ({ score: 0.8, recommendation: 'keep' }));
 
-mock.module('../store', () => ({
+vi.mock('../store', () => ({
   getMemoryStore: () => mockMemoryStore,
 }));
 
-mock.module('../compression', () => ({
+vi.mock('../compression', () => ({
   getCompressionEngine: () => mockCompressionEngine,
 }));
 
-mock.module('../scoring', () => ({
+vi.mock('../scoring', () => ({
   scoreImportance: mockScoreImportance,
 }));
 
-mock.module('fs', () => ({
-  existsSync: mock((path: string) => path.includes('existing')),
-  writeFileSync: mock(() => {}),
+vi.mock('fs', () => ({
+  existsSync: vi.fn((path: string) => path.includes('existing')),
+  writeFileSync: vi.fn(() => {}),
 }));
 
 import {

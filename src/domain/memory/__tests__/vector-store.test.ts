@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -20,14 +20,14 @@ function makeFakeProvider(dims = 4): EmbeddingProvider {
   return {
     dimensions: dims,
     name: 'test-provider',
-    embed: mock(async (text: string) => {
+    embed: vi.fn(async (text: string) => {
       const v = new Array(dims).fill(0);
       for (let i = 0; i < text.length; i++) {
         v[i % dims] += text.charCodeAt(i) / 1000;
       }
       return normalizeVector(v);
     }),
-    embedBatch: mock(async (texts: string[]) => {
+    embedBatch: vi.fn(async (texts: string[]) => {
       const results: number[][] = [];
       for (const t of texts) {
         const v = new Array(dims).fill(0);

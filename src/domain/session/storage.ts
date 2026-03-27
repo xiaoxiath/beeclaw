@@ -5,7 +5,7 @@
  * Extracted from session/index.ts to reduce god-object complexity.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { Session, SessionMessage } from './index';
 import { logger } from '../../infra/observability/logger';
@@ -202,7 +202,6 @@ export function saveSessionToSQLite(session: Session): void {
  * Delete session from disk
  */
 export function deleteSessionFile(sessionId: string, storagePath: string): void {
-  const { unlinkSync } = require('fs');
 
   // Delete JSON file
   try {

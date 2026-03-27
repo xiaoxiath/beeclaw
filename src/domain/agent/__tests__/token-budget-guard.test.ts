@@ -5,7 +5,7 @@
  * runaway tool loops from consuming the entire context window.
  */
 
-import { describe, test, expect, mock } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import { Agent } from '../index';
 import type { AIProvider } from '../../config/schema';
 
@@ -104,7 +104,7 @@ describe('Token Budget Guard', () => {
     });
 
     test('should warn at 80% token usage', async () => {
-      const consoleWarn = mock(() => {});
+      const consoleWarn = vi.fn(() => {});
       const originalWarn = console.warn;
       console.warn = consoleWarn;
 

@@ -2,7 +2,7 @@
  * Test: Remaining core hooks (before_reset, before_model_resolve, tool_result_persist, before_message_write)
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetPluginRegistry, getPluginRegistry, getOrCreatePluginRegistry } from "../registry";
 import { loadPlugins } from "../loader";
 import { createHookRunner } from "../hook-runner";

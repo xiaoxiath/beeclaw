@@ -1,7 +1,7 @@
 /**
  * Tests for types/index.ts
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
   ToolResultSchema,

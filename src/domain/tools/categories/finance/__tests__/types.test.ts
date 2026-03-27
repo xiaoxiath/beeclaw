@@ -2,7 +2,7 @@
  * Finance Types Tests
  */
 
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 import type {
   StockQuote,
   StockHistory,

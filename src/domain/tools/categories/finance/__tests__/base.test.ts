@@ -2,7 +2,7 @@
  * Finance Base Provider Tests
  */
 
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 import { FinanceDataProvider } from '../base';
 import type { StockQuoteRequest } from '../types';
 

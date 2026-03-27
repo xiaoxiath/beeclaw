@@ -1,35 +1,35 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Create mock functions that we can control per-test
-const mockExistsSync = mock(() => false);
-const mockWriteFileSync = mock();
+const mockExistsSync = vi.fn(() => false);
+const mockWriteFileSync = vi.fn();
 
 // Mock fs module
-mock.module('fs', () => ({
+vi.mock('fs', () => ({
   existsSync: mockExistsSync,
   writeFileSync: mockWriteFileSync,
 }));
 
 // Mock path module (needed for join)
-mock.module('path', () => ({
+vi.mock('path', () => ({
   join: (...args: string[]) => args.join('/'),
 }));
 
 // Mock readline
-mock.module('readline', () => ({
-  createInterface: mock(() => ({
-    question: mock((_q: string, cb: Function) => cb('test answer')),
-    close: mock(),
+vi.mock('readline', () => ({
+  createInterface: vi.fn(() => ({
+    question: vi.fn((_q: string, cb: Function) => cb('test answer')),
+    close: vi.fn(),
   })),
 }));
 
 // Mock logger
-mock.module('../../infra/observability/logger', () => ({
+vi.mock('../../infra/observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 

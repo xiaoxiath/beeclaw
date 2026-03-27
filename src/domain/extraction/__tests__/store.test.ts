@@ -4,7 +4,7 @@
  * Tests knowledge persistence and retrieval
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { KnowledgeStore } from '../store';

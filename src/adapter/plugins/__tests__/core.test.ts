@@ -4,7 +4,7 @@
  * This test validates the core plugin system functionality
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { discoverPlugins } from "../discovery/index";
 import { loadPluginManifest, validatePluginConfig } from "../manifest/index";
 import {

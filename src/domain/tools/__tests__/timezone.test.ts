@@ -2,7 +2,7 @@
  * Test timezone utilities
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { getTimezoneFromLocation, resolveUserTimezone, resolveUserLocation, clearTimezoneCache } from '../timezone';
 
 describe('Timezone Utilities', () => {

@@ -3,43 +3,43 @@
  *
  * Covers: TieredCompressor — plan, execute, compress, getStats, resetStats
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-mock.module('../../../../infra/observability/logger', () => ({
+vi.mock('../../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-mock.module('../context', () => ({
+vi.mock('../context', () => ({
   estimateTokens: (text: string) => Math.ceil(text.length / 3),
 }));
 
-const mockL1Compress = mock((text: string) => ({
+const mockL1Compress = vi.fn((text: string) => ({
   compressed: text.replace(/\s+/g, ' ').trim(),
   method: 'L1:format',
 }));
-mock.module('../l1-format-compressor', () => ({
+vi.mock('../l1-format-compressor', () => ({
   L1FormatCompressor: class {},
   getL1Compressor: () => ({ compress: mockL1Compress }),
 }));
 
-const mockL2Compress = mock((text: string, _ratio: number) => ({
+const mockL2Compress = vi.fn((text: string, _ratio: number) => ({
   compressed: text.slice(0, Math.ceil(text.length * 0.6)),
   method: 'L2:extractive',
 }));
-mock.module('../l2-extractive-compressor', () => ({
+vi.mock('../l2-extractive-compressor', () => ({
   L2ExtractiveCompressor: class {},
   getL2Compressor: () => ({ compress: mockL2Compress }),
 }));
 
-const mockL3Compress = mock(async (text: string, _target: number) => ({
+const mockL3Compress = vi.fn(async (text: string, _target: number) => ({
   compressed: text.slice(0, Math.ceil(text.length * 0.3)),
   method: 'L3:abstractive',
 }));
-const mockL3SetLLMClient = mock(() => {});
-mock.module('../l3-abstractive-compressor', () => ({
+const mockL3SetLLMClient = vi.fn(() => {});
+vi.mock('../l3-abstractive-compressor', () => ({
   L3AbstractiveCompressor: class {},
   getL3Compressor: () => ({
     compress: mockL3Compress,

@@ -1,17 +1,17 @@
-import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock dependencies before importing
-mock.module('../index', () => ({
-  getSession: mock(() => undefined),
-  saveSession: mock(() => {}),
+vi.mock('../index', () => ({
+  getSession: vi.fn(() => undefined),
+  saveSession: vi.fn(() => {}),
 }));
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    info: mock(() => {}),
-    error: mock(() => {}),
-    warn: mock(() => {}),
-    debug: mock(() => {}),
+    info: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    debug: vi.fn(() => {}),
   },
 }));
 

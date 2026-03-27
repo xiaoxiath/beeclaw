@@ -2,7 +2,7 @@
  * L1 Format Compressor Tests
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { L1FormatCompressor, getL1Compressor, resetL1Compressor } from '../l1-format-compressor';
 
 describe('L1FormatCompressor', () => {

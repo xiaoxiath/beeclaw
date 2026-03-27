@@ -1,29 +1,29 @@
 /**
  * Tests for oauth.ts
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   getLogger: () => ({
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   }),
 }));
 
 // Mock cache
 const cacheStore = new Map<string, { value: any; ttl?: number }>();
-mock.module('../../../infra/cache', () => ({
+vi.mock('../../../infra/cache', () => ({
   cache: {
-    set: mock((key: string, value: any, ttl?: number) => {
+    set: vi.fn((key: string, value: any, ttl?: number) => {
       cacheStore.set(key, { value, ttl });
     }),
-    get: mock((key: string) => {
+    get: vi.fn((key: string) => {
       const entry = cacheStore.get(key);
       return entry ? entry.value : undefined;
     }),
-    delete: mock((key: string) => {
+    delete: vi.fn((key: string) => {
       cacheStore.delete(key);
     }),
   },
@@ -55,7 +55,7 @@ function makeClient(overrides: Record<string, any> = {}) {
     authen: {
       v1: {
         accessToken: {
-          create: mock(() =>
+          create: vi.fn(() =>
             Promise.resolve({
               code: 0,
               data: {
@@ -69,7 +69,7 @@ function makeClient(overrides: Record<string, any> = {}) {
           ),
         },
         refreshAccessToken: {
-          create: mock(() =>
+          create: vi.fn(() =>
             Promise.resolve({
               code: 0,
               data: {
@@ -83,7 +83,7 @@ function makeClient(overrides: Record<string, any> = {}) {
           ),
         },
         userInfo: {
-          get: mock(() =>
+          get: vi.fn(() =>
             Promise.resolve({
               code: 0,
               data: {
@@ -100,7 +100,7 @@ function makeClient(overrides: Record<string, any> = {}) {
         },
       },
     },
-    request: mock(() => Promise.resolve({})),
+    request: vi.fn(() => Promise.resolve({})),
     ...overrides,
   } as any;
 }

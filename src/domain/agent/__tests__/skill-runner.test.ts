@@ -4,18 +4,18 @@
  * Covers: SkillRunner — init, resetTurn, trackSkillUsage, matchSkillsForQuery,
  *         validateOutputCompleteness, buildRetryPrompt, getSkillsPrompt
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-mock.module('../../skills/enforcement', () => ({
+vi.mock('../../skills/enforcement', () => ({
   SkillEnforcementEngine: class SkillEnforcementEngine {
-    matchSkillsForQuery = mock((_q: string) => ({ matched: true, skills: [{ name: 'test-skill' }] }));
-    validateOutputCompleteness = mock(() => []);
-    buildRetryPrompt = mock((issues: string[]) => `Retry: ${issues.join(',')}`);
-    clearTraces = mock(() => {});
+    matchSkillsForQuery = vi.fn((_q: string) => ({ matched: true, skills: [{ name: 'test-skill' }] }));
+    validateOutputCompleteness = vi.fn(() => []);
+    buildRetryPrompt = vi.fn((issues: string[]) => `Retry: ${issues.join(',')}`);
+    clearTraces = vi.fn(() => {});
   },
 }));
 

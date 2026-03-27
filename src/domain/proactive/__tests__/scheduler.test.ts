@@ -1,22 +1,22 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { join } from 'path';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 
 // Mock dependencies
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    info: mock(),
-    error: mock(),
-    warn: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
-mock.module('../../../infra/config', () => ({
+vi.mock('../../../infra/config', () => ({
   getConfig: () => ({ user: { timezone: 'Asia/Shanghai' } }),
 }));
 
-mock.module('../../../infra/utils/atomic-fs', () => ({
+vi.mock('../../../infra/utils/atomic-fs', () => ({
   writeFileAtomic: (path: string, content: string) => {
     const { writeFileSync } = require('fs');
     writeFileSync(path, content, 'utf-8');
@@ -309,7 +309,7 @@ describe('Scheduler', () => {
       scheduler.init();
       scheduler.createSchedule({ name: 'AutoStart', cron: '0 9 * * *', taskType: 'custom' });
 
-      const callback = mock(() => Promise.resolve());
+      const callback = vi.fn(() => Promise.resolve());
       scheduler.startAll(callback);
       scheduler.stopAll();
       // No error expected

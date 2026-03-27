@@ -5,62 +5,62 @@
  * All external dependencies are mocked to test initialization logic only.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---- Mocks ----
 
-const mockInitSessionManager = mock(() => {});
-const mockSendProactiveMessage = mock(() => Promise.resolve({ success: true }));
-const mockConfirmDelivery = mock(() => {});
-const mockIsMessageProcessed = mock(() => false);
-const mockMarkMessageProcessing = mock(() => {});
-const mockMarkMessageCompleted = mock(() => {});
-const mockMarkMessageFailed = mock(() => {});
-const mockGetCachedAgentResponse = mock(() => null);
+const mockInitSessionManager = vi.fn(() => {});
+const mockSendProactiveMessage = vi.fn(() => Promise.resolve({ success: true }));
+const mockConfirmDelivery = vi.fn(() => {});
+const mockIsMessageProcessed = vi.fn(() => false);
+const mockMarkMessageProcessing = vi.fn(() => {});
+const mockMarkMessageCompleted = vi.fn(() => {});
+const mockMarkMessageFailed = vi.fn(() => {});
+const mockGetCachedAgentResponse = vi.fn(() => null);
 
-const mockPushNotification = mock(() =>
+const mockPushNotification = vi.fn(() =>
   Promise.resolve({ success: true })
 );
 
-const mockEvaluatePatterns = mock(() => []);
+const mockEvaluatePatterns = vi.fn(() => []);
 
 const mockGoalStore = {
-  list: mock(() => []),
+  list: vi.fn(() => []),
 };
 
 const mockWsClient = {
-  onMessage: mock((_handler: any) => {}),
-  start: mock(() => Promise.resolve()),
+  onMessage: vi.fn((_handler: any) => {}),
+  start: vi.fn(() => Promise.resolve()),
   connected: true,
   isEnabled: true,
 };
 
-const mockInitFeishuWSClient = mock(() => mockWsClient);
-const mockGetFeishuWSClient = mock(() => mockWsClient);
+const mockInitFeishuWSClient = vi.fn(() => mockWsClient);
+const mockGetFeishuWSClient = vi.fn(() => mockWsClient);
 
 const mockLogger = {
-  debug: mock(() => {}),
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
+  debug: vi.fn(() => {}),
+  info: vi.fn(() => {}),
+  warn: vi.fn(() => {}),
+  error: vi.fn(() => {}),
 };
 
-const mockCheckPreferenceTriggers = mock(() => null);
-const mockRecordQuery = mock(() => {});
+const mockCheckPreferenceTriggers = vi.fn(() => null);
+const mockRecordQuery = vi.fn(() => {});
 
-const mockGetMessageGateway = mock(() => ({
-  replyMessage: mock(() => Promise.resolve({ success: true })),
+const mockGetMessageGateway = vi.fn(() => ({
+  replyMessage: vi.fn(() => Promise.resolve({ success: true })),
 }));
 
 const mockSessionMessageQueue = {
-  getInstance: mock(() => ({
-    enqueue: mock((_key: string, fn: () => Promise<void>) => fn()),
+  getInstance: vi.fn(() => ({
+    enqueue: vi.fn((_key: string, fn: () => Promise<void>) => fn()),
   })),
 };
 
-const mockRenderMessageCard = mock(() => ({ card: 'mock-card' }));
+const mockRenderMessageCard = vi.fn(() => ({ card: 'mock-card' }));
 
-mock.module('../../../domain/session', () => ({
+vi.mock('../../../domain/session', () => ({
   initSessionManager: mockInitSessionManager,
   sendProactiveMessage: mockSendProactiveMessage,
   confirmDelivery: mockConfirmDelivery,
@@ -71,41 +71,41 @@ mock.module('../../../domain/session', () => ({
   getCachedAgentResponse: mockGetCachedAgentResponse,
 }));
 
-mock.module('../../../domain/proactive/pusher', () => ({
+vi.mock('../../../domain/proactive/pusher', () => ({
   pushNotification: mockPushNotification,
 }));
 
-mock.module('../../../domain/proactive/triggers', () => ({
+vi.mock('../../../domain/proactive/triggers', () => ({
   evaluatePatterns: mockEvaluatePatterns,
 }));
 
-mock.module('../../../domain/agent/goal/store', () => ({
+vi.mock('../../../domain/agent/goal/store', () => ({
   getGoalStore: () => mockGoalStore,
 }));
 
-mock.module('../../../adapter/feishu', () => ({
+vi.mock('../../../adapter/feishu', () => ({
   initFeishuWSClient: mockInitFeishuWSClient,
   getFeishuWSClient: mockGetFeishuWSClient,
 }));
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: mockLogger,
 }));
 
-mock.module('../../../domain/agent/evolution', () => ({
+vi.mock('../../../domain/agent/evolution', () => ({
   checkPreferenceTriggers: mockCheckPreferenceTriggers,
   recordQuery: mockRecordQuery,
 }));
 
-mock.module('../../gateway-channel', () => ({
+vi.mock('../../gateway-channel', () => ({
   getMessageGateway: mockGetMessageGateway,
 }));
 
-mock.module('../../../infra/resilience/session-lock', () => ({
+vi.mock('../../../infra/resilience/session-lock', () => ({
   SessionMessageQueue: mockSessionMessageQueue,
 }));
 
-mock.module('../../../adapter/feishu/card-v2/message-renderer', () => ({
+vi.mock('../../../adapter/feishu/card-v2/message-renderer', () => ({
   renderMessageCard: mockRenderMessageCard,
 }));
 

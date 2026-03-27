@@ -223,6 +223,7 @@ export class MCPClientManager {
           throw new Error('http transport requires url');
         }
         try {
+          // eslint-disable-next-line no-restricted-syntax
           const { StreamableHTTPClientTransport } = await import(
             '@modelcontextprotocol/sdk/client/streamableHttp.js'
           );
@@ -232,6 +233,7 @@ export class MCPClientManager {
           );
         } catch {
           // 回退到 SSE 传输
+          // eslint-disable-next-line no-restricted-syntax
           const { SSEClientTransport } = await import(
             '@modelcontextprotocol/sdk/client/sse.js'
           );

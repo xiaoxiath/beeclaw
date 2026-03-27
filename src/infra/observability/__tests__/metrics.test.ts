@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock the logger to avoid circular dependency issues
-mock.module('../logger', () => ({
+vi.mock('../logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -53,14 +53,14 @@ describe('metrics (observability)', () => {
     });
 
     it('should accept custom log exporter', () => {
-      const exporter: LogExporter = { write: mock() };
+      const exporter: LogExporter = { write: vi.fn() };
       expect(() => Observability.configure({ logExporter: exporter })).not.toThrow();
       // Reset
       Observability.configure({ logExporter: undefined });
     });
 
     it('should accept custom metric exporter', () => {
-      const exporter: MetricExporter = { export: mock() };
+      const exporter: MetricExporter = { export: vi.fn() };
       expect(() => Observability.configure({ metricExporter: exporter })).not.toThrow();
     });
 
@@ -69,14 +69,14 @@ describe('metrics (observability)', () => {
     });
 
     it('should flush custom exporters', async () => {
-      const logFlush = mock(() => Promise.resolve());
-      const traceFlush = mock(() => Promise.resolve());
-      const metricFlush = mock(() => Promise.resolve());
+      const logFlush = vi.fn(() => Promise.resolve());
+      const traceFlush = vi.fn(() => Promise.resolve());
+      const metricFlush = vi.fn(() => Promise.resolve());
 
       Observability.configure({
-        logExporter: { write: mock(), flush: logFlush },
-        traceExporter: { export: mock(), flush: traceFlush },
-        metricExporter: { export: mock(), flush: metricFlush },
+        logExporter: { write: vi.fn(), flush: logFlush },
+        traceExporter: { export: vi.fn(), flush: traceFlush },
+        metricExporter: { export: vi.fn(), flush: metricFlush },
       });
 
       await Observability.flush();

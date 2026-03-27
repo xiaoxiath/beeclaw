@@ -1,22 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock fs
-mock.module('fs', () => ({
-  existsSync: mock(() => false),
-  mkdirSync: mock(),
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => false),
+  mkdirSync: vi.fn(),
 }));
 
 // Mock types
-mock.module('../../../types', () => ({
+vi.mock('../../../types', () => ({
   DEFAULT_MEMORY_BASE_PATH: './data/memory',
 }));
 
 // Mock app/bootstrap-stores
-mock.module('../../../app/bootstrap-stores', () => ({
-  bootstrapStores: mock(() => ({})),
-  getStores: mock(() => ({})),
-  resetAllStores: mock(),
-  isStoresBootstrapped: mock(() => false),
+vi.mock('../../../app/bootstrap-stores', () => ({
+  bootstrapStores: vi.fn(() => ({})),
+  getStores: vi.fn(() => ({})),
+  resetAllStores: vi.fn(),
+  isStoresBootstrapped: vi.fn(() => false),
 }));
 
 import {

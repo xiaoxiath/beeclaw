@@ -3,21 +3,21 @@
  *
  * Covers: ToolDispatcher — executeSingle, executeToolBatches, isToolBlocked, persistResult
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-mock.module('../tool-dependencies', () => ({
+vi.mock('../tool-dependencies', () => ({
   groupToolCalls: (items: any[]) => [items], // single batch
   getGroupingStats: (items: any[]) => ({ totalCalls: items.length, parallelBatches: 1 }),
 }));
 
-mock.module('../../../infra/resilience/timeout-enforcer', () => ({
+vi.mock('../../../infra/resilience/timeout-enforcer', () => ({
   TimeoutEnforcer: class {},
   ToolTimeoutError: class ToolTimeoutError extends Error {
     constructor(msg: string) { super(msg); this.name = 'ToolTimeoutError'; }
@@ -40,10 +40,10 @@ function makeToolCall(name: string, args: Record<string, unknown> = {}) {
 
 function makeLoopDetector(overrides: Partial<any> = {}) {
   return {
-    check: mock(() => ({ action: 'allow' })),
-    recordToolCall: mock(() => {}),
-    recordToolResult: mock(() => {}),
-    acknowledgeWarning: mock(() => {}),
+    check: vi.fn(() => ({ action: 'allow' })),
+    recordToolCall: vi.fn(() => {}),
+    recordToolResult: vi.fn(() => {}),
+    acknowledgeWarning: vi.fn(() => {}),
     ...overrides,
   };
 }
@@ -57,11 +57,11 @@ describe('ToolDispatcher', () => {
   let loopDetector: ReturnType<typeof makeLoopDetector>;
 
   beforeEach(() => {
-    toolExecutor = mock(async () => ({ success: true, data: 'ok' }));
+    toolExecutor = vi.fn(async () => ({ success: true, data: 'ok' }));
     hookRunner = {
-      runBeforeToolCall: mock(async () => {}),
-      runAfterToolCall: mock(async () => {}),
-      runToolResultPersist: mock((_ctx: any) => 'persisted'),
+      runBeforeToolCall: vi.fn(async () => {}),
+      runAfterToolCall: vi.fn(async () => {}),
+      runToolResultPersist: vi.fn((_ctx: any) => 'persisted'),
     };
     loopDetector = makeLoopDetector();
   });
@@ -102,8 +102,8 @@ describe('ToolDispatcher', () => {
     });
 
     it('invokes onToolCall and onToolResult callbacks', async () => {
-      const onToolCall = mock(() => {});
-      const onToolResult = mock(() => {});
+      const onToolCall = vi.fn(() => {});
+      const onToolResult = vi.fn(() => {});
       const d = new ToolDispatcher(toolExecutor, null, loopDetector as any);
       const call = makeToolCall('test_tool');
 
@@ -171,8 +171,8 @@ describe('ToolDispatcher', () => {
   describe('timeout enforcement', () => {
     it('uses timeoutEnforcer when provided', async () => {
       const enforcer = {
-        executeWithToolTimeout: mock(async (_name: string, fn: any) => fn(null)),
-        getToolTimeout: mock(() => 5000),
+        executeWithToolTimeout: vi.fn(async (_name: string, fn: any) => fn(null)),
+        getToolTimeout: vi.fn(() => 5000),
       };
       const d = new ToolDispatcher(toolExecutor, null, loopDetector as any, [], enforcer as any);
       await d.executeSingle(makeToolCall('x'), 0, []);
@@ -181,8 +181,8 @@ describe('ToolDispatcher', () => {
 
     it('handles ToolTimeoutError', async () => {
       const enforcer = {
-        executeWithToolTimeout: mock(async () => { throw new ToolTimeoutError('timeout'); }),
-        getToolTimeout: mock(() => 5000),
+        executeWithToolTimeout: vi.fn(async () => { throw new ToolTimeoutError('timeout'); }),
+        getToolTimeout: vi.fn(() => 5000),
       };
       const d = new ToolDispatcher(toolExecutor, null, loopDetector as any, [], enforcer as any);
       const result = await d.executeSingle(makeToolCall('slow_tool'), 0, []);
@@ -242,7 +242,7 @@ describe('ToolDispatcher', () => {
   describe('content block handling', () => {
     it('calls onContentBlock for _contentBlock results', async () => {
       toolExecutor.mockResolvedValue({ success: true, _contentBlock: true, data: { type: 'image' } });
-      const onContentBlock = mock(() => {});
+      const onContentBlock = vi.fn(() => {});
       const d = new ToolDispatcher(toolExecutor, null, loopDetector as any);
 
       await d.executeSingle(makeToolCall('x'), 0, [], { onContentBlock });

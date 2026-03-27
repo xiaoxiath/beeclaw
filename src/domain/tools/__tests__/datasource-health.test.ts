@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { DataSourceHealthChecker, processDatasourceHealthCheck } from '../datasource-health';
 

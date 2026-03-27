@@ -4,7 +4,7 @@
  * 测试知识提取功能
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import {
   parseExtractionResult,
   validateExtraction,

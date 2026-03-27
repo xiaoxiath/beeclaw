@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { ToolIconRegistry, toolIconRegistry } from '../tool-icon-registry';
 import { IconToken } from '../types/styles';
 

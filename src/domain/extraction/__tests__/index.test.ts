@@ -1,74 +1,74 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(), debug: mock(), warn: mock(), error: mock() },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 const mockTrigger = {
-  shouldTrigger: mock(() => ({ trigger: false, reason: 'no trigger' })),
-  resetCounter: mock(),
-  updateConfig: mock(),
+  shouldTrigger: vi.fn(() => ({ trigger: false, reason: 'no trigger' })),
+  resetCounter: vi.fn(),
+  updateConfig: vi.fn(),
 };
 
 const mockExtractor = {
-  extractIncremental: mock(async () => []),
-  detectSensitiveInfo: mock(() => ({ shouldSkip: false, patterns: [] })),
-  toItems: mock(() => []),
-  updateConfig: mock(),
+  extractIncremental: vi.fn(async () => []),
+  detectSensitiveInfo: vi.fn(() => ({ shouldSkip: false, patterns: [] })),
+  toItems: vi.fn(() => []),
+  updateConfig: vi.fn(),
 };
 
 const mockDeduper = {
-  deduplicate: mock(() => ({ toAdd: [], toUpdate: [], conflicts: [] })),
+  deduplicate: vi.fn(() => ({ toAdd: [], toUpdate: [], conflicts: [] })),
 };
 
 const mockStore = {
-  getAll: mock(() => []),
-  store: mock(() => ({ added: 0, updated: 0 })),
-  getPending: mock(() => []),
-  confirm: mock(() => true),
-  reject: mock(() => true),
-  search: mock(() => []),
-  getStats: mock(() => ({ total: 0 })),
+  getAll: vi.fn(() => []),
+  store: vi.fn(() => ({ added: 0, updated: 0 })),
+  getPending: vi.fn(() => []),
+  confirm: vi.fn(() => true),
+  reject: vi.fn(() => true),
+  search: vi.fn(() => []),
+  getStats: vi.fn(() => ({ total: 0 })),
 };
 
-mock.module('../trigger', () => ({
-  ExtractionTrigger: mock(function () { return mockTrigger; }),
-  getExtractionTrigger: mock(() => mockTrigger),
-  resetExtractionTrigger: mock(),
+vi.mock('../trigger', () => ({
+  ExtractionTrigger: vi.fn(function () { return mockTrigger; }),
+  getExtractionTrigger: vi.fn(() => mockTrigger),
+  resetExtractionTrigger: vi.fn(),
 }));
 
-mock.module('../extractor', () => ({
-  KnowledgeExtractor: mock(function () { return mockExtractor; }),
-  getKnowledgeExtractor: mock(() => mockExtractor),
-  initKnowledgeExtractor: mock(),
-  resetKnowledgeExtractor: mock(),
+vi.mock('../extractor', () => ({
+  KnowledgeExtractor: vi.fn(function () { return mockExtractor; }),
+  getKnowledgeExtractor: vi.fn(() => mockExtractor),
+  initKnowledgeExtractor: vi.fn(),
+  resetKnowledgeExtractor: vi.fn(),
 }));
 
-mock.module('../deduper', () => ({
-  KnowledgeDeduper: mock(function () { return mockDeduper; }),
-  getKnowledgeDeduper: mock(() => mockDeduper),
+vi.mock('../deduper', () => ({
+  KnowledgeDeduper: vi.fn(function () { return mockDeduper; }),
+  getKnowledgeDeduper: vi.fn(() => mockDeduper),
 }));
 
-mock.module('../store', () => ({
-  KnowledgeStore: mock(function () { return mockStore; }),
-  getKnowledgeStore: mock(() => mockStore),
-  initKnowledgeStore: mock(),
-  resetKnowledgeStore: mock(),
+vi.mock('../store', () => ({
+  KnowledgeStore: vi.fn(function () { return mockStore; }),
+  getKnowledgeStore: vi.fn(() => mockStore),
+  initKnowledgeStore: vi.fn(),
+  resetKnowledgeStore: vi.fn(),
 }));
 
-mock.module('../prompt', () => ({
+vi.mock('../prompt', () => ({
   EXTRACTION_PROMPT: 'mock-prompt',
   INCREMENTAL_EXTRACTION_PROMPT: 'mock-inc-prompt',
   CONFLICT_DETECTION_PROMPT: 'mock-conflict-prompt',
-  detectSensitiveInfo: mock(() => ({ shouldSkip: false })),
-  formatConversationForExtraction: mock(() => ''),
-  parseExtractionResult: mock(() => []),
-  validateExtraction: mock(() => true),
+  detectSensitiveInfo: vi.fn(() => ({ shouldSkip: false })),
+  formatConversationForExtraction: vi.fn(() => ''),
+  parseExtractionResult: vi.fn(() => []),
+  validateExtraction: vi.fn(() => true),
 }));
 
-mock.module('../types', () => ({
+vi.mock('../types', () => ({
   DEFAULT_EXTRACTION_CONFIG: {
     enabled: true,
     triggerInterval: 5,
@@ -78,8 +78,8 @@ mock.module('../types', () => ({
   },
 }));
 
-mock.module('../../../infra/config/schema', () => ({}));
-mock.module('../../agent/types', () => ({}));
+vi.mock('../../../infra/config/schema', () => ({}));
+vi.mock('../../agent/types', () => ({}));
 
 import {
   ExtractionManager,

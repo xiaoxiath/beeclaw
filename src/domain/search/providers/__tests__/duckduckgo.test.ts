@@ -1,8 +1,8 @@
-import { describe, it, expect, mock, beforeEach, afterAll } from 'bun:test';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 
 // Mock global fetch
 const originalFetch = globalThis.fetch;
-const mockFetch = mock(() => Promise.resolve(new Response('<html></html>')));
+const mockFetch = vi.fn(() => Promise.resolve(new Response('<html></html>')));
 
 beforeEach(() => {
   globalThis.fetch = mockFetch as any;

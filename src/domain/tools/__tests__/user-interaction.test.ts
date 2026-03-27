@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 import { askUserQuestionTool, executeAskUserQuestion } from '../user-interaction';
 
 describe('user-interaction', () => {

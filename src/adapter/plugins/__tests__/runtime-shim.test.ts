@@ -1,7 +1,7 @@
 /**
  * Tests for Plugin Runtime Shim
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import {
   createPluginRuntimeCore,
@@ -42,7 +42,7 @@ describe('Plugin Runtime Shim', () => {
       });
 
       it('uses custom configWriter', () => {
-        const writer = mock(() => {});
+        const writer = vi.fn(() => {});
         const core = createPluginRuntimeCore({ configWriter: writer });
         core.config.writeConfigFile({ x: 1 });
         expect(writer).toHaveBeenCalledWith({ x: 1 });
@@ -52,7 +52,7 @@ describe('Plugin Runtime Shim', () => {
     describe('system', () => {
       it('emits system-event via enqueueSystemEvent', () => {
         const core = createPluginRuntimeCore();
-        const handler = mock(() => {});
+        const handler = vi.fn(() => {});
         core.events.on('system-event', handler);
         core.system.enqueueSystemEvent({ type: 'test' });
         expect(handler).toHaveBeenCalledWith({ type: 'test' });
@@ -60,7 +60,7 @@ describe('Plugin Runtime Shim', () => {
 
       it('emits heartbeat-request via requestHeartbeatNow', () => {
         const core = createPluginRuntimeCore();
-        const handler = mock(() => {});
+        const handler = vi.fn(() => {});
         core.events.on('heartbeat-request', handler);
         core.system.requestHeartbeatNow();
         expect(handler).toHaveBeenCalledTimes(1);
@@ -74,7 +74,7 @@ describe('Plugin Runtime Shim', () => {
       });
 
       it('uses custom commandRunner', async () => {
-        const runner = mock(async () => 'output');
+        const runner = vi.fn(async () => 'output');
         const core = createPluginRuntimeCore({ commandRunner: runner });
         const result = await core.system.runCommandWithTimeout('ls', 5000);
         expect(result).toBe('output');
@@ -91,7 +91,7 @@ describe('Plugin Runtime Shim', () => {
       });
 
       it('uses custom mediaLoader', async () => {
-        const loader = mock(async () => Buffer.from('image'));
+        const loader = vi.fn(async () => Buffer.from('image'));
         const core = createPluginRuntimeCore({ mediaLoader: loader });
         const result = await core.media.loadWebMedia('http://test.com');
         expect(result).toEqual(Buffer.from('image'));
@@ -221,10 +221,10 @@ describe('Plugin Runtime Shim', () => {
   describe('createChannelRuntimeStub', () => {
     it('creates stubs for known channel adapters', () => {
       const loggerMock = {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       };
       const stub = createChannelRuntimeStub(loggerMock);
 
@@ -237,10 +237,10 @@ describe('Plugin Runtime Shim', () => {
 
     it('stub methods return undefined and log warnings', () => {
       const loggerMock = {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       };
       const stub = createChannelRuntimeStub(loggerMock);
 

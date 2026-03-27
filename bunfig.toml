@@ -1,4 +1,2 @@
-[test]
-# 每个测试文件在独立进程运行，避免 mock.module() 全局泄漏
-isolate = true
-timeout = 30000
+# bunfig.toml - Bun configuration
+# Test configuration moved to vitest.config.ts

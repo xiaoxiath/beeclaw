@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '../../infra/observability/logger';
 import type { SkillFrontmatter } from './types';
@@ -68,9 +68,6 @@ function nextVersionId(skillDir: string): string {
 /** Read a directory without throwing when it doesn't exist. */
 function readdirSafe(dir: string): string[] {
   try {
-    // Using Bun-compatible fs import; readdirSync isn't in our explicit
-    // import list so we rely on a manual approach.
-    const { readdirSync } = require('node:fs');
     return readdirSync(dir) as string[];
   } catch {
     return [];

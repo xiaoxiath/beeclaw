@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rmSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { SkillStore, getSkillStore, resetSkillStore } from '../store';

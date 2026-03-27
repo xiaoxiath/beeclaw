@@ -1,19 +1,19 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), warn: mock(() => {}), error: mock(() => {}), debug: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), warn: vi.fn(() => {}), error: vi.fn(() => {}), debug: vi.fn(() => {}) },
 }));
 
 // Mock fs to avoid real filesystem access
-const mockExistsSync = mock(() => true);
-const mockMkdirSync = mock(() => {});
-const mockReaddirSync = mock(() => []);
-const mockReadFileSync = mock(() => '');
-const mockWriteFileSync = mock(() => {});
-const mockRmSync = mock(() => {});
-const mockWatch = mock(() => ({ on: mock(() => {}), close: mock(() => {}) }));
+const mockExistsSync = vi.fn(() => true);
+const mockMkdirSync = vi.fn(() => {});
+const mockReaddirSync = vi.fn(() => []);
+const mockReadFileSync = vi.fn(() => '');
+const mockWriteFileSync = vi.fn(() => {});
+const mockRmSync = vi.fn(() => {});
+const mockWatch = vi.fn(() => ({ on: vi.fn(() => {}), close: vi.fn(() => {}) }));
 
-mock.module('fs', () => ({
+vi.mock('fs', () => ({
   existsSync: mockExistsSync,
   mkdirSync: mockMkdirSync,
   readdirSync: mockReaddirSync,
@@ -23,11 +23,11 @@ mock.module('fs', () => ({
   watch: mockWatch,
 }));
 
-mock.module('yaml', () => ({
-  parse: mock((s: string) => {
+vi.mock('yaml', () => ({
+  parse: vi.fn((s: string) => {
     try { return JSON.parse(s); } catch { return {}; }
   }),
-  stringify: mock((obj: any) => JSON.stringify(obj)),
+  stringify: vi.fn((obj: any) => JSON.stringify(obj)),
 }));
 
 import { SkillStore, getSkillStore, resetSkillStore } from '../store';

@@ -5,29 +5,29 @@
  * status retrieval, and manual trigger.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---- Mocks ----
 
 const mockLogger = {
-  debug: mock(() => {}),
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
+  debug: vi.fn(() => {}),
+  info: vi.fn(() => {}),
+  warn: vi.fn(() => {}),
+  error: vi.fn(() => {}),
 };
 
 const mockScheduler = {
-  init: mock(() => {}),
-  listSchedules: mock(() => []),
-  createSchedule: mock(() => {}),
+  init: vi.fn(() => {}),
+  listSchedules: vi.fn(() => []),
+  createSchedule: vi.fn(() => {}),
 };
 
-mock.module('../../../../infra/observability/logger', () => ({
+vi.mock('../../../../infra/observability/logger', () => ({
   logger: mockLogger,
 }));
 
-mock.module('../../../proactive', () => ({
-  getScheduler: mock(() => mockScheduler),
+vi.mock('../../../proactive', () => ({
+  getScheduler: vi.fn(() => mockScheduler),
 }));
 
 import { initSelfEvolution, getSelfEvolutionStatus, triggerSelfEvolution } from '../self-evolution';

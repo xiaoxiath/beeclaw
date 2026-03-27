@@ -4,7 +4,7 @@
  * Tests skill failure tracking, consecutive failure detection, and reflection triggers.
  */
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   recordSkillFailure,
   checkConsecutiveFailures,

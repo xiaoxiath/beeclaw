@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(), debug: mock(), warn: mock(), error: mock() },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-mock.module('../types', () => ({}));
+vi.mock('../types', () => ({}));
 
 import {
   ShortTermMemoryCache,

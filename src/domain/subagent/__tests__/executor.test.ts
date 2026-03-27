@@ -1,18 +1,18 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), error: mock(() => {}), debug: mock(() => {}), warn: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), error: vi.fn(() => {}), debug: vi.fn(() => {}), warn: vi.fn(() => {}) },
 }));
 
-mock.module('../runtime', () => ({
-  spawnSubagent: mock(async (config: any) => ({
+vi.mock('../runtime', () => ({
+  spawnSubagent: vi.fn(async (config: any) => ({
     success: true,
     output: 'result',
     tokensUsed: 100,
     duration: 500,
     id: 'sub-1',
   })),
-  spawnParallelSubagents: mock(async (configs: any[]) =>
+  spawnParallelSubagents: vi.fn(async (configs: any[]) =>
     configs.map((_, i) => ({
       success: true,
       output: `result-${i}`,
@@ -23,9 +23,9 @@ mock.module('../runtime', () => ({
   ),
 }));
 
-mock.module('../tools', () => ({
-  formatSubagentResult: mock((result: any, task: string) => `Formatted: ${task}`),
-  formatParallelResults: mock((results: any[], tasks: string[]) => `Parallel: ${tasks.join(', ')}`),
+vi.mock('../tools', () => ({
+  formatSubagentResult: vi.fn((result: any, task: string) => `Formatted: ${task}`),
+  formatParallelResults: vi.fn((results: any[], tasks: string[]) => `Parallel: ${tasks.join(', ')}`),
 }));
 
 import { executeSpawnSubagent, executeSpawnParallel } from '../executor';

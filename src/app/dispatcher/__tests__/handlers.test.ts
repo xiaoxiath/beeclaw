@@ -4,21 +4,21 @@
  * Validates that cron tasks are correctly dispatched to job handlers
  */
 
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import type { Task } from '../types';
 import type { ProactiveJobData } from '../../../domain/proactive/types';
 
 // Mock all job handlers
-const mockHandleMemoryCompressJob = mock(async () => {});
-const mockHandleLlmProactiveChatJob = mock(async () => {});
-const mockHandleSelfEvolutionJob = mock(async () => {});
-const mockHandleRunSkillJob = mock(async () => {});
-const mockHandleGoalProgressCheckJob = mock(async () => {});
-const mockHandleCustomJob = mock(async () => {});
-const mockHandleSendReminderJob = mock(async () => {});
+const mockHandleMemoryCompressJob = vi.fn(async () => {});
+const mockHandleLlmProactiveChatJob = vi.fn(async () => {});
+const mockHandleSelfEvolutionJob = vi.fn(async () => {});
+const mockHandleRunSkillJob = vi.fn(async () => {});
+const mockHandleGoalProgressCheckJob = vi.fn(async () => {});
+const mockHandleCustomJob = vi.fn(async () => {});
+const mockHandleSendReminderJob = vi.fn(async () => {});
 
 // Mock the job-handlers module
-mock.module('../../../domain/proactive/job-handlers', () => ({
+vi.mock('../../../domain/proactive/job-handlers', () => ({
   handleMemoryCompressJob: mockHandleMemoryCompressJob,
   handleLlmProactiveChatJob: mockHandleLlmProactiveChatJob,
   handleSelfEvolutionJob: mockHandleSelfEvolutionJob,
@@ -272,7 +272,7 @@ describe('Cron Handler Dispatch', () => {
 
   describe('error handling', () => {
     test('should propagate handler errors', async () => {
-      const errorHandler = mock(async () => {
+      const errorHandler = vi.fn(async () => {
         throw new Error('Handler failed');
       });
 

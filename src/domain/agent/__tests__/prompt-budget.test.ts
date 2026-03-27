@@ -4,18 +4,18 @@
  * Covers: detectUserIntent, parseExamplesIntoTagged, selectExamples,
  *         assembleBudgetedPrompt, calculatePromptBudget, LAYER_PRIORITIES
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-import { mock } from 'bun:test';
+import { vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-mock.module('../context', () => ({
+vi.mock('../context', () => ({
   estimateTokens: (text: string) => Math.ceil(text.length / 3),
 }));
 

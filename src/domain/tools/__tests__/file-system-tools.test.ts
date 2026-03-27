@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { isPathAllowed, isCommandSafe, ensureOutputDirs } from '../file-system-tools';
 import {
   fileReadTool,

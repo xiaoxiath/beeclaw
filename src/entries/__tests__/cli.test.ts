@@ -5,17 +5,17 @@
  * All heavy dependencies (initApp, CLIAdapter, etc.) are mocked.
  */
 
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock all dependencies
 const mockLogger = {
-  debug: mock(() => {}),
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
+  debug: vi.fn(() => {}),
+  info: vi.fn(() => {}),
+  warn: vi.fn(() => {}),
+  error: vi.fn(() => {}),
 };
 
-const mockInitApp = mock(() =>
+const mockInitApp = vi.fn(() =>
   Promise.resolve({
     config: { memory: { path: '/tmp/test-cli' } },
     provider: 'openai',
@@ -24,39 +24,39 @@ const mockInitApp = mock(() =>
 );
 
 const mockCLIAdapterInstance = {
-  initialize: mock(() => Promise.resolve()),
-  start: mock(() => Promise.resolve()),
+  initialize: vi.fn(() => Promise.resolve()),
+  start: vi.fn(() => Promise.resolve()),
 };
 
-const MockCLIAdapter = mock(() => mockCLIAdapterInstance);
+const MockCLIAdapter = vi.fn(() => mockCLIAdapterInstance);
 
-mock.module('../../infra/observability/logger', () => ({
+vi.mock('../../infra/observability/logger', () => ({
   logger: mockLogger,
 }));
 
-mock.module('../../app', () => ({
+vi.mock('../../app', () => ({
   initApp: mockInitApp,
 }));
 
-mock.module('../../adapter/cli/adapter', () => ({
+vi.mock('../../adapter/cli/adapter', () => ({
   CLIAdapter: MockCLIAdapter,
 }));
 
-mock.module('../../infra/entry', () => ({
+vi.mock('../../infra/entry', () => ({
   adapterRegistry: {
-    register: mock(() => {}),
-    stopAll: mock(() => Promise.resolve()),
+    register: vi.fn(() => {}),
+    stopAll: vi.fn(() => Promise.resolve()),
   },
 }));
 
-mock.module('../../infra/utils/graceful-shutdown', () => ({
+vi.mock('../../infra/utils/graceful-shutdown', () => ({
   GracefulShutdown: class {
-    register = mock(() => {});
-    installSignalHandlers = mock(() => {});
+    register = vi.fn(() => {});
+    installSignalHandlers = vi.fn(() => {});
   },
 }));
 
-mock.module('../../cli', () => ({}));
+vi.mock('../../cli', () => ({}));
 
 describe('entries/cli', () => {
   it('should have initApp mock configured correctly', async () => {

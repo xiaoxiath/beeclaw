@@ -1,7 +1,7 @@
 /**
  * Tests for types/sandbox-config.ts - SandboxConfigSchema
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 import { SandboxConfigSchema } from '../sandbox-config';
 

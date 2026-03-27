@@ -4,7 +4,7 @@
  * Tests the integration of plugins with the Agent system
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetPluginRegistry } from "../registry";
 import { loadPlugins } from "../loader";
 import { getAllToolsForAI, createDefaultToolExecutor } from "../../agent";

@@ -1,7 +1,7 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock SandboxManager
-const mockExec = mock(() => Promise.resolve({
+const mockExec = vi.fn(() => Promise.resolve({
   stdout: 'hello world',
   stderr: '',
   exitCode: 0,
@@ -10,9 +10,9 @@ const mockExec = mock(() => Promise.resolve({
   durationMs: 50,
 }));
 
-const mockWriteFile = mock(() => Promise.resolve());
-const mockReadFile = mock(() => Promise.resolve('file content here'));
-const mockListFiles = mock(() => Promise.resolve([
+const mockWriteFile = vi.fn(() => Promise.resolve());
+const mockReadFile = vi.fn(() => Promise.resolve('file content here'));
+const mockListFiles = vi.fn(() => Promise.resolve([
   { path: 'src/', type: 'directory' },
   { path: 'README.md', type: 'file', size: 1024 },
 ]));
@@ -23,10 +23,10 @@ const mockPathMapper = {
   getVirtualWorkspace: () => '/sandbox/workspace',
 };
 
-mock.module('../manager', () => ({
+vi.mock('../manager', () => ({
   SandboxManager: {
     getInstance: () => ({
-      acquire: mock(() => Promise.resolve({
+      acquire: vi.fn(() => Promise.resolve({
         sandbox: {
           exec: mockExec,
           writeFile: mockWriteFile,

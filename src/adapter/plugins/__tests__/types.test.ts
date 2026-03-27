@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('adapter/plugins/types', () => {
   it('should be importable', async () => {

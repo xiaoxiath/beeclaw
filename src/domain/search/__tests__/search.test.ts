@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import { SearchOrchestrator, getSearchOrchestrator } from '../orchestrator';
 import { SearchRegion, type SearchConfig, type SearchResult } from '../types';
 

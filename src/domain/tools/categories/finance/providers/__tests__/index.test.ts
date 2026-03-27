@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('domain/tools/categories/finance/providers/index exports', () => {
   it('should export expected symbols', async () => {

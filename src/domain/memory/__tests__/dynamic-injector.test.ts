@@ -1,25 +1,25 @@
-import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 const mockJudge = {
-  judge: mock(async (opts: any) => ({
+  judge: vi.fn(async (opts: any) => ({
     result: opts.defaultValue,
     failed: false,
   })),
 };
 
 const mockMemoryStore = {
-  grep: mock(() => ({ success: true, data: '' })),
-  stat: mock(() => ({ success: true, mtime: new Date('2024-01-01') })),
+  grep: vi.fn(() => ({ success: true, data: '' })),
+  stat: vi.fn(() => ({ success: true, mtime: new Date('2024-01-01') })),
 };
 
 const mockVectorStore = {
-  search: mock(async () => []),
+  search: vi.fn(async () => []),
 };
 
-mock.module('../hybrid-search', () => ({
-  hybridSearch: mock(async () => ({ items: [], searchTimeMs: 0 })),
+vi.mock('../hybrid-search', () => ({
+  hybridSearch: vi.fn(async () => ({ items: [], searchTimeMs: 0 })),
   SEARCH_PROFILES: {
     precise: { keywordWeight: 0.7, vectorWeight: 0.3, timeDecay: 0.1, maxResults: 10 },
     semantic: { keywordWeight: 0.3, vectorWeight: 0.7, timeDecay: 0.1, maxResults: 10 },
@@ -28,33 +28,33 @@ mock.module('../hybrid-search', () => ({
   },
 }));
 
-mock.module('../store', () => ({
-  getMemoryStore: mock(() => mockMemoryStore),
+vi.mock('../store', () => ({
+  getMemoryStore: vi.fn(() => mockMemoryStore),
 }));
 
-mock.module('../vector-store', () => ({
-  getVectorStore: mock(() => mockVectorStore),
-  getEmbeddingProvider: mock(() => null),
+vi.mock('../vector-store', () => ({
+  getVectorStore: vi.fn(() => mockVectorStore),
+  getEmbeddingProvider: vi.fn(() => null),
 }));
 
-mock.module('../../agent/fast-llm-judge', () => ({
-  getFastLLMJudge: mock(() => mockJudge),
+vi.mock('../../agent/fast-llm-judge', () => ({
+  getFastLLMJudge: vi.fn(() => mockJudge),
 }));
 
-mock.module('../../agent/judgment-stats', () => ({
-  JudgmentStatsTracker: mock(() => ({
-    incrementLlmCalls: mock(),
-    incrementErrors: mock(),
-    getStats: mock(() => ({ llmCalls: 0, errors: 0 })),
+vi.mock('../../agent/judgment-stats', () => ({
+  JudgmentStatsTracker: vi.fn(() => ({
+    incrementLlmCalls: vi.fn(),
+    incrementErrors: vi.fn(),
+    getStats: vi.fn(() => ({ llmCalls: 0, errors: 0 })),
   })),
 }));
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    info: mock(),
-    debug: mock(),
-    warn: mock(),
-    error: mock(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
   },
 }));
 

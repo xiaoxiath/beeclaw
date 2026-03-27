@@ -1,17 +1,17 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    info: mock(),
-    error: mock(),
-    warn: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
 // Mock all providers
-mock.module('../providers/duckduckgo', () => ({
+vi.mock('../providers/duckduckgo', () => ({
   DuckDuckGoProvider: class {
     name = 'duckduckgo';
     isConfigured() { return true; }
@@ -19,7 +19,7 @@ mock.module('../providers/duckduckgo', () => ({
   },
 }));
 
-mock.module('../providers/bing', () => ({
+vi.mock('../providers/bing', () => ({
   BingProvider: class {
     name = 'bing';
     isConfigured() { return false; }
@@ -27,7 +27,7 @@ mock.module('../providers/bing', () => ({
   },
 }));
 
-mock.module('../providers/brave', () => ({
+vi.mock('../providers/brave', () => ({
   BraveProvider: class {
     name = 'brave';
     isConfigured() { return false; }
@@ -35,7 +35,7 @@ mock.module('../providers/brave', () => ({
   },
 }));
 
-mock.module('../providers/google', () => ({
+vi.mock('../providers/google', () => ({
   GoogleProvider: class {
     name = 'google';
     isConfigured() { return false; }
@@ -43,7 +43,7 @@ mock.module('../providers/google', () => ({
   },
 }));
 
-mock.module('../providers/bocha', () => ({
+vi.mock('../providers/bocha', () => ({
   BochaProvider: class {
     name = 'bocha';
     isConfigured() { return false; }
@@ -51,7 +51,7 @@ mock.module('../providers/bocha', () => ({
   },
 }));
 
-mock.module('../providers/tavily', () => ({
+vi.mock('../providers/tavily', () => ({
   TavilyProvider: class {
     name = 'tavily';
     isConfigured() { return false; }
@@ -59,9 +59,9 @@ mock.module('../providers/tavily', () => ({
   },
 }));
 
-mock.module('../research/deep-research-v2', () => ({
+vi.mock('../research/deep-research-v2', () => ({
   DeepResearchV2: class {},
-  createDeepResearchHandler: mock(() => async () => ({ report: '', sources: [], metadata: {} })),
+  createDeepResearchHandler: vi.fn(() => async () => ({ report: '', sources: [], metadata: {} })),
 }));
 
 import { SearchOrchestrator, getSearchOrchestrator } from '../orchestrator';

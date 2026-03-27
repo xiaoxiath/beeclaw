@@ -2,7 +2,7 @@
  * Finance Orchestrator Tests
  */
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FinanceOrchestrator, getFinanceOrchestrator } from '../orchestrator';
 import type { FinanceConfig } from '../types';
 

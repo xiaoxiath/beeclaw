@@ -1,23 +1,23 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mockState = {
-  set: mock(async () => {}),
-  getEntry: mock(async () => ({ value: 'test-value', createdAt: Date.now(), updatedAt: Date.now() })),
-  delete: mock(async () => true),
-  exists: mock(async () => true),
-  keys: mock(async () => ['key1', 'key2']),
-  getStats: mock(async () => ({ totalKeys: 2, memoryUsage: 100 })),
-  guardedUpdate: mock(async () => {}),
-  acquireLock: mock(async () => mock(() => {})),
+  set: vi.fn(async () => {}),
+  getEntry: vi.fn(async () => ({ value: 'test-value', createdAt: Date.now(), updatedAt: Date.now() })),
+  delete: vi.fn(async () => true),
+  exists: vi.fn(async () => true),
+  keys: vi.fn(async () => ['key1', 'key2']),
+  getStats: vi.fn(async () => ({ totalKeys: 2, memoryUsage: 100 })),
+  guardedUpdate: vi.fn(async () => {}),
+  acquireLock: vi.fn(async () => vi.fn(() => {})),
 };
 
-mock.module('../state', () => ({
-  getSharedState: mock(() => mockState),
+vi.mock('../state', () => ({
+  getSharedState: vi.fn(() => mockState),
 }));
 
-mock.module('../state-tools-consolidated', () => ({
-  formatStateEntry: mock((key: string, entry: any) => `Key: ${key}, Value: ${JSON.stringify(entry?.value)}`),
-  formatStateStats: mock((stats: any) => `Stats: ${JSON.stringify(stats)}`),
+vi.mock('../state-tools-consolidated', () => ({
+  formatStateEntry: vi.fn((key: string, entry: any) => `Key: ${key}, Value: ${JSON.stringify(entry?.value)}`),
+  formatStateStats: vi.fn((stats: any) => `Stats: ${JSON.stringify(stats)}`),
 }));
 
 import {

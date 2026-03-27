@@ -5,7 +5,7 @@
  * aligned with the resilience config's turn timeout.
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { SessionMessageQueue } from '../session-lock';
 import { resolveConfig } from '../../config/resilience-config';
 

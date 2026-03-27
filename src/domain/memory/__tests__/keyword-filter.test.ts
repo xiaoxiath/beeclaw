@@ -4,7 +4,7 @@
  * Validates that keyword pre-filtering reduces LLM calls by 90%
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { DynamicMemoryInjector } from '../dynamic-injector';
 import type { AIProvider } from '../../../infra/config/schema';
 

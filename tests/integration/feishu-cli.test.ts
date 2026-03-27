@@ -7,7 +7,7 @@
  * TODO: Update or remove - cli-runner module no longer exists
  */
 
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 describe.skip('Feishu CLI Integration', () => {
   it('placeholder - module not implemented', () => {

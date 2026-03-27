@@ -4,7 +4,7 @@
  * Tests automatic skill discovery from conversation patterns
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import {
   SkillDiscoveryEngine,
   getSkillDiscoveryEngine,

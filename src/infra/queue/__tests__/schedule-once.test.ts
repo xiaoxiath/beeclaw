@@ -2,7 +2,7 @@
  * Integration test for schedule_once functionality
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, rmSync } from 'fs';
 import { getTaskManager } from '../manager';
 import { initWorkers } from '../../../app/queue-handlers/workers';

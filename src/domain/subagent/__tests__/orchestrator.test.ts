@@ -4,7 +4,7 @@
  * Unit tests for task decomposition and orchestration
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { DAGScheduler } from '../scheduler';
 import { validateDependencies, createSequentialDecomposition, createParallelDecomposition } from '../decompose';
 import type { SubTask, TaskDecomposition } from '../orchestration-types';

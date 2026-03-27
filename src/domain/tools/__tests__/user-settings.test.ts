@@ -4,7 +4,7 @@
  * Tests for user settings update functionality
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   updateUserSettingsTool,
   executeUpdateUserSettings,

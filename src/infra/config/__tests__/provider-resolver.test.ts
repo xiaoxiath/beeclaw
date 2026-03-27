@@ -2,7 +2,7 @@
  * Test three-layer configuration system (v4)
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { ProviderResolver } from '../provider-resolver';
 import { ParamsMerger } from '../params-merger';
 import type { AIProvider, AgentConfig, LLMTierConfig } from '../schema';

@@ -4,21 +4,21 @@
  * Covers: FastLLMJudge — judge, parseJSON, extractContent, buildPrompt,
  *         getFastLLMJudge, resetFastLLMJudge, getFastModelFromConfig
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-const mockCallAI = mock(async () => ({
+const mockCallAI = vi.fn(async () => ({
   choices: [{ message: { content: '{"result": "ok"}' } }],
 }));
-mock.module('../api', () => ({ callAI: mockCallAI }));
+vi.mock('../api', () => ({ callAI: mockCallAI }));
 
-const mockGetConfig = mock(() => ({
+const mockGetConfig = vi.fn(() => ({
   llmRouter: {
     tiers: {
       fast: { role: 'fast-role', params: { max_tokens: 256 } },
@@ -28,7 +28,7 @@ const mockGetConfig = mock(() => ({
     'fast-role': { model: 'glm-4-flash', params: { max_tokens: 512 } },
   },
 }));
-mock.module('../../../app', () => ({ getConfig_: mockGetConfig }));
+vi.mock('../../../app', () => ({ getConfig_: mockGetConfig }));
 
 import {
   FastLLMJudge,

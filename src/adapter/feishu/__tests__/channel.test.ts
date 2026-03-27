@@ -1,26 +1,26 @@
 /**
  * Tests for FeishuChannel (channel.ts)
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
-const mockSendTextMessage = mock(() => Promise.resolve({ data: { message_id: 'msg_123' } }));
-const mockReplyTextSmart = mock(() => Promise.resolve());
-const mockGetFeishuWSClient = mock(() => ({
+const mockSendTextMessage = vi.fn(() => Promise.resolve({ data: { message_id: 'msg_123' } }));
+const mockReplyTextSmart = vi.fn(() => Promise.resolve());
+const mockGetFeishuWSClient = vi.fn(() => ({
   sendTextMessage: mockSendTextMessage,
   replyTextSmart: mockReplyTextSmart,
 }));
 
-mock.module('../index', () => ({
+vi.mock('../index', () => ({
   getFeishuWSClient: mockGetFeishuWSClient,
 }));
 

@@ -1,12 +1,12 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock finance orchestrator
-const mockGetQuote = mock(() => Promise.resolve([]));
-const mockGetHistory = mock(() => Promise.resolve({ items: [], source: 'mock' }));
-const mockGetFinancial = mock(() => Promise.resolve({ items: [], source: 'mock' }));
-const mockGetInfo = mock(() => Promise.resolve({ symbol: '600000', name: 'Test', source: 'mock' }));
+const mockGetQuote = vi.fn(() => Promise.resolve([]));
+const mockGetHistory = vi.fn(() => Promise.resolve({ items: [], source: 'mock' }));
+const mockGetFinancial = vi.fn(() => Promise.resolve({ items: [], source: 'mock' }));
+const mockGetInfo = vi.fn(() => Promise.resolve({ symbol: '600000', name: 'Test', source: 'mock' }));
 
-mock.module('../categories/finance', () => ({
+vi.mock('../categories/finance', () => ({
   getFinanceOrchestrator: () => ({
     getQuote: mockGetQuote,
     getHistory: mockGetHistory,

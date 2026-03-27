@@ -1,19 +1,19 @@
 /**
  * Tests for card.ts
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   getLogger: () => ({
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   }),
 }));
 
 // Mock sanitizeForCard
-mock.module('../../../infra/utils', () => ({
+vi.mock('../../../infra/utils', () => ({
   sanitizeForCard: (input: string) => {
     if (!input) return '';
     return input
@@ -27,8 +27,8 @@ mock.module('../../../infra/utils', () => ({
 }));
 
 // Mock sendCardMessage
-const mockSendCardMessage = mock(() => Promise.resolve({ messageId: 'msg_card' }));
-mock.module('../send', () => ({
+const mockSendCardMessage = vi.fn(() => Promise.resolve({ messageId: 'msg_card' }));
+vi.mock('../send', () => ({
   sendCardMessage: mockSendCardMessage,
 }));
 

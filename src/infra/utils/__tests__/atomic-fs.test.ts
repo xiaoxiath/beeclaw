@@ -1,25 +1,25 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../observability/logger', () => ({
+vi.mock('../../observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
 // Mock fs - must mock before import
-const mockExistsSync = mock(() => false);
-const mockWriteFileSync = mock();
-const mockReadFileSync = mock(() => '');
-const mockRenameSync = mock();
-const mockUnlinkSync = mock();
-const mockReaddirSync = mock(() => []);
-const mockMkdirSync = mock();
+const mockExistsSync = vi.fn(() => false);
+const mockWriteFileSync = vi.fn();
+const mockReadFileSync = vi.fn(() => '');
+const mockRenameSync = vi.fn();
+const mockUnlinkSync = vi.fn();
+const mockReaddirSync = vi.fn(() => []);
+const mockMkdirSync = vi.fn();
 
-mock.module('fs', () => ({
+vi.mock('fs', () => ({
   existsSync: mockExistsSync,
   writeFileSync: mockWriteFileSync,
   readFileSync: mockReadFileSync,

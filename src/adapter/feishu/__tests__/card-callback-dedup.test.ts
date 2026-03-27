@@ -8,7 +8,7 @@
  * - clear() for testing
  */
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Re-implement CallbackEventDedup for unit testing (same logic as patched code)
 const CALLBACK_DEDUP_TTL_MS = 30 * 60 * 1000;

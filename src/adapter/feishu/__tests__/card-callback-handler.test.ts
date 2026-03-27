@@ -1,22 +1,22 @@
 /**
  * Tests for card-callback-handler.ts
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
-const mockSetDecision = mock(() => {});
-const mockSetUserInput = mock(() => {});
-const mockResume = mock(() => {});
+const mockSetDecision = vi.fn(() => {});
+const mockSetUserInput = vi.fn(() => {});
+const mockResume = vi.fn(() => {});
 
-mock.module('../../../domain/session/hitl-manager', () => ({
+vi.mock('../../../domain/session/hitl-manager', () => ({
   setDecision: mockSetDecision,
   setUserInput: mockSetUserInput,
   resume: mockResume,
@@ -27,7 +27,7 @@ import type { CardCallbackEvent } from '../card-callback-handler';
 
 function makeMockClient() {
   return {
-    patchCard: mock(() => Promise.resolve()),
+    patchCard: vi.fn(() => Promise.resolve()),
   } as any;
 }
 

@@ -2,7 +2,7 @@
  * resilience-config.test.ts — 绱性配置中心测试
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import {
   resolveConfig,
   RESILIENCE_PRESETS,

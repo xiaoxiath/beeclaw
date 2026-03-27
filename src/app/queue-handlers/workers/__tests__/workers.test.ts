@@ -1,27 +1,27 @@
 /**
  * Tests for Queue Workers - createJobProcessor utility
  */
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock dependencies
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
-mock.module('../../../infra/queue/manager', () => ({
-  getTaskManager: mock(() => ({
-    initialize: mock(async () => {}),
-    registerWorker: mock(() => {}),
+vi.mock('../../../infra/queue/manager', () => ({
+  getTaskManager: vi.fn(() => ({
+    initialize: vi.fn(async () => {}),
+    registerWorker: vi.fn(() => {}),
   })),
 }));
 
-mock.module('../handlers', () => ({
-  handleProactiveJob: mock(async () => ({})),
+vi.mock('../handlers', () => ({
+  handleProactiveJob: vi.fn(async () => ({})),
 }));
 
 import { createJobProcessor } from '../index';
@@ -33,12 +33,12 @@ describe('createJobProcessor', () => {
   });
 
   it('calls handler with job data', async () => {
-    const handler = mock(async (data: { value: number }) => ({ result: data.value * 2 }));
+    const handler = vi.fn(async (data: { value: number }) => ({ result: data.value * 2 }));
     const processor = createJobProcessor(handler);
 
     const mockJob = {
       data: { value: 5 },
-      updateProgress: mock(async () => {}),
+      updateProgress: vi.fn(async () => {}),
     } as any;
 
     const result = await processor(mockJob);
@@ -47,10 +47,10 @@ describe('createJobProcessor', () => {
   });
 
   it('updates progress to 10 at start and 100 at end', async () => {
-    const handler = mock(async () => 'done');
+    const handler = vi.fn(async () => 'done');
     const processor = createJobProcessor(handler);
 
-    const updateProgress = mock(async () => {});
+    const updateProgress = vi.fn(async () => {});
     const mockJob = {
       data: {},
       updateProgress,
@@ -63,14 +63,14 @@ describe('createJobProcessor', () => {
   });
 
   it('propagates handler errors', async () => {
-    const handler = mock(async () => {
+    const handler = vi.fn(async () => {
       throw new Error('handler failed');
     });
     const processor = createJobProcessor(handler);
 
     const mockJob = {
       data: {},
-      updateProgress: mock(async () => {}),
+      updateProgress: vi.fn(async () => {}),
     } as any;
 
     await expect(processor(mockJob)).rejects.toThrow('handler failed');

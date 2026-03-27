@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ActivityMonitor, type ActivityType } from '../activity-monitor';
 
 describe('ActivityMonitor', () => {

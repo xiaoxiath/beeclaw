@@ -1,32 +1,32 @@
 /**
  * Tests for FeishuAdapter (adapter.ts)
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock dependencies before importing the module under test
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
-const mockRegisterChannel = mock(() => {});
-const mockInitFeishuWSIntegration = mock(() => Promise.resolve());
-const mockGetFeishuWSClient = mock(() => null as any);
-const mockStopClient = mock(() => {});
+const mockRegisterChannel = vi.fn(() => {});
+const mockInitFeishuWSIntegration = vi.fn(() => Promise.resolve());
+const mockGetFeishuWSClient = vi.fn(() => null as any);
+const mockStopClient = vi.fn(() => {});
 
-mock.module('../../../app/routes/proactive', () => ({
+vi.mock('../../../app/routes/proactive', () => ({
   initFeishuWSIntegration: mockInitFeishuWSIntegration,
 }));
 
-mock.module('../ws-client', () => ({
+vi.mock('../ws-client', () => ({
   getFeishuWSClient: mockGetFeishuWSClient,
 }));
 
-mock.module('../channel', () => ({
+vi.mock('../channel', () => ({
   FeishuChannel: class MockFeishuChannel {
     readonly type = 'feishu' as const;
   },

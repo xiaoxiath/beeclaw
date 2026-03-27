@@ -30,7 +30,7 @@ function _loadTiktoken(): ((text: string) => number) | null {
   if (_tiktokenEncode !== undefined) return _tiktokenEncode;
   try {
     // Try tiktoken first (official OpenAI tokenizer)
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
     const tiktoken = require('tiktoken');
     const enc = tiktoken.encoding_for_model('gpt-4o');
     _tiktokenEncode = (text: string) => enc.encode(text).length;
@@ -39,7 +39,7 @@ function _loadTiktoken(): ((text: string) => number) | null {
   } catch {
     try {
       // Fallback: gpt-tokenizer (pure JS, no native deps)
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
       const { encode } = require('gpt-tokenizer');
       _tiktokenEncode = (text: string) => encode(text).length;
       logger.info('[TokenEstimation] gpt-tokenizer loaded — using precise token counting');

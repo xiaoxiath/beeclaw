@@ -4,7 +4,7 @@
  * Primarily type/interface definitions with Zod schemas.
  * We verify schema validation and type exports.
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
   FeishuAuthConfigSchema,

@@ -4,7 +4,7 @@
  * 测试知识去重和合并功能
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { KnowledgeDeduper, getKnowledgeDeduper } from '../deduper';
 import type { ExtractedKnowledge } from '../types';
 

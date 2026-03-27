@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { BingProvider } from '../providers/bing';
 import { BraveProvider } from '../providers/brave';
 import { GoogleProvider } from '../providers/google';

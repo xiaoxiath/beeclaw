@@ -4,7 +4,7 @@
  * Uses real PersonaStore with tmp directory for integration-style tests.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { getPersonaStore, resetPersonaStore } from '../store';

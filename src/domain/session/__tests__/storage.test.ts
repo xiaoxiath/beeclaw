@@ -1,35 +1,35 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    info: mock(() => {}),
-    error: mock(() => {}),
-    warn: mock(() => {}),
-    debug: mock(() => {}),
+    info: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    debug: vi.fn(() => {}),
   },
 }));
 
-mock.module('../../../infra/utils/atomic-fs', () => ({
-  writeFileAtomic: mock(() => {}),
-  readFileWithRecovery: mock(() => null),
-  cleanupTempFiles: mock(() => {}),
+vi.mock('../../../infra/utils/atomic-fs', () => ({
+  writeFileAtomic: vi.fn(() => {}),
+  readFileWithRecovery: vi.fn(() => null),
+  cleanupTempFiles: vi.fn(() => {}),
 }));
 
-mock.module('../../../infra/db', () => ({
-  getDataConnection: mock(() => ({})),
+vi.mock('../../../infra/db', () => ({
+  getDataConnection: vi.fn(() => ({})),
 }));
 
-mock.module('../../../infra/db/schema', () => ({
+vi.mock('../../../infra/db/schema', () => ({
   sessions: { id: 'id' },
 }));
 
-mock.module('drizzle-orm', () => ({
-  eq: mock((a: any, b: any) => ({ a, b })),
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn((a: any, b: any) => ({ a, b })),
 }));
 
-mock.module('../../ports', () => ({
-  getPluginRegistryPort: mock(() => null),
-  getHookRunnerPort: mock(() => null),
+vi.mock('../../ports', () => ({
+  getPluginRegistryPort: vi.fn(() => null),
+  getHookRunnerPort: vi.fn(() => null),
 }));
 
 import {
@@ -104,7 +104,7 @@ describe('storage', () => {
         ['new-s', { id: 'new-s', updatedAt: recentDate.toISOString() }],
       ]);
 
-      const deleteFn = mock(() => true);
+      const deleteFn = vi.fn(() => true);
       const cleared = clearOldSessions(sessionsMap, deleteFn, 30);
 
       expect(cleared).toBe(1);
@@ -115,7 +115,7 @@ describe('storage', () => {
       const sessionsMap = new Map<string, any>([
         ['s1', { id: 's1', updatedAt: new Date().toISOString() }],
       ]);
-      const deleteFn = mock(() => true);
+      const deleteFn = vi.fn(() => true);
       const cleared = clearOldSessions(sessionsMap, deleteFn, 30);
       expect(cleared).toBe(0);
     });
@@ -124,7 +124,7 @@ describe('storage', () => {
   // ─── saveAllSessions ──────────────────────────────────────────────────
   describe('saveAllSessions', () => {
     it('should call saveFn for each session', () => {
-      const saveFn = mock(() => {});
+      const saveFn = vi.fn(() => {});
       const sessionsMap = new Map<string, any>([
         ['s1', { id: 's1' }],
         ['s2', { id: 's2' }],
@@ -135,14 +135,14 @@ describe('storage', () => {
     });
 
     it('should handle empty map', () => {
-      const saveFn = mock(() => {});
+      const saveFn = vi.fn(() => {});
       saveAllSessions(new Map(), saveFn);
       expect(saveFn).not.toHaveBeenCalled();
     });
 
     it('should continue saving even if one throws', () => {
       let callCount = 0;
-      const saveFn = mock(() => {
+      const saveFn = vi.fn(() => {
         callCount++;
         if (callCount === 1) throw new Error('save error');
       });

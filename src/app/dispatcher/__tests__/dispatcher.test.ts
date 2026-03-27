@@ -1,54 +1,54 @@
 /**
  * Tests for TaskDispatcher
  */
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
 // Mock crypto
-mock.module('crypto', () => ({
-  randomUUID: mock(() => 'test-uuid-1234'),
+vi.mock('crypto', () => ({
+  randomUUID: vi.fn(() => 'test-uuid-1234'),
 }));
 
 // Mock DB + Drizzle ORM
-const mockInsert = mock(() => ({ values: mock(() => ({ run: mock(async () => {}) })) }));
-const mockSelect = mock(() => ({
-  from: mock(() => ({
-    where: mock(() => ({
-      orderBy: mock(() => ({
-        limit: mock(() => ({
-          all: mock(async () => []),
+const mockInsert = vi.fn(() => ({ values: vi.fn(() => ({ run: vi.fn(async () => {}) })) }));
+const mockSelect = vi.fn(() => ({
+  from: vi.fn(() => ({
+    where: vi.fn(() => ({
+      orderBy: vi.fn(() => ({
+        limit: vi.fn(() => ({
+          all: vi.fn(async () => []),
         })),
       })),
     })),
-    all: mock(async () => []),
+    all: vi.fn(async () => []),
   })),
 }));
-const mockUpdate = mock(() => ({
-  set: mock(() => ({
-    where: mock(() => ({
-      run: mock(async () => ({ changes: 1 })),
+const mockUpdate = vi.fn(() => ({
+  set: vi.fn(() => ({
+    where: vi.fn(() => ({
+      run: vi.fn(async () => ({ changes: 1 })),
     })),
   })),
 }));
 
-mock.module('../../../infra/db', () => ({
-  getDataConnection: mock(() => ({
+vi.mock('../../../infra/db', () => ({
+  getDataConnection: vi.fn(() => ({
     insert: mockInsert,
     select: mockSelect,
     update: mockUpdate,
   })),
 }));
 
-mock.module('../../../infra/db/schema', () => ({
+vi.mock('../../../infra/db/schema', () => ({
   tasks: {
     id: 'id',
     sessionId: 'sessionId',
@@ -60,14 +60,14 @@ mock.module('../../../infra/db/schema', () => ({
   },
 }));
 
-mock.module('drizzle-orm', () => ({
-  eq: mock((...args: any[]) => args),
-  and: mock((...args: any[]) => args),
-  lt: mock((...args: any[]) => args),
-  gte: mock((...args: any[]) => args),
-  isNull: mock((...args: any[]) => args),
-  isNotNull: mock((...args: any[]) => args),
-  or: mock((...args: any[]) => args),
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn((...args: any[]) => args),
+  and: vi.fn((...args: any[]) => args),
+  lt: vi.fn((...args: any[]) => args),
+  gte: vi.fn((...args: any[]) => args),
+  isNull: vi.fn((...args: any[]) => args),
+  isNotNull: vi.fn((...args: any[]) => args),
+  or: vi.fn((...args: any[]) => args),
 }));
 
 import { TaskDispatcher, getTaskDispatcher, resetTaskDispatcher } from '../index';
@@ -107,13 +107,13 @@ describe('TaskDispatcher', () => {
 
   describe('registerHandler / unregisterHandler', () => {
     it('registers a handler for a task type', () => {
-      const handler = mock(async () => {});
+      const handler = vi.fn(async () => {});
       dispatcher.registerHandler('message', handler);
       // No direct way to check, but no error means success
     });
 
     it('unregisters a handler', () => {
-      const handler = mock(async () => {});
+      const handler = vi.fn(async () => {});
       dispatcher.registerHandler('message', handler);
       dispatcher.unregisterHandler('message');
       // No direct way to check, but no error means success

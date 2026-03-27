@@ -1,56 +1,56 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock all dependencies
-const mockLogger = { info: mock(), error: mock(), warn: mock(), debug: mock() };
-mock.module('../../../infra/observability/logger', () => ({ logger: mockLogger }));
+const mockLogger = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
+vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger }));
 
-const mockGetConfig = mock(() => ({
+const mockGetConfig = vi.fn(() => ({
   defaultPushTarget: { channel: 'feishu', chatId: 'chat-1', userId: 'user-1' },
 }));
-mock.module('../../../infra/config', () => ({ getConfig: mockGetConfig }));
+vi.mock('../../../infra/config', () => ({ getConfig: mockGetConfig }));
 
-const mockSendProactiveMessage = mock(() => Promise.resolve({ success: true, response: 'Mock response' }));
-const mockInjectProactiveResult = mock();
-const mockGetRecentSessionHistory = mock(() => []);
-mock.module('../../session', () => ({
+const mockSendProactiveMessage = vi.fn(() => Promise.resolve({ success: true, response: 'Mock response' }));
+const mockInjectProactiveResult = vi.fn();
+const mockGetRecentSessionHistory = vi.fn(() => []);
+vi.mock('../../session', () => ({
   sendProactiveMessage: mockSendProactiveMessage,
   injectProactiveResult: mockInjectProactiveResult,
   getRecentSessionHistory: mockGetRecentSessionHistory,
 }));
 
-const mockGetSkillStore = mock(() => ({
-  get: mock((name: string) => name === 'test-skill' ? {
+const mockGetSkillStore = vi.fn(() => ({
+  get: vi.fn((name: string) => name === 'test-skill' ? {
     description: 'Test skill',
     content: 'Do something',
   } : null),
 }));
-mock.module('../../skills/store', () => ({ getSkillStore: mockGetSkillStore }));
+vi.mock('../../skills/store', () => ({ getSkillStore: mockGetSkillStore }));
 
-const mockCompress = mock(() => Promise.resolve({ processed: 5, summarized: 2, archived: 1 }));
-mock.module('../../memory/compression', () => ({
+const mockCompress = vi.fn(() => Promise.resolve({ processed: 5, summarized: 2, archived: 1 }));
+vi.mock('../../memory/compression', () => ({
   getCompressionEngine: () => ({ compress: mockCompress }),
 }));
 
-mock.module('../../memory', () => ({
+vi.mock('../../memory', () => ({
   getMemoryStore: () => ({
     getCoreContext: () => ({ user: 'Test user', facts: 'Some facts' }),
-    getRecentConversations: mock(() => Promise.resolve([])),
-    record: mock(() => Promise.resolve()),
+    getRecentConversations: vi.fn(() => Promise.resolve([])),
+    record: vi.fn(() => Promise.resolve()),
     getBasePath: () => '/tmp/test-memory',
   }),
 }));
 
-mock.module('../../agent/reflection-engine', () => ({
+vi.mock('../../agent/reflection-engine', () => ({
   getReflectionEngine: () => ({
-    reflect: mock(() => Promise.resolve({ patterns: [], strategyUpdates: [] })),
+    reflect: vi.fn(() => Promise.resolve({ patterns: [], strategyUpdates: [] })),
   }),
 }));
 
-mock.module('../pusher', () => ({
-  pushNotification: mock(() => Promise.resolve()),
+vi.mock('../pusher', () => ({
+  pushNotification: vi.fn(() => Promise.resolve()),
 }));
 
-mock.module('../../agent/types', () => ({
+vi.mock('../../agent/types', () => ({
   PROACTIVE_DEFAULT_BLOCKED_TOOLS: ['dangerous_tool'],
 }));
 
@@ -211,7 +211,7 @@ describe('job-handlers', () => {
 
     it('sends reminder via Feishu client when available', async () => {
       const mockClient = {
-        sendMarkdownMessage: mock(() => Promise.resolve()),
+        sendMarkdownMessage: vi.fn(() => Promise.resolve()),
         lastActiveChatId: 'chat-1',
         lastActiveUserId: 'user-1',
       };

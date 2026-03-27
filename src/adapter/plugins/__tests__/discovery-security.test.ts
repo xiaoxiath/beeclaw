@@ -4,21 +4,21 @@
  * The core.test.ts already covers discoverPlugins.
  * This file focuses on the security validation function.
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock fs to control security checks
-const mockRealpathSync = mock((p: string) => p);
-const mockStatSync = mock(() => ({
+const mockRealpathSync = vi.fn((p: string) => p);
+const mockStatSync = vi.fn(() => ({
   mode: 0o755,
   uid: process.getuid ? process.getuid() : 1000,
 }));
 
-mock.module('fs', () => ({
+vi.mock('fs', () => ({
   realpathSync: mockRealpathSync,
   statSync: mockStatSync,
-  existsSync: mock(() => false),
-  readdirSync: mock(() => []),
-  readFileSync: mock(() => '{}'),
+  existsSync: vi.fn(() => false),
+  readdirSync: vi.fn(() => []),
+  readFileSync: vi.fn(() => '{}'),
 }));
 
 import { validatePluginSecurity } from '../discovery/index';

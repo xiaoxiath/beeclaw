@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { FeishuWSClient } from '../ws-client';
 
 describe('FeishuWSClient Card Methods', () => {
@@ -11,7 +11,7 @@ describe('FeishuWSClient Card Methods', () => {
       im: {
         v1: {
           message: {
-            reply: mock(() =>
+            reply: vi.fn(() =>
               Promise.resolve({
                 code: 0,
                 msg: 'success',
@@ -20,7 +20,7 @@ describe('FeishuWSClient Card Methods', () => {
                 },
               })
             ),
-            patch: mock(() =>
+            patch: vi.fn(() =>
               Promise.resolve({
                 code: 0,
                 msg: 'success',
@@ -65,7 +65,7 @@ describe('FeishuWSClient Card Methods', () => {
     });
 
     test('should handle error code 230011 (message withdrawn)', async () => {
-      mockLarkClient.im.v1.message.reply = mock(() =>
+      mockLarkClient.im.v1.message.reply = vi.fn(() =>
         Promise.resolve({
           code: 230011,
           msg: 'message not found',
@@ -78,7 +78,7 @@ describe('FeishuWSClient Card Methods', () => {
     });
 
     test('should handle error code 231003 (message not found)', async () => {
-      mockLarkClient.im.v1.message.reply = mock(() =>
+      mockLarkClient.im.v1.message.reply = vi.fn(() =>
         Promise.resolve({
           code: 231003,
           msg: 'message not found',
@@ -91,7 +91,7 @@ describe('FeishuWSClient Card Methods', () => {
     });
 
     test('should throw on other errors', async () => {
-      mockLarkClient.im.v1.message.reply = mock(() =>
+      mockLarkClient.im.v1.message.reply = vi.fn(() =>
         Promise.resolve({
           code: 400,
           msg: 'Bad request',
@@ -137,7 +137,7 @@ describe('FeishuWSClient Card Methods', () => {
     });
 
     test('should handle error code 230011 (message withdrawn)', async () => {
-      mockLarkClient.im.v1.message.patch = mock(() =>
+      mockLarkClient.im.v1.message.patch = vi.fn(() =>
         Promise.resolve({
           code: 230011,
           msg: 'message not found',
@@ -150,7 +150,7 @@ describe('FeishuWSClient Card Methods', () => {
     });
 
     test('should handle error code 231003 (message not found)', async () => {
-      mockLarkClient.im.v1.message.patch = mock(() =>
+      mockLarkClient.im.v1.message.patch = vi.fn(() =>
         Promise.resolve({
           code: 231003,
           msg: 'message not found',
@@ -163,7 +163,7 @@ describe('FeishuWSClient Card Methods', () => {
     });
 
     test('should throw on other errors', async () => {
-      mockLarkClient.im.v1.message.patch = mock(() =>
+      mockLarkClient.im.v1.message.patch = vi.fn(() =>
         Promise.resolve({
           code: 500,
           msg: 'Internal error',

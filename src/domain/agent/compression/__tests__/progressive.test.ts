@@ -2,7 +2,7 @@
  * Progressive Compactor Tests
  */
 
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { ProgressiveCompactor, getProgressiveCompactor, resetProgressiveCompactor } from '../progressive-compactor';
 import type { AgeZone, CompressionLLMClient } from '../types';
 
@@ -11,7 +11,7 @@ describe('ProgressiveCompactor', () => {
 
   // Mock LLM client
   const mockLLMClient: CompressionLLMClient = {
-    complete: mock(async (_prompt: string, _maxTokens: number) => {
+    complete: vi.fn(async (_prompt: string, _maxTokens: number) => {
       // Return simple compressed content, don't use prompt
       return 'Compressed summary';
     }),

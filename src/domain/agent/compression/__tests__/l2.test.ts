@@ -2,7 +2,7 @@
  * L2 Extractive Compressor Tests
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { L2ExtractiveCompressor, getL2Compressor, resetL2Compressor } from '../l2-extractive-compressor';
 
 describe('L2ExtractiveCompressor', () => {

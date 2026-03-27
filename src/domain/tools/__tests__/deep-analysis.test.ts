@@ -1,17 +1,17 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), error: mock(() => {}), debug: mock(() => {}), warn: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), error: vi.fn(() => {}), debug: vi.fn(() => {}), warn: vi.fn(() => {}) },
 }));
-mock.module('../../../infra/queue/manager', () => ({
-  getTaskManager: mock(() => ({
-    initialize: mock(async () => {}),
-    addJob: mock(async () => ({ jobId: 'job-123' })),
+vi.mock('../../../infra/queue/manager', () => ({
+  getTaskManager: vi.fn(() => ({
+    initialize: vi.fn(async () => {}),
+    addJob: vi.fn(async () => ({ jobId: 'job-123' })),
   })),
 }));
-mock.module('../../ports', () => ({
-  getChannelClientPort: mock(() => ({
-    sendTextMessage: mock(async () => {}),
+vi.mock('../../ports', () => ({
+  getChannelClientPort: vi.fn(() => ({
+    sendTextMessage: vi.fn(async () => {}),
   })),
 }));
 

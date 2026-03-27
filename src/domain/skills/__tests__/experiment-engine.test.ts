@@ -1,12 +1,12 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), warn: mock(() => {}), error: mock(() => {}), debug: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), warn: vi.fn(() => {}), error: vi.fn(() => {}), debug: vi.fn(() => {}) },
 }));
-mock.module('../store', () => ({
-  getSkillStore: mock(() => ({
-    get: mock(() => null),
-    getEvals: mock(() => ({ success: false, data: null })),
+vi.mock('../store', () => ({
+  getSkillStore: vi.fn(() => ({
+    get: vi.fn(() => null),
+    getEvals: vi.fn(() => ({ success: false, data: null })),
   })),
 }));
 
@@ -14,24 +14,24 @@ import { ExperimentEngine, createExperimentEngine } from '../experiment-engine';
 
 describe('ExperimentEngine', () => {
   const mockVersioning: any = {
-    snapshot: mock(() => ({ versionId: 'v1' })),
-    markDiscarded: mock(() => {}),
+    snapshot: vi.fn(() => ({ versionId: 'v1' })),
+    markDiscarded: vi.fn(() => {}),
   };
   const mockEvaluator: any = {
-    evaluate: mock(async () => ({
+    evaluate: vi.fn(async () => ({
       compositeScore: 0.7,
       metrics: { successRate: 0.8, triggerPrecision: 0.9, avgOutputQuality: 0.7, complexityScore: 0.3 },
       testResults: [],
     })),
   };
   const mockJudge: any = {
-    judge: mock(async () => ({
+    judge: vi.fn(async () => ({
       failed: false,
       result: { description: 'NO_MORE_HYPOTHESES', changes: '', rationale: '' },
     })),
   };
   const mockLedger: any = {
-    log: mock(() => {}),
+    log: vi.fn(() => {}),
   };
 
   it('should construct without errors', () => {

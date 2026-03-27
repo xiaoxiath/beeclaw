@@ -2,7 +2,7 @@
  * circuit-breaker.test.ts — 熔断器测试
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import {
   CircuitBreaker,
   CircuitBreakerRegistry,

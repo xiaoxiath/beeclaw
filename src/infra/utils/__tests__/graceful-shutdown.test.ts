@@ -1,23 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../observability/logger', () => ({
+vi.mock('../../observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
 // Mock SessionMessageQueue
-mock.module('../../resilience/session-lock', () => {
+vi.mock('../../resilience/session-lock', () => {
   const mockQueue = {
-    drainAll: mock(() => Promise.resolve()),
+    drainAll: vi.fn(() => Promise.resolve()),
   };
   return {
     SessionMessageQueue: {
-      getInstance: mock(() => mockQueue),
+      getInstance: vi.fn(() => mockQueue),
     },
   };
 });
@@ -140,7 +140,7 @@ describe('GracefulShutdown', () => {
         installSignalHandlers: false,
       });
 
-      const afterError = mock();
+      const afterError = vi.fn();
 
       gs.register({
         name: 'failing',
@@ -165,7 +165,7 @@ describe('GracefulShutdown', () => {
         installSignalHandlers: false,
       });
 
-      const done = mock();
+      const done = vi.fn();
       gs.register({
         name: 'async-cleanup',
         fn: async () => {

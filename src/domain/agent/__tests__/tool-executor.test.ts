@@ -3,15 +3,15 @@
  *
  * Covers: createDefaultToolExecutor, _executeToolInner, isMCPToolName/parseMCPToolName inlined helpers
  */
-import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks — must come before importing the module under test
 // ---------------------------------------------------------------------------
 
-const mockCBExecute = mock(async (_name: string, fn: () => Promise<any>) => fn());
-const mockRegisterToolConfig = mock(() => {});
-mock.module('../../../infra/resilience/circuit-breaker', () => ({
+const mockCBExecute = vi.fn(async (_name: string, fn: () => Promise<any>) => fn());
+const mockRegisterToolConfig = vi.fn(() => {});
+vi.mock('../../../infra/resilience/circuit-breaker', () => ({
   getCircuitBreakerRegistry: () => ({
     execute: mockCBExecute,
     registerToolConfig: mockRegisterToolConfig,
@@ -26,40 +26,40 @@ mock.module('../../../infra/resilience/circuit-breaker', () => ({
   CIRCUIT_BREAKER_PRESETS: { mcp_tool: { failureThreshold: 3, cooldownMs: 60000 } },
 }));
 
-const mockExecuteMemoryTool = mock(async () => ({ success: true, data: 'mem' }));
-mock.module('../../memory/tools', () => ({ executeMemoryTool: mockExecuteMemoryTool }));
+const mockExecuteMemoryTool = vi.fn(async () => ({ success: true, data: 'mem' }));
+vi.mock('../../memory/tools', () => ({ executeMemoryTool: mockExecuteMemoryTool }));
 
-const mockExecuteSkillTool = mock(async () => ({ success: true, data: 'skill' }));
-mock.module('../../skills/tools', () => ({ executeSkillTool: mockExecuteSkillTool }));
+const mockExecuteSkillTool = vi.fn(async () => ({ success: true, data: 'skill' }));
+vi.mock('../../skills/tools', () => ({ executeSkillTool: mockExecuteSkillTool }));
 
-const mockGetSkillStore = mock(() => ({ getBasePath: () => '/skills' }));
-mock.module('../../skills/store', () => ({ getSkillStore: mockGetSkillStore }));
+const mockGetSkillStore = vi.fn(() => ({ getBasePath: () => '/skills' }));
+vi.mock('../../skills/store', () => ({ getSkillStore: mockGetSkillStore }));
 
-const mockExecuteGoalTool = mock(async () => ({ success: true, data: 'goal' }));
-mock.module('../goal/tools', () => ({ executeGoalTool: mockExecuteGoalTool }));
+const mockExecuteGoalTool = vi.fn(async () => ({ success: true, data: 'goal' }));
+vi.mock('../goal/tools', () => ({ executeGoalTool: mockExecuteGoalTool }));
 
-const mockExecuteProactiveTool = mock(async () => ({ success: true, data: 'proactive' }));
-mock.module('../../proactive/tools', () => ({ executeProactiveTool: mockExecuteProactiveTool }));
+const mockExecuteProactiveTool = vi.fn(async () => ({ success: true, data: 'proactive' }));
+vi.mock('../../proactive/tools', () => ({ executeProactiveTool: mockExecuteProactiveTool }));
 
-const mockExecutePersonaTool = mock(async () => ({ success: true, data: 'persona' }));
-mock.module('../persona/tools', () => ({ executePersonaTool: mockExecutePersonaTool }));
+const mockExecutePersonaTool = vi.fn(async () => ({ success: true, data: 'persona' }));
+vi.mock('../persona/tools', () => ({ executePersonaTool: mockExecutePersonaTool }));
 
-const mockExecuteBuiltinTool = mock(async () => ({ success: true, data: 'builtin' }));
-const mockIsBuiltinTool = mock((name: string) => ['web_search', 'deep_research', 'get_weather'].includes(name));
-mock.module('../../tools', () => ({
+const mockExecuteBuiltinTool = vi.fn(async () => ({ success: true, data: 'builtin' }));
+const mockIsBuiltinTool = vi.fn((name: string) => ['web_search', 'deep_research', 'get_weather'].includes(name));
+vi.mock('../../tools', () => ({
   executeBuiltinTool: mockExecuteBuiltinTool,
   isBuiltinTool: mockIsBuiltinTool,
 }));
 
-const mockMCPExecuteTool = mock(async () => ({ success: true, data: 'mcp-result' }));
-const mockGetMCPManagerPort = mock(() => ({ executeTool: mockMCPExecuteTool }));
-const mockGetPluginRegistryPort = mock(() => null);
-mock.module('../../ports', () => ({
+const mockMCPExecuteTool = vi.fn(async () => ({ success: true, data: 'mcp-result' }));
+const mockGetMCPManagerPort = vi.fn(() => ({ executeTool: mockMCPExecuteTool }));
+const mockGetPluginRegistryPort = vi.fn(() => null);
+vi.mock('../../ports', () => ({
   getMCPManagerPort: mockGetMCPManagerPort,
   getPluginRegistryPort: mockGetPluginRegistryPort,
 }));
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
@@ -223,7 +223,7 @@ describe('tool-executor', () => {
   // -----------------------------------------------------------------------
   describe('plugin tool dispatch', () => {
     it('dispatches to plugin tool when registry has the tool', async () => {
-      const pluginExecute = mock(async () => ({ success: true, data: 'plugin-result' }));
+      const pluginExecute = vi.fn(async () => ({ success: true, data: 'plugin-result' }));
       mockGetPluginRegistryPort.mockReturnValue({
         tools: new Map([['my_plugin', { execute: pluginExecute }]]),
       });

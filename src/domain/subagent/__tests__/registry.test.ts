@@ -1,6 +1,6 @@
 // Subagent Registry Tests
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, unlinkSync } from 'fs';
 import { SubagentRegistry, type SubagentSpawnOptions } from '../registry';
 

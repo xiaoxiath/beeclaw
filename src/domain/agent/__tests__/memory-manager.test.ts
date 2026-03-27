@@ -3,15 +3,15 @@
  *
  * Covers: MemoryManager — refreshMemory, recordConversation, simpleHash dirty-checking
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-const mockGetCoreContext = mock(() => ({ identity: 'test', user: '', facts: '' }));
-const mockRecordConversation = mock(async () => {});
-const mockGrep = mock(() => ({ success: true, data: '' }));
-mock.module('../../memory', () => ({
+const mockGetCoreContext = vi.fn(() => ({ identity: 'test', user: '', facts: '' }));
+const mockRecordConversation = vi.fn(async () => {});
+const mockGrep = vi.fn(() => ({ success: true, data: '' }));
+vi.mock('../../memory', () => ({
   getMemoryStore: () => ({
     getCoreContext: mockGetCoreContext,
     recordConversation: mockRecordConversation,
@@ -19,29 +19,29 @@ mock.module('../../memory', () => ({
   }),
 }));
 
-const mockCheckAfterRecord = mock(async () => {});
-mock.module('../../memory/lifecycle-manager', () => ({
+const mockCheckAfterRecord = vi.fn(async () => {});
+vi.mock('../../memory/lifecycle-manager', () => ({
   getLifecycleManager: () => ({ checkAfterRecord: mockCheckAfterRecord }),
 }));
 
-const mockSkillList = mock(() => []);
-mock.module('../../skills/store', () => ({
+const mockSkillList = vi.fn(() => []);
+vi.mock('../../skills/store', () => ({
   getSkillStore: () => ({ list: mockSkillList }),
 }));
 
-mock.module('../tools', () => ({
-  buildSystemPrompt: mock((base: string, ctx: any) => `${base}\n${ctx.identity || ''}`),
-  formatSkillsForPrompt: mock((skills: any[]) => skills.map((s: any) => s.name).join(',')),
+vi.mock('../tools', () => ({
+  buildSystemPrompt: vi.fn((base: string, ctx: any) => `${base}\n${ctx.identity || ''}`),
+  formatSkillsForPrompt: vi.fn((skills: any[]) => skills.map((s: any) => s.name).join(',')),
 }));
 
-mock.module('../context', () => ({
-  estimateMessageTokens: mock((msg: any) => {
+vi.mock('../context', () => ({
+  estimateMessageTokens: vi.fn((msg: any) => {
     const content = typeof msg.content === 'string' ? msg.content : '';
     return Math.ceil(content.length / 3);
   }),
 }));
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
@@ -116,7 +116,7 @@ describe('MemoryManager', () => {
 
     it('calls hookRunner.runBeforePromptBuild when provided', () => {
       const hookRunner = {
-        runBeforePromptBuild: mock(async () => {}),
+        runBeforePromptBuild: vi.fn(async () => {}),
       };
       const messages: any[] = [{ role: 'system', content: 'old' }];
       manager.refreshMemory('base', messages, hookRunner as any);

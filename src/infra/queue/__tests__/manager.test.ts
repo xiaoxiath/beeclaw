@@ -1,30 +1,30 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../observability/logger', () => ({
+vi.mock('../../observability/logger', () => ({
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
 // Mock bunqueue/client
-const mockQueueAdd = mock(() => Promise.resolve({ id: 'job-1' }));
-const mockQueueGetJob = mock(() => Promise.resolve(null));
-const mockQueueClose = mock(() => Promise.resolve());
-const mockGetWaitingCount = mock(() => Promise.resolve(0));
-const mockGetActiveCount = mock(() => Promise.resolve(0));
-const mockGetCompletedCount = mock(() => Promise.resolve(0));
-const mockGetFailedCount = mock(() => Promise.resolve(0));
-const mockGetDelayedCount = mock(() => Promise.resolve(0));
-const mockGetWaiting = mock(() => Promise.resolve([]));
-const mockGetActive = mock(() => Promise.resolve([]));
-const mockGetCompleted = mock(() => Promise.resolve([]));
-const mockGetFailed = mock(() => Promise.resolve([]));
+const mockQueueAdd = vi.fn(() => Promise.resolve({ id: 'job-1' }));
+const mockQueueGetJob = vi.fn(() => Promise.resolve(null));
+const mockQueueClose = vi.fn(() => Promise.resolve());
+const mockGetWaitingCount = vi.fn(() => Promise.resolve(0));
+const mockGetActiveCount = vi.fn(() => Promise.resolve(0));
+const mockGetCompletedCount = vi.fn(() => Promise.resolve(0));
+const mockGetFailedCount = vi.fn(() => Promise.resolve(0));
+const mockGetDelayedCount = vi.fn(() => Promise.resolve(0));
+const mockGetWaiting = vi.fn(() => Promise.resolve([]));
+const mockGetActive = vi.fn(() => Promise.resolve([]));
+const mockGetCompleted = vi.fn(() => Promise.resolve([]));
+const mockGetFailed = vi.fn(() => Promise.resolve([]));
 
-mock.module('bunqueue/client', () => {
+vi.mock('bunqueue/client', () => {
   return {
     Queue: class MockQueue {
       name: string;
@@ -46,7 +46,7 @@ mock.module('bunqueue/client', () => {
     },
     Worker: class MockWorker {
       constructor(_queue: string, _handler: any, _opts?: any) {}
-      close = mock(() => Promise.resolve());
+      close = vi.fn(() => Promise.resolve());
     },
   };
 });
@@ -170,7 +170,7 @@ describe('TaskManager', () => {
 
     it('should cancel and return true when job found', async () => {
       await manager.initialize();
-      const mockRemove = mock(() => Promise.resolve());
+      const mockRemove = vi.fn(() => Promise.resolve());
       mockQueueGetJob.mockReturnValue(Promise.resolve({
         id: 'job-1',
         remove: mockRemove,

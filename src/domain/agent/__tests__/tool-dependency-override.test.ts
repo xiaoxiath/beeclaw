@@ -5,7 +5,7 @@
  * with exact and pattern matching support.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Import the functions to test
 import {

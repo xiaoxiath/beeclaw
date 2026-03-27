@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock circuit-breaker
-mock.module('../circuit-breaker', () => {
+vi.mock('../circuit-breaker', () => {
   class MockCircuitOpenError extends Error {
     constructor(name: string, cooldownMs: number) {
       super(`Circuit breaker for "${name}" is open, cooldown: ${cooldownMs}ms`);
@@ -10,14 +10,14 @@ mock.module('../circuit-breaker', () => {
   }
 
   const mockBreaker = {
-    canExecute: mock(() => true),
-    recordSuccess: mock(),
-    recordFailure: mock(),
-    cooldownRemainingMs: mock(() => 0),
+    canExecute: vi.fn(() => true),
+    recordSuccess: vi.fn(),
+    recordFailure: vi.fn(),
+    cooldownRemainingMs: vi.fn(() => 0),
   };
 
   class MockCircuitBreakerRegistry {
-    getBreaker = mock(() => mockBreaker);
+    getBreaker = vi.fn(() => mockBreaker);
   }
 
   return {
@@ -328,7 +328,7 @@ describe('unified-retry', () => {
 
     describe('execute', () => {
       it('should succeed on first attempt', async () => {
-        const fn = mock(() => Promise.resolve('ok'));
+        const fn = vi.fn(() => Promise.resolve('ok'));
         const result = await engine.execute('test-op', fn, RETRY_STRATEGIES.none);
         expect(result.success).toBe(true);
         expect(result.value).toBe('ok');
@@ -337,7 +337,7 @@ describe('unified-retry', () => {
 
       it('should retry on retryable error and eventually succeed', async () => {
         let callCount = 0;
-        const fn = mock(() => {
+        const fn = vi.fn(() => {
           callCount++;
           if (callCount < 3) throw new Error('ECONNREFUSED');
           return Promise.resolve('recovered');
@@ -350,7 +350,7 @@ describe('unified-retry', () => {
       });
 
       it('should fail after max retries', async () => {
-        const fn = mock(() => Promise.reject(new Error('ECONNREFUSED')));
+        const fn = vi.fn(() => Promise.reject(new Error('ECONNREFUSED')));
         const strategy = { ...RETRY_STRATEGIES.api, maxRetries: 2, initialDelayMs: 1, maxDelayMs: 5 };
         const result = await engine.execute('test-op', fn, strategy);
         expect(result.success).toBe(false);
@@ -359,7 +359,7 @@ describe('unified-retry', () => {
       });
 
       it('should not retry non-retryable errors', async () => {
-        const fn = mock(() => Promise.reject(new Error('unauthorized')));
+        const fn = vi.fn(() => Promise.reject(new Error('unauthorized')));
         const strategy = { ...RETRY_STRATEGIES.api, initialDelayMs: 1 };
         const result = await engine.execute('test-op', fn, strategy);
         expect(result.success).toBe(false);
@@ -370,13 +370,13 @@ describe('unified-retry', () => {
 
     describe('executeOrThrow', () => {
       it('should return value on success', async () => {
-        const fn = mock(() => Promise.resolve(42));
+        const fn = vi.fn(() => Promise.resolve(42));
         const value = await engine.executeOrThrow('test', fn, RETRY_STRATEGIES.none);
         expect(value).toBe(42);
       });
 
       it('should throw on failure', async () => {
-        const fn = mock(() => Promise.reject(new Error('unauthorized')));
+        const fn = vi.fn(() => Promise.reject(new Error('unauthorized')));
         await expect(
           engine.executeOrThrow('test', fn, RETRY_STRATEGIES.none),
         ).rejects.toThrow();
@@ -385,7 +385,7 @@ describe('unified-retry', () => {
 
     describe('retryAICall', () => {
       it('should use agent strategy', async () => {
-        const fn = mock(() => Promise.resolve('ai response'));
+        const fn = vi.fn(() => Promise.resolve('ai response'));
         const result = await engine.retryAICall(fn, 'ai-test');
         expect(result).toBe('ai response');
       });
@@ -393,7 +393,7 @@ describe('unified-retry', () => {
 
     describe('retryToolCall', () => {
       it('should use tool strategy', async () => {
-        const fn = mock(() => Promise.resolve('tool result'));
+        const fn = vi.fn(() => Promise.resolve('tool result'));
         const result = await engine.retryToolCall('my_tool', fn);
         expect(result).toBe('tool result');
       });
@@ -401,7 +401,7 @@ describe('unified-retry', () => {
 
     describe('event listeners', () => {
       it('should emit success event', async () => {
-        const listener = mock();
+        const listener = vi.fn();
         engine.onRetryEvent(listener);
         await engine.execute('test', () => Promise.resolve('ok'), RETRY_STRATEGIES.none);
         expect(listener).toHaveBeenCalled();
@@ -411,7 +411,7 @@ describe('unified-retry', () => {
       });
 
       it('should emit failure event', async () => {
-        const listener = mock();
+        const listener = vi.fn();
         engine.onRetryEvent(listener);
         await engine.execute('test', () => Promise.reject(new Error('unauthorized')), RETRY_STRATEGIES.none);
         const event = listener.mock.calls[0][0];
@@ -443,7 +443,7 @@ describe('unified-retry', () => {
         const breaker = registry.getBreaker('test');
         // Reset canExecute to return true (may have been mocked to false by previous test)
         (breaker.canExecute as any).mockReturnValue(true);
-        const spy = spyOn(breaker, 'recordSuccess');
+        const spy = vi.spyOn(breaker, 'recordSuccess');
         engine.setCircuitBreakers(registry);
 
         await engine.execute('test', () => Promise.resolve('ok'), RETRY_STRATEGIES.none);

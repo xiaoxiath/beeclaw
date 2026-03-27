@@ -4,7 +4,7 @@
  * Uses a real GoalStore with tmp directory to test all tool definitions and execution.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { getGoalStore, resetGoalStore } from '../store';

@@ -1,18 +1,18 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { info: mock(() => {}), error: mock(() => {}), debug: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { info: vi.fn(() => {}), error: vi.fn(() => {}), debug: vi.fn(() => {}) },
 }));
 
-mock.module('../../../infra/config', () => ({
-  getConfig: mock(() => ({ user: { timezone: 'Asia/Shanghai' } })),
+vi.mock('../../../infra/config', () => ({
+  getConfig: vi.fn(() => ({ user: { timezone: 'Asia/Shanghai' } })),
 }));
 
-mock.module('../weather', () => ({
-  fetchWeatherInfo: mock(async () => ({ temp: 25, description: 'Sunny' })),
-  formatWeatherDescription: mock(() => 'Sunny, 25C'),
-  fetchDailyWeatherInfo: mock(async () => ({})),
-  formatDailyWeatherDescription: mock(() => 'Daily forecast'),
+vi.mock('../weather', () => ({
+  fetchWeatherInfo: vi.fn(async () => ({ temp: 25, description: 'Sunny' })),
+  formatWeatherDescription: vi.fn(() => 'Sunny, 25C'),
+  fetchDailyWeatherInfo: vi.fn(async () => ({})),
+  formatDailyWeatherDescription: vi.fn(() => 'Daily forecast'),
 }));
 
 import { timeTool, executeTime } from '../time-tools';

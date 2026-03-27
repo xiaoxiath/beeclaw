@@ -306,7 +306,8 @@ export async function proactiveMessageToFeishu(
   message: string,
   context?: Record<string, unknown>
 ): Promise<PushResult> {
-  // Import dynamically to avoid circular dependency
+  // ⚠️ EXCEPTION: Dynamic import to avoid circular dependency (session ↔ proactive)
+  // eslint-disable-next-line no-restricted-syntax
   const { sendProactiveMessage } = await import('../session');
 
   const result = await sendProactiveMessage({

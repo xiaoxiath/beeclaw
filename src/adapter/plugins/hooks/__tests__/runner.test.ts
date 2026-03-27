@@ -2,7 +2,7 @@
  * Hooks System Tests
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HookRunner, registerHook, getHookRunner, resetHookRunner } from '../runner';
 import type { HookContext } from '../../types';
 

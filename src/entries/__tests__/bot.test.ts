@@ -5,10 +5,10 @@
  * key functions exist. All heavy external dependencies are mocked.
  */
 
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock all heavy dependencies to prevent actual startup
-const mockInitApp = mock(() =>
+const mockInitApp = vi.fn(() =>
   Promise.resolve({
     config: {
       feishu: { appId: 'test', appSecret: 'test' },
@@ -20,99 +20,99 @@ const mockInitApp = mock(() =>
   })
 );
 
-const mockGetAgent = mock(() => ({}));
-const mockGetMessageGateway = mock(() => ({}));
-const mockGetTaskDispatcher = mock(() => ({}));
+const mockGetAgent = vi.fn(() => ({}));
+const mockGetMessageGateway = vi.fn(() => ({}));
+const mockGetTaskDispatcher = vi.fn(() => ({}));
 
-mock.module('../../app', () => ({
+vi.mock('../../app', () => ({
   initApp: mockInitApp,
   getAgent: mockGetAgent,
 }));
 
-mock.module('../../app/gateway-channel', () => ({
+vi.mock('../../app/gateway-channel', () => ({
   getMessageGateway: mockGetMessageGateway,
 }));
 
-mock.module('../../app/dispatcher', () => ({
+vi.mock('../../app/dispatcher', () => ({
   getTaskDispatcher: mockGetTaskDispatcher,
 }));
 
-mock.module('../../adapter/feishu/adapter', () => ({
+vi.mock('../../adapter/feishu/adapter', () => ({
   FeishuAdapter: class {
-    initialize = mock(() => Promise.resolve());
-    start = mock(() => Promise.resolve());
+    initialize = vi.fn(() => Promise.resolve());
+    start = vi.fn(() => Promise.resolve());
   },
 }));
 
-mock.module('../../adapter/web/adapter', () => ({
+vi.mock('../../adapter/web/adapter', () => ({
   WebAdapter: class {
-    initialize = mock(() => Promise.resolve());
-    start = mock(() => Promise.resolve());
+    initialize = vi.fn(() => Promise.resolve());
+    start = vi.fn(() => Promise.resolve());
   },
 }));
 
-mock.module('../../infra/entry', () => ({
+vi.mock('../../infra/entry', () => ({
   adapterRegistry: {
-    register: mock(() => {}),
-    stopAll: mock(() => Promise.resolve()),
+    register: vi.fn(() => {}),
+    stopAll: vi.fn(() => Promise.resolve()),
   },
 }));
 
-mock.module('../../domain/session', () => ({
-  loadAllSessions: mock(() => {}),
-  saveAllSessions: mock(() => {}),
+vi.mock('../../domain/session', () => ({
+  loadAllSessions: vi.fn(() => {}),
+  saveAllSessions: vi.fn(() => {}),
 }));
 
-mock.module('../../domain/proactive', () => ({
-  getDaemon: mock(() => ({
-    start: mock(() => Promise.resolve()),
-    stop: mock(() => Promise.resolve()),
+vi.mock('../../domain/proactive', () => ({
+  getDaemon: vi.fn(() => ({
+    start: vi.fn(() => Promise.resolve()),
+    stop: vi.fn(() => Promise.resolve()),
   })),
-  getScheduler: mock(() => ({
-    init: mock(() => {}),
-    listSchedules: mock(() => []),
-    createSchedule: mock(() => {}),
+  getScheduler: vi.fn(() => ({
+    init: vi.fn(() => {}),
+    listSchedules: vi.fn(() => []),
+    createSchedule: vi.fn(() => {}),
   })),
-  registerFeishuHandler: mock(() => {}),
-  setCliDeliveryHandler: mock(() => {}),
+  registerFeishuHandler: vi.fn(() => {}),
+  setCliDeliveryHandler: vi.fn(() => {}),
 }));
 
-mock.module('../../adapter/feishu', () => ({
-  getFeishuWSClient: mock(() => null),
+vi.mock('../../adapter/feishu', () => ({
+  getFeishuWSClient: vi.fn(() => null),
 }));
 
-mock.module('../../domain/agent/evolution/self-evolution', () => ({
-  initSelfEvolution: mock(() => {}),
+vi.mock('../../domain/agent/evolution/self-evolution', () => ({
+  initSelfEvolution: vi.fn(() => {}),
 }));
 
-mock.module('../../infra/queue', () => ({
-  initTaskManager: mock(() => Promise.resolve()),
+vi.mock('../../infra/queue', () => ({
+  initTaskManager: vi.fn(() => Promise.resolve()),
 }));
 
-mock.module('../../adapter/feishu/card-v2/message-renderer', () => ({
-  renderMessageCard: mock(() => ({})),
+vi.mock('../../adapter/feishu/card-v2/message-renderer', () => ({
+  renderMessageCard: vi.fn(() => ({})),
 }));
 
-mock.module('../../app/queue-handlers/workers', () => ({
-  initWorkers: mock(() => Promise.resolve()),
+vi.mock('../../app/queue-handlers/workers', () => ({
+  initWorkers: vi.fn(() => Promise.resolve()),
 }));
 
-mock.module('../../infra/utils/graceful-shutdown', () => ({
+vi.mock('../../infra/utils/graceful-shutdown', () => ({
   GracefulShutdown: class {
-    static getInstance = mock(() => new this());
-    register = mock(() => {});
-    installSignalHandlers = mock(() => {});
+    static getInstance = vi.fn(() => new this());
+    register = vi.fn(() => {});
+    installSignalHandlers = vi.fn(() => {});
   },
 }));
 
-mock.module('../../domain/proactive/job-handlers', () => ({
-  handleRunSkillJob: mock(() => Promise.resolve()),
-  handleLlmProactiveChatJob: mock(() => Promise.resolve()),
-  handleSelfEvolutionJob: mock(() => Promise.resolve()),
-  handleMemoryCompressJob: mock(() => Promise.resolve()),
-  handleGoalProgressCheckJob: mock(() => Promise.resolve()),
-  handleCustomJob: mock(() => Promise.resolve()),
-  handleSendReminderJob: mock(() => Promise.resolve()),
+vi.mock('../../domain/proactive/job-handlers', () => ({
+  handleRunSkillJob: vi.fn(() => Promise.resolve()),
+  handleLlmProactiveChatJob: vi.fn(() => Promise.resolve()),
+  handleSelfEvolutionJob: vi.fn(() => Promise.resolve()),
+  handleMemoryCompressJob: vi.fn(() => Promise.resolve()),
+  handleGoalProgressCheckJob: vi.fn(() => Promise.resolve()),
+  handleCustomJob: vi.fn(() => Promise.resolve()),
+  handleSendReminderJob: vi.fn(() => Promise.resolve()),
 }));
 
 describe('entries/bot', () => {

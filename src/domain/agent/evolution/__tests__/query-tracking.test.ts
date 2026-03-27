@@ -4,7 +4,7 @@
  * Validates query recording, pattern detection, and integration
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   recordQuery,
   detectPatterns,

@@ -4,7 +4,7 @@
  * 测试近似去重算法
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { SimHasher, getSimHasher, resetSimHasher, isDuplicate } from '../simhash';
 
 describe('SimHasher', () => {

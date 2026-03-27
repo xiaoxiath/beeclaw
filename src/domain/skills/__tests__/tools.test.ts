@@ -1,18 +1,18 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../store', () => ({
-  getSkillStore: mock(() => ({
-    list: mock(() => []),
-    get: mock(() => null),
-    create: mock(async () => ({ success: true })),
-    update: mock(async () => ({ success: true })),
-    delete: mock(() => ({ success: true })),
-    recordUsage: mock(() => {}),
-    assessMaturity: mock(() => ({ maturityScore: 50 })),
-    search: mock(() => []),
-    getEvals: mock(() => ({ success: false })),
-    setEvals: mock(() => ({ success: true })),
-    runEval: mock(async () => ({ success: true })),
+vi.mock('../store', () => ({
+  getSkillStore: vi.fn(() => ({
+    list: vi.fn(() => []),
+    get: vi.fn(() => null),
+    create: vi.fn(async () => ({ success: true })),
+    update: vi.fn(async () => ({ success: true })),
+    delete: vi.fn(() => ({ success: true })),
+    recordUsage: vi.fn(() => {}),
+    assessMaturity: vi.fn(() => ({ maturityScore: 50 })),
+    search: vi.fn(() => []),
+    getEvals: vi.fn(() => ({ success: false })),
+    setEvals: vi.fn(() => ({ success: true })),
+    runEval: vi.fn(async () => ({ success: true })),
   })),
 }));
 

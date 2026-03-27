@@ -8,24 +8,24 @@
  * via options, because the string-source branch unconditionally overwrites filename.
  * Tests document this actual behavior.
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   getLogger: () => ({
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   }),
 }));
 
 // Mock fs/promises
-mock.module('fs/promises', () => ({
-  readFile: mock(() => Promise.resolve(Buffer.from('file-data'))),
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn(() => Promise.resolve(Buffer.from('file-data'))),
 }));
 
 // Mock global fetch
-const mockFetch = mock(() =>
+const mockFetch = vi.fn(() =>
   Promise.resolve({
     ok: true,
     arrayBuffer: () => Promise.resolve(new ArrayBuffer(10)),
@@ -48,17 +48,17 @@ function makeClient() {
   return {
     im: {
       image: {
-        create: mock(() => Promise.resolve({ code: 0, data: { image_key: 'img_key_1' } })),
-        get: mock(() => Promise.resolve({ code: 0, data: Buffer.from('image-bytes') })),
+        create: vi.fn(() => Promise.resolve({ code: 0, data: { image_key: 'img_key_1' } })),
+        get: vi.fn(() => Promise.resolve({ code: 0, data: Buffer.from('image-bytes') })),
       },
       file: {
-        create: mock(() => Promise.resolve({ code: 0, data: { file_key: 'file_key_1' } })),
+        create: vi.fn(() => Promise.resolve({ code: 0, data: { file_key: 'file_key_1' } })),
       },
       message: {
-        create: mock(() => Promise.resolve({ code: 0, data: { message_id: 'msg_media' } })),
+        create: vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_media' } })),
       },
       messageResource: {
-        get: mock(() => Promise.resolve({ code: 0, data: Buffer.from('resource-bytes') })),
+        get: vi.fn(() => Promise.resolve({ code: 0, data: Buffer.from('resource-bytes') })),
       },
     },
   } as any;

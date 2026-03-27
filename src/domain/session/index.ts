@@ -16,6 +16,7 @@
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { ChatMessage, MultimodalContent } from '../agent/types';
+import { DEFAULT_VISION_CONFIG } from '../agent/types';
 import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, formatSkillsForPrompt, type TokenStatsConfig } from '../agent';
 import { callAI } from '../agent/api';
 import { getFastModelFromConfig } from '../agent/fast-llm-judge';
@@ -941,7 +942,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     }
 
     // [AUDIT FIX M-03] Configurable two-stage vision processing
-    const { DEFAULT_VISION_CONFIG } = await import('../agent/types');
+    // DEFAULT_VISION_CONFIG is statically imported at the top
 
     const visionConfig = {
       ...DEFAULT_VISION_CONFIG,

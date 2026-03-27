@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('app/queue-handlers/workers/index exports', () => {
   it('should export expected symbols', async () => {

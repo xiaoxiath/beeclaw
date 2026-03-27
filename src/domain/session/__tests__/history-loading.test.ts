@@ -11,7 +11,7 @@
  * - This ensures all previous messages (including assistant replies) are loaded
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { sendProactiveMessage, getOrCreateSession, saveSession, listSessions, confirmDelivery, deleteSession } from '../index';
 import { createAgent } from '../../agent';
 import { unlinkSync, existsSync } from 'fs';

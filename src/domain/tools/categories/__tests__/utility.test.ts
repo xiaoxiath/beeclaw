@@ -1,25 +1,25 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock upstream modules
-mock.module('../../time-tools', () => ({
+vi.mock('../../time-tools', () => ({
   timeTool: { name: 'time' },
-  executeTime: mock(() => Promise.resolve({ success: true })),
+  executeTime: vi.fn(() => Promise.resolve({ success: true })),
   weatherTool: { name: 'weather' },
-  executeWeather: mock(() => Promise.resolve({ success: true })),
+  executeWeather: vi.fn(() => Promise.resolve({ success: true })),
 }));
 
-mock.module('../../info-tools', () => ({
+vi.mock('../../info-tools', () => ({
   beeclawInfoTool: { name: 'beeclaw_info' },
-  executeBeeclawInfo: mock(() => Promise.resolve({ success: true })),
+  executeBeeclawInfo: vi.fn(() => Promise.resolve({ success: true })),
 }));
 
-mock.module('../../calc-tools', () => ({
+vi.mock('../../calc-tools', () => ({
   calcTool: { name: 'calc' },
-  executeCalc: mock(() => Promise.resolve({ success: true })),
+  executeCalc: vi.fn(() => Promise.resolve({ success: true })),
   codeExecuteTool: { name: 'code_execute' },
-  executeCode: mock(() => Promise.resolve({ success: true })),
+  executeCode: vi.fn(() => Promise.resolve({ success: true })),
   claudeCodeTool: { name: 'claude_code' },
-  executeClaudeCode: mock(() => Promise.resolve({ success: true })),
+  executeClaudeCode: vi.fn(() => Promise.resolve({ success: true })),
   ClaudeCodeSchema: {},
 }));
 

@@ -4,7 +4,7 @@
  * Tests LLM-based knowledge extraction from conversations
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { KnowledgeExtractor } from '../extractor';
 import type { AIProvider } from '../../../infra/config/schema';
 import type { ChatMessage } from '../../agent/types';

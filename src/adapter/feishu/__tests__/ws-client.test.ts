@@ -7,41 +7,41 @@
  *
  * Heavy SDK interactions (start/stop/send) are tested via mocks.
  */
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
 // Mock send functions
-mock.module('../send', () => ({
-  sendPostMessage: mock(() => Promise.resolve({ messageId: 'msg_post' })),
-  sendMarkdownMessage: mock(() => Promise.resolve({ messageId: 'msg_md' })),
-  sendMarkdownCard: mock(() => Promise.resolve({ messageId: 'msg_card' })),
+vi.mock('../send', () => ({
+  sendPostMessage: vi.fn(() => Promise.resolve({ messageId: 'msg_post' })),
+  sendMarkdownMessage: vi.fn(() => Promise.resolve({ messageId: 'msg_md' })),
+  sendMarkdownCard: vi.fn(() => Promise.resolve({ messageId: 'msg_card' })),
 }));
 
 // Mock CardCallbackHandler
-mock.module('../card-callback-handler', () => ({
+vi.mock('../card-callback-handler', () => ({
   CardCallbackHandler: class MockCardCallbackHandler {
-    handleCallback = mock(() => Promise.resolve());
+    handleCallback = vi.fn(() => Promise.resolve());
   },
 }));
 
 // Mock Lark SDK
-const mockWSClientStart = mock(() => Promise.resolve());
-const mockLarkClientCreate = mock(() => Promise.resolve({ code: 0, data: { message_id: 'msg_1' } }));
-const mockLarkClientReply = mock(() => Promise.resolve({ code: 0, data: { message_id: 'msg_reply' } }));
-const mockLarkClientPatch = mock(() => Promise.resolve({ code: 0 }));
-const mockReactionCreate = mock(() => Promise.resolve({ code: 0, data: { reaction: { reaction_id: 'r_1' } } }));
-const mockReactionDelete = mock(() => Promise.resolve({ code: 0 }));
+const mockWSClientStart = vi.fn(() => Promise.resolve());
+const mockLarkClientCreate = vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_1' } }));
+const mockLarkClientReply = vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_reply' } }));
+const mockLarkClientPatch = vi.fn(() => Promise.resolve({ code: 0 }));
+const mockReactionCreate = vi.fn(() => Promise.resolve({ code: 0, data: { reaction: { reaction_id: 'r_1' } } }));
+const mockReactionDelete = vi.fn(() => Promise.resolve({ code: 0 }));
 
-mock.module('@larksuiteoapi/node-sdk', () => ({
+vi.mock('@larksuiteoapi/node-sdk', () => ({
   Client: class MockClient {
     im = {
       v1: {
@@ -73,7 +73,7 @@ mock.module('@larksuiteoapi/node-sdk', () => ({
     error: 3,
   },
   messageCard: {
-    defaultCard: mock((opts: any) => JSON.stringify({ title: opts.title, content: opts.content })),
+    defaultCard: vi.fn((opts: any) => JSON.stringify({ title: opts.title, content: opts.content })),
   },
 }));
 
@@ -137,29 +137,29 @@ describe('ws-client', () => {
   describe('event handler registration', () => {
     it('registers and removes message handler', () => {
       const client = new FeishuWSClient(testConfig);
-      const handler = mock(() => {});
+      const handler = vi.fn(() => {});
       client.onMessage(handler);
       client.offMessage(handler);
     });
 
     it('registers and removes message read handler', () => {
       const client = new FeishuWSClient(testConfig);
-      const handler = mock(() => {});
+      const handler = vi.fn(() => {});
       client.onMessageRead(handler);
       client.offMessageRead(handler);
     });
 
     it('registers and removes message recalled handler', () => {
       const client = new FeishuWSClient(testConfig);
-      const handler = mock(() => {});
+      const handler = vi.fn(() => {});
       client.onMessageRecalled(handler);
       client.offMessageRecalled(handler);
     });
 
     it('registers and removes reaction handlers', () => {
       const client = new FeishuWSClient(testConfig);
-      const h1 = mock(() => {});
-      const h2 = mock(() => {});
+      const h1 = vi.fn(() => {});
+      const h2 = vi.fn(() => {});
       client.onReactionCreated(h1);
       client.offReactionCreated(h1);
       client.onReactionDeleted(h2);
@@ -168,27 +168,27 @@ describe('ws-client', () => {
 
     it('registers chat event handlers', () => {
       const client = new FeishuWSClient(testConfig);
-      client.onChatDisbanded(mock(() => {}));
-      client.onChatUpdated(mock(() => {}));
-      client.onChatMemberAdded(mock(() => {}));
-      client.onChatMemberDeleted(mock(() => {}));
+      client.onChatDisbanded(vi.fn(() => {}));
+      client.onChatUpdated(vi.fn(() => {}));
+      client.onChatMemberAdded(vi.fn(() => {}));
+      client.onChatMemberDeleted(vi.fn(() => {}));
     });
 
     it('registers bot event handlers', () => {
       const client = new FeishuWSClient(testConfig);
-      client.onBotAdded(mock(() => {}));
-      client.onBotDeleted(mock(() => {}));
+      client.onBotAdded(vi.fn(() => {}));
+      client.onBotDeleted(vi.fn(() => {}));
     });
 
     it('registers P2P event handlers', () => {
       const client = new FeishuWSClient(testConfig);
-      client.onP2PChatCreated(mock(() => {}));
-      client.onP2PChatEntered(mock(() => {}));
+      client.onP2PChatCreated(vi.fn(() => {}));
+      client.onP2PChatEntered(vi.fn(() => {}));
     });
 
     it('offMessage is safe for unregistered handler', () => {
       const client = new FeishuWSClient(testConfig);
-      client.offMessage(mock(() => {})); // Should not throw
+      client.offMessage(vi.fn(() => {})); // Should not throw
     });
   });
 

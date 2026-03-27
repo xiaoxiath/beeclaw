@@ -1,14 +1,14 @@
 /**
  * Tests for send.ts
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   getLogger: () => ({
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   }),
 }));
 
@@ -27,10 +27,10 @@ function makeClient(overrides: Record<string, any> = {}) {
   return {
     im: {
       message: {
-        create: mock(() => Promise.resolve({ code: 0, data: { message_id: 'msg_resp' } })),
-        patch: mock(() => Promise.resolve({ code: 0 })),
-        reply: mock(() => Promise.resolve({ code: 0, data: { message_id: 'msg_reply' } })),
-        get: mock(() => Promise.resolve({ code: 0, data: { message_id: 'msg_get', content: '{}' } })),
+        create: vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_resp' } })),
+        patch: vi.fn(() => Promise.resolve({ code: 0 })),
+        reply: vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_reply' } })),
+        get: vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_get', content: '{}' } })),
       },
     },
     ...overrides,

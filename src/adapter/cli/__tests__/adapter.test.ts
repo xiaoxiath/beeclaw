@@ -1,15 +1,15 @@
 /**
  * Tests for CLIAdapter
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
@@ -34,7 +34,7 @@ describe('CLIAdapter', () => {
 
   describe('initialize', () => {
     it('registers a CLIChannel on the gateway', async () => {
-      const registerChannel = mock(() => {});
+      const registerChannel = vi.fn(() => {});
       const context = {
         gateway: { registerChannel },
         config: {},
@@ -53,7 +53,7 @@ describe('CLIAdapter', () => {
   describe('start', () => {
     it('marks adapter as running', async () => {
       const context = {
-        gateway: { registerChannel: mock(() => {}) },
+        gateway: { registerChannel: vi.fn(() => {}) },
         config: {},
       } as any;
       await adapter.initialize(context);
@@ -69,7 +69,7 @@ describe('CLIAdapter', () => {
   describe('stop', () => {
     it('marks adapter as not running', async () => {
       const context = {
-        gateway: { registerChannel: mock(() => {}) },
+        gateway: { registerChannel: vi.fn(() => {}) },
         config: {},
       } as any;
       await adapter.initialize(context);
@@ -89,7 +89,7 @@ describe('CLIAdapter', () => {
 
     it('returns true when running', async () => {
       const context = {
-        gateway: { registerChannel: mock(() => {}) },
+        gateway: { registerChannel: vi.fn(() => {}) },
         config: {},
       } as any;
       await adapter.initialize(context);
@@ -100,7 +100,7 @@ describe('CLIAdapter', () => {
 
     it('returns false after stop', async () => {
       const context = {
-        gateway: { registerChannel: mock(() => {}) },
+        gateway: { registerChannel: vi.fn(() => {}) },
         config: {},
       } as any;
       await adapter.initialize(context);
@@ -120,7 +120,7 @@ describe('CLIAdapter', () => {
 
     it('returns running with positive uptime after start', async () => {
       const context = {
-        gateway: { registerChannel: mock(() => {}) },
+        gateway: { registerChannel: vi.fn(() => {}) },
         config: {},
       } as any;
       await adapter.initialize(context);
@@ -136,7 +136,7 @@ describe('CLIAdapter', () => {
 
     it('returns 0 uptime after stop', async () => {
       const context = {
-        gateway: { registerChannel: mock(() => {}) },
+        gateway: { registerChannel: vi.fn(() => {}) },
         config: {},
       } as any;
       await adapter.initialize(context);

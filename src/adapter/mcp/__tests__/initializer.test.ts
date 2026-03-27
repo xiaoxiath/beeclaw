@@ -1,24 +1,24 @@
 /**
  * Tests for MCP Initializer
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
-const mockConnect = mock(async () => {});
-const mockDisconnectAll = mock(async () => {});
-const mockGetStatus = mock(() => [] as any[]);
-const mockExecuteTool = mock(async () => ({ success: true }));
+const mockConnect = vi.fn(async () => {});
+const mockDisconnectAll = vi.fn(async () => {});
+const mockGetStatus = vi.fn(() => [] as any[]);
+const mockExecuteTool = vi.fn(async () => ({ success: true }));
 
-mock.module('../client', () => ({
+vi.mock('../client', () => ({
   getMCPManager: () => ({
     connect: mockConnect,
     disconnectAll: mockDisconnectAll,

@@ -5,7 +5,7 @@
  * when integrated with the Beeclaw agent.
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { compressMessages, shouldCompress, getCompressionStats } from '../agent-integration';
 import { configureTieredCompressor } from '../index';
 

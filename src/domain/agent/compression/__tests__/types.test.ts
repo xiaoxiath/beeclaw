@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('domain/agent/compression/types', () => {
   it('should export runtime constants and be importable', async () => {

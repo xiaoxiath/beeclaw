@@ -4,7 +4,7 @@
  * These tests verify that the recovery system doesn't cause message ordering issues
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import { detectUnansweredSessions, type RecoveryConfig } from '../recovery';
 import type { Session } from '../index';
 

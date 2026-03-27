@@ -4,7 +4,7 @@
  * Tests the integration of plugin hooks with the Agent system
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetPluginRegistry, getPluginRegistry, getOrCreatePluginRegistry } from "../registry";
 import { loadPlugins } from "../loader";
 import { createHookRunner } from "../hook-runner";

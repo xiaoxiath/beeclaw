@@ -1,15 +1,15 @@
 /**
  * Tests for CLIChannel
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock logger
-mock.module('../../../infra/observability/logger', () => ({
+vi.mock('../../../infra/observability/logger', () => ({
   logger: {
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
+    debug: vi.fn(() => {}),
+    info: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
   },
 }));
 
@@ -59,7 +59,7 @@ describe('CLIChannel', () => {
       // We can mock the logger.debug to throw
       const { logger } = await import('../../../infra/observability/logger');
       const originalDebug = logger.debug;
-      (logger as any).debug = mock(() => { throw new Error('write fail'); });
+      (logger as any).debug = vi.fn(() => { throw new Error('write fail'); });
 
       const result = await channel.postMessage('test');
       expect(result.success).toBe(false);
@@ -72,7 +72,7 @@ describe('CLIChannel', () => {
     it('handles non-Error throws', async () => {
       const { logger } = await import('../../../infra/observability/logger');
       const originalDebug = logger.debug;
-      (logger as any).debug = mock(() => { throw 'string error'; });
+      (logger as any).debug = vi.fn(() => { throw 'string error'; });
 
       const result = await channel.postMessage('test');
       expect(result.success).toBe(false);

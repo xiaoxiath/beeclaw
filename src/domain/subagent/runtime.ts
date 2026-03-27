@@ -14,6 +14,8 @@
 import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
 import { getSubagentRegistry } from './registry';
 import { logger } from '../../infra/observability/logger';
+import { createAgent, getAllToolsForAI } from '../agent';
+import { buildSubagentSystemPrompt } from './prompts';
 
 // ============================================================================
 // Port interfaces — domain-side abstractions for adapter-layer dependencies
@@ -70,8 +72,6 @@ let _defaultHookRunnerLoader: (() => RuntimeHookRunner | null) | null = null;
 
 function getDefaultAgentFactory(): AgentFactory {
   if (!_defaultAgentFactory) {
-    // Dynamic import avoids hard compile-time coupling
-    const { createAgent } = require('../agent');
     _defaultAgentFactory = createAgent as AgentFactory;
   }
   return _defaultAgentFactory;
@@ -79,7 +79,6 @@ function getDefaultAgentFactory(): AgentFactory {
 
 function getDefaultToolProvider(): ToolProvider {
   if (!_defaultToolProvider) {
-    const { getAllToolsForAI } = require('../agent');
     _defaultToolProvider = getAllToolsForAI as ToolProvider;
   }
   return _defaultToolProvider;
@@ -89,7 +88,9 @@ function loadDefaultHookRunner(): RuntimeHookRunner | null {
   if (!_defaultHookRunnerLoader) {
     _defaultHookRunnerLoader = () => {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
         const { getPluginRegistry } = require('../../adapter/plugins');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
         const { createHookRunner } = require('../../adapter/plugins/hook-runner');
         const pluginRegistry = getPluginRegistry();
         return createHookRunner(pluginRegistry) as RuntimeHookRunner;
@@ -312,7 +313,7 @@ export class SubagentRuntime {
 
     try {
       // Build system prompt
-      const { buildSubagentSystemPrompt } = require('./prompts');
+      // buildSubagentSystemPrompt is statically imported at the top
       const systemPrompt = buildSubagentSystemPrompt(
         modifiedConfig.type,
         modifiedConfig.task,

@@ -4,7 +4,7 @@
  * Mocks globalThis.fetch to test BingProvider search behavior.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BingProvider } from '../bing';
 import { SearchRegion } from '../../types';
 

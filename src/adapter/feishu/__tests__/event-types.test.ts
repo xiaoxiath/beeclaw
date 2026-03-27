@@ -5,7 +5,7 @@
  * and the shapes are usable at the type level via runtime assertions on
  * constructed objects.
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
 import type {
   FeishuUserId,

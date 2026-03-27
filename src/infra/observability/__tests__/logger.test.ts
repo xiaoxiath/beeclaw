@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setupMockConsole, restoreConsole, getConsoleCalls, getConsoleCallsFor, consoleCalledWith } from '../../testing/mocks/console';
 
 // Re-import logger to get a fresh instance for testing

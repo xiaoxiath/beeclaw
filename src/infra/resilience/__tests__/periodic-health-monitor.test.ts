@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PeriodicHealthMonitor, type IHealthChecker, type HealthCheckResult } from '../periodic-health-monitor';
 
 function createMockHealthChecker(overrides: Partial<IHealthChecker> = {}): IHealthChecker {
@@ -11,8 +11,8 @@ function createMockHealthChecker(overrides: Partial<IHealthChecker> = {}): IHeal
   };
 
   return {
-    runHealthCheck: mock(() => Promise.resolve(defaultResult)),
-    getLastResult: mock(() => defaultResult),
+    runHealthCheck: vi.fn(() => Promise.resolve(defaultResult)),
+    getLastResult: vi.fn(() => defaultResult),
     ...overrides,
   };
 }
@@ -104,7 +104,7 @@ describe('PeriodicHealthMonitor', () => {
         recommendations: ['Check database connection'],
       };
       const checker = createMockHealthChecker({
-        getLastResult: mock(() => unhealthyResult),
+        getLastResult: vi.fn(() => unhealthyResult),
       });
       monitor = new PeriodicHealthMonitor(checker);
       expect(monitor.hasIssues()).toBe(true);
@@ -112,7 +112,7 @@ describe('PeriodicHealthMonitor', () => {
 
     it('should return false when no result is available', () => {
       const checker = createMockHealthChecker({
-        getLastResult: mock(() => undefined),
+        getLastResult: vi.fn(() => undefined),
       });
       monitor = new PeriodicHealthMonitor(checker);
       expect(monitor.hasIssues()).toBe(false);
@@ -128,7 +128,7 @@ describe('PeriodicHealthMonitor', () => {
 
     it('should return empty string when no result', () => {
       const checker = createMockHealthChecker({
-        getLastResult: mock(() => undefined),
+        getLastResult: vi.fn(() => undefined),
       });
       monitor = new PeriodicHealthMonitor(checker);
       expect(monitor.buildHealthContext()).toBe('');
@@ -144,7 +144,7 @@ describe('PeriodicHealthMonitor', () => {
         recommendations: ['Check database connection'],
       };
       const checker = createMockHealthChecker({
-        getLastResult: mock(() => unhealthyResult),
+        getLastResult: vi.fn(() => unhealthyResult),
       });
       monitor = new PeriodicHealthMonitor(checker);
       const context = monitor.buildHealthContext();
@@ -166,7 +166,7 @@ describe('PeriodicHealthMonitor', () => {
         recommendations: [],
       };
       const checker = createMockHealthChecker({
-        getLastResult: mock(() => result),
+        getLastResult: vi.fn(() => result),
       });
       monitor = new PeriodicHealthMonitor(checker);
       const context = monitor.buildHealthContext();
@@ -182,7 +182,7 @@ describe('PeriodicHealthMonitor', () => {
         recommendations: [],
       };
       const checker = createMockHealthChecker({
-        getLastResult: mock(() => result),
+        getLastResult: vi.fn(() => result),
       });
       monitor = new PeriodicHealthMonitor(checker);
       expect(monitor.buildHealthContext()).toBe('');
@@ -212,7 +212,7 @@ describe('PeriodicHealthMonitor', () => {
         recommendations: [],
       };
       const checker = createMockHealthChecker({
-        getLastResult: mock(() => unhealthyResult),
+        getLastResult: vi.fn(() => unhealthyResult),
       });
       monitor = new PeriodicHealthMonitor(checker);
       const status = monitor.getStatus();

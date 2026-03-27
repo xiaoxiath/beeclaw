@@ -3,14 +3,14 @@
  *
  * Covers: hybridCompress, selectCompressionStrategy, ruleBasedCompress
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-mock.module('../../../../infra/config/schema', () => ({}));
+vi.mock('../../../../infra/config/schema', () => ({}));
 
-mock.module('../../context', () => ({
+vi.mock('../../context', () => ({
   estimateTokens: (text: string) => Math.ceil(text.length / 3),
   estimateTotalTokens: (msgs: any[]) =>
     msgs.reduce((s: number, m: any) => {
@@ -19,10 +19,10 @@ mock.module('../../context', () => ({
     }, 0),
 }));
 
-const mockCallAI = mock(async () => ({
+const mockCallAI = vi.fn(async () => ({
   choices: [{ message: { content: '## Summary\nCompressed content here' } }],
 }));
-mock.module('../../api', () => ({ callAI: mockCallAI }));
+vi.mock('../../api', () => ({ callAI: mockCallAI }));
 
 import { hybridCompress, type LegacyCompressionResult } from '../legacy-compat';
 

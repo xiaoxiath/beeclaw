@@ -7,7 +7,7 @@
  * Run with: DOCKER_HOST=unix:///var/run/docker.sock bun test
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { DockerSandboxProvider } from '../providers/docker';

@@ -5,73 +5,73 @@
  * and tests each task type handler path.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---- Mocks ----
 
 const mockLogger = {
-  debug: mock(() => {}),
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
+  debug: vi.fn(() => {}),
+  info: vi.fn(() => {}),
+  warn: vi.fn(() => {}),
+  error: vi.fn(() => {}),
 };
 
 const mockGoalStore = {
-  list: mock(() => []),
+  list: vi.fn(() => []),
 };
 
 const mockNotificationManager = {
-  create: mock(() => ({ id: 'notif-1' })),
+  create: vi.fn(() => ({ id: 'notif-1' })),
 };
 
-const mockPushNotification = mock(() =>
+const mockPushNotification = vi.fn(() =>
   Promise.resolve({ success: true, notificationId: 'notif-push-1', delivered: ['cli'] })
 );
 
-const mockGetFeishuWSClient = mock(() => null);
+const mockGetFeishuWSClient = vi.fn(() => null);
 
-const mockSendProactiveMessage = mock(() =>
+const mockSendProactiveMessage = vi.fn(() =>
   Promise.resolve({ success: true, response: 'Hello!', sessionId: 'sess-1' })
 );
 
-const mockGetSessionSummary = mock(() => 'recent conversation summary');
+const mockGetSessionSummary = vi.fn(() => 'recent conversation summary');
 
-const mockGetMemoryStore = mock(() => ({
-  getCoreContext: mock(() => ({ user: 'Test User', facts: 'Some facts' })),
+const mockGetMemoryStore = vi.fn(() => ({
+  getCoreContext: vi.fn(() => ({ user: 'Test User', facts: 'Some facts' })),
 }));
 
-const mockRenderMessageCard = mock(() => ({ card: 'mock-card' }));
+const mockRenderMessageCard = vi.fn(() => ({ card: 'mock-card' }));
 
-mock.module('../../../../infra/observability/logger', () => ({
+vi.mock('../../../../infra/observability/logger', () => ({
   logger: mockLogger,
 }));
 
-mock.module('../../../../domain/agent/goal/store', () => ({
+vi.mock('../../../../domain/agent/goal/store', () => ({
   getGoalStore: () => mockGoalStore,
 }));
 
-mock.module('../../../../domain/proactive/notifications', () => ({
+vi.mock('../../../../domain/proactive/notifications', () => ({
   getNotificationManager: () => mockNotificationManager,
 }));
 
-mock.module('../../../../domain/proactive/pusher', () => ({
+vi.mock('../../../../domain/proactive/pusher', () => ({
   pushNotification: mockPushNotification,
 }));
 
-mock.module('../../../../adapter/feishu', () => ({
+vi.mock('../../../../adapter/feishu', () => ({
   getFeishuWSClient: mockGetFeishuWSClient,
 }));
 
-mock.module('../../../../domain/session', () => ({
+vi.mock('../../../../domain/session', () => ({
   sendProactiveMessage: mockSendProactiveMessage,
   getSessionSummary: mockGetSessionSummary,
 }));
 
-mock.module('../../../../domain/memory', () => ({
+vi.mock('../../../../domain/memory', () => ({
   getMemoryStore: mockGetMemoryStore,
 }));
 
-mock.module('../../../../adapter/feishu/card-v2/message-renderer', () => ({
+vi.mock('../../../../adapter/feishu/card-v2/message-renderer', () => ({
   renderMessageCard: mockRenderMessageCard,
 }));
 
@@ -87,7 +87,7 @@ function fakeJob(data: Record<string, unknown>) {
       triggeredBy: 'scheduler',
       ...data,
     },
-    updateProgress: mock(() => Promise.resolve()),
+    updateProgress: vi.fn(() => Promise.resolve()),
   } as any;
 }
 
@@ -230,7 +230,7 @@ describe('handleProactiveJob', () => {
   it('should handle llm_proactive_chat with Feishu push', async () => {
     const mockClient = {
       lastActiveChatId: 'chat-123',
-      sendCard: mock(() => Promise.resolve('msg-1')),
+      sendCard: vi.fn(() => Promise.resolve('msg-1')),
     };
     mockGetFeishuWSClient.mockReturnValue(mockClient);
     mockSendProactiveMessage.mockResolvedValue({

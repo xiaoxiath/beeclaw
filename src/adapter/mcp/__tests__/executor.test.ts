@@ -1,24 +1,24 @@
 /**
  * Tests for MCP Executor
  */
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const mockIsMCPToolName = mock((name: string) => name.startsWith('mcp__'));
-const mockParseMCPToolName = mock((name: string) => {
+const mockIsMCPToolName = vi.fn((name: string) => name.startsWith('mcp__'));
+const mockParseMCPToolName = vi.fn((name: string) => {
   if (!name.startsWith('mcp__')) return null;
   const parts = name.replace('mcp__', '').split('__');
   return { serverId: parts[0], toolName: parts.slice(1).join('__') };
 });
-const mockExecuteTool = mock(async () => ({
+const mockExecuteTool = vi.fn(async () => ({
   success: true,
   data: { result: 'ok' },
   error: undefined,
 }));
-const mockGetMCPManager = mock(() => ({
+const mockGetMCPManager = vi.fn(() => ({
   executeTool: mockExecuteTool,
 }));
 
-mock.module('../client', () => ({
+vi.mock('../client', () => ({
   getMCPManager: mockGetMCPManager,
   MCPClientManager: {
     isMCPToolName: mockIsMCPToolName,

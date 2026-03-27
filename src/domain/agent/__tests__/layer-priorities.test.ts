@@ -5,7 +5,7 @@
  * extracted from hardcoded magic numbers.
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, vi } from 'vitest';
 import {
   LAYER_PRIORITIES,
   type LayerPriorityKey,

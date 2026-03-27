@@ -2,7 +2,7 @@
  * Sandbox Manager Tests
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SandboxManager } from '../manager';
 import type { SandboxConfig } from '../types';
 import { rmSync, existsSync, mkdirSync } from 'fs';

@@ -7,6 +7,7 @@
 import { logger } from '../../infra/observability/logger';
 import { z } from 'zod';
 import { getTaskManager } from '../../infra/queue/manager';
+import { getChannelClientPort } from '../ports';
 
 // Local interface (no external queue/types module exists)
 interface AnalysisJobData {
@@ -136,7 +137,7 @@ export async function executeRequestDeepAnalysis(
 
   try {
     // Use port interface to send quick reply (avoids domain → adapter import)
-    const { getChannelClientPort } = await import('../ports');
+    // getChannelClientPort is statically imported at the top
 
     // 1. Send quick reply via port interface
     const client = getChannelClientPort();

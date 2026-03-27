@@ -1,7 +1,7 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from 'vitest';
 
-mock.module('../../../infra/observability/logger', () => ({
-  logger: { debug: mock(() => {}) },
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: { debug: vi.fn(() => {}) },
 }));
 
 import {

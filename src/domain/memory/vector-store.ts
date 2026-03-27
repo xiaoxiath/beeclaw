@@ -29,6 +29,9 @@
 
 // Re-export cosine similarity function for convenience
 export { cosineSimilarity } from '../../infra/utils';
+import { cosineSimilarity } from '../../infra/utils';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { join, dirname, basename, relative } from 'path';
 
 // ─── 类型定义 ─────────────────────────────────────────────
 
@@ -247,14 +250,12 @@ export class VectorMemoryStore {
    * 加载持久化索引
    */
   async load(): Promise<boolean> {
-    const fs = require('fs');
-    const path = require('path');
-    const indexPath = path.join(this.config.basePath, this.config.indexFileName);
+    const indexPath = join(this.config.basePath, this.config.indexFileName);
 
-    if (!fs.existsSync(indexPath)) return false;
+    if (!existsSync(indexPath)) return false;
 
     try {
-      const raw = fs.readFileSync(indexPath, 'utf-8');
+      const raw = readFileSync(indexPath, 'utf-8');
       const persisted: PersistedIndex = JSON.parse(raw);
 
       // 检查维度兼容性
@@ -286,13 +287,11 @@ export class VectorMemoryStore {
    * 持久化索引到磁盘
    */
   async save(): Promise<void> {
-    const fs = require('fs');
-    const path = require('path');
-    const indexPath = path.join(this.config.basePath, this.config.indexFileName);
+    const indexPath = join(this.config.basePath, this.config.indexFileName);
 
-    const dirPath = path.dirname(indexPath);
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
+    const dirPath = dirname(indexPath);
+    if (!existsSync(dirPath)) {
+      mkdirSync(dirPath, { recursive: true });
     }
 
     const persisted: PersistedIndex = {
@@ -304,7 +303,7 @@ export class VectorMemoryStore {
       updatedAt: new Date().toISOString(),
     };
 
-    fs.writeFileSync(indexPath, JSON.stringify(persisted), 'utf-8');
+    writeFileSync(indexPath, JSON.stringify(persisted), 'utf-8');
     this.dirty = false;
     this.pendingPersist = 0;
   }
@@ -482,29 +481,27 @@ export class VectorMemoryStore {
     categories: string[] = ['facts', 'knowledge'],
     options?: { fileFilter?: (fileName: string) => boolean }
   ): Promise<{ indexed: number; chunks: number; errors: number }> {
-    const fs = require('fs');
-    const path = require('path');
 
     let indexed = 0;
     let totalChunks = 0;
     let errors = 0;
 
     for (const category of categories) {
-      const dirPath = path.join(this.config.basePath, category);
-      if (!fs.existsSync(dirPath)) continue;
+      const dirPath = join(this.config.basePath, category);
+      if (!existsSync(dirPath)) continue;
 
       const files = this.walkDirectory(dirPath);
 
       for (const filePath of files) {
-        const relativePath = path.relative(this.config.basePath, filePath);
-        const fileName = path.basename(filePath);
+        const relativePath = relative(this.config.basePath, filePath);
+        const fileName = basename(filePath);
 
         // 过滤隐藏文件和非文本文件
         if (fileName.startsWith('.')) continue;
         if (options?.fileFilter && !options.fileFilter(fileName)) continue;
 
         try {
-          const content = fs.readFileSync(filePath, 'utf-8');
+          const content = readFileSync(filePath, 'utf-8');
           if (content.trim().length < this.config.minChunkSize) continue;
 
           const chunks = await this.addDocument(relativePath, content, {
@@ -540,13 +537,11 @@ export class VectorMemoryStore {
   // ─── 内部方法 ──────────────────────────────────────────
 
   private walkDirectory(dirPath: string): string[] {
-    const fs = require('fs');
-    const path = require('path');
     const files: string[] = [];
 
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const entries = readdirSync(dirPath, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
+      const fullPath = join(dirPath, entry.name);
       if (entry.isDirectory()) {
         if (!entry.name.startsWith('.')) {
           files.push(...this.walkDirectory(fullPath));

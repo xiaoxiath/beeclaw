@@ -2,7 +2,7 @@
  * L3 Abstractive Compressor Tests
  */
 
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { L3AbstractiveCompressor, getL3Compressor, resetL3Compressor } from '../l3-abstractive-compressor';
 import type { CompressionLLMClient } from '../types';
 
@@ -11,7 +11,7 @@ describe('L3AbstractiveCompressor', () => {
 
   // Mock LLM client
   const mockLLMClient: CompressionLLMClient = {
-    complete: mock(async (prompt: string, maxTokens: number) => {
+    complete: vi.fn(async (prompt: string, maxTokens: number) => {
       // Simple mock: return summary format
       const contentMatch = prompt.match(/Content to compress:\n---\n([\s\S]*?)\n---/);
       if (contentMatch) {

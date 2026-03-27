@@ -2,7 +2,7 @@
  * Tests for LLM Skill Matcher
  */
 
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { LLMSkillMatcher, createLLMSkillMatcher } from '../llm-matcher';
 import type { Skill } from '../types';
 

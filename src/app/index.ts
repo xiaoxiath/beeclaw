@@ -42,7 +42,7 @@ import { resolveConfig } from '../infra/config/resilience-config';
 import { initializeMCP, shutdownMCP, getMCPManager } from '../adapter/mcp';
 import { getHookRunner, resetHookRunner } from '../adapter/plugins/hooks';
 import { registerPorts } from '../domain/ports';
-import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
+import { loadPlugins, getPluginRegistry, createHookRunner } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
 import { StreamingMessageController } from '../adapter/feishu/card-v2/streaming-controller';
@@ -482,7 +482,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
       mcpManager: () => getMCPManager(),
       pluginRegistry: () => getPluginRegistry(),
       hookRunnerFactory: (registry) => {
-        const { createHookRunner } = require('../adapter/plugins/hooks');
+        // createHookRunner is statically imported at the top
         return createHookRunner(registry);
       },
       channelClient: () => getFeishuWSClient(),
@@ -765,6 +765,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // Initialize daily reflection task (if daemon mode)
   if (options.daemon || process.env.DAEMON_MODE === 'true') {
     try {
+      // eslint-disable-next-line no-restricted-syntax
       const { getScheduler } = await import('../domain/proactive');
       const scheduler = getScheduler(join(memoryPath, '../proactive'));
 

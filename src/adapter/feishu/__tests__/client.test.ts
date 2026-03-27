@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FeishuClient, initFeishuClient, getFeishuClient, resetFeishuClient } from '../client';
 import type { MessageEvent, FeishuAuthConfig } from '../types';
 

@@ -2,7 +2,7 @@
  * P0-2.1: Circuit Breaker Integration Tests
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getCircuitBreakerRegistry, CircuitOpenError, CIRCUIT_BREAKER_PRESETS } from '../../circuit-breaker';
 
 describe('Circuit Breaker Integration', () => {
