@@ -30,14 +30,13 @@ import { getReflectionEngine } from '../domain/agent/reflection-engine';
 import { getSkillDiscoveryEngine } from '../domain/agent/skill-discovery';
 import { initExtractionManager, type ExtractionManager } from '../domain/extraction';
 import { SandboxManager } from '../domain/sandbox/manager';
-import { listSessions, sendProactiveMessage } from '../domain/session';
-// import { recoverUnansweredSessions } from '../domain/session/recovery'; // DISABLED: redundant with permanent deduplication
 import { createEmbeddingProvider } from '../domain/memory/embeddings';
 import { TieredLLMRouter } from '../infra/ai/tiered-router';
+import { getLLMConcurrencyLimiter } from '../infra/ai/concurrency-limiter';
 import { getHybridToolSelector } from '../domain/agent/hybrid-tool-selector';
 import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
 import { getSkillStore } from '../domain/skills';
-import { resolveConfig, type ResilienceConfig } from '../infra/config/resilience-config';
+import { resolveConfig } from '../infra/config/resilience-config';
 
 // Adapter layer
 import { initializeMCP, shutdownMCP, getMCPManager } from '../adapter/mcp';
@@ -46,7 +45,6 @@ import { registerPorts } from '../domain/ports';
 import { loadPlugins, getPluginRegistry } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { CLIChannel } from '../adapter/cli/channel';
-import { FeishuChannel } from '../adapter/feishu/channel';
 import { StreamingMessageController } from '../adapter/feishu/card-v2/streaming-controller';
 
 // App layer
@@ -576,6 +574,19 @@ export async function initApp(options: InitOptions = {}): Promise<{
     }
   } else {
     logger.debug(`   ℹ️  LLM Router: Disabled (using default model for all tasks)`);
+  }
+
+  // 9.13. Initialize LLM Concurrency Limiter
+  {
+    const concurrencyConfig = config.llmRouter?.concurrency;
+    const limiter = getLLMConcurrencyLimiter({
+      maxConcurrent: concurrencyConfig?.maxConcurrent ?? 2,
+      maxQueueSize: concurrencyConfig?.maxQueueSize ?? 50,
+      queueTimeoutMs: concurrencyConfig?.queueTimeoutMs ?? 30000,
+      enablePriority: concurrencyConfig?.enablePriority ?? true,
+    });
+    const stats = limiter.getStats();
+    logger.info(`   🚦 LLM Concurrency: max=${stats.maxConcurrent}, queue=${concurrencyConfig?.maxQueueSize ?? 50}, priority=${concurrencyConfig?.enablePriority ?? true}`);
   }
 
   // 10. Create agent (singleton)

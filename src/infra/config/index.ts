@@ -39,6 +39,8 @@ const ENV_MAPPING: Record<string, string> = {
   TUSHARE_TOKEN: 'finance.tushareToken',
   // Agent display
   BEECLAW_SHOW_TOKEN_STATS: 'agentDisplay.showTokenStats',
+  // LLM Concurrency
+  BEECLAW_LLM_MAX_CONCURRENCY: 'llmRouter.concurrency.maxConcurrent',
 };
 
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {

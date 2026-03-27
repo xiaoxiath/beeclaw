@@ -53,7 +53,7 @@ export const SandboxConfigSchema = z.object({
     /** Enable network in containers */
     networkEnabled: z.boolean().default(false),
     /** Default execution timeout (ms) */
-    defaultTimeout: z.number().min(1000).max(600000).default(60000),
+    defaultTimeout: z.number().min(1000).max(600000).default(100000),
     /** Maximum output size (bytes) */
     maxOutputSize: z.number().min(1024).max(10485760).default(2097152), // 2MB
     /** Container idle timeout before recycling (ms) */
@@ -71,7 +71,7 @@ export const SandboxConfigSchema = z.object({
     /** Maximum total containers */
     maxTotal: z.number().min(1).max(20).default(5),
     /** How often to check pool health (ms) */
-    healthCheckInterval: z.number().min(10000).max(300000).default(60000),
+    healthCheckInterval: z.number().min(10000).max(300000).default(10000),
   }).default({}),
 });
 

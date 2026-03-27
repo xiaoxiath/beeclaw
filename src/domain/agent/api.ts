@@ -2,6 +2,7 @@ import type { AIProvider } from '../../infra/config/schema';
 import type { AIResponse, ChatMessage, OpenAITool, ToolCall, ToolResult, ToolExecutor } from './types';
 import { getRetryEngine, RETRY_STRATEGIES } from '../../infra/resilience/unified-retry';
 import { logger } from '../../infra/observability/logger';
+import { getLLMConcurrencyLimiter, type AcquireOptions } from '../../infra/ai/concurrency-limiter';
 
 // Provider-specific configurations
 const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBody?: Record<string, unknown> }> = {
@@ -168,8 +169,40 @@ function isAnthropicProvider(provider: AIProvider): boolean {
   return provider.type === 'anthropic';
 }
 
-// Call AI API
-export async function callAI(options: {
+// ============================================================================
+// Concurrency-controlled call options
+// ============================================================================
+
+export interface CallAIOptions {
+  provider: AIProvider;
+  model: string;
+  messages: ChatMessage[];
+  tools?: OpenAITool[];
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+  stream?: boolean;
+  /** Concurrency control options (optional, used for priority scheduling) */
+  concurrency?: AcquireOptions;
+}
+
+export interface StreamAIOptions {
+  provider: AIProvider;
+  model: string;
+  messages: ChatMessage[];
+  tools?: OpenAITool[];
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+  /** Concurrency control options (optional, used for priority scheduling) */
+  concurrency?: AcquireOptions;
+}
+
+// ============================================================================
+// Raw AI call (no concurrency control — internal use only)
+// ============================================================================
+
+async function _callAIRaw(options: {
   provider: AIProvider;
   model: string;
   messages: ChatMessage[];
@@ -317,8 +350,73 @@ export async function callAI(options: {
   return jsonResponse;
 }
 
-// Stream AI response
-export async function* streamAI(options: {
+// ============================================================================
+// Concurrency-controlled public API
+// ============================================================================
+
+/**
+ * Call AI API with concurrency control.
+ *
+ * All LLM calls in beeclaw go through this function, which automatically
+ * enforces the global concurrency limit (default: 2).
+ *
+ * Callers can optionally pass `concurrency` options for priority scheduling:
+ *
+ * ```ts
+ * await callAI({
+ *   provider, model, messages,
+ *   concurrency: {
+ *     priority: LLMRequestPriority.CRITICAL,
+ *     caller: 'Agent.chat',
+ *   },
+ * });
+ * ```
+ */
+export async function callAI(options: CallAIOptions): Promise<AIResponse> {
+  const limiter = getLLMConcurrencyLimiter();
+  const { concurrency, ...aiOptions } = options;
+
+  const acquireOpts: AcquireOptions = {
+    caller: concurrency?.caller ?? 'callAI',
+    priority: concurrency?.priority,
+    timeoutMs: concurrency?.timeoutMs,
+  };
+
+  return limiter.execute(() => _callAIRaw(aiOptions), acquireOpts);
+}
+
+/**
+ * Stream AI response with concurrency control.
+ *
+ * NOTE: The semaphore permit is held for the entire duration of the stream
+ * (from acquire until the last chunk is consumed or the generator returns).
+ * This is intentional — a streaming connection occupies an API slot throughout.
+ */
+export async function* streamAI(options: StreamAIOptions): AsyncGenerator<string, void, unknown> {
+  const limiter = getLLMConcurrencyLimiter();
+  const { concurrency, ...aiOptions } = options;
+
+  const acquireOpts: AcquireOptions = {
+    caller: concurrency?.caller ?? 'streamAI',
+    priority: concurrency?.priority,
+    timeoutMs: concurrency?.timeoutMs,
+  };
+
+  // Acquire permit before starting the stream
+  const release = await limiter.acquire(acquireOpts);
+
+  try {
+    yield* _streamAIRaw(aiOptions);
+  } finally {
+    release();
+  }
+}
+
+// ============================================================================
+// Raw stream (no concurrency control — internal use only)
+// ============================================================================
+
+async function* _streamAIRaw(options: {
   provider: AIProvider;
   model: string;
   messages: ChatMessage[];
@@ -530,7 +628,7 @@ export async function executeToolCalls(
     try {
       const params = JSON.parse(call.function.arguments);
       logger.debug(`[Tool Call] ${call.function.name}`);
-      logger.debug(`  Parameters:`, JSON.stringify(params, null, 2).split('\n').map((line, i) => i === 0 ? line : '  ' + line).join('\n'));
+      logger.debug(`  Parameters:`, JSON.stringify(params, null, 2).split('\n').map((line: string, i: number) => i === 0 ? line : '  ' + line).join('\n'));
 
       const startTime = Date.now();
       const result = await executor(call.function.name, params);

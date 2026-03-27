@@ -647,9 +647,9 @@ export const RESILIENCE_PRESETS: Readonly<Record<PresetName, ResilienceConfig>> 
  *   }),
  *   circuitBreaker: z.object({
  *     failureThreshold: z.number().int().min(1).default(5),
- *     resetTimeoutMs: z.number().positive().default(60000),
+ *     resetTimeoutMs: z.number().positive().default(100000),
  *     halfOpenMaxAttempts: z.number().int().min(1).default(3),
- *     rollingWindowMs: z.number().positive().default(60000),
+ *     rollingWindowMs: z.number().positive().default(100000),
  *     rollingBuckets: z.number().int().min(1).default(10),
  *     volumeThreshold: z.number().int().min(1).default(5),
  *   }),

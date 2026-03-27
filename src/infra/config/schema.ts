@@ -486,12 +486,26 @@ export const LLMTierConfigSchema = z.object({
 // LLM Tiers Configuration Schema (v4) - record of tier name to config
 export const LLMTiersConfigSchema = z.record(z.string(), LLMTierConfigSchema);
 
+// LLM Concurrency Configuration Schema
+export const LLMConcurrencyConfigSchema = z.object({
+  /** Maximum concurrent LLM API requests (default: 2) */
+  maxConcurrent: z.number().min(1).max(100).default(2),
+  /** Maximum queue depth before rejecting (default: 50) */
+  maxQueueSize: z.number().min(1).max(500).default(50),
+  /** Queue wait timeout in milliseconds (default: 100000) */
+  queueTimeoutMs: z.number().min(1000).max(120000).default(100000),
+  /** Enable priority-based scheduling (default: true) */
+  enablePriority: z.boolean().default(true),
+});
+
 // LLM Router Configuration Schema (v4)
 export const LLMRouterConfigSchema = z.object({
   enabled: z.boolean().default(true),
   tiers: z.record(z.string(), LLMTierConfigSchema),
   fallbackEnabled: z.boolean().default(true),
   costTracking: z.boolean().default(true),
+  /** Concurrency control for LLM API calls */
+  concurrency: LLMConcurrencyConfigSchema.default({}),
 });
 
 // Web UI configuration schema
@@ -589,5 +603,6 @@ export type WebConfig = z.infer<typeof WebConfigSchema>;
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 export type LLMTierConfig = z.infer<typeof LLMTierConfigSchema>;
 export type LLMTiersConfig = z.infer<typeof LLMTiersConfigSchema>;
+export type LLMConcurrencyConfig = z.infer<typeof LLMConcurrencyConfigSchema>;
 export type LLMRouterConfig = z.infer<typeof LLMRouterConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
