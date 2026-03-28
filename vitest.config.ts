@@ -21,5 +21,18 @@ export default defineConfig({
     restoreMocks: true,
     mockReset: true,
     setupFiles: ['./src/test-setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'json'],
+      reportsDirectory: './coverage',
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/**/__tests__/**',
+        'src/**/*.test.ts',
+        'src/web/**',
+        'src/test-setup.ts',
+        'src/**/*.d.ts',
+      ],
+    },
   },
 });

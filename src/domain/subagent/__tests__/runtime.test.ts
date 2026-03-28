@@ -675,3 +675,688 @@ describe('initSubagentRuntime', () => {
     expect(getSubagentRuntime()).toBe(runtime2);
   });
 });
+
+// ============================================================================
+// Additional coverage tests — hooks, retry, depth check, edge cases
+// ============================================================================
+
+describe('SubagentRuntime — Hook Runner Integration', () => {
+  function createMockHookRunner() {
+    return {
+      runSubagentSpawning: vi.fn(async () => null),
+      runSubagentSpawned: vi.fn(async () => {}),
+      runSubagentDeliveryTarget: vi.fn(async () => null),
+      runSubagentEnded: vi.fn(async () => {}),
+    };
+  }
+
+  test('calls runSubagentSpawning with event data', async () => {
+    const hookRunner = createMockHookRunner();
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+
+    await runtime.spawn({ type: 'research', task: 'Hook test' });
+
+    expect(hookRunner.runSubagentSpawning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'research',
+        task: 'Hook test',
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  test('runSubagentSpawning modifies config when it returns non-null', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentSpawning.mockResolvedValueOnce({
+      task: 'Modified task',
+      context: 'Modified context',
+      model: 'modified-model',
+      provider: { type: 'modified' },
+    });
+
+    let capturedOptions: Record<string, unknown> | undefined;
+    const factory: RuntimeDeps['agentFactory'] = (options) => {
+      capturedOptions = options;
+      return createMockAgent();
+    };
+
+    const runtime = createTestRuntime({ deps: { hookRunner, agentFactory: factory } });
+    await runtime.spawn({ type: 'research', task: 'Original task' });
+
+    // The agent should have received the modified model/provider
+    expect(capturedOptions?.model).toBe('modified-model');
+  });
+
+  test('runSubagentSpawning error is caught gracefully', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentSpawning.mockRejectedValueOnce(new Error('Hook crash'));
+
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+    const result = await runtime.spawn({ type: 'research', task: 'Test' });
+
+    // Should still succeed — hook failure is non-critical
+    expect(result.success).toBe(true);
+  });
+
+  test('calls runSubagentSpawned after agent creation', async () => {
+    const hookRunner = createMockHookRunner();
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+
+    await runtime.spawn({ type: 'research', task: 'Spawned hook test' });
+
+    expect(hookRunner.runSubagentSpawned).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'research',
+        task: 'Spawned hook test',
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  test('runSubagentSpawned error is caught gracefully', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentSpawned.mockRejectedValueOnce(new Error('Spawned hook crash'));
+
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+    const result = await runtime.spawn({ type: 'research', task: 'Test' });
+
+    expect(result.success).toBe(true);
+  });
+
+  test('calls runSubagentDeliveryTarget on success', async () => {
+    const hookRunner = createMockHookRunner();
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+
+    await runtime.spawn({ type: 'research', task: 'Delivery test' });
+
+    expect(hookRunner.runSubagentDeliveryTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'research',
+        output: expect.any(String),
+        result: expect.objectContaining({ success: true }),
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  test('runSubagentDeliveryTarget modifies output', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentDeliveryTarget.mockResolvedValueOnce({
+      output: 'Modified output',
+    });
+
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+    const result = await runtime.spawn({ type: 'research', task: 'Test' });
+
+    expect(result.output).toBe('Modified output');
+  });
+
+  test('runSubagentDeliveryTarget modifies result', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentDeliveryTarget.mockResolvedValueOnce({
+      result: { tokensUsed: 9999 },
+    });
+
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+    const result = await runtime.spawn({ type: 'research', task: 'Test' });
+
+    expect(result.tokensUsed).toBe(9999);
+  });
+
+  test('runSubagentDeliveryTarget error is caught gracefully', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentDeliveryTarget.mockRejectedValueOnce(new Error('Delivery hook crash'));
+
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+    const result = await runtime.spawn({ type: 'research', task: 'Test' });
+
+    expect(result.success).toBe(true);
+  });
+
+  test('calls runSubagentEnded on success', async () => {
+    const hookRunner = createMockHookRunner();
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+
+    await runtime.spawn({ type: 'research', task: 'Ended hook test' });
+
+    expect(hookRunner.runSubagentEnded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'research',
+        success: true,
+        duration: expect.any(Number),
+        output: expect.any(String),
+        tokensUsed: expect.any(Number),
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  test('calls runSubagentEnded on failure', async () => {
+    const hookRunner = createMockHookRunner();
+    const failAgent = createMockAgent({
+      chat: async () => { throw new Error('agent crash'); },
+    });
+    const runtime = createTestRuntime({
+      deps: { hookRunner, agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Failing task' });
+
+    expect(result.success).toBe(false);
+    expect(hookRunner.runSubagentEnded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.stringContaining('agent crash'),
+      }),
+    );
+  });
+
+  test('runSubagentEnded error on success path is caught', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentEnded.mockRejectedValueOnce(new Error('Ended hook crash'));
+
+    const runtime = createTestRuntime({ deps: { hookRunner } });
+    const result = await runtime.spawn({ type: 'research', task: 'Test' });
+
+    expect(result.success).toBe(true);
+  });
+
+  test('runSubagentEnded error on failure path is caught', async () => {
+    const hookRunner = createMockHookRunner();
+    hookRunner.runSubagentEnded.mockRejectedValueOnce(new Error('Ended hook crash'));
+    const failAgent = createMockAgent({
+      chat: async () => { throw new Error('agent crash'); },
+    });
+    const runtime = createTestRuntime({
+      deps: { hookRunner, agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Fail' });
+
+    expect(result.success).toBe(false);
+  });
+
+  test('no hooks called when hookRunner is null', async () => {
+    const runtime = createTestRuntime({ deps: { hookRunner: null } });
+
+    const result = await runtime.spawn({ type: 'research', task: 'No hooks' });
+
+    expect(result.success).toBe(true);
+    // No crashes from null hookRunner
+  });
+});
+
+describe('SubagentRuntime — Retry Logic', () => {
+  test('retries on timeout error and eventually succeeds', async () => {
+    let callCount = 0;
+    const retryAgent = createMockAgent({
+      chat: async () => {
+        callCount++;
+        if (callCount <= 1) {
+          throw new Error('timeout occurred');
+        }
+        return 'Success after retry';
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(retryAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Retryable' });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toBe('Success after retry');
+    expect(callCount).toBe(2);
+  });
+
+  test('retries on network error', async () => {
+    let callCount = 0;
+    const retryAgent = createMockAgent({
+      chat: async () => {
+        callCount++;
+        if (callCount <= 1) {
+          throw new Error('network error');
+        }
+        return 'Network recovered';
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(retryAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Network retry' });
+
+    expect(result.success).toBe(true);
+    expect(callCount).toBe(2);
+  });
+
+  test('retries on ECONNRESET error', async () => {
+    let callCount = 0;
+    const retryAgent = createMockAgent({
+      chat: async () => {
+        callCount++;
+        if (callCount <= 1) {
+          throw new Error('ECONNRESET');
+        }
+        return 'Reconnected';
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(retryAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'ECONNRESET retry' });
+
+    expect(result.success).toBe(true);
+    expect(callCount).toBe(2);
+  });
+
+  test('retries on rate limit error', async () => {
+    let callCount = 0;
+    const retryAgent = createMockAgent({
+      chat: async () => {
+        callCount++;
+        if (callCount <= 1) {
+          throw new Error('rate limit exceeded');
+        }
+        return 'Rate limit cleared';
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(retryAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Rate limit retry' });
+
+    expect(result.success).toBe(true);
+    expect(callCount).toBe(2);
+  });
+
+  test('does not retry non-retryable errors', async () => {
+    let callCount = 0;
+    const failAgent = createMockAgent({
+      chat: async () => {
+        callCount++;
+        throw new Error('permission denied');
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Non-retryable' });
+
+    expect(result.success).toBe(false);
+    expect(callCount).toBe(1); // No retries
+    expect(result.error).toContain('permission denied');
+  });
+
+  test('fails after MAX_RETRIES+1 attempts on retryable error', async () => {
+    let callCount = 0;
+    const failAgent = createMockAgent({
+      chat: async () => {
+        callCount++;
+        throw new Error('timeout persists');
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'All retries fail' });
+
+    expect(result.success).toBe(false);
+    expect(callCount).toBe(3); // 1 initial + 2 retries (MAX_RETRIES=2)
+    expect(result.error).toContain('timeout persists');
+  });
+
+  test('abort signal is not retryable', async () => {
+    let callCount = 0;
+    const failAgent = createMockAgent({
+      chat: async () => {
+        callCount++;
+        throw new Error('Aborted');
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Abort no retry' });
+
+    expect(result.success).toBe(false);
+    expect(callCount).toBe(1); // No retries for abort
+  });
+
+  test('handles string error type', async () => {
+    const failAgent = createMockAgent({
+      chat: async () => {
+        throw 'string error message';
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'String error' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('string error message');
+  });
+
+  test('handles object error type (JSON stringifiable)', async () => {
+    const failAgent = createMockAgent({
+      chat: async () => {
+        throw { code: 42, reason: 'custom' };
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Object error' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('42');
+  });
+
+  test('handles non-JSON-stringifiable error type', async () => {
+    const failAgent = createMockAgent({
+      chat: async () => {
+        const circular: any = {};
+        circular.self = circular;
+        throw circular;
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(failAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Circular error' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+});
+
+describe('SubagentRuntime — Edge Cases', () => {
+  test('custom config.id is used as subagentId', async () => {
+    const runtime = createTestRuntime();
+
+    const result = await runtime.spawn({
+      type: 'research',
+      task: 'Custom id test',
+      id: 'my-custom-id',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.id).toBe('my-custom-id');
+  });
+
+  test('agent without estimatedTokens reports 0 tokens', async () => {
+    const agentNoTokens: AgentLike = {
+      chat: async () => 'Response',
+      // No estimatedTokens property
+    };
+    // Remove the property entirely
+    delete (agentNoTokens as any).estimatedTokens;
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: () => agentNoTokens },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'No tokens' });
+
+    expect(result.success).toBe(true);
+    expect(result.tokensUsed).toBe(0);
+  });
+
+  test('resetStats clears accumulated values', async () => {
+    const runtime = createTestRuntime();
+
+    await runtime.spawn({ type: 'research', task: 'Task 1' });
+    await runtime.spawn({ type: 'research', task: 'Task 2' });
+
+    expect(runtime.getStats().totalSpawned).toBe(2);
+
+    runtime.resetStats();
+
+    const stats = runtime.getStats();
+    expect(stats.totalSpawned).toBe(0);
+    expect(stats.successful).toBe(0);
+    expect(stats.failed).toBe(0);
+    expect(stats.totalTokens).toBe(0);
+    expect(stats.totalDuration).toBe(0);
+    expect(stats.avgDuration).toBe(0);
+  });
+
+  test('avgDuration is computed correctly', async () => {
+    const runtime = createTestRuntime();
+
+    await runtime.spawn({ type: 'research', task: 'Task 1' });
+    await runtime.spawn({ type: 'research', task: 'Task 2' });
+
+    const stats = runtime.getStats();
+    expect(stats.avgDuration).toBeCloseTo(stats.totalDuration / stats.totalSpawned, 0);
+  });
+
+  test('provider and model override in SubagentConfig', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const factory: RuntimeDeps['agentFactory'] = (options) => {
+      capturedOptions = options;
+      return createMockAgent();
+    };
+
+    const runtime = createTestRuntime({ deps: { agentFactory: factory } });
+
+    await runtime.spawn({
+      type: 'research',
+      task: 'Override test',
+      provider: { type: 'custom-provider' },
+      model: 'custom-model',
+    });
+
+    expect(capturedOptions?.provider).toEqual({ type: 'custom-provider' });
+    expect(capturedOptions?.model).toBe('custom-model');
+  });
+
+  test('maxTokens passed to agent factory', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const factory: RuntimeDeps['agentFactory'] = (options) => {
+      capturedOptions = options;
+      return createMockAgent();
+    };
+
+    const runtime = createTestRuntime({ deps: { agentFactory: factory } });
+
+    await runtime.spawn({
+      type: 'research',
+      task: 'Max tokens test',
+      maxTokens: 2048,
+    });
+
+    expect(capturedOptions?.maxTokens).toBe(2048);
+  });
+
+  test('spawn with sessionKey passed to constructor', async () => {
+    const runtime = new SubagentRuntime({
+      provider: mockProvider,
+      model: 'test-model',
+      sessionKey: 'custom-session',
+      deps: createTestDeps(),
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Session test' });
+    expect(result.success).toBe(true);
+  });
+
+  test('agent chat returns empty string triggers no-output error', async () => {
+    const emptyAgent = createMockAgent({
+      chat: async () => '',
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(emptyAgent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Empty output' });
+
+    // Empty string is falsy → throws 'No output from subagent'
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('No output from subagent');
+  });
+
+  test('SUBAGENT_TIMEOUT_MS env var overrides default timeout', async () => {
+    const origEnv = process.env.SUBAGENT_TIMEOUT_MS;
+
+    // Create a slow agent that would fail at 50ms but succeed at 300ms
+    const agent = createMockAgent({
+      chat: async () => {
+        await new Promise(r => setTimeout(r, 10));
+        return 'quick response';
+      },
+    });
+
+    process.env.SUBAGENT_TIMEOUT_MS = '500';
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(agent) },
+    });
+
+    const result = await runtime.spawn({ type: 'research', task: 'Env timeout test' });
+
+    expect(result.success).toBe(true);
+
+    // Restore
+    if (origEnv === undefined) {
+      delete process.env.SUBAGENT_TIMEOUT_MS;
+    } else {
+      process.env.SUBAGENT_TIMEOUT_MS = origEnv;
+    }
+  });
+});
+
+describe('SubagentRuntime — spawnParallel edge cases', () => {
+  test('respects SUBAGENT_MAX_CONCURRENCY env var', async () => {
+    const origEnv = process.env.SUBAGENT_MAX_CONCURRENCY;
+    process.env.SUBAGENT_MAX_CONCURRENCY = '2';
+
+    const runtime = createTestRuntime();
+
+    const configs: SubagentConfig[] = [
+      { type: 'research', task: 'Task 1' },
+      { type: 'research', task: 'Task 2' },
+      { type: 'research', task: 'Task 3' },
+    ];
+
+    const results = await runtime.spawnParallel(configs);
+    expect(results.length).toBe(3);
+    expect(results.every(r => r.success)).toBe(true);
+
+    if (origEnv === undefined) {
+      delete process.env.SUBAGENT_MAX_CONCURRENCY;
+    } else {
+      process.env.SUBAGENT_MAX_CONCURRENCY = origEnv;
+    }
+  });
+
+  test('maxConcurrency parameter overrides env var', async () => {
+    const runtime = createTestRuntime();
+
+    const configs: SubagentConfig[] = [
+      { type: 'research', task: 'Task 1' },
+      { type: 'research', task: 'Task 2' },
+    ];
+
+    const results = await runtime.spawnParallel(configs, 1);
+    expect(results.length).toBe(2);
+    expect(results.every(r => r.success)).toBe(true);
+  });
+
+  test('empty configs array returns empty results', async () => {
+    const runtime = createTestRuntime();
+
+    const results = await runtime.spawnParallel([]);
+    expect(results).toEqual([]);
+  });
+});
+
+describe('SubagentRuntime — pLimit concurrency', () => {
+  test('limits concurrent executions', async () => {
+    let maxConcurrent = 0;
+    let currentConcurrent = 0;
+
+    const trackingAgent = createMockAgent({
+      chat: async () => {
+        currentConcurrent++;
+        maxConcurrent = Math.max(maxConcurrent, currentConcurrent);
+        await new Promise(r => setTimeout(r, 20));
+        currentConcurrent--;
+        return 'done';
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(trackingAgent) },
+    });
+
+    const configs: SubagentConfig[] = Array.from({ length: 6 }, (_, i) => ({
+      type: 'research' as const,
+      task: `Task ${i}`,
+    }));
+
+    const results = await runtime.spawnParallel(configs, 2);
+
+    expect(results.length).toBe(6);
+    expect(maxConcurrent).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('SubagentRuntime — Outer catch error handling', () => {
+  test('handles string error in outer catch', async () => {
+    const factory: RuntimeDeps['agentFactory'] = () => {
+      throw 'string creation error';
+    };
+
+    const runtime = createTestRuntime({ deps: { agentFactory: factory } });
+    const result = await runtime.spawn({ type: 'research', task: 'String throw' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('string creation error');
+  });
+
+  test('handles object error in outer catch', async () => {
+    const factory: RuntimeDeps['agentFactory'] = () => {
+      throw { code: 500 };
+    };
+
+    const runtime = createTestRuntime({ deps: { agentFactory: factory } });
+    const result = await runtime.spawn({ type: 'research', task: 'Object throw' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('500');
+  });
+
+  test('handles non-stringifiable error in outer catch', async () => {
+    const factory: RuntimeDeps['agentFactory'] = () => {
+      const c: any = {};
+      c.self = c;
+      throw c;
+    };
+
+    const runtime = createTestRuntime({ deps: { agentFactory: factory } });
+    const result = await runtime.spawn({ type: 'research', task: 'Circular throw' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+});

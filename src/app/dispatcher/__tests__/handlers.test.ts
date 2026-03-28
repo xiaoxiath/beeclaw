@@ -1,23 +1,66 @@
 /**
- * Tests for Cron Handler Dispatch
+ * Tests for Dispatcher Handlers
  *
- * Validates that cron tasks are correctly dispatched to job handlers
+ * Comprehensive tests for registerDefaultHandlers covering all task types,
+ * error paths, and edge cases.
  */
 
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import type { Task } from '../types';
-import type { ProactiveJobData } from '../../../domain/proactive/types';
 
-// Mock all job handlers
-const mockHandleMemoryCompressJob = vi.fn(async () => {});
-const mockHandleLlmProactiveChatJob = vi.fn(async () => {});
-const mockHandleSelfEvolutionJob = vi.fn(async () => {});
-const mockHandleRunSkillJob = vi.fn(async () => {});
-const mockHandleGoalProgressCheckJob = vi.fn(async () => {});
-const mockHandleCustomJob = vi.fn(async () => {});
-const mockHandleSendReminderJob = vi.fn(async () => {});
+// ── Hoisted mocks ────────────────────────────────────────────────────────
 
-// Mock the job-handlers module
+const {
+  mockSendProactiveMessage,
+  mockConfirmDelivery,
+  mockGetMessageGateway,
+  mockLogger,
+  mockHandleMemoryCompressJob,
+  mockHandleLlmProactiveChatJob,
+  mockHandleSelfEvolutionJob,
+  mockHandleRunSkillJob,
+  mockHandleGoalProgressCheckJob,
+  mockHandleCustomJob,
+  mockHandleSendReminderJob,
+  mockRegisterHandler,
+  mockGetTaskDispatcher,
+} = vi.hoisted(() => ({
+  mockSendProactiveMessage: vi.fn(async () => ({ success: true, response: 'Hello!', sessionId: 'sess-1' })),
+  mockConfirmDelivery: vi.fn(),
+  mockGetMessageGateway: vi.fn(() => ({
+    replyMessage: vi.fn(async () => ({ success: true })),
+    postMessage: vi.fn(async () => ({ success: true })),
+  })),
+  mockLogger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+  mockHandleMemoryCompressJob: vi.fn(async () => {}),
+  mockHandleLlmProactiveChatJob: vi.fn(async () => {}),
+  mockHandleSelfEvolutionJob: vi.fn(async () => {}),
+  mockHandleRunSkillJob: vi.fn(async () => {}),
+  mockHandleGoalProgressCheckJob: vi.fn(async () => {}),
+  mockHandleCustomJob: vi.fn(async () => {}),
+  mockHandleSendReminderJob: vi.fn(async () => {}),
+  mockRegisterHandler: vi.fn(),
+  mockGetTaskDispatcher: vi.fn(),
+}));
+
+vi.mock('../../../domain/session', () => ({
+  sendProactiveMessage: mockSendProactiveMessage,
+  confirmDelivery: mockConfirmDelivery,
+}));
+
+vi.mock('../../gateway-channel', () => ({
+  getMessageGateway: mockGetMessageGateway,
+}));
+
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: mockLogger,
+}));
+
 vi.mock('../../../domain/proactive/job-handlers', () => ({
   handleMemoryCompressJob: mockHandleMemoryCompressJob,
   handleLlmProactiveChatJob: mockHandleLlmProactiveChatJob,
@@ -28,271 +71,437 @@ vi.mock('../../../domain/proactive/job-handlers', () => ({
   handleSendReminderJob: mockHandleSendReminderJob,
 }));
 
-describe('Cron Handler Dispatch', () => {
+vi.mock('../index', () => ({
+  getTaskDispatcher: mockGetTaskDispatcher,
+}));
+
+describe('registerDefaultHandlers', () => {
+  let handlers: Map<string, (task: Task) => Promise<void>>;
+
   beforeEach(() => {
-    // Reset all mocks
-    mockHandleMemoryCompressJob.mockClear();
-    mockHandleLlmProactiveChatJob.mockClear();
-    mockHandleSelfEvolutionJob.mockClear();
-    mockHandleRunSkillJob.mockClear();
-    mockHandleGoalProgressCheckJob.mockClear();
-    mockHandleCustomJob.mockClear();
-    mockHandleSendReminderJob.mockClear();
+    vi.clearAllMocks();
+    handlers = new Map();
+    mockRegisterHandler.mockImplementation((type: string, handler: any) => {
+      handlers.set(type, handler);
+    });
+    mockGetTaskDispatcher.mockReturnValue({
+      registerHandler: mockRegisterHandler,
+    });
   });
 
-  describe('handler routing', () => {
-    test('should dispatch to handleMemoryCompressJob', async () => {
-      const task: Task = {
-        id: 'test-1',
-        type: 'cron',
+  async function importAndRegister() {
+    // Re-import to trigger registerDefaultHandlers
+    const mod = await import('../handlers');
+    mod.registerDefaultHandlers();
+    return handlers;
+  }
+
+  // ── Message handler ───────────────────────────────────────────────────
+
+  describe('message handler', () => {
+    test('should register message handler', async () => {
+      await importAndRegister();
+      expect(handlers.has('message')).toBe(true);
+    });
+
+    test('should process message and send reply via gateway', async () => {
+      const gatewayReply = vi.fn(async () => ({ success: true }));
+      mockGetMessageGateway.mockReturnValue({
+        replyMessage: gatewayReply,
+        postMessage: vi.fn(),
+      });
+
+      await importAndRegister();
+      const handler = handlers.get('message')!;
+
+      const task = {
+        id: 't1',
+        sessionId: 's1',
+        type: 'message' as const,
         payload: {
-          handlerName: 'memory_compress',
-          params: {},
+          message: 'Hello',
+          userId: 'user1',
+          channel: 'feishu',
+          sessionId: 'sess-1',
+          context: { chatId: 'chat1', messageId: 'msg1' },
         },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
+        status: 'pending' as const,
+        attempts: 0,
+        maxAttempts: 3,
+        scheduledAt: new Date(),
+        createdAt: new Date(),
       };
 
-      // Simulate cron handler logic
-      const jobData: ProactiveJobData = {
-        scheduleId: task.id,
-        taskType: 'memory_compress',
-        params: task.payload.params,
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
+      await handler(task);
+
+      expect(mockSendProactiveMessage).toHaveBeenCalledWith({
+        message: 'Hello',
+        userId: 'user1',
+        channel: 'feishu',
+        sessionId: 'sess-1',
+        context: { chatId: 'chat1', messageId: 'msg1' },
+      });
+      expect(gatewayReply).toHaveBeenCalled();
+      expect(mockConfirmDelivery).toHaveBeenCalledWith('sess-1');
+    });
+
+    test('should throw if message processing fails', async () => {
+      mockSendProactiveMessage.mockResolvedValueOnce({ success: false, error: 'LLM error' });
+      await importAndRegister();
+      const handler = handlers.get('message')!;
+
+      const task = {
+        id: 't2', sessionId: 's1', type: 'message' as const,
+        payload: { message: 'Hi', userId: 'u1', channel: 'cli', sessionId: 's1', context: {} },
+        status: 'pending' as const, attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
       };
 
-      if (task.payload.handlerName === 'memory_compress') {
-        await mockHandleMemoryCompressJob();
-      }
+      await expect(handler(task)).rejects.toThrow('LLM error');
+    });
+
+    test('should throw with default message when error is empty', async () => {
+      mockSendProactiveMessage.mockResolvedValueOnce({ success: false });
+      await importAndRegister();
+      const handler = handlers.get('message')!;
+
+      const task = {
+        id: 't3', sessionId: 's1', type: 'message' as const,
+        payload: { message: 'Hi', userId: 'u1', channel: 'cli', sessionId: 's1', context: {} },
+        status: 'pending' as const, attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      };
+
+      await expect(handler(task)).rejects.toThrow('Message processing failed');
+    });
+
+    test('should skip gateway reply when no response', async () => {
+      mockSendProactiveMessage.mockResolvedValueOnce({ success: true, response: null });
+      const gatewayReply = vi.fn();
+      mockGetMessageGateway.mockReturnValue({ replyMessage: gatewayReply, postMessage: vi.fn() });
+
+      await importAndRegister();
+      const handler = handlers.get('message')!;
+
+      const task = {
+        id: 't4', sessionId: 's1', type: 'message' as const,
+        payload: { message: 'Hi', userId: 'u1', channel: 'cli', sessionId: 's1', context: {} },
+        status: 'pending' as const, attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      };
+
+      await handler(task);
+      expect(gatewayReply).not.toHaveBeenCalled();
+    });
+
+    test('should skip gateway reply when no channel', async () => {
+      mockSendProactiveMessage.mockResolvedValueOnce({ success: true, response: 'Response' });
+      const gatewayReply = vi.fn();
+      mockGetMessageGateway.mockReturnValue({ replyMessage: gatewayReply, postMessage: vi.fn() });
+
+      await importAndRegister();
+      const handler = handlers.get('message')!;
+
+      const task = {
+        id: 't5', sessionId: 's1', type: 'message' as const,
+        payload: { message: 'Hi', userId: 'u1', channel: '', sessionId: 's1', context: {} },
+        status: 'pending' as const, attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      };
+
+      await handler(task);
+      expect(gatewayReply).not.toHaveBeenCalled();
+    });
+
+    test('should throw when gateway reply fails', async () => {
+      mockSendProactiveMessage.mockResolvedValueOnce({ success: true, response: 'OK', sessionId: 's1' });
+      mockGetMessageGateway.mockReturnValue({
+        replyMessage: vi.fn(async () => ({ success: false, error: 'Gateway error' })),
+        postMessage: vi.fn(),
+      });
+
+      await importAndRegister();
+      const handler = handlers.get('message')!;
+
+      const task = {
+        id: 't6', sessionId: 's1', type: 'message' as const,
+        payload: { message: 'Hi', userId: 'u1', channel: 'feishu', sessionId: 's1', context: {} },
+        status: 'pending' as const, attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      };
+
+      await expect(handler(task)).rejects.toThrow('Gateway error');
+    });
+
+    test('should not confirmDelivery when sessionId is missing', async () => {
+      mockSendProactiveMessage.mockResolvedValueOnce({ success: true, response: 'OK' });
+      mockGetMessageGateway.mockReturnValue({
+        replyMessage: vi.fn(async () => ({ success: true })),
+        postMessage: vi.fn(),
+      });
+
+      await importAndRegister();
+      const handler = handlers.get('message')!;
+
+      const task = {
+        id: 't7', sessionId: 's1', type: 'message' as const,
+        payload: { message: 'Hi', userId: 'u1', channel: 'feishu', sessionId: null, context: {} },
+        status: 'pending' as const, attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      };
+
+      await handler(task);
+      expect(mockConfirmDelivery).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Cron handler ──────────────────────────────────────────────────────
+
+  describe('cron handler', () => {
+    test('should register cron handler', async () => {
+      await importAndRegister();
+      expect(handlers.has('cron')).toBe(true);
+    });
+
+    test('should dispatch memory_compress', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
+
+      await handler({
+        id: 'c1', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'memory_compress', params: {} },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
 
       expect(mockHandleMemoryCompressJob).toHaveBeenCalledTimes(1);
     });
 
-    test('should dispatch to handleLlmProactiveChatJob', async () => {
-      const task: Task = {
-        id: 'test-2',
-        type: 'cron',
-        payload: {
-          handlerName: 'llm_proactive_chat',
-          params: { prompt: 'Hello!' },
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+    test('should dispatch llm_proactive_chat with jobData', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
 
-      const jobData: ProactiveJobData = {
-        scheduleId: task.id,
-        taskType: 'llm_proactive_chat',
-        params: task.payload.params,
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
-      };
+      await handler({
+        id: 'c2', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'llm_proactive_chat', params: { prompt: 'test' } },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
 
-      if (task.payload.handlerName === 'llm_proactive_chat') {
-        await mockHandleLlmProactiveChatJob(jobData);
-      }
-
-      expect(mockHandleLlmProactiveChatJob).toHaveBeenCalledTimes(1);
-      expect(mockHandleLlmProactiveChatJob).toHaveBeenCalledWith(jobData);
+      expect(mockHandleLlmProactiveChatJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskType: 'llm_proactive_chat',
+          params: { prompt: 'test' },
+          triggeredBy: 'cron',
+        })
+      );
     });
 
-    test('should dispatch to handleSelfEvolutionJob', async () => {
-      const task: Task = {
-        id: 'test-3',
-        type: 'cron',
-        payload: {
-          handlerName: 'self_evolution',
-          params: {},
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+    test('should dispatch self_evolution', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
 
-      const jobData: ProactiveJobData = {
-        scheduleId: task.id,
-        taskType: 'self_evolution',
-        params: task.payload.params,
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
-      };
+      await handler({
+        id: 'c3', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'self_evolution', params: {} },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
 
-      if (task.payload.handlerName === 'self_evolution') {
-        await mockHandleSelfEvolutionJob(jobData);
-      }
-
-      expect(mockHandleSelfEvolutionJob).toHaveBeenCalledTimes(1);
-      expect(mockHandleSelfEvolutionJob).toHaveBeenCalledWith(jobData);
+      expect(mockHandleSelfEvolutionJob).toHaveBeenCalledWith(
+        expect.objectContaining({ taskType: 'self_evolution' })
+      );
     });
 
-    test('should dispatch to handleRunSkillJob', async () => {
-      const task: Task = {
-        id: 'test-4',
-        type: 'cron',
-        payload: {
-          handlerName: 'run_skill',
-          params: { skillName: 'test-skill' },
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+    test('should dispatch run_skill', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
 
-      const jobData: ProactiveJobData = {
-        scheduleId: task.id,
-        taskType: 'run_skill',
-        params: task.payload.params,
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
-      };
+      await handler({
+        id: 'c4', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'run_skill', params: { skill: 'test' } },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
 
-      if (task.payload.handlerName === 'run_skill') {
-        await mockHandleRunSkillJob(jobData);
-      }
-
-      expect(mockHandleRunSkillJob).toHaveBeenCalledTimes(1);
-      expect(mockHandleRunSkillJob).toHaveBeenCalledWith(jobData);
+      expect(mockHandleRunSkillJob).toHaveBeenCalled();
     });
 
-    test('should dispatch to handleGoalProgressCheckJob', async () => {
-      const task: Task = {
-        id: 'test-5',
-        type: 'cron',
-        payload: {
-          handlerName: 'check_goal_progress',
-          params: {},
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+    test('should dispatch check_goal_progress', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
 
-      if (task.payload.handlerName === 'check_goal_progress') {
-        await mockHandleGoalProgressCheckJob();
-      }
+      await handler({
+        id: 'c5', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'check_goal_progress', params: {} },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
 
-      expect(mockHandleGoalProgressCheckJob).toHaveBeenCalledTimes(1);
+      expect(mockHandleGoalProgressCheckJob).toHaveBeenCalled();
     });
 
-    test('should dispatch to handleCustomJob', async () => {
-      const task: Task = {
-        id: 'test-6',
-        type: 'cron',
-        payload: {
-          handlerName: 'custom',
-          params: { action: 'daily-reflection' },
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+    test('should dispatch send_reminder', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
 
-      const jobData: ProactiveJobData = {
-        scheduleId: task.id,
-        taskType: 'custom',
-        params: task.payload.params,
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
-      };
+      await handler({
+        id: 'c6', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'send_reminder', params: { msg: 'hi' } },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
 
-      if (task.payload.handlerName === 'custom') {
-        await mockHandleCustomJob(jobData);
-      }
-
-      expect(mockHandleCustomJob).toHaveBeenCalledTimes(1);
-      expect(mockHandleCustomJob).toHaveBeenCalledWith(jobData);
+      expect(mockHandleSendReminderJob).toHaveBeenCalled();
     });
 
-    test('should throw error for unknown handler', async () => {
-      const task: Task = {
-        id: 'test-7',
-        type: 'cron',
-        payload: {
-          handlerName: 'unknown_handler',
-          params: {},
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+    test('should dispatch custom', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
 
-      expect(() => {
-        if (!['memory_compress', 'llm_proactive_chat', 'self_evolution', 'run_skill', 'check_goal_progress', 'custom'].includes(task.payload.handlerName)) {
-          throw new Error(`Unknown cron handler: ${task.payload.handlerName}`);
-        }
-      }).toThrow('Unknown cron handler: unknown_handler');
-    });
-  });
+      await handler({
+        id: 'c7', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'custom', params: { action: 'test' } },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
 
-  describe('job data construction', () => {
-    test('should build correct ProactiveJobData', () => {
-      const task: Task = {
-        id: 'test-task-id',
-        type: 'cron',
-        payload: {
-          handlerName: 'run_skill',
-          params: { skillName: 'test', count: 5 },
-        },
-        status: 'pending',
-        createdAt: '2026-03-13T10:00:00.000Z',
-      };
-
-      const jobData: ProactiveJobData = {
-        scheduleId: task.id,
-        taskType: task.payload.handlerName as any,
-        params: task.payload.params,
-        triggeredAt: expect.any(String),
-        triggeredBy: 'cron',
-      };
-
-      expect(jobData.scheduleId).toBe('test-task-id');
-      expect(jobData.taskType).toBe('run_skill');
-      expect(jobData.params).toEqual({ skillName: 'test', count: 5 });
-      expect(jobData.triggeredBy).toBe('cron');
+      expect(mockHandleCustomJob).toHaveBeenCalled();
     });
 
-    test('should handle missing params', () => {
-      const task: Task = {
-        id: 'test-task-id',
-        type: 'cron',
-        payload: {
-          handlerName: 'memory_compress',
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+    test('should throw for unknown handler name', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
 
-      const jobData: ProactiveJobData = {
-        scheduleId: task.id,
-        taskType: task.payload.handlerName as any,
-        params: task.payload.params || {},
-        triggeredAt: new Date().toISOString(),
-        triggeredBy: 'cron',
-      };
-
-      expect(jobData.params).toEqual({});
+      await expect(handler({
+        id: 'c8', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'nonexistent_handler', params: {} },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task)).rejects.toThrow('Unknown cron handler: nonexistent_handler');
     });
-  });
 
-  describe('error handling', () => {
     test('should propagate handler errors', async () => {
-      const errorHandler = vi.fn(async () => {
-        throw new Error('Handler failed');
+      mockHandleMemoryCompressJob.mockRejectedValueOnce(new Error('Compression failed'));
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
+
+      await expect(handler({
+        id: 'c9', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'memory_compress', params: {} },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task)).rejects.toThrow('Compression failed');
+    });
+
+    test('should use task.id as scheduleId in jobData when id is present', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
+
+      await handler({
+        id: 'my-task-id', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'llm_proactive_chat', params: {} },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
+
+      expect(mockHandleLlmProactiveChatJob).toHaveBeenCalledWith(
+        expect.objectContaining({ scheduleId: 'my-task-id' })
+      );
+    });
+
+    test('should handle missing params by defaulting to empty object', async () => {
+      await importAndRegister();
+      const handler = handlers.get('cron')!;
+
+      await handler({
+        id: 'c10', sessionId: 's1', type: 'cron',
+        payload: { handlerName: 'custom' },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
+
+      expect(mockHandleCustomJob).toHaveBeenCalledWith(
+        expect.objectContaining({ params: {} })
+      );
+    });
+  });
+
+  // ── Reminder handler ──────────────────────────────────────────────────
+
+  describe('reminder handler', () => {
+    test('should register reminder handler', async () => {
+      await importAndRegister();
+      expect(handlers.has('reminder')).toBe(true);
+    });
+
+    test('should send reminder via gateway postMessage', async () => {
+      const mockPost = vi.fn(async () => ({ success: true }));
+      mockGetMessageGateway.mockReturnValue({
+        replyMessage: vi.fn(),
+        postMessage: mockPost,
       });
 
-      const task: Task = {
-        id: 'test-error',
-        type: 'cron',
-        payload: {
-          handlerName: 'memory_compress',
-          params: {},
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+      await importAndRegister();
+      const handler = handlers.get('reminder')!;
 
-      try {
-        await errorHandler();
-        expect(true).toBe(false); // Should not reach here
-      } catch (error: any) {
-        expect(error.message).toBe('Handler failed');
-      }
+      await handler({
+        id: 'r1', sessionId: 's1', type: 'reminder',
+        payload: { userId: 'user1', channel: 'feishu', message: 'Reminder!', chatId: 'chat1' },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task);
+
+      expect(mockPost).toHaveBeenCalledWith('feishu', 'Reminder!', {
+        userId: 'user1',
+        metadata: { chatId: 'chat1' },
+      });
+    });
+
+    test('should throw when reminder sending fails', async () => {
+      mockGetMessageGateway.mockReturnValue({
+        replyMessage: vi.fn(),
+        postMessage: vi.fn(async () => ({ success: false, error: 'Send failed' })),
+      });
+
+      await importAndRegister();
+      const handler = handlers.get('reminder')!;
+
+      await expect(handler({
+        id: 'r2', sessionId: 's1', type: 'reminder',
+        payload: { userId: 'u1', channel: 'cli', message: 'Hey' },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task)).rejects.toThrow('Send failed');
+    });
+
+    test('should throw default error message when error is empty', async () => {
+      mockGetMessageGateway.mockReturnValue({
+        replyMessage: vi.fn(),
+        postMessage: vi.fn(async () => ({ success: false })),
+      });
+
+      await importAndRegister();
+      const handler = handlers.get('reminder')!;
+
+      await expect(handler({
+        id: 'r3', sessionId: 's1', type: 'reminder',
+        payload: { userId: 'u1', channel: 'cli', message: 'Hey' },
+        status: 'pending', attempts: 0, maxAttempts: 3,
+        scheduledAt: new Date(), createdAt: new Date(),
+      } as Task)).rejects.toThrow('Failed to send reminder');
+    });
+  });
+
+  // ── Registration ──────────────────────────────────────────────────────
+
+  describe('registration', () => {
+    test('should register three default handlers', async () => {
+      await importAndRegister();
+      expect(mockRegisterHandler).toHaveBeenCalledTimes(3);
+      expect(mockRegisterHandler).toHaveBeenCalledWith('message', expect.any(Function));
+      expect(mockRegisterHandler).toHaveBeenCalledWith('cron', expect.any(Function));
+      expect(mockRegisterHandler).toHaveBeenCalledWith('reminder', expect.any(Function));
     });
   });
 });
