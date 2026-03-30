@@ -2,7 +2,7 @@
 
 import { $ } from 'bun';
 import { existsSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, renameSync } from 'fs';
-import { join } from 'path';
+import { basename, join, relative } from 'path';
 import { createHash } from 'crypto';
 
 const args = process.argv.slice(2);
@@ -54,7 +54,7 @@ if (result.success) {
   result.outputs.forEach((output) => {
     const content = readFileSync(output.path);
     const hash = createHash('md5').update(content).digest('hex').substring(0, 8);
-    const oldName = output.path.split('/').pop()!;
+    const oldName = basename(output.path);
     const ext = oldName.split('.').pop()!;
     const baseName = oldName.replace(`.${ext}`, '');
     const newName = `${baseName}.${hash}.${ext}`;
@@ -63,7 +63,7 @@ if (result.success) {
     renameSync(output.path, join(distDir, newName));
     fileHashes[oldName] = newName;
 
-    const relativePath = join(distDir, newName).replace(process.cwd() + '/', '');
+    const relativePath = relative(process.cwd(), join(distDir, newName));
     console.log(`  - ${relativePath} (${(output.size / 1024).toFixed(2)} KB)`);
   });
 
