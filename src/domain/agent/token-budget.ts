@@ -7,7 +7,7 @@
 
 import type { ChatMessage } from './types';
 import {
-  estimateMessageTokens, estimateTotalTokens, estimateTokens,
+  estimateMessageTokens, estimateTotalTokens,
   compressToolResult, compressAssistantMessage,
   type AgentContextConfig,
 } from './context';

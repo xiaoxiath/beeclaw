@@ -118,7 +118,6 @@ describe('TaskManager', () => {
       mockQueueGetJob.mockReturnValue(Promise.resolve({
         id: 'job-1',
         name: 'test',
-        state: 'completed',
         data: { foo: 'bar' },
         returnvalue: 'done',
         failedReason: null,
@@ -126,6 +125,8 @@ describe('TaskManager', () => {
         timestamp: Date.now(),
         processedOn: Date.now(),
         finishedOn: Date.now(),
+        getState: () => Promise.resolve('completed'),
+        remove: () => Promise.resolve(),
       }));
 
       const result = await manager.getJob('job-1');

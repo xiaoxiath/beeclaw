@@ -5,10 +5,9 @@ import type { AIProvider } from '../../infra/config/schema';
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent, UserContext } from './types';
 import { stripMessageMetadata } from './types';
 import { callAI, hasToolCalls, extractToolCalls, extractContent } from './api';
-import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, getCurrentTimeContext, buildVolatileContext } from './tools';
+import { getAllToolsForAI, SYSTEM_PROMPTS, buildSystemPrompt, formatSkillsForPrompt, buildVolatileContext } from './tools';
 import { logger } from '../../infra/observability/logger';
 import { getMemoryStore, getDynamicMemoryInjector } from '../memory';
-import { getLifecycleManager } from '../memory/lifecycle-manager';
 import { getSkillStore } from '../skills/store';
 // Task 3: Use port interfaces instead of direct adapter imports
 import { getHookRunnerPort, getHealthMonitorPort } from '../ports';
@@ -38,8 +37,6 @@ import { getContextHealthDashboard } from './context/health-dashboard';
 
 // Phase 4: Extracted modules from Agent god-object
 import { ToolDispatcher } from './tool-dispatcher';
-import { TokenBudgetManager } from './token-budget';
-import { SkillRunner } from './skill-runner';
 
 // Phase 5: Extracted tool executor (from createDefaultToolExecutor / _executeToolInner)
 import { createDefaultToolExecutor } from './tool-executor';
@@ -56,6 +53,24 @@ function safeJsonParse<T>(jsonString: string, fallback: T): T {
     logger.error('[Agent] Failed to parse JSON:', error, 'Input:', jsonString.substring(0, 100));
     return fallback;
   }
+}
+
+// Helper to safely extract a string property from parsed JSON
+function jsonStringProp(obj: unknown, key: string): string | undefined {
+  if (obj && typeof obj === 'object' && key in obj) {
+    const val = (obj as Record<string, unknown>)[key];
+    return typeof val === 'string' ? val : undefined;
+  }
+  return undefined;
+}
+
+// Helper to safely extract a boolean property from parsed JSON
+function jsonBoolProp(obj: unknown, key: string): boolean | undefined {
+  if (obj && typeof obj === 'object' && key in obj) {
+    const val = (obj as Record<string, unknown>)[key];
+    return typeof val === 'boolean' ? val : undefined;
+  }
+  return undefined;
 }
 
 // ============================================================================
@@ -120,23 +135,11 @@ export { createDefaultToolExecutor, _executeToolInner } from './tool-executor';
 
 
 // Agent class
-// [KV-Cache] Lightweight djb2 hash for dirty-checking system prompt stability.
-function simpleHash(str: string): string {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
-  }
-  return hash.toString(36);
-}
-
 export class Agent {
   private options: AgentOptions;
   private messages: ChatMessage[] = [];
   private toolExecutor: ToolExecutor;
-  private lastSkillFailed: string | undefined;
   private baseSystemPrompt: string;
-  /** [KV-Cache] Content hash of last stable system prompt to skip no-op rebuilds */
-  private _lastStableHash: string = '';
   private autoRefreshMemory: boolean;
   private contextConfig: AgentContextConfig;
   private tokenStatsConfig: TokenStatsConfig;
@@ -161,8 +164,6 @@ export class Agent {
 
   // Phase 4: Extracted focused modules
   private toolDispatcher: ToolDispatcher;
-  private tokenBudget: TokenBudgetManager;
-  private skillRunner: SkillRunner;
 
   // [P1] Evolution system: tracks reflection triggers and preference signals
   private evolutionEnabled: boolean = true;
@@ -284,11 +285,6 @@ export class Agent {
       this.options.blockedTools,
       TimeoutEnforcer.fromConfig(),
     );
-    this.tokenBudget = new TokenBudgetManager(
-      this.contextConfig,
-      this.estimatedTokens,
-    );
-    this.skillRunner = new SkillRunner();
 
     // Trigger before_agent_start hook (async, fire-and-forget)
     // [E-P1-02] Added .catch() to prevent unhandled rejection
@@ -322,28 +318,6 @@ export class Agent {
   }
 
   // Build system prompt with plugin hooks
-  private async buildSystemPromptWithHooks(
-    basePrompt: string,
-    coreContext?: { user: string; soul: string; facts?: string; skills?: string },
-    sessionContext?: any
-  ): Promise<string> {
-    if (this.hookRunner) {
-      const modifiedContext = await this.hookRunner.runBeforePromptBuild({
-        basePrompt,
-        coreContext,
-        sessionContext,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (modifiedContext) {
-        basePrompt = modifiedContext.basePrompt || basePrompt;
-        coreContext = modifiedContext.coreContext || coreContext;
-        sessionContext = modifiedContext.sessionContext || sessionContext;
-      }
-    }
-
-    return buildSystemPrompt(basePrompt, coreContext, sessionContext);
-  }
 
   // Refresh memory context (delegated to MemoryManager — A-P1-05)
   refreshMemory(): void {
@@ -793,7 +767,6 @@ export class Agent {
     this.currentUserContext = options?.userContext;
 
     const tokensBefore = this.estimatedTokens;
-    this.lastSkillFailed = undefined;
     this.usedSkillsInTurn.clear();
     this.loopDetector.reset(); // Reset loop detector for new turn
     this.lastToolCalls = []; // Clear tool calls from previous turn
@@ -1039,7 +1012,7 @@ export class Agent {
         if (skillGetCall && otherCalls.length > 0) {
           // 【修复 Bug 1】先执行 skill_get，但不要 continue，继续执行其他工具
           const params = safeJsonParse(skillGetCall.function.arguments, {});
-          logger.debug(`\n[Skill] 🎯 Getting skill: ${params.name}`);
+          logger.debug(`\n[Skill] Getting skill: ${jsonStringProp(params, 'name')}`);
           options?.onToolCall?.(skillGetCall.function.name, params);
 
           // Generate ContentBlock for skill_get
@@ -1060,10 +1033,10 @@ export class Agent {
             const result = await this.toolExecutor(skillGetCall.function.name, params, this.currentUserContext);
             options?.onToolResult?.(skillGetCall.function.name, result);
 
-            const skillName = params.name as string;
+            const skillName = jsonStringProp(params, 'name');
             if (skillName) {
               this.usedSkillsInTurn.add(skillName);
-              logger.debug(`[Skill] ✅ Skill "${skillName}" loaded and will be used`);
+              logger.debug(`[Skill] Skill "${skillName}" loaded and will be used`);
             }
 
             this.estimatedTokens -= estimateMessageTokens({
@@ -1163,29 +1136,28 @@ export class Agent {
           const params = safeJsonParse(call.function.arguments, {});
 
           if (call.function.name === 'skill_record') {
-            const skillName = params.name as string;
-            const success = params.success as boolean;
+            const skillName = jsonStringProp(params, 'name');
+            const success = jsonBoolProp(params, 'success');
             if (!success && skillName) {
               const contextStr = typeof userMessage === 'string'
                 ? userMessage
                 : '[Multimodal message]';
               recordSkillFailure(skillName, contextStr);
-              this.lastSkillFailed = skillName;
             }
           }
 
           if (call.function.name === 'skill_get') {
-            const skillName = params.name as string;
+            const skillName = jsonStringProp(params, 'name');
             if (skillName) {
               this.usedSkillsInTurn.add(skillName);
-              logger.debug(`[Skill] \u2705 Using skill: ${skillName}`);
+              logger.debug(`[Skill] Using skill: ${skillName}`);
             }
           }
 
           if (call.function.name === 'skill_record') {
-            const skillName = params.name as string;
-            const success = params.success as boolean;
-            logger.debug(`[Skill] \ud83d\udcdd Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
+            const skillName = jsonStringProp(params, 'name');
+            const success = jsonBoolProp(params, 'success');
+            logger.debug(`[Skill] Recording skill usage: ${skillName} (${success ? 'success' : 'failure'})`);
           }
 
           let resultToSave = result;
@@ -1251,7 +1223,7 @@ export class Agent {
     if (this.skillEnforcement && skillMatch?.matched && finalContent) {
       const issues = this.skillEnforcement.validateOutputCompleteness(
         finalContent,
-        skillMatch.skills,
+        skillMatch.skills.map((s: any) => s.skill ?? s) as any[],
       );
 
       if (issues.length > 0) {
@@ -1413,7 +1385,7 @@ export class Agent {
    *
    * Runs asynchronously and never blocks the main response path.
    */
-  private async checkEvolutionTriggers(messages: ChatMessage[]): Promise<void> {
+  private async checkEvolutionTriggers(_messages: ChatMessage[]): Promise<void> {
     if (!this.evolutionEnabled) return;
 
     this.turnsSinceLastReflection++;
@@ -1500,7 +1472,6 @@ export class Agent {
     this.currentUserContext = options?.userContext;
 
     // [AUDIT FIX M-01] Use shared turn preparation (same as chat())
-    this.lastSkillFailed = undefined;
     this.usedSkillsInTurn.clear();
     this.loopDetector.reset();
     this.lastToolCalls = [];
@@ -1650,7 +1621,7 @@ export class Agent {
 
           // Track skill usage
           if (call.function.name === 'skill_get') {
-            const skillName = params.name as string;
+            const skillName = jsonStringProp(params, 'name');
             if (skillName) {
               this.usedSkillsInTurn.add(skillName);
             }
@@ -1683,7 +1654,8 @@ export class Agent {
     this.trimContextIfNeeded();
 
     // Record conversation to memory (delegated to MemoryManager — A-P1-05)
-    await this.memoryManager.recordConversation(userMessage, finalContent);
+    const userMessageStr = typeof userMessage === 'string' ? userMessage : '[Multimodal message]';
+    await this.memoryManager.recordConversation(userMessageStr, finalContent);
 
     // Yield skill attribution if any skills were used
     if (this.usedSkillsInTurn.size > 0) {

@@ -28,6 +28,23 @@ export interface ToolCall {
 export interface ToolResult {
   tool_call_id: string;
   content: string;
+  success?: boolean;
+  error?: string;
+  data?: unknown;
+  /** Human-readable output text (used by state tools) */
+  output?: string;
+  /** HITL signal: the tool needs user input before completing */
+  needsUserInput?: boolean;
+  /** HITL: the question to ask the user */
+  question?: string;
+  /** HITL: available options for the user */
+  options?: string[];
+  /** HITL: additional context */
+  context?: string;
+  /** HITL: expected input type */
+  inputType?: string;
+  /** HITL: status message */
+  message?: string;
 }
 
 // Multimodal content types

@@ -22,17 +22,9 @@ const QUEUE_CONFIGS: Record<QueueName, { priority: number }> = {
 class TaskManager {
   private queues: Map<string, Queue> = new Map();
   private workers: Map<string, Worker> = new Map();
-  private config: QueueConfig;
   private initialized = false;
-  private dbPath: string;
 
-  constructor(config?: QueueConfig) {
-    this.config = config || {
-      enabled: true,
-      mode: 'embedded',
-      storage: { path: './data/queue/beeclaw.db' },
-    };
-    this.dbPath = this.config.storage?.path || './data/queue/beeclaw.db';
+  constructor(_config?: QueueConfig) {
   }
 
   /**
@@ -45,7 +37,6 @@ class TaskManager {
     for (const [name] of Object.entries(QUEUE_CONFIGS)) {
       const queue = new Queue(name, {
         embedded: true,
-        path: this.dbPath,
       });
       this.queues.set(name, queue);
     }
@@ -102,7 +93,7 @@ class TaskManager {
       try {
         const job = await queue.getJob(jobId);
         if (job) {
-          return this.formatJobResult(job, queueName);
+          return await this.formatJobResult(job, queueName);
         }
       } catch {
         // Job not found in this queue, continue
@@ -209,7 +200,7 @@ class TaskManager {
       // Return empty array on error
     }
 
-    return jobs.map(job => this.formatJobResult(job, queue));
+    return await Promise.all(jobs.map(job => this.formatJobResult(job, queue)));
   }
 
   /**
@@ -243,7 +234,6 @@ class TaskManager {
   ): void {
     const worker = new Worker(queue, handler, {
       embedded: true,
-      path: this.dbPath,
       concurrency: options?.concurrency ?? 3,
     });
 
@@ -282,12 +272,13 @@ class TaskManager {
   /**
    * Format job result
    */
-  private formatJobResult(job: Job, queue: string): JobResult {
+  private async formatJobResult(job: Job, queue: string): Promise<JobResult> {
+    const jobState = await job.getState();
     return {
       id: job.id,
       name: job.name,
       queue,
-      state: this.mapState(job.state),
+      state: this.mapState(jobState),
       data: job.data,
       result: job.returnvalue,
       error: job.failedReason,

@@ -125,11 +125,11 @@ export function getAllTools(): OpenAITool[] {
   }
 
   return [
-    ...memoryTools.map(toOpenAITool),
-    ...skillTools.map(toOpenAITool),
-    ...goalTools.map(toOpenAITool),
-    ...proactiveTools.map(toOpenAITool),
-    ...builtinTools.map(toOpenAITool),
+    ...memoryTools.map(t => toOpenAITool(t as ToolDefinition)),
+    ...skillTools.map(t => toOpenAITool(t as ToolDefinition)),
+    ...goalTools.map(t => toOpenAITool(t as ToolDefinition)),
+    ...proactiveTools.map(t => toOpenAITool(t as ToolDefinition)),
+    ...builtinTools.map(t => toOpenAITool(t as ToolDefinition)),
     ...personaTools,
     // Feishu tools removed - now handled by feishu-cli-toolkit skill
     ...mcpTools,

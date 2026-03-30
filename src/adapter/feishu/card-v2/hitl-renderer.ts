@@ -18,8 +18,6 @@ const RISK_COLORS = {
   critical: 'red',
 } as const;
 
-type RiskLevel = keyof typeof RISK_COLORS;
-
 /**
  * 渲染确认请求卡片
  */

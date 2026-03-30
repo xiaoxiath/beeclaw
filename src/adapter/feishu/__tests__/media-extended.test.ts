@@ -40,17 +40,17 @@ function makeClient() {
   return {
     im: {
       image: {
-        create: vi.fn(() => Promise.resolve({ code: 0, data: { image_key: 'img_key_1' } })),
-        get: vi.fn(() => Promise.resolve({ code: 0, data: Buffer.from('image-bytes') })),
+        create: vi.fn(() => Promise.resolve({ image_key: 'img_key_1' })),
+        get: vi.fn(() => Promise.resolve(Buffer.from('image-bytes'))),
       },
       file: {
-        create: vi.fn(() => Promise.resolve({ code: 0, data: { file_key: 'file_key_1' } })),
+        create: vi.fn(() => Promise.resolve({ file_key: 'file_key_1' })),
       },
       message: {
         create: vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_media' } })),
       },
       messageResource: {
-        get: vi.fn(() => Promise.resolve({ code: 0, data: Buffer.from('resource-bytes') })),
+        get: vi.fn(() => Promise.resolve(Buffer.from('resource-bytes'))),
       },
     },
   } as any;
@@ -76,10 +76,7 @@ describe('media-extended', () => {
   // =====================================================
   describe('readFeishuResponseBuffer branches', () => {
     it('handles Buffer response directly', async () => {
-      client.im.image.get.mockResolvedValue({
-        code: 0,
-        data: Buffer.from('direct-buffer'),
-      });
+      client.im.image.get.mockResolvedValue(Buffer.from('direct-buffer'));
       const buf = await downloadImage(client, 'img_1');
       expect(buf.toString()).toBe('direct-buffer');
     });
@@ -88,7 +85,7 @@ describe('media-extended', () => {
       const ab = new ArrayBuffer(5);
       const view = new Uint8Array(ab);
       view.set([72, 69, 76, 76, 79]); // "HELLO"
-      client.im.image.get.mockResolvedValue({ code: 0, data: ab });
+      client.im.image.get.mockResolvedValue(ab);
       const buf = await downloadImage(client, 'img_1');
       expect(buf.toString()).toBe('HELLO');
     });
@@ -96,7 +93,7 @@ describe('media-extended', () => {
     it('handles object with buffer property (typed array-like)', async () => {
       const ab = new ArrayBuffer(3);
       new Uint8Array(ab).set([65, 66, 67]); // "ABC"
-      client.im.image.get.mockResolvedValue({ code: 0, data: { buffer: ab } });
+      client.im.image.get.mockResolvedValue({ buffer: ab });
       const buf = await downloadImage(client, 'img_1');
       expect(buf.toString()).toBe('ABC');
     });
@@ -113,7 +110,7 @@ describe('media-extended', () => {
         }),
       };
       const mockStream = { getReader: vi.fn(() => mockReader) };
-      client.im.image.get.mockResolvedValue({ code: 0, data: mockStream });
+      client.im.image.get.mockResolvedValue(mockStream);
       const buf = await downloadImage(client, 'img_1');
       expect(buf.toString()).toBe('HI');
     });
@@ -133,25 +130,25 @@ describe('media-extended', () => {
           };
         },
       };
-      client.im.image.get.mockResolvedValue({ code: 0, data: asyncIterable });
+      client.im.image.get.mockResolvedValue(asyncIterable);
       const buf = await downloadImage(client, 'img_1');
       expect(buf.toString()).toBe('OK');
     });
 
     it('throws on unsupported response type (string)', async () => {
-      client.im.image.get.mockResolvedValue({ code: 0, data: 'just a string' });
+      client.im.image.get.mockResolvedValue('just a string');
       await expect(downloadImage(client, 'img_1'))
         .rejects.toThrow('Unable to read response as buffer');
     });
 
     it('throws on null response data', async () => {
-      client.im.image.get.mockResolvedValue({ code: 0, data: null });
+      client.im.image.get.mockResolvedValue(null);
       await expect(downloadImage(client, 'img_1'))
-        .rejects.toThrow('Unable to read response as buffer');
+        .rejects.toThrow('Failed to download image: no response');
     });
 
     it('throws on number response data', async () => {
-      client.im.image.get.mockResolvedValue({ code: 0, data: 42 });
+      client.im.image.get.mockResolvedValue(42);
       await expect(downloadImage(client, 'img_1'))
         .rejects.toThrow('Unable to read response as buffer');
     });
@@ -171,10 +168,7 @@ describe('media-extended', () => {
           return Promise.resolve({ done: true, value: undefined });
         }),
       };
-      client.im.image.get.mockResolvedValue({
-        code: 0,
-        data: { getReader: () => mockReader },
-      });
+      client.im.image.get.mockResolvedValue({ getReader: () => mockReader });
       const buf = await downloadImage(client, 'img_1');
       expect(buf.toString()).toBe('ABCDE');
     });
@@ -187,7 +181,7 @@ describe('media-extended', () => {
     it('handles ArrayBuffer response in messageResource', async () => {
       const ab = new ArrayBuffer(2);
       new Uint8Array(ab).set([79, 75]);
-      client.im.messageResource.get.mockResolvedValue({ code: 0, data: ab });
+      client.im.messageResource.get.mockResolvedValue(ab);
       const buf = await downloadMessageResource(client, 'msg_1', 'fk_1');
       expect(buf.toString()).toBe('OK');
     });
@@ -269,8 +263,8 @@ describe('media-extended', () => {
         .rejects.toThrow('exceeds maximum');
     });
 
-    it('returns empty fileKey when data has no file_key', async () => {
-      client.im.file.create.mockResolvedValue({ code: 0, data: {} });
+    it('returns empty fileKey when response has no file_key', async () => {
+      client.im.file.create.mockResolvedValue({});
       const result = await uploadFile(client, Buffer.from('data'), { filename: 'test.pdf' });
       expect(result.fileKey).toBe('');
     });
@@ -286,8 +280,8 @@ describe('media-extended', () => {
   // uploadImage: empty imageKey return
   // =====================================================
   describe('uploadImage empty key return', () => {
-    it('returns empty imageKey when data has no image_key', async () => {
-      client.im.image.create.mockResolvedValue({ code: 0, data: {} });
+    it('returns empty imageKey when response has no image_key', async () => {
+      client.im.image.create.mockResolvedValue({});
       const result = await uploadImage(client, Buffer.from('data'), { filename: 'test.png' });
       expect(result.imageKey).toBe('');
     });

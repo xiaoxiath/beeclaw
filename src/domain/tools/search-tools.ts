@@ -5,7 +5,6 @@
  */
 
 import { z } from 'zod';
-import { logger } from '../../infra/observability/logger';
 import {
   getSearchOrchestrator,
   getContentExtractor,

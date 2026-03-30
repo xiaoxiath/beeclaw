@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import { Send, Loader2, Bot, User, Wrench, ChevronDown, ChevronUp, MessageSquare, Trash2 } from 'lucide-react';
 
 interface Message {
@@ -18,6 +19,20 @@ interface Session {
   updatedAt: string;
   summary?: string;
 }
+
+const markdownComponents: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="mb-2 list-disc pl-4">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-2 list-decimal pl-4">{children}</ol>,
+  code: ({ className, children }) => {
+    const isInline = !className;
+    return isInline ? (
+      <code className="bg-gray-100 px-1 py-0.5 rounded text-sm">{children}</code>
+    ) : (
+      <code className="block bg-gray-100 p-2 rounded text-sm overflow-x-auto">{children}</code>
+    );
+  },
+};
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -307,24 +322,11 @@ export default function Chat() {
                   <p>{message.content}</p>
                 ) : (
                   <>
-                    <ReactMarkdown
-                      className="prose prose-sm max-w-none"
-                      components={{
-                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                        ul: ({ children }) => <ul className="mb-2 list-disc pl-4">{children}</ul>,
-                        ol: ({ children }) => <ol className="mb-2 list-decimal pl-4">{children}</ol>,
-                        code: ({ className, children }) => {
-                          const isInline = !className;
-                          return isInline ? (
-                            <code className="bg-gray-100 px-1 py-0.5 rounded text-sm">{children}</code>
-                          ) : (
-                            <code className="block bg-gray-100 p-2 rounded text-sm overflow-x-auto">{children}</code>
-                          );
-                        },
-                      }}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown components={markdownComponents}>
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
 
                     {/* Tool Calls */}
                     {message.toolCalls && message.toolCalls.length > 0 && (

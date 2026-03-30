@@ -61,7 +61,7 @@ export function extractMessageBody(
 
   try {
     // Parse post message
-    if (event.message.message_type === 'post') {
+    if (event.message?.message_type === 'post') {
       const postContent = JSON.parse(content);
       const textSegments: string[] = [];
 
@@ -83,7 +83,7 @@ export function extractMessageBody(
     }
 
     // Parse text message
-    if (event.message.message_type === 'text') {
+    if (event.message?.message_type === 'text') {
       const textContent = JSON.parse(content);
       let text = textContent.text || '';
 

@@ -88,14 +88,14 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
 };
 
 // Custom Task Node Component
-function TaskNode({ data, _id }: { data: any; _id: string }) {
+function TaskNode({ data }: { data: any }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const statusConfig = {
-    completed: { icon: CheckCircle, color: 'text-green-500', bg: 'border-green-500' },
-    failed: { icon: XCircle, color: 'text-red-500', bg: 'border-red-500' },
+    completed: { icon: CheckCircle, color: 'text-green-500', bg: 'border-green-500', animate: false },
+    failed: { icon: XCircle, color: 'text-red-500', bg: 'border-red-500', animate: false },
     running: { icon: Loader2, color: 'text-blue-500', bg: 'border-blue-500', animate: true },
-    pending: { icon: Clock, color: 'text-yellow-500', bg: 'border-yellow-500' },
+    pending: { icon: Clock, color: 'text-yellow-500', bg: 'border-yellow-500', animate: false },
   };
 
   const config = statusConfig[data.status as keyof typeof statusConfig] || statusConfig.pending;
@@ -116,7 +116,7 @@ function TaskNode({ data, _id }: { data: any; _id: string }) {
           </div>
           <div className="flex items-center gap-2">
             <StatusIcon
-              className={`w-4 h-4 ${config.color} ${config.animate ? 'animate-spin' : ''}`}
+              className={`w-4 h-4 ${config.color} ${'animate' in config && config.animate ? 'animate-spin' : ''}`}
             />
           </div>
         </div>
@@ -161,7 +161,7 @@ function TaskNode({ data, _id }: { data: any; _id: string }) {
 
 const nodeTypes = {
   task: TaskNode,
-};
+} as any;
 
 // Custom Zoom Controls Component
 function CustomControls() {

@@ -196,8 +196,8 @@ function resolveConfig(rawConfig: AppConfig): AppConfig {
         resolvedAgent.params
       );
 
-      resolvedAgent.provider = provider.name;
-      resolvedAgent.model = roleDef.model;
+      (resolvedAgent as any).provider = provider.name;
+      (resolvedAgent as any).model = roleDef.model;
       (resolvedAgent as any)._resolvedParams = resolvedParams;
     } catch (error) {
       logger.error(`Failed to resolve agent role "${resolvedAgent.role}":`, error);
@@ -233,13 +233,13 @@ function resolveConfig(rawConfig: AppConfig): AppConfig {
           provider: provider.name,
           model: roleDef.model,
           _resolvedParams: resolvedParams,
-        };
+        } as any;
       }
 
       // Backward compatibility: use model directly
       return agent;
     } catch (error) {
-      logger.error(`Failed to resolve agent "${agent.id}":`, error);
+      logger.error(`Failed to resolve agent "${(agent as any).id || (agent as any).role}":`, error);
       return agent;
     }
   });
@@ -272,10 +272,10 @@ function resolveConfig(rawConfig: AppConfig): AppConfig {
             ...tier,
             provider: provider.name,
             models: [roleDef.model],
-            maxTokens: resolvedParams.max_tokens || tier.maxTokens,
-            temperature: resolvedParams.temperature || tier.temperature,
+            maxTokens: resolvedParams.max_tokens,
+            temperature: resolvedParams.temperature,
             _resolvedParams: resolvedParams,
-          };
+          } as any;
         }
       } catch (error) {
         logger.error(`Failed to resolve LLM tier "${tierName}":`, error);
@@ -317,7 +317,7 @@ function resolveConfig(rawConfig: AppConfig): AppConfig {
         provider: provider.name,
         model: roleDef.model,
         _resolvedParams: resolvedParams,
-      };
+      } as any;
     } catch (error) {
       logger.error('Failed to resolve compression config:', error);
     }

@@ -7,8 +7,6 @@
  * This eliminates direct domain→adapter imports, enforcing clean architecture.
  */
 
-import type { SessionMessage } from '../session/index';
-
 // ============================================================================
 // Port Interfaces
 // ============================================================================

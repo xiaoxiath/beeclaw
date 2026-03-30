@@ -76,15 +76,15 @@ export async function executeUpdateUserSettings(params: {
     }
 
     if (!config.user) {
-      config.user = {};
+      config.user = { locale: 'zh-CN' };
     }
 
     if (location) {
-      config.user.location = location;
+      (config.user as Record<string, unknown>).location = location;
     }
 
     if (resolvedTimezone) {
-      config.user.timezone = resolvedTimezone;
+      (config.user as Record<string, unknown>).timezone = resolvedTimezone;
     }
 
     writeFileAtomic(configPath, JSON.stringify(config, null, 2));

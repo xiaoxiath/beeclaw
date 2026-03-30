@@ -8,12 +8,19 @@
  * - Circuit breaker status aggregation
  * - Optional periodic background probing
  */
-import Anthropic from '@anthropic-ai/sdk';
 import type { Logger } from '../../infra/observability/logger';
 import type { CircuitBreaker, CircuitState } from '../../infra/resilience/circuit-breaker';
 
-// Re-export for convenience
-export type ToolDefinition = Anthropic.Messages.Tool;
+// Inline tool definition type (replaces Anthropic.Messages.Tool)
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

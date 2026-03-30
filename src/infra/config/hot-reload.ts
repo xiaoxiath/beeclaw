@@ -456,7 +456,6 @@ export class ConfigWatcher {
 export class ConfigManager {
   private config: AppConfig | null = null;
   private watcher: ConfigWatcher;
-  private configPath: string | null = null;
 
   constructor() {
     this.watcher = new ConfigWatcher();
@@ -505,7 +504,7 @@ export class ConfigManager {
       this.config = result.data;
     }
 
-    this.configPath = foundPath;
+
 
     // 开始监听
     this.watcher.start(foundPath, this.config);
@@ -539,7 +538,6 @@ export class ConfigManager {
   destroy(): void {
     this.watcher.stop();
     this.config = null;
-    this.configPath = null;
   }
 }
 

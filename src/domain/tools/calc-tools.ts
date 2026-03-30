@@ -7,7 +7,6 @@
 import { z } from 'zod';
 import { writeFileSync, unlinkSync } from 'fs';
 import { create, all } from 'mathjs';
-import { logger } from '../../infra/observability/logger';
 import type { BuiltinToolResult } from './builtin';
 
 // ============================================================================

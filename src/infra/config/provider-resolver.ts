@@ -77,12 +77,10 @@ export class ProviderResolver {
       );
     }
 
-    // Get model info
-    const model = roleDef.model;
-    const _modelDef = this.getModelDefinition(provider, model);
-
     // v6: Two-layer merge (Role → Usage)
     // Model metadata (contextWindow, maxTokens) is not merged into params
+    const model = roleDef.model;
+    this.getModelDefinition(provider, model);
     const mergedParams = ParamsMerger.mergeParams(
       roleDef.params || {},
       usageParams || {}

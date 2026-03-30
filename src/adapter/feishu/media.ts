@@ -4,11 +4,15 @@
  * Handles uploading and downloading images and files
  */
 
+import type * as Lark from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import { extname } from 'path';
 import { readFile } from 'fs/promises';
 
 const logger = getLogger('feishu:media');
+
+/** Client type alias for the Lark SDK Client */
+type Client = InstanceType<typeof Lark.Client>;
 
 // Supported image types
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.tiff', '.bmp', '.ico'];
@@ -70,12 +74,12 @@ export async function uploadImage(
       },
     });
 
-    if (response.code !== 0) {
-      throw new Error(`Failed to upload image: ${response.msg}`);
+    if (!response) {
+      throw new Error('Failed to upload image: no response');
     }
 
-    logger.info(`✅ Image uploaded: ${response.data?.image_key}`);
-    return { imageKey: response.data?.image_key || '' };
+    logger.info(`✅ Image uploaded: ${response.image_key}`);
+    return { imageKey: response.image_key || '' };
   } catch (error) {
     logger.error('Failed to upload image:', error);
     throw error;
@@ -146,12 +150,12 @@ export async function uploadFile(
       },
     });
 
-    if (response.code !== 0) {
-      throw new Error(`Failed to upload file: ${response.msg}`);
+    if (!response) {
+      throw new Error('Failed to upload file: no response');
     }
 
-    logger.info(`✅ File uploaded: ${response.data?.file_key}`);
-    return { fileKey: response.data?.file_key || '' };
+    logger.info(`✅ File uploaded: ${response.file_key}`);
+    return { fileKey: response.file_key || '' };
   } catch (error) {
     logger.error('Failed to upload file:', error);
     throw error;
@@ -172,12 +176,12 @@ export async function downloadImage(
       },
     });
 
-    if (response.code !== 0) {
-      throw new Error(`Failed to download image: ${response.msg}`);
+    if (!response) {
+      throw new Error('Failed to download image: no response');
     }
 
     // Convert response to buffer
-    const buffer = await readFeishuResponseBuffer(response.data);
+    const buffer = await readFeishuResponseBuffer(response);
     logger.info(`✅ Image downloaded: ${buffer.length} bytes`);
     return buffer;
   } catch (error) {
@@ -206,11 +210,11 @@ export async function downloadMessageResource(
       },
     });
 
-    if (response.code !== 0) {
-      throw new Error(`Failed to download message resource: ${response.msg}`);
+    if (!response) {
+      throw new Error('Failed to download message resource: no response');
     }
 
-    const buffer = await readFeishuResponseBuffer(response.data);
+    const buffer = await readFeishuResponseBuffer(response);
     logger.info(`✅ Message resource downloaded: ${buffer.length} bytes`);
     return buffer;
   } catch (error) {

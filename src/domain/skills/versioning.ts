@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '../../infra/observability/logger';
-import type { SkillFrontmatter } from './types';
 
 // ---------------------------------------------------------------------------
 // Minimal reference to avoid circular dependency with ./evaluator

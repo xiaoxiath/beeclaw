@@ -441,13 +441,6 @@ export class HookRunner {
   // 辅助方法
   // ============================================================================
 
-  private toHookContext(ctx: Record<string, unknown>): HookContext {
-    return {
-      ...ctx,
-      timestamp: new Date().toISOString(),
-    } as HookContext;
-  }
-
   private handleHookError(
     hookName: HookName,
     registration: HookRegistration,

@@ -7,7 +7,6 @@
  */
 
 import { logger } from "../../infra/observability/logger";
-import type { Skill } from "./types";
 import type { FastLLMJudge } from "../agent/fast-llm-judge";
 import { TRIGGER_CHECK_PROMPT, OUTPUT_QUALITY_PROMPT } from "./prompts/eval-prompts";
 import { ExperimentBudget } from "./experiment-budget";
@@ -305,16 +304,19 @@ export class SkillEvaluator {
     // A test case passes when the skill triggers AND the quality score meets
     // a minimum bar (0.5). This keeps the bar meaningful without being harsh
     // during early experimental iterations.
-    const passed = triggerResult.triggered && qualityResult.score >= 0.5;
+    const triggerData = 'result' in triggerResult ? triggerResult.result : triggerResult;
+    const qualityData = 'result' in qualityResult ? qualityResult.result : qualityResult;
+
+    const passed = triggerData.triggered && qualityData.score >= 0.5;
 
     return {
       testCaseId: testCase.id,
       passed,
-      score: qualityResult.score,
+      score: qualityData.score,
       details: {
-        triggered: triggerResult.triggered,
-        executionSuccess: triggerResult.triggered && qualityResult.score > 0,
-        outputQuality: qualityResult.score,
+        triggered: triggerData.triggered,
+        executionSuccess: triggerData.triggered && qualityData.score > 0,
+        outputQuality: qualityData.score,
         executionTimeMs,
       },
     };

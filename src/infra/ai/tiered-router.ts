@@ -129,14 +129,12 @@ export interface TieredLLMRouterOptions {
 }
 
 export class TieredLLMRouter {
-  private provider: AIProvider;
   private modelPreferences: Partial<Record<LLMTier, string>>;
   private fallbackEnabled: boolean;
   private costTracking: boolean;
   private costLog: Array<{ task: LLMTask; tier: LLMTier; tokens: number; cost: number }> = [];
 
   constructor(options: TieredLLMRouterOptions) {
-    this.provider = options.provider;
     this.modelPreferences = options.modelPreferences || {};
     this.fallbackEnabled = options.fallbackEnabled ?? true;
     this.costTracking = options.costTracking ?? false;

@@ -45,10 +45,10 @@ export async function executeBeeclawInfo(): Promise<BuiltinToolResult> {
       const config = getConfig();
       if (config) {
         configInfo = {
-          provider: config.provider?.type || 'unknown',
-          model: config.model || 'unknown',
+          provider: config.providers?.[0]?.type || 'unknown',
+          model: config.agent?.role || 'unknown',
           timezone: config.user?.timezone || 'Asia/Shanghai',
-          daemonEnabled: config.proactive?.daemon?.enabled || false,
+          daemonEnabled: false,
         };
       }
     } catch (error) {

@@ -4,10 +4,14 @@
  * 飞书用户授权管理
  */
 
+import type * as Lark from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 import { cache } from '../../infra/cache';
 
 const logger = getLogger('feishu:oauth');
+
+/** Client type alias for the Lark SDK Client */
+type Client = InstanceType<typeof Lark.Client>;
 
 /**
  * OAuth 配置
@@ -99,15 +103,15 @@ export async function exchangeCodeForToken(
     const data = response.data!;
 
     const token: UserToken = {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresIn: data.expires_in,
-      expiresAt: Date.now() + data.expires_in * 1000,
-      tokenType: data.token_type,
-      scope: data.scope,
+      accessToken: data.access_token ?? '',
+      refreshToken: data.refresh_token ?? '',
+      expiresIn: data.expires_in ?? 0,
+      expiresAt: Date.now() + (data.expires_in ?? 0) * 1000,
+      tokenType: data.token_type ?? '',
+      scope: '',
     };
 
-    logger.info(`✅ Got user access token, expires in ${data.expires_in}s`);
+    logger.info(`✅ Got user access token, expires in ${data.expires_in ?? 0}s`);
     return token;
   } catch (error) {
     logger.error('Failed to exchange code for token:', error);
@@ -137,12 +141,12 @@ export async function refreshUserToken(
     const data = response.data!;
 
     const token: UserToken = {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresIn: data.expires_in,
-      expiresAt: Date.now() + data.expires_in * 1000,
-      tokenType: data.token_type,
-      scope: data.scope,
+      accessToken: data.access_token ?? '',
+      refreshToken: data.refresh_token ?? '',
+      expiresIn: data.expires_in ?? 0,
+      expiresAt: Date.now() + (data.expires_in ?? 0) * 1000,
+      tokenType: data.token_type ?? '',
+      scope: '',
     };
 
     logger.info(`✅ Refreshed user access token`);
@@ -182,10 +186,10 @@ export async function getUserInfo(
     const data = response.data!;
 
     return {
-      openId: data.open_id,
-      unionId: data.union_id,
-      userId: data.user_id,
-      name: data.name,
+      openId: data.open_id ?? '',
+      unionId: data.union_id ?? '',
+      userId: data.user_id ?? '',
+      name: data.name ?? '',
       avatarUrl: data.avatar_url,
       email: data.email,
       mobile: data.mobile,
@@ -220,22 +224,23 @@ export async function getUserToken(
   const cacheKey = `feishu:user:token:${openId}`;
 
   // 1. 从缓存获取
-  let token = cache.get<UserToken>(cacheKey);
+  const cachedToken = cache.get<UserToken>(cacheKey);
 
-  if (token) {
+  if (cachedToken) {
     // 检查是否即将过期（提前 5 分钟刷新）
-    if (Date.now() > token.expiresAt - 300000) {
+    if (Date.now() > cachedToken.expiresAt - 300000) {
       logger.info(`Token expiring soon, refreshing for ${openId}`);
       try {
-        token = await refreshUserToken(client, token.refreshToken);
-        await saveUserToken(openId, token);
+        const refreshedToken = await refreshUserToken(client, cachedToken.refreshToken);
+        await saveUserToken(openId, refreshedToken);
+        return refreshedToken;
       } catch (_error) {
         logger.error('Failed to refresh token, removing from cache');
         cache.delete(cacheKey);
         return null;
       }
     }
-    return token;
+    return cachedToken;
   }
 
   return null;
@@ -277,12 +282,12 @@ export function createUserAuthorizedClient(
   client: Client,
   userAccessToken: string
 ): Client {
-  // Create a shallow copy to avoid mutating the original client
-  const authorizedClient = { ...client };
-
+  // Create a proxy that intercepts requests and adds user authorization
   const originalRequest = client.request.bind(client);
 
-  // Override request on the copy with user authorization header
+  // Use Object.create to maintain the Client prototype chain
+  const authorizedClient = Object.create(client) as Client;
+
   authorizedClient.request = async (config: any) => {
     config.headers = {
       ...config.headers,

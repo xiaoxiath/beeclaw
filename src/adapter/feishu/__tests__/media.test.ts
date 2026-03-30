@@ -48,17 +48,17 @@ function makeClient() {
   return {
     im: {
       image: {
-        create: vi.fn(() => Promise.resolve({ code: 0, data: { image_key: 'img_key_1' } })),
-        get: vi.fn(() => Promise.resolve({ code: 0, data: Buffer.from('image-bytes') })),
+        create: vi.fn(() => Promise.resolve({ image_key: 'img_key_1' })),
+        get: vi.fn(() => Promise.resolve(Buffer.from('image-bytes'))),
       },
       file: {
-        create: vi.fn(() => Promise.resolve({ code: 0, data: { file_key: 'file_key_1' } })),
+        create: vi.fn(() => Promise.resolve({ file_key: 'file_key_1' })),
       },
       message: {
         create: vi.fn(() => Promise.resolve({ code: 0, data: { message_id: 'msg_media' } })),
       },
       messageResource: {
-        get: vi.fn(() => Promise.resolve({ code: 0, data: Buffer.from('resource-bytes') })),
+        get: vi.fn(() => Promise.resolve(Buffer.from('resource-bytes'))),
       },
     },
   } as any;
@@ -134,8 +134,8 @@ describe('media', () => {
         .rejects.toThrow('Failed to download image');
     });
 
-    it('throws on API error response', async () => {
-      client.im.image.create.mockResolvedValue({ code: 99999, msg: 'fail' });
+    it('throws on API null response', async () => {
+      client.im.image.create.mockResolvedValue(null);
       await expect(uploadImage(client, Buffer.from('data'), { filename: 'test.png' }))
         .rejects.toThrow('Failed to upload image');
     });
@@ -173,8 +173,8 @@ describe('media', () => {
         .rejects.toThrow('Unsupported file type');
     });
 
-    it('throws on API error', async () => {
-      client.im.file.create.mockResolvedValue({ code: 99999, msg: 'fail' });
+    it('throws on API null response', async () => {
+      client.im.file.create.mockResolvedValue(null);
       await expect(uploadFile(client, Buffer.from('data'), { filename: 'test.pdf' }))
         .rejects.toThrow('Failed to upload file');
     });
@@ -208,8 +208,8 @@ describe('media', () => {
       expect(call.path.image_key).toBe('img_key_abc');
     });
 
-    it('throws on API error', async () => {
-      client.im.image.get.mockResolvedValue({ code: 99999, msg: 'fail' });
+    it('throws on API null response', async () => {
+      client.im.image.get.mockResolvedValue(null);
       await expect(downloadImage(client, 'img_key_1')).rejects.toThrow('Failed to download image');
     });
   });
@@ -231,7 +231,7 @@ describe('media', () => {
     it('throws on API error', async () => {
       client.im.messageResource.get.mockResolvedValue({ code: 99999, msg: 'fail' });
       await expect(downloadMessageResource(client, 'msg_1', 'fk'))
-        .rejects.toThrow('Failed to download message resource');
+        .rejects.toThrow('Unable to read response as buffer');
     });
   });
 

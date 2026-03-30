@@ -9,8 +9,6 @@ import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
 import {
-  EXTRACTION_PROMPT,
-  INCREMENTAL_EXTRACTION_PROMPT,
   formatConversationForExtraction,
   parseExtractionResult,
   validateExtraction,
@@ -101,7 +99,6 @@ Important: Return ONLY the JSON array, no markdown code blocks.`;
 export class KnowledgeExtractor {
   private config: ExtractionConfig;
   private provider: AIProvider;
-  private model: string;
   private stats = {
     totalExtractions: 0,
     successfulExtractions: 0,
@@ -110,12 +107,18 @@ export class KnowledgeExtractor {
 
   constructor(
     provider: AIProvider,
-    model: string,
+    _model: string,
     config: Partial<ExtractionConfig> = {}
   ) {
     this.provider = provider;
-    this.model = model;
     this.config = { ...DEFAULT_EXTRACTION_CONFIG, ...config };
+  }
+
+  /**
+   * Update configuration at runtime
+   */
+  updateConfig(config: Partial<ExtractionConfig>): void {
+    this.config = { ...this.config, ...config };
   }
 
   /**
@@ -143,7 +146,7 @@ export class KnowledgeExtractor {
     }
 
     // 2. Get FastLLMJudge instance
-    const judge = getFastLLMJudge(this.provider, this.model, {
+    const judge = getFastLLMJudge(this.provider, {
       cacheEnabled: false, // Don't cache extraction results
       cacheSize: 0,
       defaultTimeout: 10000, // 10s for extraction

@@ -243,7 +243,7 @@ export class DynamicMemoryInjector {
         }
 
         // 解析 grep 结果
-        const lines = result.data.split('\n');
+        const lines = String(result.data).split('\n');
         const items: Array<{ path: string; snippet: string; matchedTerms: string[]; score: number }> = [];
 
         let currentPath = '';
@@ -290,7 +290,7 @@ export class DynamicMemoryInjector {
             const vectorStore = getVectorStore();
             const results = await vectorStore.search(q, maxResults);
             return results.map(r => ({
-              path: r.metadata?.source || r.id,
+              path: String(r.metadata?.source || r.id),
               snippet: r.text,
               score: r.score,
             }));

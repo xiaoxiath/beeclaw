@@ -28,6 +28,13 @@ export const CardConfigSchema = z.object({
    * - 'fill': Fill container width
    */
   width_mode: z.enum(['fit', 'fill']).optional(),
+
+  /**
+   * Summary for notification display
+   */
+  summary: z.object({
+    content: z.string(),
+  }).optional(),
 });
 
 export type CardConfig = z.infer<typeof CardConfigSchema>;
@@ -132,6 +139,6 @@ export function createStreamingConfig(): CardConfig {
 /**
  * Create Card body with elements
  */
-export function createCardBody(elements: ElementSchema['_type'][]): CardBody {
+export function createCardBody(elements: z.infer<typeof ElementSchema>[]): CardBody {
   return CardBodySchema.parse({ elements });
 }

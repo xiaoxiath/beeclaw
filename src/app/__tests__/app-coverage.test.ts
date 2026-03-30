@@ -230,6 +230,7 @@ vi.mock('../../domain/memory/embeddings', () => ({
 }));
 vi.mock('../../infra/ai/tiered-router', () => ({
   TieredLLMRouter: class { constructor(o: any) { return mocks.mockTieredLLMRouter(o); } },
+  LLMTier: { FAST: 'fast', STANDARD: 'standard', ADVANCED: 'advanced' },
 }));
 vi.mock('../../infra/ai/concurrency-limiter', () => ({
   getLLMConcurrencyLimiter: (...a: any[]) => mocks.mockGetLLMConcurrencyLimiter(...a),

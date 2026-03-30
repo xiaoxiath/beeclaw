@@ -299,11 +299,11 @@ Best practices:
 };
 
 export async function executeSpawnSubagentTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  return executeSpawnSubagent(params as SpawnSubagentParams);
+  return executeSpawnSubagent(params as unknown as SpawnSubagentParams);
 }
 
 export async function executeSpawnParallelTool(params: Record<string, unknown>): Promise<BuiltinToolResult> {
-  return executeSpawnParallel(params as SpawnParallelParams);
+  return executeSpawnParallel(params as unknown as SpawnParallelParams);
 }
 
 // ============================================================================
@@ -567,10 +567,10 @@ export async function executeCreateChart(params: Record<string, unknown>): Promi
       type: 'chart_data' as const,
       chartType,
       data,
-      ...(params.title && { title: String(params.title) }),
-      ...(params.spec && { spec: params.spec as Record<string, unknown> }),
-      ...(params.aspectRatio && { aspectRatio: params.aspectRatio as string }),
-      ...(params.colorTheme && { colorTheme: params.colorTheme as string }),
+      ...(typeof params.title !== 'undefined' ? { title: String(params.title) } : {}),
+      ...(typeof params.spec !== 'undefined' ? { spec: params.spec as Record<string, unknown> } : {}),
+      ...(typeof params.aspectRatio !== 'undefined' ? { aspectRatio: params.aspectRatio as string } : {}),
+      ...(typeof params.colorTheme !== 'undefined' ? { colorTheme: params.colorTheme as string } : {}),
     };
 
     logger.debug('[create_chart] 🎨 Returning chart block:', {
@@ -725,7 +725,7 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
     case 'update_user_settings':
       return executeUpdateUserSettings(params);
     case 'ask_user_question':
-      return executeAskUserQuestion(params);
+      return executeAskUserQuestion(params as unknown as import('./user-interaction').AskUserQuestionParams) as Promise<BuiltinToolResult>;
     // Sandbox tools
     case 'sandbox_exec':
     case 'sandbox_write_file':
@@ -738,8 +738,8 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
         return { success: false, error: 'Health checker not initialized. Call setupHealthChecker() during app bootstrap.' };
       }
       try {
-        const result = await processDatasourceHealthCheck(params, _healthChecker, logger);
-        return { success: true, result };
+        const healthResult = await processDatasourceHealthCheck(params, _healthChecker, logger);
+        return { success: true, data: healthResult };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { success: false, error: `Health check failed: ${msg}` };

@@ -211,7 +211,7 @@ class InMemoryMetricExporter implements MetricExporter {
   getRecords(filter?: { name?: string; since?: number }): MetricRecord[] {
     let results = this.records;
     if (filter?.name) results = results.filter(r => r.name === filter.name);
-    if (filter?.since) results = results.filter(r => r.timestamp >= filter.since);
+    if (filter?.since) results = results.filter(r => r.timestamp >= filter!.since!);
     return results;
   }
 

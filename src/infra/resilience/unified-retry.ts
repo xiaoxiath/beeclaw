@@ -185,8 +185,6 @@ const RETRYABLE_TYPES = new Set<UnifiedErrorType>([
   'SERVICE_UNAVAILABLE',
 ]);
 
-/** 可重试的 HTTP 状态码 */
-const _RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
 /**
  * 统一错误分类器

@@ -17,7 +17,6 @@ import {
   compileToolTimeoutPatterns,
   type ResilienceConfig,
   type TimeoutLayerConfig,
-  type ToolTimeoutPattern,
 } from "../config/resilience-config";
 import { logger } from "../observability/logger";
 

@@ -30,11 +30,27 @@ export interface ToolResult<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
+  /** Human-readable output text (used by state tools and others) */
+  output?: string;
   /**
    * Special marker to indicate this tool result contains a content block
    * that should be rendered in the message stream (e.g., chart_data)
    */
   _contentBlock?: boolean;
+  /** HITL signal: the tool needs user input before completing */
+  needsUserInput?: boolean;
+  /** HITL: the question to ask the user */
+  question?: string;
+  /** HITL: available options for the user */
+  options?: string[];
+  /** HITL: additional context */
+  context?: string;
+  /** HITL: expected input type */
+  inputType?: string;
+  /** HITL: status message */
+  message?: string;
+  /** Alias for data — used in some tool results */
+  result?: T;
 }
 
 // Generic tool result schemas

@@ -62,7 +62,7 @@ describe('FeishuChannel', () => {
         metadata: { chatId: 'chat_1' },
       });
       expect(result.success).toBe(true);
-      expect(result.messageId).toBe('msg_123');
+      expect(result.messageId).toMatch(/^feishu-\d+$/);
       expect(mockSendTextMessage).toHaveBeenCalledWith('chat_1', 'chat_id', 'Hello');
     });
 

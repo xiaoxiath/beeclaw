@@ -72,14 +72,8 @@ export default new Hono()
         logger.debug('[Chat API] Getting agent');
         const agent = getAgent();
 
-        // Collect tool calls during streaming
-        const _collectedToolCalls: any[] = [];
-
         logger.debug('[Chat API] Calling agent.chat()');
         const fullResponse = await agent.chat(message, {
-          sessionId: session.id,
-          loadMemory: true,
-          autoRefreshMemory: false,
           onToolCall: (name, _params) => {
             logger.debug('[Chat API] Tool call:', name);
           },

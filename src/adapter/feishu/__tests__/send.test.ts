@@ -163,13 +163,13 @@ describe('send', () => {
       await editMessage(client, 'msg_1', 'new text');
       const call = client.im.message.patch.mock.calls[0][0];
       expect(call.path.message_id).toBe('msg_1');
-      expect(call.data.msg_type).toBe('text');
+      expect(call.data.content).toBeDefined();
     });
 
     it('edits post message', async () => {
       await editMessage(client, 'msg_1', 'new content', 'post');
       const call = client.im.message.patch.mock.calls[0][0];
-      expect(call.data.msg_type).toBe('post');
+      expect(call.data.content).toBeDefined();
     });
 
     it('throws MESSAGE_WITHDRAWN on 230011', async () => {

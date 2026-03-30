@@ -235,6 +235,8 @@ export const MemoryConfigSchema = z.object({
     vector: z.object({
       enabled: z.boolean().default(true),
       provider: z.enum(['openai', 'zhipu', 'local', 'auto']).default('auto'),
+      apiKey: z.string().optional(),
+      baseUrl: z.string().optional(),
       model: z.string().optional(),
       dims: z.number().optional(),
     }).default({}),

@@ -14,7 +14,6 @@
  */
 
 import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import type { ChatMessage, MultimodalContent } from '../agent/types';
 import { DEFAULT_VISION_CONFIG } from '../agent/types';
 import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, formatSkillsForPrompt, type TokenStatsConfig } from '../agent';
@@ -31,7 +30,7 @@ import {
   type ExtractionManager,
 } from '../extraction';
 // [CR-Layer] Domain ports replace direct adapter imports
-import { getPluginRegistryPort, getHookRunnerPort, getChannelClientPort, getMessageControllerFactory } from '../ports';
+import { getHookRunnerPort, getChannelClientPort, getMessageControllerFactory } from '../ports';
 import type { IMessageController } from '../ports';
 import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
@@ -51,19 +50,11 @@ import {
   markMessageCompleted as _markMessageCompleted,
   markMessageFailed as _markMessageFailed,
   getCachedAgentResponse as _getCachedAgentResponse,
-  MESSAGE_DEDUP_TTL_MS,
-  MESSAGE_DEDUP_MAX_SIZE,
-  MAX_MESSAGE_RETRY_COUNT,
-  PROCESSING_STALE_TIMEOUT_MS,
 } from './dedup';
 import {
   saveSession as _saveSessionToStorage,
   loadSession as _loadSession,
-  isValidSession,
-  loadSessionFromSQLite,
-  saveSessionToSQLite,
   deleteSessionFile as _deleteSessionFile,
-  getSessionFilePath,
   loadAllSessions as _loadAllSessionsFromStorage,
   clearOldSessions as _clearOldSessions,
   saveAllSessions as _saveAllSessions,
@@ -87,7 +78,7 @@ export { isValidSession } from './storage';
 export interface SessionOptions {
   sessionId: string;
   userId?: string;
-  channel: 'cli' | 'feishu' | 'webhook' | 'api';
+  channel: 'cli' | 'feishu' | 'webhook' | 'api' | 'web';
   metadata?: Record<string, unknown>;
 }
 
@@ -171,7 +162,7 @@ export interface Session {
 
 export interface ProactiveMessageOptions {
   userId?: string;
-  channel?: 'cli' | 'feishu' | 'webhook' | 'api';
+  channel?: 'cli' | 'feishu' | 'webhook' | 'api' | 'web';
   message: string | MultimodalContent[];  // Support both text and multimodal
   context?: Record<string, unknown>;
   sessionId?: string;
@@ -425,7 +416,7 @@ export function initSessionManager(config: {
   SessionMessageQueue.getInstance(queueOptions);
 
   logger.info(
-    `[SessionManager] Queue configured with maxWaitTime: ${Math.round(queueOptions.maxWaitTime / 1000)}s ` +
+    `[SessionManager] Queue configured with maxWaitTime: ${Math.round((queueOptions.maxWaitTime ?? 0) / 1000)}s ` +
     `(turn timeout: ${Math.round(resilience.timeout.turnTimeoutMs / 1000)}s)`
   );
 
@@ -789,7 +780,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         streamingController = controllerFactory({
           client: channelClient,
           parentMessageId: options.context?.parentMessageId as string | undefined,
-          chatId: (options.context.chatId as string) || '',
+          chatId: (options.context?.chatId as string) || '',
           debounceMs: 500,
         });
 
@@ -990,7 +981,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
         }
       }
 
-      originalMultimodalMessage = options.message;
+      originalMultimodalMessage = Array.isArray(options.message) ? options.message : undefined;
 
       // STAGE 2: Intent detection with text model
       selectedModel = visionConfig.textModel;

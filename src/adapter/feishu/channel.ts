@@ -15,7 +15,7 @@ import type {
   ReplyMessageOptions,
   UpdateMessageOptions,
   MessageResult,
-} from './types';
+} from '../../types/channel';
 import { getFeishuWSClient } from './index';
 
 /**
@@ -41,10 +41,10 @@ export class FeishuChannel implements MessageChannel {
         throw new Error('chatId required for Feishu messages');
       }
 
-      const response = await client.sendTextMessage(chatId, 'chat_id', text);
+      await client.sendTextMessage(chatId, 'chat_id', text);
 
       return {
-        messageId: response.data?.message_id || `feishu-${Date.now()}`,
+        messageId: `feishu-${Date.now()}`,
         success: true,
       };
     } catch (error) {

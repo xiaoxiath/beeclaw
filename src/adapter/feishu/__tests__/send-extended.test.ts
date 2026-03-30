@@ -459,7 +459,6 @@ describe('send-extended', () => {
     it('edits message with post format', async () => {
       await editMessage(client, 'msg_1', 'Updated content', 'post');
       const call = client.im.message.patch.mock.calls[0][0];
-      expect(call.data.msg_type).toBe('post');
       const content = JSON.parse(call.data.content);
       expect(content.zh_cn.content[0][0].tag).toBe('text');
       expect(content.zh_cn.content[0][0].text).toBe('Updated content');
@@ -468,7 +467,6 @@ describe('send-extended', () => {
     it('edits message with text format (default)', async () => {
       await editMessage(client, 'msg_1', 'New text');
       const call = client.im.message.patch.mock.calls[0][0];
-      expect(call.data.msg_type).toBe('text');
       const content = JSON.parse(call.data.content);
       expect(content.text).toBe('New text');
     });

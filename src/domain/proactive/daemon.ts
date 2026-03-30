@@ -313,7 +313,7 @@ export class Daemon {
         break;
 
       case 'self_evolution':
-        await handleSelfEvolutionJob();
+        await handleSelfEvolutionJob(job);
         break;
 
       case 'custom':

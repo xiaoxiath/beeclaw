@@ -5,10 +5,10 @@
  */
 
 import { z } from 'zod';
-import type { ToolResult, State, Priority } from '../types';
+import type { ToolResult, State, Priority } from '../../../types';
 
 // Re-export for convenience
-export type { ToolResult } from '../types';
+export type { ToolResult } from '../../../types';
 
 // Goal state enum (extends common State)
 export type GoalState = State;
@@ -75,7 +75,7 @@ export const GoalIndexSchema = z.object({
 export type GoalIndex = z.infer<typeof GoalIndexSchema>;
 
 // Tool result type - uses unified type with Goal data
-export type GoalToolResult = ToolResult<Goal | Goal[] | { [key: string]: unknown }>;
+export type GoalToolResult = ToolResult<Goal | Goal[] | { [key: string]: unknown } | { [key: string]: unknown }[]>;
 
 // Create goal options
 export const CreateGoalOptionsSchema = z.object({

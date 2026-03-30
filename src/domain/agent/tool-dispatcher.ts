@@ -6,7 +6,7 @@
  */
 
 import { logger } from '../../infra/observability/logger';
-import type { ToolExecutor, ToolCall, UserContext } from './types';
+import type { ToolExecutor, ToolCall, UserContext, ChatMessage } from './types';
 import type { LoopDetector } from '../../infra/resilience/loop-detector';
 import { groupToolCalls, getGroupingStats } from './tool-dependencies';
 import { TimeoutEnforcer, ToolTimeoutError } from '../../infra/resilience/timeout-enforcer';
@@ -109,7 +109,7 @@ export class ToolDispatcher {
 
   async executeToolBatches(
     toolCalls: ToolCall[], iteration: number,
-    messages: Array<{ role: string; content: string }>,
+    messages: ChatMessage[],
     opts?: ToolDispatchOptions,
   ): Promise<ToolBatchResult[]> {
     const batches = groupToolCalls(toolCalls.map(tc => ({ name: tc.function.name, call: tc })));
@@ -118,7 +118,7 @@ export class ToolDispatcher {
     const allResults: ToolBatchResult[] = [];
     for (const batch of batches) {
       const batchResults = await Promise.all(
-        batch.map(({ call }) => this.executeSingle(call, iteration, messages, opts)),
+        batch.map(({ call }) => this.executeSingle(call, iteration, messages as unknown as Array<{ role: string; content: string }>, opts)),
       );
       allResults.push(...batchResults);
     }

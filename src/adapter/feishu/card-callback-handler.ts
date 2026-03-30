@@ -335,7 +335,7 @@ export class CardCallbackHandler {
    */
   private async handleConfirmationCallback(
     messageId: string,
-    token: string,
+    _token: string,
     data: {
       decision: 'APPROVED' | 'DENIED';
       toolCallId: string;
@@ -414,7 +414,7 @@ export class CardCallbackHandler {
    */
   private async handleUserInputCallback(
     messageId: string,
-    token: string,
+    _token: string,
     data: any
   ): Promise<void> {
     // 从回调数据中提取字段

@@ -29,7 +29,7 @@ export interface LegacyCompressionResult {
 // Default compression config
 const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
   enabled: true,
-  model: 'glm-4.7-flash',
+  role: 'fast',
   threshold: 0.8,
   keepRecent: 8,
   maxSummaryTokens: 1000,
@@ -75,7 +75,9 @@ async function compressWithLLM(
   provider: AIProvider,
   config: Partial<CompressionConfig> = {}
 ): Promise<LegacyCompressionResult> {
-  const model = config.model || DEFAULT_COMPRESSION_CONFIG.model;
+  const model = provider.models && Object.keys(provider.models).length > 0
+    ? Object.keys(provider.models)[0]
+    : 'glm-4-flash';
   const maxSummaryTokens = config.maxSummaryTokens || DEFAULT_COMPRESSION_CONFIG.maxSummaryTokens;
   const originalTokens = estimateTotalTokens(messages);
 

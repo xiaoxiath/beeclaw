@@ -85,7 +85,7 @@ describe('Scheduler', () => {
         taskType: 'run_skill',
       });
       expect(result.success).toBe(true);
-      expect(result.message).toContain('already exists');
+      expect(result.data.info).toContain('already exists');
     });
 
     it('allows disabled schedule', () => {

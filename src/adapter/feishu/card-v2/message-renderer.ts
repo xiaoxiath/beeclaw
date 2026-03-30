@@ -5,7 +5,7 @@
  * Supports streaming mode with collapsible step panels.
  */
 
-import type { ContentBlock, ToolUseBlock, TextBlock, ChartDataBlock } from '../../../types/content-block';
+import type { ContentBlock, ToolUseBlock, TextBlock, ChartDataBlock, ThinkingBlock } from '../../../types/content-block';
 import { toolIconRegistry } from './tool-icon-registry';
 import { renderHITLContentBlock } from './hitl-renderer';
 import { logger } from '../../../infra/observability/logger';
@@ -24,6 +24,7 @@ import {
   createHrElement,
   createChartElement,
   type CollapsiblePanel,
+  type DivElement,
 } from './types/elements';
 import { IconToken, Color } from './types/styles';
 import { sanitizeForCard } from '../../../infra/utils';
@@ -165,8 +166,10 @@ export function renderStepsPanel(
       title: {
         tag: 'plain_text',
         content: headerText,
-        text_color: 'grey',
-        text_size: 'notation',
+        text_styles: {
+          color: 'grey',
+          size: 'small',
+        },
       },
       icon: {
         tag: 'standard_icon',
@@ -222,20 +225,15 @@ export function renderToolUseStep(block: ToolUseBlock, stepNumber: number): DivE
  * 参考 agentara：使用 robot_outlined 图标，灰色小号字体
  */
 export function renderThinkingStep(block: ThinkingBlock): DivElement {
-  return {
-    tag: 'div',
-    icon: {
-      tag: 'standard_icon',
-      token: 'robot_outlined',
+  return createDivElement({
+    icon: createStandardIconElement('robot_outlined', {
       color: 'grey',
-    },
-    text: {
-      tag: 'plain_text',
-      text_color: 'grey',
-      text_size: 'notation',
-      content: block.thinking,
-    },
-  };
+      size: 'small',
+    }),
+    text: createPlainTextElement(block.thinking, {
+      color: 'grey',
+    }),
+  });
 }
 
 /**

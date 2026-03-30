@@ -212,7 +212,7 @@ export class TaskDispatcher {
             lt(tasksTable.lockedAt, new Date(Date.now() - this.config.lockTimeoutMs))
           )
         ))
-        .run();
+        .run() as any;
 
       if (result.changes > 0) {
         this.activeLocks.set(task.sessionId, task.id);

@@ -191,8 +191,8 @@ export class SkillDiscoveryEngine {
     let results = Array.from(this.candidates.values());
 
     if (filter?.status) results = results.filter(c => c.status === filter.status);
-    if (filter?.minFrequency) results = results.filter(c => c.frequency >= filter.minFrequency);
-    if (filter?.minConfidence) results = results.filter(c => c.confidence >= filter.minConfidence);
+    if (filter?.minFrequency != null) results = results.filter(c => c.frequency >= filter.minFrequency!);
+    if (filter?.minConfidence != null) results = results.filter(c => c.confidence >= filter.minConfidence!);
 
     return results.sort((a, b) => b.frequency * b.confidence - a.frequency * a.confidence);
   }

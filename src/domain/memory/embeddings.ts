@@ -1,5 +1,6 @@
 // ============================================================================
-export { cosineSimilarity } from '../../infra/utils';
+import { cosineSimilarity } from '../../infra/utils';
+export { cosineSimilarity };
 // 类型定义
 // ============================================================================
 
@@ -17,6 +18,7 @@ export interface EmbeddingProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   dims?: number;
+  groupId?: string;
 }
 
 export interface EmbeddingResult {

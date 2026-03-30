@@ -16,7 +16,10 @@ import type {
   StateUnlockParams,
 } from './state-tools-consolidated';
 import { formatStateEntry, formatStateStats } from './state-tools-consolidated';
-import type { ToolResult } from '../tools/builtin';
+import type { BuiltinToolResult } from '../tools/builtin';
+
+/** Alias for the tool result type used by state executors */
+type ToolResult = BuiltinToolResult;
 
 /**
  * Execute state_set tool

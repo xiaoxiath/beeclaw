@@ -12,7 +12,7 @@ import type {
   ReplyMessageOptions,
   UpdateMessageOptions,
   MessageResult,
-} from './types';
+} from '../types/channel';
 
 /**
  * MultiChannelMessageGateway - Central routing for all message channels

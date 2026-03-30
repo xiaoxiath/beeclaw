@@ -14,17 +14,14 @@ export class CLIAdapter implements EntryAdapter {
   readonly name = 'cli';
   readonly type = 'cli' as const;
 
-  private context: EntryContext | null = null;
   private channel: CLIChannel | null = null;
   private running: boolean = false;
   private startTime: number = 0;
 
   async initialize(context: EntryContext): Promise<void> {
-    this.context = context;
-
     // 注册 CLI channel 到 gateway
     this.channel = new CLIChannel();
-    context.gateway.registerChannel(this.channel);
+    context.gateway?.registerChannel(this.channel);
 
     logger.debug('[CLIAdapter] Initialized');
   }

@@ -182,7 +182,7 @@ export default new Hono()
 
       return c.json({
         skill: result.data,
-        message: `Skill '${name}' ${result.data!.enabled ? 'enabled' : 'disabled'}`,
+        message: `Skill '${name}' ${(result.data as any)?.enabled ? 'enabled' : 'disabled'}`,
       });
     } catch (error) {
       return c.json({

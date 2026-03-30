@@ -101,7 +101,7 @@ function runMigrations(db: Database): void {
   `);
 
   // Get list of already run migrations
-  const runMigrations = db.query<{ name: string }>('SELECT name FROM _migrations').all();
+  const runMigrations = db.query<{ name: string }, []>('SELECT name FROM _migrations').all();
   const runMigrationNames = new Set(runMigrations.map((m: any) => m.name));
 
   // Define migrations

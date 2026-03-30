@@ -240,7 +240,6 @@ export class ExperimentEngine {
     // ---- Phase 2: Experiment loop ------------------------------------------
 
     let currentEval = baselineEval;
-    let currentVersionId = baselineSnapshot.versionId;
 
     for (let round = 1; round <= maxRounds; round++) {
       logger.info(`[ExperimentEngine] ---- Round ${round}/${maxRounds} ----`);
@@ -320,7 +319,7 @@ export class ExperimentEngine {
           );
           currentContent = modifiedContent;
           currentEval = modifiedEval;
-          currentVersionId = modifiedSnapshot.versionId;
+          // currentVersionId tracked for potential future use
         } else {
           logger.info(
             `[ExperimentEngine] DISCARD round ${round}: ${decision.reason}`,

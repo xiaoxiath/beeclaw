@@ -87,8 +87,8 @@ describe('Chat Routes', () => {
       expect(res.status).toBe(200);
       expect(mockGetOrCreateSession).toHaveBeenCalled();
       expect(mockAgent.chat).toHaveBeenCalledWith('Hello', expect.objectContaining({
-        sessionId: 'session-123',
-        loadMemory: true,
+        onToolCall: expect.any(Function),
+        onToolResult: expect.any(Function),
       }));
       expect(mockSaveSession).toHaveBeenCalled();
     });

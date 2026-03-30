@@ -72,14 +72,14 @@ let _defaultHookRunnerLoader: (() => RuntimeHookRunner | null) | null = null;
 
 function getDefaultAgentFactory(): AgentFactory {
   if (!_defaultAgentFactory) {
-    _defaultAgentFactory = createAgent as AgentFactory;
+    _defaultAgentFactory = createAgent as unknown as AgentFactory;
   }
   return _defaultAgentFactory;
 }
 
 function getDefaultToolProvider(): ToolProvider {
   if (!_defaultToolProvider) {
-    _defaultToolProvider = getAllToolsForAI as ToolProvider;
+    _defaultToolProvider = getAllToolsForAI as unknown as ToolProvider;
   }
   return _defaultToolProvider;
 }

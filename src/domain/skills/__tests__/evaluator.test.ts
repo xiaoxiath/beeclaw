@@ -257,19 +257,27 @@ describe('SkillEvaluator', () => {
       judge: vi.fn(async (opts: any) => {
         if (opts.taskName === 'trigger-check') {
           return {
-            triggered: true,
-            confidence: 0.9,
-            reason: 'Matches well',
-            ...overrides.trigger,
+            result: {
+              triggered: true,
+              confidence: 0.9,
+              reason: 'Matches well',
+              ...overrides.trigger,
+            },
+            fromCache: false,
+            failed: false,
           };
         }
         if (opts.taskName === 'output-quality') {
           return {
-            score: 0.8,
-            strengths: ['good'],
-            weaknesses: [],
-            reason: 'Quality output',
-            ...overrides.quality,
+            result: {
+              score: 0.8,
+              strengths: ['good'],
+              weaknesses: [],
+              reason: 'Quality output',
+              ...overrides.quality,
+            },
+            fromCache: false,
+            failed: false,
           };
         }
         return {};

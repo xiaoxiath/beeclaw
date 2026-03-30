@@ -4,6 +4,10 @@
  * 这个模块重新导出所有兼容类型， * 使得 OpenClaw 插件能够正常运行
  */
 
+import type {
+  PluginLogger,
+} from "../types";
+
 export type {
   OpenClawPluginApi,
   PluginHookName,

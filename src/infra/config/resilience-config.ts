@@ -426,21 +426,21 @@ function applyEnvToSection<T extends Record<string, unknown>>(
 function applyEnvOverrides(config: ResilienceConfig): ResilienceConfig {
   const PREFIX = 'BEECLAW_RESILIENCE';
   return {
-    timeout: applyEnvToSection(config.timeout, `${PREFIX}_TIMEOUT`),
-    circuitBreaker: applyEnvToSection(config.circuitBreaker, `${PREFIX}_CIRCUIT_BREAKER`),
-    loopDetector: applyEnvToSection(config.loopDetector, `${PREFIX}_LOOP_DETECTOR`),
-    budget: applyEnvToSection(config.budget, `${PREFIX}_BUDGET`),
-    retry: applyEnvToSection(config.retry, `${PREFIX}_RETRY`) as RetryConfig,
+    timeout: applyEnvToSection(config.timeout as unknown as Record<string, unknown>, `${PREFIX}_TIMEOUT`) as unknown as TimeoutLayerConfig,
+    circuitBreaker: applyEnvToSection(config.circuitBreaker as unknown as Record<string, unknown>, `${PREFIX}_CIRCUIT_BREAKER`) as unknown as CircuitBreakerDefaults,
+    loopDetector: applyEnvToSection(config.loopDetector as unknown as Record<string, unknown>, `${PREFIX}_LOOP_DETECTOR`) as unknown as LoopDetectorConfig,
+    budget: applyEnvToSection(config.budget as unknown as Record<string, unknown>, `${PREFIX}_BUDGET`) as unknown as BudgetConfig,
+    retry: applyEnvToSection(config.retry as unknown as Record<string, unknown>, `${PREFIX}_RETRY`) as unknown as RetryConfig,
     executor: {
       ...config.executor,
       ...applyEnvToSection(
-        { maxConcurrency: config.executor.maxConcurrency, defaultToolTimeoutMs: config.executor.defaultToolTimeoutMs, gracefulShutdownMs: config.executor.gracefulShutdownMs },
+        { maxConcurrency: config.executor.maxConcurrency, defaultToolTimeoutMs: config.executor.defaultToolTimeoutMs, gracefulShutdownMs: config.executor.gracefulShutdownMs } as Record<string, unknown>,
         `${PREFIX}_EXECUTOR`,
       ),
       toolTimeoutPatterns: config.executor.toolTimeoutPatterns,  // patterns 不从 env 覆写
     },
-    monitor: applyEnvToSection(config.monitor, `${PREFIX}_MONITOR`) as MonitorConfig,
-    checkpoint: applyEnvToSection(config.checkpoint, `${PREFIX}_CHECKPOINT`) as CheckpointConfig,
+    monitor: applyEnvToSection(config.monitor as unknown as Record<string, unknown>, `${PREFIX}_MONITOR`) as unknown as MonitorConfig,
+    checkpoint: applyEnvToSection(config.checkpoint as unknown as Record<string, unknown>, `${PREFIX}_CHECKPOINT`) as unknown as CheckpointConfig,
   };
 }
 

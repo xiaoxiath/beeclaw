@@ -183,7 +183,7 @@ describe('Proactive Tools', () => {
 
         expect(result2.success).toBe(true);
         expect(result2.data.id).toBe(firstId); // Same ID
-        expect(result2.message).toContain('already exists');
+        expect(result2.data.info).toContain('already exists');
       });
     });
 

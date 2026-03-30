@@ -31,7 +31,7 @@ import { getSkillDiscoveryEngine } from '../domain/agent/skill-discovery';
 import { initExtractionManager, type ExtractionManager } from '../domain/extraction';
 import { SandboxManager } from '../domain/sandbox/manager';
 import { createEmbeddingProvider } from '../domain/memory/embeddings';
-import { TieredLLMRouter } from '../infra/ai/tiered-router';
+import { TieredLLMRouter, LLMTier } from '../infra/ai/tiered-router';
 import { getLLMConcurrencyLimiter } from '../infra/ai/concurrency-limiter';
 import { getHybridToolSelector } from '../domain/agent/hybrid-tool-selector';
 import { createLLMSkillMatcher } from '../domain/skills/llm-matcher';
@@ -100,7 +100,7 @@ function buildEmbeddingConfig(appConfig: AppConfig): EmbeddingProviderConfig | n
 
       logger.info(`[App] Using toolSelector.embedding with role: ${embeddingConfig.role} (provider: ${provider.name})`);
       return {
-        type: provider.type,
+        type: provider.type as any,
         apiKey: provider.apiKey,
         baseUrl: provider.baseUrl,
         model: roleDef.model,
@@ -417,7 +417,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // 9.8.1. Wire hot-reload -> hook system via dependency inversion
   setHookNotifier(async (event, data, context) => {
     const hookRunner = getHookRunner();
-    await hookRunner.runParallel(event as any, data, context);
+    await hookRunner.runParallel(event as any, data as any, context as any);
   });
 
   // 9.9. Load plugins (OpenClaw-compatible)
@@ -469,7 +469,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   try {
     const obsHooks = createObservabilityHooks();
     for (const [hookName, handler] of Object.entries(obsHooks)) {
-      _hookRunner.register(hookName as any, handler as any);
+      _hookRunner.register({ id: `obs-${hookName}`, hookName: hookName as any, handler: handler as any, priority: 0, source: 'builtin' });
     }
     logger.debug('   📊 Observability hooks registered');
   } catch (e) {
@@ -483,7 +483,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
       pluginRegistry: () => getPluginRegistry(),
       hookRunnerFactory: (registry) => {
         // createHookRunner is statically imported at the top
-        return createHookRunner(registry);
+        return createHookRunner(registry as any);
       },
       channelClient: () => getFeishuWSClient(),
       messageControllerFactory: (options) => new StreamingMessageController(options),
@@ -511,11 +511,6 @@ export async function initApp(options: InitOptions = {}): Promise<{
         const tierConfig = config.llmRouter?.tiers?.[tierKey];
         if (!tierConfig) return undefined;
 
-        // If models array is specified directly (legacy format)
-        if (tierConfig.models && tierConfig.models.length > 0) {
-          return tierConfig.models[0];
-        }
-
         // If role is specified (v4 format), resolve from roles config
         if (tierConfig.role && config.roles?.[tierConfig.role]) {
           return config.roles[tierConfig.role].model;
@@ -537,23 +532,10 @@ export async function initApp(options: InitOptions = {}): Promise<{
       });
 
       // Create LLM skill matcher
+      const fastModelForMatcher = router.selectModelForTier(LLMTier.FAST);
       const llmMatcher = createLLMSkillMatcher({
-        provider: {
-          chat: async (messages, _options) => {
-            // Use standard tier for skill matching
-            const model = router.selectModelForTier('standard');
-
-            const response = await callAI({
-              provider: defaultProvider,
-              model,
-              messages,
-              temperature: 0.3,
-              maxTokens: 500,
-            });
-
-            return response.choices[0]?.message?.content || '';
-          },
-        },
+        provider: defaultProvider,
+        fastModel: fastModelForMatcher,
       });
 
       // Set matcher in skill store
@@ -561,9 +543,9 @@ export async function initApp(options: InitOptions = {}): Promise<{
       skillStore.setLLMMatcher(llmMatcher);
 
       // Log configuration
-      const fastModel = router.selectModelForTier('fast');
-      const standardModel = router.selectModelForTier('standard');
-      const advancedModel = router.selectModelForTier('advanced');
+      const fastModel = router.selectModelForTier(LLMTier.FAST);
+      const standardModel = router.selectModelForTier(LLMTier.STANDARD);
+      const advancedModel = router.selectModelForTier(LLMTier.ADVANCED);
 
       logger.debug(`   🎚️  LLM Router: Tiered system enabled`);
       logger.debug(`      FAST: ${fastModel} | STANDARD: ${standardModel} | ADVANCED: ${advancedModel}`);
@@ -594,8 +576,8 @@ export async function initApp(options: InitOptions = {}): Promise<{
     provider: defaultProvider,
     model,
     systemPrompt: agentConfig?.systemPrompt || SYSTEM_PROMPTS.default,
-    temperature: agentConfig?.temperature,
-    maxTokens: agentConfig?.maxTokens,
+    temperature: resolvedParams?.temperature,
+    maxTokens: resolvedParams?.max_tokens,
     tools: getAllToolsForAI(),
     loadCoreMemory: true,
     autoRefreshMemory: true,
@@ -771,6 +753,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
 
       // Create daily reflection schedule
       const result = scheduler.createSchedule({
+        enabled: true,
         name: 'Daily Reflection',
         description: 'Analyze conversation patterns and suggest improvements daily at 3 AM',
         cron: '0 3 * * *',
@@ -876,17 +859,18 @@ export function switchModel(modelName?: string, providerName?: string): {
     newProvider = found;
   }
 
-  // Get model
-  const newModel = modelName || newProvider?.models[0] || appState.model;
+  // Get model - prefer string, fall back to first model definition key
+  let modelValue = modelName || newProvider?.models[0] || appState.model;
+  const newModel = typeof modelValue === 'string' ? modelValue : Object.keys(modelValue as Record<string, unknown>)[0] || appState.model;
 
   // Recreate agent
   const agentConfig = appState.config.agent || appState.config.agents?.[0];
   const agent = createAgent({
     provider: newProvider!,
-    model: newModel,
+    model: newModel as string,
     systemPrompt: agentConfig?.systemPrompt || SYSTEM_PROMPTS.default,
-    temperature: agentConfig?.temperature,
-    maxTokens: agentConfig?.maxTokens,
+    temperature: (agentConfig?.params as Record<string, unknown>)?.temperature as number | undefined,
+    maxTokens: (agentConfig?.params as Record<string, unknown>)?.max_tokens as number | undefined,
     tools: getAllToolsForAI(),
     loadCoreMemory: true,
     autoRefreshMemory: true,
@@ -895,7 +879,7 @@ export function switchModel(modelName?: string, providerName?: string): {
 
   // Update state
   appState.provider = newProvider;
-  appState.model = newModel;
+  appState.model = newModel as string;
   appState.agent = agent;
 
   return { provider: newProvider!, model: newModel, agent };

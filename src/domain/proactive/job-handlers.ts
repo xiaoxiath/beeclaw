@@ -47,13 +47,14 @@ function getDefaultPushTarget(): { channel: string; chatId: string; userId: stri
 function getPushTarget(
   jobParams: Record<string, unknown> | undefined,
   client?: { lastActiveChatId?: string; lastActiveUserId?: string }
-): { channel: string; chatId: string | undefined; userId: string } {
+): { channel: 'cli' | 'feishu' | 'webhook' | 'api' | 'web'; chatId: string | undefined; userId: string } {
   const defaults = getDefaultPushTarget();
-  
-  const channel = (jobParams?.channel as string) || defaults?.channel || 'feishu';
+
+  const channelRaw = (jobParams?.channel as string) || defaults?.channel || 'feishu';
+  const channel = channelRaw as 'cli' | 'feishu' | 'webhook' | 'api' | 'web';
   const chatId = (jobParams?.chatId as string) || client?.lastActiveChatId || defaults?.chatId;
   const userId = (jobParams?.userId as string) || client?.lastActiveUserId || defaults?.userId || 'feishu-user';
-  
+
   return { channel, chatId, userId };
 }
 

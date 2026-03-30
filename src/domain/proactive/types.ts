@@ -5,10 +5,10 @@
  */
 
 import { z } from 'zod';
-import type { ToolResult } from '../types';
+import type { ToolResult } from '../../types';
 
 // Re-export for convenience
-export type { ToolResult } from '../types';
+export type { ToolResult } from '../../types';
 
 // Task types for proactive scheduling
 export type ProactiveTaskType =
@@ -145,7 +145,7 @@ export const NotificationStorageSchema = z.object({
 export type NotificationStorage = z.infer<typeof NotificationStorageSchema>;
 
 // Tool result type - uses unified type
-export type ProactiveToolResult = ToolResult<Schedule | Pattern | PendingNotification | PendingNotification[] | { [key: string]: unknown }>;
+export type ProactiveToolResult = ToolResult<Schedule | Pattern | PendingNotification | PendingNotification[] | NotificationHistory[] | NotificationHistory | { [key: string]: unknown }>;
 
 // Create schedule options
 export const CreateScheduleOptionsSchema = z.object({

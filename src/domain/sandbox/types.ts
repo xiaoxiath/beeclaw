@@ -5,8 +5,6 @@
  * Supports multiple isolation levels: local (Bun subprocess) → Docker → Remote (future).
  */
 
-import { z } from 'zod';
-
 // ─── Execution Result ────────────────────────────────────────────────────────
 
 export interface ExecutionResult {

@@ -255,18 +255,18 @@ describe('HITL Integration Tests', () => {
       expect(testSession.metadata?.pendingQuestion).toBeUndefined();
     });
 
-    it('should return null when no pending HITL request', async () => {
+    it('should return empty string when no pending HITL request', async () => {
       // Clear pending state
       delete testSession.metadata?.pendingConfirmation;
       delete testSession.metadata?.pendingQuestion;
 
       const result = await handleHITLResponse(testSessionId, 'approve');
-      expect(result).toBeNull();
+      expect(result).toBe('');
     });
 
-    it('should return null for non-HITL message', async () => {
+    it('should return empty string for non-HITL message', async () => {
       const result = await handleHITLResponse(testSessionId, 'Hello world');
-      expect(result).toBeNull();
+      expect(result).toBe('');
     });
   });
 });

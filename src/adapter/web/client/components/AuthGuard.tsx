@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useNavigate, useLocation } from '@tanstack/react-router';
+import { Outlet, useNavigate } from '@tanstack/react-router';
 
 interface AuthGuardProps {
   children?: React.ReactNode;
@@ -9,7 +9,6 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
-  const _location = useLocation();
 
   useEffect(() => {
     checkAuth();

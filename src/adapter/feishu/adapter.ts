@@ -24,7 +24,7 @@ export class FeishuAdapter implements EntryAdapter {
 
     // 注册 Feishu channel 到 gateway
     this.channel = new FeishuChannel();
-    context.gateway.registerChannel(this.channel);
+    context.gateway?.registerChannel(this.channel);
 
     logger.debug('[FeishuAdapter] Initialized');
   }

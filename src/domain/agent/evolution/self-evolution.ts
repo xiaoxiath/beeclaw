@@ -122,5 +122,4 @@ export async function triggerSelfEvolution(): Promise<{
   };
 }
 
-// Re-export config type for external usage
-export type { SelfEvolutionConfig };
+// SelfEvolutionConfig is already exported above at line 22

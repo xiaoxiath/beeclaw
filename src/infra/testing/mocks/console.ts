@@ -5,25 +5,26 @@
  */
 
 export interface ConsoleCall {
-  method: keyof Console;
+  method: string;
   args: unknown[];
 }
 
-type ConsoleMethod = keyof Console;
+type ConsoleMethod = 'log' | 'info' | 'warn' | 'error' | 'debug' | 'trace' | 'table' | 'group' | 'groupEnd' | 'time' | 'timeEnd' | 'assert' | 'clear' | 'count' | 'countReset' | 'dir' | 'dirxml';
 
 let calls: ConsoleCall[] = [];
-let originalConsole: Console | null = null;
-let mutedMethods: Set<ConsoleMethod> = new Set();
+let originalConsole: Record<string, (...args: unknown[]) => void> | null = null;
+let mutedMethods: Set<string> = new Set();
 
 /**
  * Create a mock console method
  */
-function createMockMethod(method: ConsoleMethod): (...args: unknown[]) => void {
+function createMockMethod(method: string): (...args: unknown[]) => void {
   return (...args: unknown[]) => {
     calls.push({ method, args });
     // Optionally still output to original console (useful for debugging)
     if (!mutedMethods.has(method) && originalConsole) {
-      originalConsole[method](...args);
+      const original = originalConsole[method];
+      if (original) original(...args);
     }
   };
 }
@@ -38,11 +39,12 @@ export function setupMockConsole(
   mute: boolean = true
 ): void {
   calls = [];
-  originalConsole = { ...console };
+  originalConsole = {};
   mutedMethods = mute ? new Set(methods) : new Set();
 
   for (const method of methods) {
-    (console as Record<string, unknown>)[method] = createMockMethod(method);
+    originalConsole[method] = (console as unknown as Record<string, (...args: unknown[]) => void>)[method].bind(console);
+    (console as unknown as Record<string, unknown>)[method] = createMockMethod(method);
   }
 }
 
@@ -52,7 +54,7 @@ export function setupMockConsole(
 export function restoreConsole(): void {
   if (originalConsole) {
     for (const key of Object.keys(originalConsole)) {
-      (console as Record<string, unknown>)[key] = (originalConsole as Record<string, unknown>)[key];
+      (console as unknown as Record<string, unknown>)[key] = originalConsole[key];
     }
     originalConsole = null;
   }
@@ -116,11 +118,12 @@ export function interceptConsole(
   onCall: (call: ConsoleCall) => void,
   methods: ConsoleMethod[] = ['log', 'info', 'warn', 'error', 'debug']
 ): void {
-  originalConsole = { ...console };
+  originalConsole = {};
 
   for (const method of methods) {
-    const original = console[method].bind(console);
-    (console as Record<string, unknown>)[method] = (...args: unknown[]) => {
+    const original = (console as unknown as Record<string, (...args: unknown[]) => void>)[method].bind(console);
+    originalConsole[method] = original;
+    (console as unknown as Record<string, unknown>)[method] = (...args: unknown[]) => {
       const call: ConsoleCall = { method, args };
       onCall(call);
       calls.push(call);

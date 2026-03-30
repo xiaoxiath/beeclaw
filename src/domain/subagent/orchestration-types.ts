@@ -159,6 +159,9 @@ export interface OrchestrationOptions {
   /** Whether to continue on failure (default: true) */
   continueOnFailure?: boolean;
 
+  /** [G-P1-03] Maximum cumulative token budget across all subagents (0 = unlimited) */
+  maxTokens?: number;
+
   /** Callback for progress updates */
   onProgress?: (progress: ExecutionProgress) => void;
 

@@ -4,9 +4,13 @@
  * Handles sending various types of messages to Feishu
  */
 
+import type * as Lark from '@larksuiteoapi/node-sdk';
 import { getLogger } from '../../infra/observability/logger';
 
 const logger = getLogger('feishu:send');
+
+/** Client type alias for the Lark SDK Client */
+type Client = InstanceType<typeof Lark.Client>;
 
 /**
  * Send text message to Feishu
@@ -14,7 +18,7 @@ const logger = getLogger('feishu:send');
 export async function sendTextMessage(
   client: Client,
   receiveId: string,
-  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id',
+  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
   text: string
 ): Promise<{ messageId: string }> {
   try {
@@ -52,7 +56,7 @@ export async function sendTextMessage(
 export async function sendPostMessage(
   client: Client,
   receiveId: string,
-  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id',
+  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
   content: string,
   options?: {
     title?: string;
@@ -102,7 +106,7 @@ export async function sendPostMessage(
 export async function sendMarkdownMessage(
   client: Client,
   receiveId: string,
-  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id',
+  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
   markdown: string,
   options?: {
     title?: string;
@@ -151,7 +155,7 @@ export async function sendMarkdownMessage(
 export async function sendCardMessage(
   client: Client,
   receiveId: string,
-  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id',
+  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
   card: FeishuCard
 ): Promise<{ messageId: string }> {
   try {
@@ -189,7 +193,7 @@ export async function sendCardMessage(
 export async function sendMarkdownCard(
   client: Client,
   receiveId: string,
-  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id',
+  receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
   markdown: string,
   options?: {
     title?: string;
@@ -219,9 +223,7 @@ export async function editMessage(
       path: {
         message_id: messageId,
       },
-      params: {},
       data: {
-        msg_type: msgType,
         content: msgType === 'text'
           ? JSON.stringify({ text: content })
           : JSON.stringify({
@@ -283,7 +285,6 @@ export async function replyMessage(
       path: {
         message_id: messageId,
       },
-      params: {},
       data: {
         msg_type: msgType,
         content: messageContent,
@@ -565,27 +566,85 @@ export interface FeishuCard {
     wide_screen_mode?: boolean;
     enable_forward?: boolean;
   };
+  header?: {
+    template?: string;
+    title: {
+      tag: 'plain_text';
+      content: string;
+    };
+    subtitle?: {
+      tag: 'plain_text';
+      content: string;
+    };
+  };
   elements?: CardElement[];
 }
 
 export interface CardElement {
-  tag: 'div' | 'markdown' | 'note' | 'hr' | 'action';
+  tag: 'div' | 'markdown' | 'note' | 'hr' | 'action' | 'img' | 'input';
   text?: {
     tag: 'plain_text' | 'lark_md';
     content: string;
   };
   content?: string;
+  elements?: Array<{ tag: string; content?: string }>;
   actions?: CardAction[];
-}
-
-export interface CardAction {
-  tag: 'button';
-  text: {
+  extra?: {
+    size?: string;
+    color?: string;
+  };
+  img_key?: string;
+  alt?: {
     tag: 'plain_text';
     content: string;
   };
-  type: 'primary' | 'default' | 'danger';
-  value: Record<string, unknown>;
+  preview?: boolean;
+  mode?: 'crop_center' | 'fit_horizontal';
+  name?: string;
+  required?: boolean;
+  placeholder?: {
+    tag: 'plain_text';
+    content: string;
+  };
+  element?: {
+    tag: 'input' | 'textarea' | 'select_static';
+    placeholder?: {
+      tag: 'plain_text';
+      content: string;
+    };
+    max_length?: number;
+    options?: Array<{
+      text: {
+        tag: 'plain_text';
+        content: string;
+      };
+      value: string;
+    }>;
+  };
+}
+
+export interface CardAction {
+  tag: 'button' | 'select_static' | 'select_dynamic' | 'overflow' | 'date_picker' | 'picker_time';
+  text?: {
+    tag: 'plain_text';
+    content: string;
+  };
+  type?: 'primary' | 'default' | 'danger';
+  value?: Record<string, unknown>;
+  url?: string;
+  placeholder?: {
+    tag: 'plain_text';
+    content: string;
+  };
+  options?: Array<{
+    text: {
+      tag: 'plain_text';
+      content: string;
+    };
+    value: string;
+  }>;
+  initial_option?: string;
+  multiple?: boolean;
 }
 
 export interface FeishuMessage {

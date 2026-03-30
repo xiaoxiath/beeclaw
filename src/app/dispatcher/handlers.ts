@@ -81,6 +81,7 @@ export function registerDefaultHandlers(): void {
       params: params || {},
       triggeredAt: new Date().toISOString(),
       triggeredBy: 'cron',
+      source: 'proactive',
     };
 
     // Dispatch to specific job handler based on handlerName

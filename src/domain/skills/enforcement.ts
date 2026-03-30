@@ -12,7 +12,8 @@
  * - Output completeness guard: detects truncated/summarized skill outputs
  */
 import type { Logger } from '../../infra/observability/logger';
-import { getSkillStore, type Skill } from './store';
+import { getSkillStore } from './store';
+import type { Skill } from './types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

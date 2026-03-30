@@ -21,6 +21,7 @@ vi.mock('bunqueue/client', () => {
         id, name, data, state: opts?.delay ? 'delayed' : 'waiting',
         progress: 0, timestamp: Date.now(), returnvalue: null, failedReason: null,
         processedOn: null, finishedOn: null,
+        getState: async () => job.state,
         remove: async () => { this.store.delete(id); },
         updateProgress: async (p: number) => { job.progress = p; },
       };

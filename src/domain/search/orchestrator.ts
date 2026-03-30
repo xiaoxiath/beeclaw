@@ -14,7 +14,7 @@ import { BraveProvider } from './providers/brave';
 import { GoogleProvider } from './providers/google';
 import { BochaProvider } from './providers/bocha';
 import { TavilyProvider } from './providers/tavily';
-import { DeepResearchV2, createDeepResearchHandler, type DeepResearchV2Config, type ResearchDepth, type SearchFn, type FetchFn, type LLMCallFn, type ProgressCallback, type DeepResearchResult } from './research/deep-research-v2';
+import { createDeepResearchHandler, type ResearchDepth, type SearchFn, type FetchFn, type LLMCallFn, type ProgressCallback, type DeepResearchResult } from './research/deep-research-v2';
 
 // ============================================================================
 // TTL-based LRU Cache for search results

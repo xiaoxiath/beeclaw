@@ -13,14 +13,10 @@ import type {
   TimingData,
   BenchmarkResult,
 } from './types';
-import { SkillFrontmatterSchema } from './types';
+import { SkillFrontmatterSchema, EMPTY_FRONTMATTER } from './types';
 import { LLMSkillMatcher } from './llm-matcher';
 import { logger } from '../../infra/observability/logger';
 
-// Phase 4: Extracted focused modules
-import { SkillParser, getSkillParser } from './parser';
-import { SkillCache } from './cache';
-import { SkillWatcher } from './watcher';
 
 // Task 2: Extracted loader helpers
 import {
@@ -30,7 +26,6 @@ import {
   calculateMaturity,
   hasSecurityIssues,
 } from './loader';
-import type { SkillMetadata } from './loader';
 
 // Task 2: Extracted recommender functions
 import {
@@ -315,6 +310,7 @@ export class SkillStore {
       const frontmatter: SkillFrontmatter = {
         name: options.name,
         description: options.description,
+        version: '1.0.0',
         tags: options.tags || [],
         triggers: options.triggers || [],
         depends_on: options.dependsOn || [],
@@ -526,7 +522,7 @@ export class SkillStore {
       ),
 
       // Well structured: valid frontmatter, ≤300 lines
-      wellStructured: skill.name && skill.description && lines <= 300,
+      wellStructured: !!(skill.name && skill.description) && lines <= 300,
 
       // Clean: no hardcoded secrets (basic check)
       clean: !hasSecurityIssues(content),
@@ -633,7 +629,7 @@ export class SkillStore {
 
     if (!frontmatterMatch) {
       return {
-        frontmatter: { name: '', description: '' },
+        frontmatter: { ...EMPTY_FRONTMATTER },
         body: content,
       };
     }
@@ -647,7 +643,7 @@ export class SkillStore {
       return { frontmatter, body };
     } catch {
       return {
-        frontmatter: { name: '', description: '' },
+        frontmatter: { ...EMPTY_FRONTMATTER },
         body: content,
       };
     }

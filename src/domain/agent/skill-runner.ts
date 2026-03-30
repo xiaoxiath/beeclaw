@@ -31,7 +31,7 @@ export class SkillRunner {
 
   validateOutputCompleteness(output: string, matchedSkills: SkillMatchResult['skills']): string[] {
     if (!this.enforcement) return [];
-    return this.enforcement.validateOutputCompleteness(output, matchedSkills);
+    return this.enforcement.validateOutputCompleteness(output, matchedSkills.map(s => s.skill ?? s) as any[]);
   }
 
   buildRetryPrompt(issues: string[]): string {

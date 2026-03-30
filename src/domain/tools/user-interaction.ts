@@ -4,7 +4,7 @@
  * Allows the AI agent to request information, clarification, or decisions from users.
  */
 
-import type { ToolResult } from '../agent/types';
+import type { ToolResult } from '../../types';
 import type { UserContext } from '../agent/types';
 
 export interface AskUserQuestionParams {

@@ -18,7 +18,7 @@ import { getTaskDispatcher } from '../app/dispatcher';
 import { FeishuAdapter } from '../adapter/feishu/adapter';
 import { WebAdapter } from '../adapter/web/adapter';
 import { adapterRegistry } from '../infra/entry';
-import { loadAllSessions, saveAllSessions } from '../domain/session';
+import { saveAllSessions } from '../domain/session';
 import { getDaemon, getScheduler, registerFeishuHandler, setCliDeliveryHandler } from '../domain/proactive';
 import { getFeishuWSClient } from '../adapter/feishu';
 import { initSelfEvolution } from '../domain/agent/evolution/self-evolution';
@@ -262,7 +262,7 @@ async function main() {
               break;
 
             case 'self_evolution':
-              await handleSelfEvolutionJob();
+              await handleSelfEvolutionJob(job);
               break;
 
             case 'llm_proactive_chat':

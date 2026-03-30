@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'fs';
 import { join, resolve, dirname, basename, sep } from 'path';
 import { parse as parseShell } from 'shell-quote';
-import { logger } from '../../infra/observability/logger';
 import type { BuiltinToolResult } from './builtin';
 
 // ============================================================================

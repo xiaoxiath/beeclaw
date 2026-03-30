@@ -38,7 +38,7 @@ describe('Memory Routes', () => {
   describe('GET / (search)', () => {
     it('returns search results when search param is provided', async () => {
       const app = createApp();
-      mockStore.grep.mockResolvedValue({
+      mockStore.grep.mockReturnValue({
         success: true,
         data: '📄 notes/todo.md\nL5: buy milk\n\n---\n\n📄 notes/work.md\nL10: meeting notes',
       });
@@ -58,7 +58,7 @@ describe('Memory Routes', () => {
 
     it('returns empty results for no matches', async () => {
       const app = createApp();
-      mockStore.grep.mockResolvedValue({
+      mockStore.grep.mockReturnValue({
         success: true,
         data: '(no matches found)',
       });
@@ -73,7 +73,7 @@ describe('Memory Routes', () => {
 
     it('returns empty entries when grep data is empty', async () => {
       const app = createApp();
-      mockStore.grep.mockResolvedValue({
+      mockStore.grep.mockReturnValue({
         success: true,
         data: '',
       });
@@ -87,7 +87,7 @@ describe('Memory Routes', () => {
 
     it('returns empty entries when grep success is false', async () => {
       const app = createApp();
-      mockStore.grep.mockResolvedValue({
+      mockStore.grep.mockReturnValue({
         success: false,
         data: null,
       });
@@ -101,7 +101,7 @@ describe('Memory Routes', () => {
 
     it('handles grep results with non-matching line format', async () => {
       const app = createApp();
-      mockStore.grep.mockResolvedValue({
+      mockStore.grep.mockReturnValue({
         success: true,
         data: '📄 notes/file.md\nSome non-matching line\nL3: actual match',
       });
@@ -120,7 +120,7 @@ describe('Memory Routes', () => {
   describe('GET / (path)', () => {
     it('returns directory listing for path', async () => {
       const app = createApp();
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: 'd notes\nf readme.md',
       });
@@ -139,7 +139,7 @@ describe('Memory Routes', () => {
 
     it('returns 404 when ls fails', async () => {
       const app = createApp();
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: false,
         error: 'Path not found',
       });
@@ -153,7 +153,7 @@ describe('Memory Routes', () => {
 
     it('returns empty entries when ls data is empty', async () => {
       const app = createApp();
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: '',
       });
@@ -167,7 +167,7 @@ describe('Memory Routes', () => {
 
     it('handles root path correctly', async () => {
       const app = createApp();
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: 'd mydir',
       });
@@ -184,7 +184,7 @@ describe('Memory Routes', () => {
   describe('GET / (list all categories)', () => {
     it('returns all memory entries grouped by category', async () => {
       const app = createApp();
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: 'd notes\nd projects\nf readme.md',
       });
@@ -201,7 +201,7 @@ describe('Memory Routes', () => {
 
     it('returns 500 when ls / fails', async () => {
       const app = createApp();
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: false,
         error: 'Disk error',
       });
@@ -215,7 +215,7 @@ describe('Memory Routes', () => {
 
     it('returns empty when ls data is falsy', async () => {
       const app = createApp();
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: null,
       });
@@ -230,7 +230,7 @@ describe('Memory Routes', () => {
 
     it('returns 500 on thrown error', async () => {
       const app = createApp();
-      mockStore.ls.mockRejectedValue(new Error('Unexpected crash'));
+      mockStore.ls.mockImplementation(() => { throw new Error('Unexpected crash'); });
 
       const res = await app.request('/');
       const json = await res.json();
@@ -242,7 +242,7 @@ describe('Memory Routes', () => {
 
     it('handles non-Error thrown objects', async () => {
       const app = createApp();
-      mockStore.ls.mockRejectedValue('string error');
+      mockStore.ls.mockImplementation(() => { throw 'string error'; });
 
       const res = await app.request('/');
       const json = await res.json();
@@ -256,7 +256,7 @@ describe('Memory Routes', () => {
   describe('GET /* (specific entry)', () => {
     it('returns a file entry when read succeeds', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: true,
         data: '# My Note\nSome content here',
       });
@@ -277,7 +277,7 @@ describe('Memory Routes', () => {
 
     it('uses current time when stat fails', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: true,
         data: 'content',
       });
@@ -294,11 +294,11 @@ describe('Memory Routes', () => {
 
     it('returns directory listing for EISDIR error', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: false,
         error: 'EISDIR: is a directory',
       });
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: 'f file1.md\nd subdir',
       });
@@ -313,11 +313,11 @@ describe('Memory Routes', () => {
 
     it('returns directory listing for "directory" error', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: false,
         error: 'Path is a directory',
       });
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: 'f item.md',
       });
@@ -331,11 +331,11 @@ describe('Memory Routes', () => {
 
     it('returns 404 when directory listing fails', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: false,
         error: 'EISDIR: is a directory',
       });
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: false,
         error: 'Cannot list',
       });
@@ -349,11 +349,11 @@ describe('Memory Routes', () => {
 
     it('handles empty directory listing', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: false,
         error: 'EISDIR: is a directory',
       });
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: '(empty)',
       });
@@ -367,11 +367,11 @@ describe('Memory Routes', () => {
 
     it('filters out empty names from directory listing', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: false,
         error: 'EISDIR: is a directory',
       });
-      mockStore.ls.mockResolvedValue({
+      mockStore.ls.mockReturnValue({
         success: true,
         data: 'f file1.md\nf \nf (empty)',
       });
@@ -386,7 +386,7 @@ describe('Memory Routes', () => {
 
     it('returns 404 when entry not found', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: false,
         error: 'File not found',
       });
@@ -400,7 +400,7 @@ describe('Memory Routes', () => {
 
     it('returns 404 with default message when no error info', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: false,
       });
 
@@ -413,7 +413,7 @@ describe('Memory Routes', () => {
 
     it('returns 404 when read returns null', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue(null);
+      mockStore.read.mockReturnValue(null);
 
       const res = await app.request('/api/memory/nullentry');
       const json = await res.json();
@@ -423,7 +423,7 @@ describe('Memory Routes', () => {
 
     it('returns 500 on thrown error', async () => {
       const app = createApp();
-      mockStore.read.mockRejectedValue(new Error('Read crash'));
+      mockStore.read.mockImplementation(() => { throw new Error('Read crash'); });
 
       const res = await app.request('/api/memory/crash');
       const json = await res.json();
@@ -434,7 +434,7 @@ describe('Memory Routes', () => {
 
     it('handles non-Error thrown objects in wildcard route', async () => {
       const app = createApp();
-      mockStore.read.mockRejectedValue('string thrown');
+      mockStore.read.mockImplementation(() => { throw 'string thrown'; });
 
       const res = await app.request('/api/memory/crash2');
       const json = await res.json();
@@ -445,7 +445,7 @@ describe('Memory Routes', () => {
 
     it('decodes URL-encoded paths', async () => {
       const app = createApp();
-      mockStore.read.mockResolvedValue({
+      mockStore.read.mockReturnValue({
         success: true,
         data: 'content',
       });

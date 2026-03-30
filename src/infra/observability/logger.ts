@@ -75,7 +75,7 @@ class Logger {
   private safeStringify(obj: unknown, indent?: number): string {
     try {
       const seen = new WeakSet();
-      return JSON.stringify(obj, (key, value) => {
+      return JSON.stringify(obj, (_key, value) => {
         if (typeof value === 'object' && value !== null) {
           if (seen.has(value)) {
             return '[Circular]';
@@ -153,6 +153,7 @@ class ChildLogger {
 }
 
 export const logger = new Logger();
+export type { Logger };
 
 export function getLogger(context: string) {
   return logger.child({ context });

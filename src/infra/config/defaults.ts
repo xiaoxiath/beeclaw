@@ -29,6 +29,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     origins: ['localhost'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
+    exposeHeaders: [],
     credentials: true,
     maxAge: 86400,
   },
@@ -114,6 +115,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   // Feishu (disabled by default, requires credentials)
   feishu: {
     enabled: false,
+    mode: 'sdk',
+    cliPath: 'feishu',
+    cliTimeout: 30000,
+    cliRetries: 2,
     logLevel: 'error',
     useCardV2: true,
   },
@@ -231,11 +236,14 @@ export const DEFAULT_CONFIG: AppConfig = {
       cpuLimit: 1,
       networkEnabled: false,
       defaultTimeout: 60000,
+      maxOutputSize: 2097152,
+      idleTimeout: 300000,
     },
     pool: {
       enabled: false,
       minIdle: 1,
       maxTotal: 5,
+      healthCheckInterval: 10000,
     },
   },
 
@@ -252,8 +260,15 @@ export const DEFAULT_CONFIG: AppConfig = {
   // LLM Router (tiered system, enabled by default)
   llmRouter: {
     enabled: true,
+    tiers: {},
     fallbackEnabled: true,
     costTracking: true,
+    concurrency: {
+      maxConcurrent: 2,
+      maxQueueSize: 50,
+      queueTimeoutMs: 100000,
+      enablePriority: true,
+    },
   },
 };
 

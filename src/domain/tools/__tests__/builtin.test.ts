@@ -794,7 +794,7 @@ describe('Builtin Tools', () => {
 
       const result = await executeBuiltinTool('datasource_health_check', {});
       expect(result.success).toBe(true);
-      expect(result.result).toBe('health ok');
+      expect(result.data).toBe('health ok');
     });
 
     test('executes datasource_health_check handles exception', async () => {

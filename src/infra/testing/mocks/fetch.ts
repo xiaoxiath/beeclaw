@@ -76,6 +76,11 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   return createMockResponse(response);
 }
 
+// Assign fetch-compatible properties to the mock function
+(mockFetch as typeof fetch).preconnect = (_url: string | URL) => {
+  // No-op for mock
+};
+
 /**
  * Set up mock fetch with a handler
  */
@@ -83,7 +88,7 @@ export function setupMockFetch(handler: MockFetchHandler): void {
   mockHandler = handler;
   requests = [];
   originalFetch = globalThis.fetch;
-  globalThis.fetch = mockFetch;
+  globalThis.fetch = mockFetch as typeof fetch;
 }
 
 /**

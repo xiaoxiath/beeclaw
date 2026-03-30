@@ -5,7 +5,7 @@
  */
 
 import type { AppConfig, AIProvider } from '../config/schema';
-import type { MessageGateway } from '../../app/gateway-channel';
+import type { MultiChannelMessageGateway } from '../../app/gateway-channel';
 import type { TaskDispatcher } from '../../app/dispatcher';
 import type { createAgent } from '../../domain/agent';
 
@@ -44,8 +44,8 @@ export interface EntryContext {
   agent: ReturnType<typeof createAgent>;
   provider: AIProvider;
   model: string;
-  gateway: MessageGateway;
-  dispatcher: TaskDispatcher;
+  gateway?: MultiChannelMessageGateway;
+  dispatcher?: TaskDispatcher;
 }
 
 /**

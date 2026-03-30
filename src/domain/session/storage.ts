@@ -136,7 +136,6 @@ export function loadSessionFromSQLite(sessionId: string): Session | null {
       messages: row.messages as SessionMessage[],
       metadata: row.metadata || undefined,
       pendingRecovery: row.needsRecovery || undefined,
-      recoveredAt: (row as any).recoveredAt?.toISOString() || undefined,
       createdAt: row.createdAt?.toISOString() || new Date().toISOString(),
       updatedAt: row.updatedAt?.toISOString() || new Date().toISOString(),
     };

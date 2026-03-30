@@ -37,19 +37,17 @@ class DockerSandbox implements Sandbox {
   private totalDurationMs: number = 0;
   private lastExecAt?: Date;
   private config: SandboxConfig['docker'];
-  private workspaceBase: string;
 
   constructor(
     id: string,
     workspacePath: string,
     config: SandboxConfig['docker'],
-    workspaceBase: string,
+    _workspaceBase: string,
     options?: SandboxCreateOptions
   ) {
     this.id = id;
     this.workspacePath = workspacePath;
     this.config = config;
-    this.workspaceBase = workspaceBase;
     this.sessionId = options?.sessionId;
     this.createdAt = new Date();
   }

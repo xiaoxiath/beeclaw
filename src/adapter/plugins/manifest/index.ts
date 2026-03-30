@@ -122,7 +122,7 @@ export function loadPluginManifest(rootDir: string): ManifestLoadOutcome {
 
   return {
     ok: true,
-    manifest: raw as PluginManifest,
+    manifest: raw as unknown as PluginManifest,
     manifestPath,
   };
 }

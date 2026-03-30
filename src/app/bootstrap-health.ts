@@ -97,14 +97,21 @@ export function bootstrapHealthCheck(): {
 
       // Fallback: check status only (no active ping)
       const status = mcpManager.getStatus();
-      const serverStatus = status[serverId];
+
+      // Support both array format [{id, connected, tools}] and object format {serverId: {connected, tools}}
+      let serverStatus: any = null;
+      if (Array.isArray(status)) {
+        serverStatus = status.find((s: any) => s.id === serverId || s.name === serverId);
+      } else if (status && typeof status === 'object') {
+        serverStatus = (status as Record<string, any>)[serverId];
+      }
       if (!serverStatus) {
         return { ok: false, latencyMs: 0, toolCount: 0, error: `Server "${serverId}" not found` };
       }
       return {
         ok: serverStatus.connected,
         latencyMs: 0,
-        toolCount: serverStatus.toolCount,
+        toolCount: serverStatus.toolCount ?? serverStatus.tools ?? 0,
         error: serverStatus.connected ? undefined : 'Server not connected',
       };
     });

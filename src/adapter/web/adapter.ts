@@ -63,6 +63,9 @@ export class WebAdapter implements EntryAdapter {
               this.activeConnections.delete(ws);
               logger.debug(`[WebAdapter] WebSocket disconnected, total: ${this.activeConnections.size}`);
             },
+            message: (_ws, _message) => {
+              // Handle incoming WebSocket messages if needed
+            },
           },
       });
 

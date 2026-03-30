@@ -89,7 +89,6 @@ export class LoadingIndicator {
  * Progress indicator for multi-step operations
  */
 export class ProgressIndicator {
-  private current = 0;
   private total: number;
   private width = 30;
 
@@ -101,7 +100,6 @@ export class ProgressIndicator {
    * Update progress
    */
   update(current: number, message?: string): void {
-    this.current = current;
     const percent = Math.floor((current / this.total) * 100);
     const filled = Math.floor((current / this.total) * this.width);
     const empty = this.width - filled;
@@ -127,9 +125,6 @@ export class ProgressIndicator {
 export class InputHandler extends EventEmitter {
   private rl: readline.Interface;
   private inputBuffer: string[] = [];
-  private isInMultilineMode = false;
-  private multilineDelimiter = '';
-  private pasteMode = false;
   private lastInputTime = 0;
   private pasteThreshold = 50; // ms between keystrokes to detect paste
 
@@ -204,16 +199,12 @@ export class InputHandler extends EventEmitter {
   async promptMultiline(query: string = '>>> ', endDelimiter: string = 'END'): Promise<string> {
     return new Promise((resolve) => {
       this.inputBuffer = [];
-      this.isInMultilineMode = true;
-      this.multilineDelimiter = endDelimiter;
-
       logger.debug(`(Enter ${endDelimiter} on a new line to finish, or Ctrl+D)`);
 
       const promptLine = () => {
         this.rl.question(query, (line) => {
           if (line.trim() === endDelimiter) {
             // End of multiline input
-            this.isInMultilineMode = false;
             const result = this.inputBuffer.join('\n');
             this.inputBuffer = [];
             this.emit('multiline', result);

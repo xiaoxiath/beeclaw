@@ -6,7 +6,7 @@
 
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { SkillFrontmatter } from './types';
-import { SkillFrontmatterSchema } from './types';
+import { SkillFrontmatterSchema, EMPTY_FRONTMATTER } from './types';
 import { safeJsonParse } from '../../infra/utils';
 
 export class SkillParser {
@@ -17,7 +17,7 @@ export class SkillParser {
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
     if (!frontmatterMatch) {
-      return { frontmatter: { name: '', description: '' }, body: content };
+      return { frontmatter: { ...EMPTY_FRONTMATTER }, body: content };
     }
 
     try {
@@ -27,7 +27,7 @@ export class SkillParser {
       const body = frontmatterMatch[2];
       return { frontmatter, body };
     } catch {
-      return { frontmatter: { name: '', description: '' }, body: content };
+      return { frontmatter: { ...EMPTY_FRONTMATTER }, body: content };
     }
   }
 

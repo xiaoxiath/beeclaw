@@ -359,7 +359,8 @@ export interface CompressedMessage {
  * Compress a tool result message
  * Keeps tool name and brief result, removes verbose output
  */
-export function compressToolResult(content: string): string {
+export function compressToolResult(content: string, maxLen?: number): string {
+  const effectiveMax = maxLen ?? 1000;
   try {
     const result = JSON.parse(content);
 
@@ -398,15 +399,15 @@ export function compressToolResult(content: string): string {
     }
 
     // Fallback: truncate if too long
-    if (content.length > 1000) {
-      return content.slice(0, 500) + '... [compressed]';
+    if (content.length > effectiveMax) {
+      return content.slice(0, Math.floor(effectiveMax / 2)) + '... [compressed]';
     }
 
     return content;
   } catch {
     // Not JSON, just truncate
-    if (content.length > 1000) {
-      return content.slice(0, 500) + '... [compressed]';
+    if (content.length > effectiveMax) {
+      return content.slice(0, Math.floor(effectiveMax / 2)) + '... [compressed]';
     }
     return content;
   }

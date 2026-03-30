@@ -196,8 +196,8 @@ This ensures skills are in the correct location and follow quality standards.`,
         success: false,
         error: `Feishu tool "${name}" has been migrated to feishu-cli-toolkit skill. ` +
               `Please use the skill directly by describing what you want to do. ` +
-              `Example: "创建一个日程" or "列出我的云空间文件"`,
-        hint: 'See /skills/skills/feishu-cli-toolkit/SKILL.md for available commands',
+              `Example: "创建一个日程" or "列出我的云空间文件". ` +
+              `See /skills/skills/feishu-cli-toolkit/SKILL.md for available commands`,
       };
     }
 

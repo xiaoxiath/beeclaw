@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ToolResult } from '../types';
+import type { ToolResult } from '../../types';
 
 // Re-export from config schema
 export { MemoryConfigSchema } from '../../infra/config/schema';

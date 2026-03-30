@@ -374,8 +374,16 @@ export interface CardHeader {
 export interface CardConfig {
   config?: { wide_screen_mode?: boolean };
   header?: CardHeader;
-  elements: CardElement[];
+  elements?: CardElement[];
+  schema?: string;
+  body?: { elements: CardElement[] | unknown[] };
 }
+
+/**
+ * Type accepted by card sending/patching methods.
+ * Covers legacy CardConfig, Card Schema 2.0 objects, and raw JSON strings.
+ */
+export type CardPayload = CardConfig | Record<string, unknown> | string;
 
 /**
  * Feishu WebSocket Client
@@ -1202,7 +1210,7 @@ export class FeishuWSClient {
   async sendCard(
     receiveId: string,
     receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id',
-    card: CardConfig | string
+    card: CardPayload
   ): Promise<string> {
     if (!this.client) {
       throw new Error('[FeishuWS] Client not initialized');
@@ -1438,7 +1446,7 @@ export class FeishuWSClient {
    */
   async replyCard(
     messageId: string,
-    card: CardConfig | string,
+    card: CardPayload,
     _options?: { replyInThread?: boolean }
   ): Promise<string> {
     if (!this.client) {
@@ -1486,7 +1494,7 @@ export class FeishuWSClient {
    */
   async patchCard(
     messageId: string,
-    card: CardConfig | string
+    card: CardPayload
   ): Promise<void> {
     if (!this.client) {
       throw new Error('[FeishuWS] Client not initialized');

@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 // Skill frontmatter schema
 export const SkillFrontmatterSchema = z.object({
-  name: z.string().min(1).describe('Skill name (kebab-case)'),
-  description: z.string().min(1).describe('What the skill does AND when to trigger'),
+  name: z.string().describe('Skill name (kebab-case)'),
+  description: z.string().describe('What the skill does AND when to trigger'),
   version: z.string().optional().default('1.0.0'),
   compatibility: z.string().optional().describe('Required tools or dependencies'),
   tags: z.array(z.string()).optional().default([]),
@@ -16,8 +16,19 @@ export const SkillFrontmatterSchema = z.object({
 
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
 
+/** Fallback frontmatter for malformed SKILL.md files */
+export const EMPTY_FRONTMATTER: SkillFrontmatter = {
+  name: '',
+  description: '',
+  version: '1.0.0',
+  tags: [],
+  triggers: [],
+  depends_on: [],
+};
+
 // Full skill structure
 export interface Skill {
+  id?: string;               // Skill identifier (directory name or unique ID)
   name: string;
   description: string;
   version: string;
@@ -37,6 +48,13 @@ export interface Skill {
   hasEvals: boolean;         // Evals directory
   isBuiltin: boolean;        // Is this a built-in skill?
   readonly: boolean;         // Can the user modify this skill?
+  enabled?: boolean;         // Whether this skill is active
+
+  // Tools associated with this skill (optional)
+  tools?: string[];
+
+  // Example usages (optional)
+  examples?: string[];
 
   // Evolution metadata
   usageCount: number;
@@ -54,18 +72,32 @@ export interface CreateSkillOptions {
   content?: string;
   tags?: string[];
   triggers?: string[];
+  examples?: string[];
+  maturity?: 'seed' | 'growing' | 'mature' | 'deprecated';
   dependsOn?: string[];
   compatibility?: string;
   author?: string;
+  frontmatter?: {
+    triggers?: string[];
+    examples?: string[];
+    maturity?: 'seed' | 'growing' | 'mature' | 'deprecated';
+  };
 }
 
 // Skill update options
 export interface UpdateSkillOptions {
+  name?: string;
   description?: string;
   content?: string;
   tags?: string[];
   triggers?: string[];
   compatibility?: string;
+  enabled?: boolean;
+  frontmatter?: {
+    triggers?: string[];
+    examples?: string[];
+    maturity?: 'seed' | 'growing' | 'mature' | 'deprecated';
+  };
 }
 
 // Skill maturity assessment result

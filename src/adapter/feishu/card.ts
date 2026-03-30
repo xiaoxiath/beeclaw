@@ -4,9 +4,13 @@
  * Build interactive card messages for Feishu
  */
 
+import type * as Lark from '@larksuiteoapi/node-sdk';
 import { sendCardMessage } from './send';
 
 import { sanitizeForCard } from '../../infra/utils';
+
+/** Client type alias for the Lark SDK Client */
+type Client = InstanceType<typeof Lark.Client>;
 
 /**
  * Card builder for creating interactive cards
@@ -156,7 +160,7 @@ export class CardBuilder {
     }
 
     const lastElement = this.elements[this.elements.length - 1];
-    if (lastElement?.tag === 'action') {
+    if (lastElement?.tag === 'action' && lastElement.actions) {
       lastElement.actions.push(action);
     } else {
       this.elements.push({
@@ -196,7 +200,7 @@ export class CardBuilder {
     };
 
     const lastElement = this.elements[this.elements.length - 1];
-    if (lastElement?.tag === 'action') {
+    if (lastElement?.tag === 'action' && lastElement.actions) {
       lastElement.actions.push(action);
     } else {
       this.elements.push({

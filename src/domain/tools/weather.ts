@@ -274,13 +274,6 @@ async function fetchDailyWeather(locationId: string, days: string = '3d'): Promi
 }
 
 /**
- * Get current hour index (0-23)
- */
-function _getCurrentHourIndex(): number {
-  return new Date().getHours();
-}
-
-/**
  * Fetch weather information for default location
  */
 /**

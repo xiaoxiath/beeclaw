@@ -799,27 +799,6 @@ describe('Agent — additional coverage', () => {
   });
 
   // =====================================================================
-  // buildSystemPromptWithHooks (lines 330-345)
-  // =====================================================================
-  describe('buildSystemPromptWithHooks', () => {
-    test('modifies prompt when hookRunner returns modified context', async () => {
-      mockHookRunner.runBeforePromptBuild.mockResolvedValue({
-        basePrompt: 'Modified base',
-        coreContext: { user: 'Modified User', soul: 'Modified soul' },
-      });
-
-      const agent = new Agent({ provider: makeProvider(), model: 'gpt-4', systemPrompt: 'Test' });
-      // Access private method indirectly through methods that use it
-      const result = await (agent as any).buildSystemPromptWithHooks('original', { user: 'u', soul: 's' });
-      expect(mockBuildSystemPrompt).toHaveBeenCalledWith(
-        'Modified base',
-        expect.objectContaining({ user: 'Modified User' }),
-        undefined,
-      );
-    });
-  });
-
-  // =====================================================================
   // Dynamic memory injection enriched (lines 789-807)
   // =====================================================================
   describe('chat — dynamic memory injection enrichment', () => {

@@ -152,7 +152,7 @@ describe('hitl-manager', () => {
         messages: [],
       });
       const result = await handleHITLResponse('test-session', 'hello');
-      expect(result).toBeNull();
+      expect(result).toBe('');
     });
 
     it('should handle tool confirmation APPROVED', async () => {

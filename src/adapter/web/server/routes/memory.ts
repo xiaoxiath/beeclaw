@@ -2,6 +2,14 @@ import { Hono } from 'hono';
 import { logger } from '../../../../infra/observability/logger';
 import { getMemoryStore } from '@/domain/memory';
 
+/** Memory entry type for the API response */
+interface MemoryEntry {
+  path: string;
+  category: string;
+  type: 'directory' | 'file';
+  matches?: Array<{ line: number; content: string }>;
+}
+
 export default new Hono()
   // List/search memory entries
   .get('/', async (c) => {
@@ -15,23 +23,28 @@ export default new Hono()
       // If searching
       if (search) {
         logger.debug('[Memory API] Searching for:', search);
-        const results = await store.grep(search);
+        const results = store.grep(search);
         logger.debug('[Memory API] Search results:', results);
 
         // Parse grep results into structured format
-        let entries: any[] = [];
-        if (results.success && results.data && results.data !== '(no matches found)') {
+        let entries: Array<{
+          path: string;
+          category: string;
+          type: 'directory' | 'file';
+          matches: Array<{ line: number; content: string } | null>;
+        }> = [];
+        if (results.success && results.data && typeof results.data === 'string' && results.data !== '(no matches found)') {
           // Split by file separator
           const files = results.data.split('\n\n---\n\n');
-          entries = files.map(fileBlock => {
+          entries = files.map((fileBlock: string) => {
             const lines = fileBlock.split('\n');
             const firstLine = lines[0];
-            // Extract file path from "📄 path"
+            // Extract file path from "path" line
             const path = firstLine.replace('📄 ', '').trim();
             // Extract matching lines
             const matches = lines.slice(1)
-              .filter(line => line.startsWith('L'))
-              .map(line => {
+              .filter((line: string) => line.startsWith('L'))
+              .map((line: string) => {
                 const match = line.match(/^L(\d+): (.*)$/);
                 return match ? { line: parseInt(match[1]), content: match[2] } : null;
               })
@@ -56,7 +69,7 @@ export default new Hono()
       // If browsing by path
       if (path) {
         logger.debug('[Memory API] Listing path:', path);
-        const result = await store.ls(path);
+        const result = store.ls(path);
         logger.debug('[Memory API] List result:', result);
 
         if (!result.success) {
@@ -64,15 +77,15 @@ export default new Hono()
         }
 
         // Parse the listing data into structured entries
-        const entries = result.data
-          ? result.data.split('\n').map(line => {
+        const entries = (typeof result.data === 'string' && result.data)
+          ? result.data.split('\n').map((line: string): MemoryEntry => {
             const isDir = line.startsWith('d ');
             const name = line.substring(2).trim();
             return {
               path: path === '/' ? `/${name}` : `${path}/${name}`,
               category: path.split('/')[1] || 'other',
               type: isDir ? 'directory' : 'file',
-            } as MemoryEntry;
+            };
           })
           : [];
 
@@ -85,7 +98,7 @@ export default new Hono()
 
       // List all categories
       logger.debug('[Memory API] Listing all memory');
-      const allResult = await store.ls('/');
+      const allResult = store.ls('/');
       logger.debug('[Memory API] List result:', allResult);
 
       if (!allResult.success) {
@@ -93,27 +106,27 @@ export default new Hono()
       }
 
       // Parse all entries
-      const allMemory = allResult.data
-        ? allResult.data.split('\n').map(line => {
+      const allMemory = (typeof allResult.data === 'string' && allResult.data)
+        ? allResult.data.split('\n').map((line: string): MemoryEntry => {
           const isDir = line.startsWith('d ');
           const name = line.substring(2).trim();
           return {
             path: name, // Remove leading slash
             category: name.split('/')[0] || 'other',
             type: isDir ? 'directory' : 'file',
-          } as MemoryEntry;
+          };
         })
         : [];
 
       logger.debug('[Memory API] Total entries:', allMemory.length);
 
       // Group by category
-      const byCategory = allMemory.reduce((acc, entry) => {
+      const byCategory = allMemory.reduce<Record<string, MemoryEntry[]>>((acc, entry) => {
         const cat = entry.category || 'other';
         if (!acc[cat]) acc[cat] = [];
         acc[cat].push(entry);
         return acc;
-      }, {} as Record<string, typeof allMemory>);
+      }, {});
 
       return c.json({
         entries: allMemory,
@@ -142,7 +155,7 @@ export default new Hono()
 
     try {
       // First try to read as a file
-      const result = await store.read(memoryPath);
+      const result = store.read(memoryPath);
 
       if (result && result.success) {
         // It's a file, return content
@@ -170,16 +183,16 @@ export default new Hono()
       // If read failed with directory error, try listing instead
       if (result?.error?.includes('EISDIR') || result?.error?.includes('directory')) {
         logger.debug('[Memory API] Path is a directory, listing contents:', memoryPath);
-        const listResult = await store.ls(memoryPath);
+        const listResult = store.ls(memoryPath);
 
         if (!listResult.success) {
           return c.json({ error: 'Failed to list directory', message: listResult.error }, 404);
         }
 
         // Parse the listing data into structured entries
-        const entries = listResult.data && listResult.data !== '(empty)'
+        const entries = (typeof listResult.data === 'string' && listResult.data && listResult.data !== '(empty)')
           ? listResult.data.split('\n')
-              .map(line => {
+              .map((line: string) => {
                 const isDir = line.startsWith('d ');
                 const name = line.substring(2).trim();
                 // Skip empty names and "(empty)" entries
@@ -188,10 +201,10 @@ export default new Hono()
                 return {
                   path: memoryPath === '' ? name : `${memoryPath}/${name}`,
                   category: memoryPath.split('/')[0] || 'other',
-                  type: isDir ? 'directory' : 'file' as const,
+                  type: (isDir ? 'directory' : 'file') as 'directory' | 'file',
                 };
               })
-              .filter(Boolean)
+              .filter((e): e is MemoryEntry => e !== null)
           : [];
 
         return c.json({
@@ -221,8 +234,6 @@ export default new Hono()
     // Remove leading slash if present
     memoryPath = memoryPath.replace(/^\//, '');
     logger.debug('[Memory API] DELETE /*', memoryPath);
-
-    const _store = getMemoryStore();
 
     try {
       // Note: Memory store doesn't have a delete method in the current implementation

@@ -14,6 +14,7 @@ import {
   Code,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import Editor from '@monaco-editor/react';
 import { READONLY_MONACO_OPTIONS, detectLanguageFromPath } from '../lib/editor-config';
 
@@ -47,6 +48,40 @@ interface TreeNode {
   name: string;
   type: 'file' | 'directory';
 }
+
+const markdownComponents: Components = {
+  h1: ({ children }) => (
+    <h1 className="text-2xl font-bold mb-4 mt-6 first:mt-2">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-xl font-bold mb-3 mt-4 first:mt-2">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-lg font-bold mb-2 mt-3">{children}</h3>
+  ),
+  p: ({ children }) => (
+    <p className="mb-2 last:mb-0">{children}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className="mb-2 list-disc pl-4 space-y-1">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="mb-2 list-decimal pl-4 space-y-1">{children}</ol>
+  ),
+  li: ({ children }) => <li className="ml-2">{children}</li>,
+  code: ({ className, children }) => {
+    const isInline = !className;
+    return isInline ? (
+      <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono">
+        {children}
+      </code>
+    ) : (
+      <code className="block bg-gray-100 p-3 rounded text-sm font-mono overflow-x-auto">
+        {children}
+      </code>
+    );
+  },
+};
 
 // Recursive tree node component
 function TreeNode({
@@ -384,44 +419,11 @@ export default function Memory() {
                   </div>
                 ) : (
                   // Rendered Markdown view
-                  <ReactMarkdown
-                    className="prose prose-sm max-w-none"
-                    components={{
-                      h1: ({ children }) => (
-                        <h1 className="text-2xl font-bold mb-4 mt-6 first:mt-2">{children}</h1>
-                      ),
-                      h2: ({ children }) => (
-                        <h2 className="text-xl font-bold mb-3 mt-4 first:mt-2">{children}</h2>
-                      ),
-                      h3: ({ children }) => (
-                        <h3 className="text-lg font-bold mb-2 mt-3">{children}</h3>
-                      ),
-                      p: ({ children }) => (
-                        <p className="mb-2 last:mb-0">{children}</p>
-                      ),
-                      ul: ({ children }) => (
-                        <ul className="mb-2 list-disc pl-4 space-y-1">{children}</ul>
-                      ),
-                      ol: ({ children }) => (
-                        <ol className="mb-2 list-decimal pl-4 space-y-1">{children}</ol>
-                      ),
-                      li: ({ children }) => <li className="ml-2">{children}</li>,
-                      code: ({ className, children }) => {
-                        const isInline = !className;
-                        return isInline ? (
-                          <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono">
-                            {children}
-                          </code>
-                        ) : (
-                          <code className="block bg-gray-100 p-3 rounded text-sm font-mono overflow-x-auto">
-                            {children}
-                          </code>
-                        );
-                      },
-                    }}
-                  >
-                    {memoryDetail.entry.content || ''}
-                  </ReactMarkdown>
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown components={markdownComponents}>
+                      {memoryDetail.entry.content || ''}
+                    </ReactMarkdown>
+                  </div>
                 )}
               </div>
 

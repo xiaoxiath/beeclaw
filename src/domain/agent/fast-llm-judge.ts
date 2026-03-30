@@ -71,6 +71,8 @@ export interface JudgmentOptions<T> {
   temperature?: number;
   /** 最大 tokens */
   maxTokens?: number;
+  /** Cache TTL in milliseconds (0 or undefined = no caching) */
+  cacheTTL?: number;
 }
 
 export interface JudgmentResult<T> {
@@ -91,6 +93,10 @@ export interface FastLLMJudgeConfig {
   defaultTimeout: number;
   /** 默认温度 */
   defaultTemperature: number;
+  /** Whether to enable result caching (default: false) */
+  cacheEnabled?: boolean;
+  /** Maximum number of cached entries (default: 0) */
+  cacheSize?: number;
 }
 
 const DEFAULT_CONFIG: FastLLMJudgeConfig = {
@@ -344,6 +350,7 @@ let judgeInstance: FastLLMJudge | null = null;
  */
 export function getFastLLMJudge(
   provider?: AIProvider,
+  modelOrConfig?: string | Partial<FastLLMJudgeConfig>,
   config?: Partial<FastLLMJudgeConfig>
 ): FastLLMJudge {
   if (!judgeInstance) {
@@ -351,10 +358,14 @@ export function getFastLLMJudge(
       throw new Error('FastLLMJudge requires provider on first initialization');
     }
 
+    // Normalize arguments: modelOrConfig can be a string (model name) or config object
+    const fastModel = typeof modelOrConfig === 'string' ? modelOrConfig : undefined;
+    const mergedConfig = typeof modelOrConfig === 'object' ? { ...modelOrConfig, ...config } : config;
+
     // 从配置读取 fast 模型和参数
     const fastModelConfig = getFastModelFromConfig();
 
-    if (!fastModelConfig) {
+    if (!fastModel && !fastModelConfig) {
       throw new Error(
         'Fast model not configured. Please configure llmRouter.tiers.fast in beeclaw.json'
       );
@@ -362,9 +373,9 @@ export function getFastLLMJudge(
 
     judgeInstance = new FastLLMJudge(
       provider,
-      fastModelConfig.model,
-      fastModelConfig.maxTokens,
-      config
+      fastModel || fastModelConfig!.model,
+      fastModelConfig?.maxTokens,
+      mergedConfig
     );
   }
   return judgeInstance;

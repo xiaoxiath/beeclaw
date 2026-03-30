@@ -5,7 +5,6 @@
  */
 
 import { z } from 'zod';
-import { logger } from '../../infra/observability/logger';
 import {
   getSearchOrchestrator,
   getContentExtractor,
@@ -56,14 +55,6 @@ export const deepResearchTool = {
     required: ['topic'],
   },
 };
-
-interface ResearchSource {
-  title: string;
-  url: string;
-  snippet: string;
-  content?: string;
-  source?: string;
-}
 
 export async function executeDeepResearch(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   const parsed = DeepResearchSchema.safeParse(params);

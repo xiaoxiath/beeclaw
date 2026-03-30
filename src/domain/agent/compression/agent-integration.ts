@@ -5,9 +5,10 @@
  * system into the existing Beeclaw agent without major refactoring.
  */
 
-import { getTieredCompressor, type CompressionResult } from './index';
+import { getTieredCompressor } from './index';
 import { estimateTokens, estimateTotalTokens } from '../context';
 import { logger } from '../../../infra/observability/logger';
+import type { ChatMessage } from '../types';
 
 /**
  * Compress messages using the three-tier compression system
@@ -18,16 +19,11 @@ import { logger } from '../../../infra/observability/logger';
  * @returns Compressed messages (if compression was applied)
  */
 export async function compressMessages(
-  messages: Array<{
-    role: string;
-    content?: string | any[];
-    tool_calls?: any;
-    tool_call_id?: string;
-  }>,
+  messages: ChatMessage[],
   maxTokens: number,
   keepRecent: number = 6
 ): Promise<{
-  messages: typeof messages;
+  messages: ChatMessage[];
   stats?: {
     originalTokens: number;
     compressedTokens: number;
@@ -57,7 +53,7 @@ export async function compressMessages(
   );
 
   // Compress old messages
-  const compressedOld: typeof messages = [];
+  const compressedOld: ChatMessage[] = [];
   let totalSaved = 0;
 
   for (const msg of oldMessages) {

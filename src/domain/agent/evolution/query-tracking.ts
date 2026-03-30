@@ -172,18 +172,14 @@ async function persistQueryRecord(record: QueryRecord): Promise<void> {
       return;
     }
 
-    memoryStore.add({
-      category: 'queries',
-      key: `query_${record.timestamp}`,
-      value: record.query,
-      metadata: {
-        timestamp: record.timestamp,
-        intent: record.intent,
-        entities: record.entities,
-        context: record.context,
-        source: 'query_tracking',
-      },
-    });
+    await memoryStore.record('lessons', `Query: ${record.query} (intent: ${record.intent || 'unknown'})`);
+    if (record.entities && record.entities.length > 0) {
+      await memoryStore.write(
+        'facts/query_tracking.md',
+        `\n- [${new Date(record.timestamp).toISOString()}] ${record.query} | intent=${record.intent || 'unknown'} | entities=${record.entities.join(',')}`,
+        'append',
+      );
+    }
   } catch (_error) {
     // Memory store might not be initialized
     console.debug('[QueryTracking] Memory store not available for persistence');
@@ -301,29 +297,19 @@ async function storePatterns(patterns: QueryPattern[]): Promise<void> {
     }
 
     for (const pattern of patterns) {
-      // Check if pattern already exists
-      const existingFacts = memoryStore.getByCategory('facts');
-      const alreadyStored = existingFacts.some(
-        (f) =>
-          f.metadata?.source === 'query_pattern' &&
-          f.metadata?.pattern === pattern.pattern
-      );
+      // Check if pattern already exists by reading the facts file
+      const existingContent = memoryStore.read('facts/query_patterns.md');
+      const patternKey = `pattern:${pattern.pattern}`;
+      const alreadyStored = existingContent.success
+        ? String(existingContent.data || '').includes(patternKey)
+        : false;
 
       if (!alreadyStored) {
-        memoryStore.add({
-          category: 'facts',
-          key: `query_pattern_${Date.now()}_${pattern.frequency}`,
-          value: `用户经常询问: ${pattern.examples.slice(0, 2).join(', ')}`,
-          metadata: {
-            pattern: pattern.pattern,
-            frequency: pattern.frequency,
-            examples: pattern.examples,
-            firstSeen: new Date(pattern.firstSeen).toISOString(),
-            lastSeen: new Date(pattern.lastSeen).toISOString(),
-            suggestedAction: pattern.suggestedAction,
-            source: 'query_pattern',
-          },
-        });
+        await memoryStore.write(
+          'facts/query_patterns.md',
+          `\n- ${patternKey} | frequency=${pattern.frequency} | examples=${pattern.examples.slice(0, 2).join(', ')} | firstSeen=${new Date(pattern.firstSeen).toISOString()} | lastSeen=${new Date(pattern.lastSeen).toISOString()} | suggestedAction=${pattern.suggestedAction || 'none'}`,
+          'append',
+        );
 
         logger.debug(`[QueryTracking] Stored pattern: ${pattern.pattern} (${pattern.frequency}x)`);
       }

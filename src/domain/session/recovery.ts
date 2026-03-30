@@ -292,14 +292,12 @@ export async function recoverUnansweredSessions(
           }
 
           // Send proactive message to reprocess
-          let proactiveResult: { success: boolean; response?: string; error?: string } | undefined;
-
           if (options.sendProactiveMessage) {
-            proactiveResult = await options.sendProactiveMessage({
+            const proactiveResult = await options.sendProactiveMessage({
               sessionId: session.id,
               userId: session.userId,
               channel,
-              message: recoveryMessage, // [AUDIT FIX M-07] Use multimodal-aware message
+              message: recoveryMessage,
               context: {
                 chatId: session.metadata?.chatId,
                 isRecovery: true,  // Mark as recovery

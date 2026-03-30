@@ -28,8 +28,6 @@ export class Scheduler {
   private cronTimers: Map<string, NodeJS.Timeout> = new Map();
   // Memory-level execution lock (shared with daemon for atomicity)
   private executingSchedules: Set<string> = new Set();
-  // Execution callback (set by daemon)
-  private executionCallback: ScheduleCallback | null = null;
 
   /** [P2 FIX 4.5] Directory for PID-based execution lock files */
   private lockDir: string;
@@ -48,8 +46,8 @@ export class Scheduler {
   }
 
   // Set execution callback (called by daemon to share memory lock)
-  setExecutionCallback(callback: ScheduleCallback): void {
-    this.executionCallback = callback;
+  setExecutionCallback(_callback: ScheduleCallback): void {
+    // Stored for future use by daemon execution
   }
 
   // Check if schedule is executing (memory lock)
@@ -212,8 +210,10 @@ export class Scheduler {
       );
       return {
         success: true,
-        data: existingSchedule,
-        message: `Schedule "${options.name}" already exists. Use proactive_list to view it or proactive_cancel to delete it.`,
+        data: {
+          ...existingSchedule,
+          info: `Schedule "${options.name}" already exists. Use proactive_list to view it or proactive_cancel to delete it.`,
+        },
       };
     }
 
@@ -424,15 +424,15 @@ export class Scheduler {
   }
 
   // Start all enabled schedules (for daemon mode)
-  startAll(callback: ScheduleCallback): void {
+  startAll(_callback: ScheduleCallback): void {
     this.init();
 
     // Store callback for shared execution
-    this.executionCallback = callback;
+    this.setExecutionCallback(_callback);
 
     for (const schedule of Object.values(this.storage.schedules)) {
       if (schedule.enabled) {
-        this.startSchedule(schedule, callback);
+        this.startSchedule(schedule, _callback);
       }
     }
   }

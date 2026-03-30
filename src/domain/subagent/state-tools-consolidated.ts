@@ -11,14 +11,14 @@ import type { StateEntry } from './state';
 // Parameter interfaces (merged from former state-tools.ts — D-P1-05)
 // ---------------------------------------------------------------------------
 
-export interface StateSetParams { key: string; value: any; ttl?: number; }
+export interface StateSetParams { key: string; value: any; ttl?: number; metadata?: Record<string, unknown>; }
 export interface StateGetParams { key: string; }
 export interface StateDeleteParams { key: string; }
-export interface StateUpdateParams { key: string; value: any; merge?: boolean; ttl?: number; }
+export interface StateUpdateParams { key: string; value: any; merge?: boolean; ttl?: number; operation?: 'increment' | 'decrement' | 'append' | 'prepend' | 'merge' | 'replace'; }
 export interface StateExistsParams { key: string; }
 export interface StateListParams { prefix?: string; }
 export interface StateSubscribeParams { key: string; events?: string[]; }
-export interface StateLockParams { key: string; ttl?: number; }
+export interface StateLockParams { key: string; ttl?: number; owner?: string; timeout?: number; }
 export interface StateUnlockParams { key: string; }
 
 /**

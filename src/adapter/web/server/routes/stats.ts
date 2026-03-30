@@ -23,7 +23,7 @@ export default new Hono()
       // Get agent stats if available
       let tokenUsage: number | null = null; // TODO: Wire to actual token tracking
       try {
-        const _agent = getAgent();
+        getAgent();
         // Agent might have token stats in the future
         // For now, we'll return 0
         // TODO: Wire to actual token tracking

@@ -7,7 +7,7 @@
  * This complements the on-demand `datasource_health_check` tool by providing
  * continuous monitoring without requiring the agent to manually trigger checks.
  */
-import { Logger } from '../../types';
+import type { Logger } from '../observability/logger';
 
 // ---------------------------------------------------------------------------
 // Interfaces — Dependency Inversion
