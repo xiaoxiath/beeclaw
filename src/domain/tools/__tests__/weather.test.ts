@@ -570,6 +570,9 @@ describe('Weather Utils', () => {
     test('matches current hour from hourly data', async () => {
       const currentHour = new Date().getHours();
       const pad = (n: number) => n.toString().padStart(2, '0');
+      // Use today's date to ensure local-time interpretation matches
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 
       const hourlyData = {
         code: '200',
@@ -577,13 +580,13 @@ describe('Weather Utils', () => {
         fxLink: '',
         hourly: [
           {
-            fxTime: `2026-03-27T${pad((currentHour + 1) % 24)}:00+08:00`,
+            fxTime: `${dateStr}T${pad((currentHour + 1) % 24)}:00`,
             temp: '15', icon: '100', text: '阴', wind360: '0', windDir: '北风',
             windScale: '1', windSpeed: '5', humidity: '60', pop: '0', precip: '0',
             pressure: '1013', cloud: '50', dew: '8',
           },
           {
-            fxTime: `2026-03-27T${pad(currentHour)}:00+08:00`,
+            fxTime: `${dateStr}T${pad(currentHour)}:00`,
             temp: '28', icon: '100', text: '晴', wind360: '90', windDir: '东风',
             windScale: '2', windSpeed: '10', humidity: '40', pop: '0', precip: '0',
             pressure: '1015', cloud: '5', dew: '12',

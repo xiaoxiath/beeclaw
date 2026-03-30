@@ -110,7 +110,11 @@ describe('Scheduler', () => {
         expect(result.data.nextRun).toBeDefined();
         const nextRun = new Date(result.data.nextRun!);
         expect(nextRun.getMinutes()).toBe(30);
-        expect(nextRun.getHours()).toBe(14);
+        // Schedule uses Asia/Shanghai timezone, so verify in that timezone
+        const shanghaiHour = parseInt(
+          new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false }).format(nextRun)
+        );
+        expect(shanghaiHour).toBe(14);
       }
     });
   });
