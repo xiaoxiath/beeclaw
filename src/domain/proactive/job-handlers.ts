@@ -21,6 +21,47 @@ import type { SessionMessage } from '../session';
 import { getSkillStore } from '../skills/store';
 import { pushNotification } from './pusher';
 import { PROACTIVE_DEFAULT_BLOCKED_TOOLS } from '../agent/types';
+import type { ContentBlock } from '../../types/content-block';
+
+// [FIX] Lazy import to avoid circular dependency — Card V2 renderer is in adapter layer
+// We use a helper that domain code can call; adapter layer provides the actual renderer.
+let _renderMessageCard: ((blocks: ContentBlock[], options?: { streaming?: boolean }) => any) | null = null;
+
+/**
+ * Register Card V2 renderer from adapter layer (called during initialization).
+ * This enables domain/proactive code to send Card V2 messages without
+ * directly importing adapter/feishu code.
+ */
+export function registerCardV2Renderer(
+  renderer: (blocks: ContentBlock[], options?: { streaming?: boolean }) => any
+): void {
+  _renderMessageCard = renderer;
+}
+
+/**
+ * Send message to Feishu using Card V2 format (unified output).
+ * Falls back to sendMarkdownMessage if Card V2 renderer is not registered.
+ */
+async function sendFeishuMessage(
+  client: any,
+  chatId: string,
+  message: string,
+  options?: { title?: string }
+): Promise<void> {
+  if (_renderMessageCard) {
+    // [Card V2] Unified format — all Feishu messages use Card V2
+    const textBlock: ContentBlock = { type: 'text', text: message };
+    const card = _renderMessageCard([textBlock], { streaming: false });
+    await client.sendCard(chatId, 'chat_id', card);
+  } else {
+    // Fallback to markdown message if Card V2 not available
+    if (options) {
+      await client.sendMarkdownMessage(chatId, 'chat_id', message, options);
+    } else {
+      await client.sendMarkdownMessage(chatId, 'chat_id', message);
+    }
+  }
+}
 
 /**
  * Get default push target from config
@@ -183,8 +224,8 @@ ${historyContext}
 
       // Push to Feishu if we have chatId
       if (channel === 'feishu' && chatId && client) {
-        await client.sendMarkdownMessage(chatId, 'chat_id', result.response);
-        logger.info(`[Daemon] 📤 Skill result pushed to Feishu chat: ${chatId}`);
+        await sendFeishuMessage(client, chatId, result.response);
+        logger.info(`[Daemon] 📤 Skill result pushed to Feishu chat: ${chatId} (Card V2)`);
       } else if (!chatId) {
         // Fallback: push as notification if no chatId
         await pushNotification({
@@ -277,8 +318,8 @@ export async function handleLlmProactiveChatJob(
 
       // 推送到飞书（需要 chatId)
       if (chatId && client) {
-        await client.sendMarkdownMessage(chatId, 'chat_id', result.response);
-        logger.info(`[Daemon] 📤 Message pushed to Feishu chat: ${chatId}`);
+        await sendFeishuMessage(client, chatId, result.response);
+        logger.info(`[Daemon] 📤 Message pushed to Feishu chat: ${chatId} (Card V2)`);
       } else if (!chatId) {
         logger.warn('[Daemon] No chatId available, message not pushed to Feishu');
         // Fallback to notification
@@ -446,13 +487,8 @@ export async function handleSendReminderJob(
   
   if (chatId && job.params?.message) {
     if (client) {
-      await client.sendMarkdownMessage(
-        chatId,
-        'chat_id',
-        job.params.message as string,
-        { title: '⏰ 提醒' }
-      );
-      logger.debug(`[Daemon] 📤 Reminder sent to chat: ${chatId}`);
+      await sendFeishuMessage(client, chatId, job.params.message as string, { title: '⏰ 提醒' });
+      logger.debug(`[Daemon] 📤 Reminder sent to chat: ${chatId} (Card V2)`);
 
       // [AUDIT FIX M-02] Inject reminder into user's session if associated
       if (job.associatedSessionId) {

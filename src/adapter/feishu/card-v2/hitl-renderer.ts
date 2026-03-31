@@ -6,7 +6,7 @@
 
 import type { ContentBlock } from '../../../types/content-block';
 import { logger } from '../../../infra/observability/logger';
-import { sanitizeForCard } from '../../../infra/utils';
+import { sanitizeForCard } from '../utils';
 
 /**
  * 风险等级对应的颜色

@@ -7,7 +7,7 @@
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import { sendCardMessage } from './send';
 
-import { sanitizeForCard } from '../../infra/utils';
+import { sanitizeForCard } from './utils';
 
 /** Client type alias for the Lark SDK Client */
 type Client = InstanceType<typeof Lark.Client>;

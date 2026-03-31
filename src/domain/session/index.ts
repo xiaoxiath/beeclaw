@@ -35,7 +35,6 @@ import type { IMessageController } from '../ports';
 import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
 import type { SessionMessageQueueOptions } from '../../infra/resilience/session-lock';
-import { getConfig_ } from '../../app';
 import { SmartTimeout } from '../../infra/resilience/smart-timeout';
 import { handleHITLResponse } from './hitl-manager';
 import { resolveConfig, type ResilienceConfig } from '../../infra/config/resilience-config';
@@ -225,6 +224,11 @@ let agentConfig: {
     thinking?: { type: 'enabled' | 'disabled' };
     [key: string]: any;
   };
+  resilienceConfig?: ResilienceConfig;
+  feishuConfig?: {
+    useCardV2?: boolean;
+    [key: string]: any;
+  };
 } | null = null;
 
 // Channel handlers
@@ -391,6 +395,11 @@ export function initSessionManager(config: {
   };
   /** Resilience configuration for timeout alignment */
   resilienceConfig?: ResilienceConfig;
+  /** Feishu-specific config injected from app layer (eliminates reverse dependency) */
+  feishuConfig?: {
+    useCardV2?: boolean;
+    [key: string]: any;
+  };
 }): void {
   agentConfig = config;
 
@@ -764,8 +773,7 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
   let streamingController: IMessageController | null = null;
 
   try {
-    const config = getConfig_();
-    const feishuConfig = config?.feishu;
+    const feishuConfig = agentConfig?.feishuConfig;
     const useCardV2 = feishuConfig?.useCardV2 ?? false;
 
     // Card V2 requires either parentMessageId (reply mode) or chatId (proactive mode)

@@ -17,7 +17,7 @@ describe('FeishuConfig Schema', () => {
     }
   });
 
-  test('should default useCardV2 to false', () => {
+  test('should default useCardV2 to true', () => {
     const config = {
       enabled: true,
       appId: 'test_app',
@@ -27,7 +27,7 @@ describe('FeishuConfig Schema', () => {
     const result = FeishuConfigSchema.safeParse(config);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.useCardV2).toBe(false);
+      expect(result.data.useCardV2).toBe(true);
     }
   });
 
@@ -72,7 +72,7 @@ describe('FeishuConfig Schema', () => {
     if (result.success) {
       expect(result.data.enabled).toBe(false);
       expect(result.data.logLevel).toBe('error');
-      expect(result.data.useCardV2).toBe(false);
+      expect(result.data.useCardV2).toBe(true);
     }
   });
 });

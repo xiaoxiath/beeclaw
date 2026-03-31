@@ -330,7 +330,7 @@ export const FeishuConfigSchema = z.object({
    * Enable Card Schema 2.0 for streaming messages
    * When true, uses interactive cards with collapsible panels and streaming updates
    */
-  useCardV2: z.boolean().default(false),
+  useCardV2: z.boolean().default(true),
 });
 
 // User configuration schema

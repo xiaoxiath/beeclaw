@@ -86,16 +86,12 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  * SECURITY FIX (P0): Prevents injection attacks by escaping HTML-like
  * characters that could be interpreted by the Feishu card renderer.
  */
-export function sanitizeForCard(input: string): string {
-  if (!input) return '';
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;');
-}
+/**
+ * @deprecated Use `import { sanitizeForCard } from '../../adapter/feishu/utils'` instead.
+ * This Feishu-specific utility was moved to the adapter layer.
+ * Re-exported here for backward compatibility.
+ */
+export { sanitizeForCard } from '../../adapter/feishu/utils';
 
 // ────────────────────────────────────────────
 // Safe JSON Parse (B-P1-04)

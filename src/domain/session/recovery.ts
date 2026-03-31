@@ -317,13 +317,35 @@ export async function recoverUnansweredSessions(
           const client = options.getFeishuClient();
           if (client && session.metadata?.chatId) {
             try {
-              // Send the actual AI response
-              await client.sendPostMessage(
-                session.metadata.chatId as string,
-                'chat_id',
-                responseToSend,
-                { title: pendingDeliveryOnly ? '🔄 重新投递' : '🔄 恢复处理结果' }
-              );
+              // [FIX] Send the actual AI response using Card V2 if available, fallback to post
+              if (client.sendCard) {
+                try {
+                  // eslint-disable-next-line no-restricted-syntax — dynamic import to avoid domain→adapter layer violation
+                  const { renderMessageCard } = await import('../../adapter/feishu/card-v2/message-renderer');
+                  const textBlock = { type: 'text' as const, text: responseToSend };
+                  const card = renderMessageCard([textBlock], { streaming: false });
+                  await client.sendCard(
+                    session.metadata.chatId as string,
+                    'chat_id',
+                    card
+                  );
+                } catch {
+                  // Fallback to post message if Card V2 rendering fails
+                  await client.sendPostMessage(
+                    session.metadata.chatId as string,
+                    'chat_id',
+                    responseToSend,
+                    { title: pendingDeliveryOnly ? '🔄 重新投递' : '🔄 恢复处理结果' }
+                  );
+                }
+              } else {
+                await client.sendPostMessage(
+                  session.metadata.chatId as string,
+                  'chat_id',
+                  responseToSend,
+                  { title: pendingDeliveryOnly ? '🔄 重新投递' : '🔄 恢复处理结果' }
+                );
+              }
               logger.info('[Recovery] 📤 Response sent to Feishu');
 
               // BUG #2 FIX: Use confirmDelivery() instead of clearRecoveryFlag()

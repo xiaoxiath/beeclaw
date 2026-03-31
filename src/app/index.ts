@@ -371,6 +371,10 @@ export async function initApp(options: InitOptions = {}): Promise<{
     params: resolvedParams,
     // Pass resilience config for timeout alignment
     resilienceConfig,
+    // [ARCH-1 FIX] Inject feishu config to eliminate domain → app reverse dependency
+    feishuConfig: config.feishu ? {
+      useCardV2: config.feishu.useCardV2,
+    } : undefined,
   });
 
   // 8. Load all persisted sessions

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-03-31
+
+### Fixed
+- Unified all Feishu bot messages to Card V2 format (proactive, recovery, reminder)
+- Eliminated domain/session → app/ reverse dependency (`getConfig_` → injected `feishuConfig`)
+- Unified proactive taskType Zod enum across `proactive_schedule` and `schedule_once`
+- Fixed `useCardV2` default value inconsistency between schema (`false`) and defaults (`true`)
+- Moved `sanitizeForCard` from `infra/utils` to `adapter/feishu/utils.ts` (layer boundary fix)
+
+### Added
+- `registerCardV2Renderer()` pattern for domain-layer Card V2 access via dependency inversion
+- CI lint step in GitHub Actions workflow
+- `adapter/feishu/utils.ts` for Feishu-specific utilities
+
+### Changed
+- Version number unified to 0.4.0 (was inconsistent: package.json 1.3.0 vs CHANGELOG 2.1.3)
+- Updated `ARCHITECTURE-REFACTORING.md` with current progress
+
 ## [v2.1.3] - 2026-03-15
 
 ### Fixed

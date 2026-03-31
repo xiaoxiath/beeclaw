@@ -349,8 +349,7 @@ describe('session/index coverage', () => {
   // ─── Lines 785-807: Card V2 streaming controller creation ─────────────
   describe('Card V2 streaming controller', () => {
     it('should create streaming controller for feishu channel with Card V2', async () => {
-      mockGetConfig.mockReturnValue({ feishu: { useCardV2: true } });
-      initDefault();
+      initDefault({ feishuConfig: { useCardV2: true } });
 
       const id = 'cardv2-' + Date.now();
       const result = await sendProactiveMessage({
@@ -376,9 +375,7 @@ describe('session/index coverage', () => {
     });
 
     it('should handle streaming controller creation failure', async () => {
-      mockGetConfig.mockReturnValue({ feishu: { useCardV2: true } });
-      mockControllerFactory.mockImplementation(() => { throw new Error('controller fail'); });
-      initDefault();
+      initDefault({ feishuConfig: { useCardV2: true } });
 
       const id = 'cardv2-fail-' + Date.now();
       const result = await sendProactiveMessage({
@@ -422,8 +419,7 @@ describe('session/index coverage', () => {
     });
 
     it('should finish streaming controller after response', async () => {
-      mockGetConfig.mockReturnValue({ feishu: { useCardV2: true } });
-      initDefault();
+      initDefault({ feishuConfig: { useCardV2: true } });
 
       const id = 'cardv2-finish-' + Date.now();
       await sendProactiveMessage({
@@ -701,9 +697,8 @@ describe('session/index coverage', () => {
   // ─── Lines 1170-1193: Streaming controller finish on error ─────────────
   describe('streaming controller error paths', () => {
     it('should finish streaming controller on agent error', async () => {
-      mockGetConfig.mockReturnValue({ feishu: { useCardV2: true } });
       mockAgent.chat.mockRejectedValueOnce(new Error('agent crashed'));
-      initDefault();
+      initDefault({ feishuConfig: { useCardV2: true } });
 
       const id = 'stream-err-' + Date.now();
       const result = await sendProactiveMessage({

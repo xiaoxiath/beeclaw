@@ -41,10 +41,22 @@ export class FeishuChannel implements MessageChannel {
         throw new Error('chatId required for Feishu messages');
       }
 
-      await client.sendTextMessage(chatId, 'chat_id', text);
+      // [FIX] Use Card V2 for unified message format when content contains markdown
+      let messageId = `feishu-${Date.now()}`;
+      try {
+        // eslint-disable-next-line no-restricted-syntax — dynamic import to avoid circular dependency with card-v2
+        const { renderMessageCard } = await import('./card-v2/message-renderer');
+        const textBlock = { type: 'text' as const, text };
+        const card = renderMessageCard([textBlock], { streaming: false });
+        const cardMsgId = await client.sendCard(chatId, 'chat_id', card);
+        messageId = cardMsgId || messageId;
+      } catch {
+        // Fallback to text message if Card V2 rendering fails
+        await client.sendTextMessage(chatId, 'chat_id', text);
+      }
 
       return {
-        messageId: `feishu-${Date.now()}`,
+        messageId,
         success: true,
       };
     } catch (error) {

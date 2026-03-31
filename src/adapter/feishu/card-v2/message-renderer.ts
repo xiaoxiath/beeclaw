@@ -27,7 +27,7 @@ import {
   type DivElement,
 } from './types/elements';
 import { IconToken, Color } from './types/styles';
-import { sanitizeForCard } from '../../../infra/utils';
+import { sanitizeForCard } from '../utils';
 
 
 /**
