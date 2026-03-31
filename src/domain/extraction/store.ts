@@ -197,7 +197,7 @@ export class KnowledgeStore {
 
             // 只有新条目置信度更高或时间更新时才更新
             if (item.confidence > oldItem.confidence ||
-                item.timestamp > oldItem.timestamp) {
+                (item.confidence === oldItem.confidence && item.timestamp > oldItem.timestamp)) {
               updated[existingIndex] = {
                 ...oldItem,
                 value: item.value,
