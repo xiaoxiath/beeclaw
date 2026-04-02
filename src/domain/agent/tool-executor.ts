@@ -20,6 +20,8 @@ import { executePersonaTool } from './persona/tools';
 import { executeBuiltinTool, isBuiltinTool } from '../tools';
 // Task 3: Use port interfaces instead of direct adapter imports
 import { getMCPManagerPort, getPluginRegistryPort } from '../ports';
+// Phase 2: Feature flags for optional tool modules
+import { resolveToolFeatureFlags } from './tools';
 
 // Inlined from MCPClientManager static methods (avoid adapter import)
 function isMCPToolName(name: string): boolean {
@@ -170,18 +172,39 @@ This ensures skills are in the correct location and follow quality standards.`,
       return result;
     }
 
-    // Goal tools
+    // Goal tools (Phase 2: conditional — requires config.goals.enabled !== false)
     if (name.startsWith('goal_')) {
+      const { goalToolsEnabled } = resolveToolFeatureFlags();
+      if (!goalToolsEnabled) {
+        return {
+          success: false,
+          error: 'Goal management is not enabled. Set goals.enabled: true in config to use goal tools.',
+        };
+      }
       return executeGoalTool(name, params);
     }
 
-    // Proactive tools
+    // Proactive tools (Phase 2: conditional — requires daemon mode or config.proactive.enabled)
     if (name.startsWith('proactive_') || name.startsWith('notification_') || name === 'schedule_once') {
+      const { proactiveToolsEnabled } = resolveToolFeatureFlags();
+      if (!proactiveToolsEnabled) {
+        return {
+          success: false,
+          error: 'Proactive scheduling is not enabled. It requires daemon mode (feishu bot or web server) or set proactive.enabled: true in config.',
+        };
+      }
       return executeProactiveTool(name, params);
     }
 
-    // Persona tools
+    // Persona tools (Phase 2: conditional — requires config.persona.enabled !== false)
     if (name.startsWith('persona_')) {
+      const { personaToolsEnabled } = resolveToolFeatureFlags();
+      if (!personaToolsEnabled) {
+        return {
+          success: false,
+          error: 'Persona customization is not enabled. Set persona.enabled: true in config to use persona tools.',
+        };
+      }
       return executePersonaTool(name, params);
     }
 

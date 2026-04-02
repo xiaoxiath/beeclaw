@@ -72,6 +72,9 @@ const DEFAULT_PROBE_CONFIG: HealthProbeConfig = {
  * - CircuitBreaker instances to read current state
  * - MCPClientManager for MCP server ping/status
  * - Built-in tool executors for web_search / fetch_url probes
+ *
+ * NOTE: This class is used internally by the system for health monitoring.
+ * It is NOT deprecated — only the LLM-facing tool definition below is deprecated.
  */
 export class DataSourceHealthChecker {
   private circuitBreakers: Map<string, CircuitBreaker> = new Map();
@@ -354,20 +357,17 @@ export class DataSourceHealthChecker {
 // ─── Tool Definition ─────────────────────────────────────────────────────────
 
 /**
+ * @deprecated Since v0.5.0 — The datasource_health_check tool is being removed
+ * from LLM-facing tool exposure. The DataSourceHealthChecker class above remains
+ * available for internal/programmatic use. Health checks are now performed
+ * automatically by the system rather than being triggered by the LLM.
+ *
  * Built-in tool definition for the health check.
  * This allows the agent (or user) to trigger a data source self-check.
  */
 export const datasourceHealthCheckTool: ToolDefinition = {
   name: 'datasource_health_check',
-  description: `Check the health and availability of all data sources (web search, MCP servers, external APIs).
-
-Use this tool PROACTIVELY when:
-- The user asks about real-time data (financial quotes, breaking news, weather, live scores)
-- A previous tool call failed or returned empty/stale results
-- The user reports that data seems outdated or missing
-- Before executing a complex multi-source research task
-
-Returns a structured health report with per-source status, latency, circuit breaker state, and actionable recommendations.`,
+  description: `[DEPRECATED] Check the health and availability of all data sources. This tool is deprecated and will be removed in a future version. Health checks are now performed automatically by the system.`,
   parameters: {
     type: 'object' as const,
     properties: {
@@ -388,6 +388,8 @@ Returns a structured health report with per-source status, latency, circuit brea
 };
 
 /**
+ * @deprecated Since v0.5.0 — This function is deprecated along with the
+ * datasource_health_check tool. Kept for backward compatibility.
  * Process the datasource_health_check tool call.
  */
 export async function processDatasourceHealthCheck(
@@ -395,7 +397,7 @@ export async function processDatasourceHealthCheck(
   healthChecker: DataSourceHealthChecker,
   logger?: Logger,
 ): Promise<string> {
-  logger?.info?.(`[HealthCheck] Tool called with input: ${JSON.stringify(input)}`);
+  logger?.info?.(`[HealthCheck] Tool called with input: ${JSON.stringify(input)} (DEPRECATED — this tool will be removed in a future version)`);
 
   const quickMode = input.quick_mode as boolean | undefined;
 
@@ -403,7 +405,7 @@ export async function processDatasourceHealthCheck(
     const status = healthChecker.getQuickStatus();
     const entries = Object.entries(status);
     if (entries.length === 0) {
-      return 'No data sources registered for health monitoring.';
+      return 'No data sources registered for health monitoring.\n\n[DEPRECATED] datasource_health_check is deprecated. Health checks are now performed automatically by the system.';
     }
 
     let output = '## Quick Data Source Status\n\n';
@@ -414,6 +416,7 @@ export async function processDatasourceHealthCheck(
 
     const allHealthy = entries.every(([, info]) => info.healthy);
     output += `\n**Overall:** ${allHealthy ? '✅ All sources healthy' : '⚠️ Some sources have issues'}`;
+    output += `\n\n[DEPRECATED] datasource_health_check is deprecated. Health checks are now performed automatically by the system.`;
 
     return output;
   }
@@ -468,6 +471,8 @@ function formatHealthCheckResult(result: HealthCheckResult): string {
     output += `3. **Rely on knowledge** — use your training data for non-time-sensitive queries\n`;
     output += `4. **Retry later** — circuit breakers will auto-recover after cooldown\n`;
   }
+
+  output += `\n[DEPRECATED] datasource_health_check is deprecated. Health checks are now performed automatically by the system.`;
 
   return output;
 }

@@ -5,10 +5,14 @@ const mocks = vi.hoisted(() => ({
   mockReadFileSync: vi.fn(),
   mockJoin: vi.fn((...args: string[]) => args.join('/')),
   mockGetMemoryToolsForAI: vi.fn(() => []),
+  mockGetCoreMemoryTools: vi.fn(() => []),
+  mockGetAdvancedMemoryTools: vi.fn(() => []),
   mockGetSkillToolsForAI: vi.fn(() => []),
+  mockGetCoreSkillTools: vi.fn(() => []),
+  mockGetManagementSkillTools: vi.fn(() => []),
   mockGetGoalToolsForAI: vi.fn(() => []),
   mockGetProactiveToolsForAI: vi.fn(() => []),
-  mockGetBuiltinToolsForAI: vi.fn(() => []),
+  mockGetBuiltinToolsConditional: vi.fn(() => []),
   mockBuiltinToolNames: [] as string[],
   mockGetPersonaToolsForAI: vi.fn(() => []),
   mockGetTraitSystemPrompt: vi.fn(() => ''),
@@ -88,9 +92,13 @@ vi.mock('path', () => ({
 
 vi.mock('@domain/memory', () => ({
   getMemoryToolsForAI: mocks.mockGetMemoryToolsForAI,
+  getCoreMemoryTools: mocks.mockGetCoreMemoryTools,
+  getAdvancedMemoryTools: mocks.mockGetAdvancedMemoryTools,
 }));
 vi.mock('@domain/skills', () => ({
   getSkillToolsForAI: mocks.mockGetSkillToolsForAI,
+  getCoreSkillTools: mocks.mockGetCoreSkillTools,
+  getManagementSkillTools: mocks.mockGetManagementSkillTools,
 }));
 vi.mock('@domain/agent/goal', () => ({
   getGoalToolsForAI: mocks.mockGetGoalToolsForAI,
@@ -99,7 +107,8 @@ vi.mock('@domain/proactive', () => ({
   getProactiveToolsForAI: mocks.mockGetProactiveToolsForAI,
 }));
 vi.mock('@domain/tools', () => ({
-  getBuiltinToolsForAI: mocks.mockGetBuiltinToolsForAI,
+  getBuiltinToolsForAI: mocks.mockGetBuiltinToolsConditional,
+  getBuiltinToolsConditional: mocks.mockGetBuiltinToolsConditional,
   builtinToolNames: mocks.mockBuiltinToolNames,
 }));
 vi.mock('@domain/agent/persona', () => ({
@@ -168,7 +177,7 @@ describe('Agent tools.ts coverage - uncovered lines', () => {
   describe('toOpenAITool schema fallback', () => {
     it('should use input_schema when parameters is missing', () => {
       // Return a tool with input_schema instead of parameters
-      mocks.mockGetMemoryToolsForAI.mockReturnValue([
+      mocks.mockGetCoreMemoryTools.mockReturnValue([
         {
           name: 'test_tool',
           description: 'Test tool',
@@ -188,7 +197,7 @@ describe('Agent tools.ts coverage - uncovered lines', () => {
     });
 
     it('should use default empty schema when both parameters and input_schema are missing', () => {
-      mocks.mockGetMemoryToolsForAI.mockReturnValue([
+      mocks.mockGetCoreMemoryTools.mockReturnValue([
         {
           name: 'bare_tool',
           description: 'No schema',

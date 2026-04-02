@@ -23,6 +23,7 @@ const {
   mockMCPExecuteTool,
   mockGetMCPManagerPort,
   mockGetPluginRegistryPort,
+  mockResolveToolFeatureFlags,
 } = vi.hoisted(() => ({
   mockCBExecute: vi.fn(async (_name: string, fn: () => Promise<any>) => fn()),
   mockRegisterToolConfig: vi.fn(() => {}),
@@ -37,6 +38,11 @@ const {
   mockMCPExecuteTool: vi.fn(async () => ({ success: true, data: 'mcp-result' })),
   mockGetMCPManagerPort: vi.fn(() => null),
   mockGetPluginRegistryPort: vi.fn(() => null),
+  mockResolveToolFeatureFlags: vi.fn(() => ({
+    goalToolsEnabled: true,
+    proactiveToolsEnabled: true,
+    personaToolsEnabled: true,
+  })),
 }));
 
 vi.mock('../../../infra/resilience/circuit-breaker', () => ({
@@ -63,6 +69,9 @@ vi.mock('../persona/tools', () => ({ executePersonaTool: mockExecutePersonaTool 
 vi.mock('../../tools', () => ({
   executeBuiltinTool: mockExecuteBuiltinTool,
   isBuiltinTool: mockIsBuiltinTool,
+}));
+vi.mock('../tools', () => ({
+  resolveToolFeatureFlags: mockResolveToolFeatureFlags,
 }));
 vi.mock('../../ports', () => ({
   getMCPManagerPort: mockGetMCPManagerPort,

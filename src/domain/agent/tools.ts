@@ -14,11 +14,11 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { getMemoryToolsForAI } from '../memory';
-import { getSkillToolsForAI } from '../skills';
+import { getMemoryToolsForAI, getCoreMemoryTools, getAdvancedMemoryTools } from '../memory';
+import { getSkillToolsForAI, getCoreSkillTools, getManagementSkillTools } from '../skills';
 import { getGoalToolsForAI } from './goal';
 import { getProactiveToolsForAI } from '../proactive';
-import { getBuiltinToolsForAI, builtinToolNames } from '../tools';
+import { getBuiltinToolsConditional, builtinToolNames } from '../tools';
 import { getPersonaToolsForAI, getTraitSystemPrompt } from './persona';
 import { getGoalStore } from './goal/store';
 import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
@@ -26,6 +26,8 @@ import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
 // Task 3: Use port interfaces instead of direct adapter imports
 import { getMCPManagerPort, getPluginRegistryPort } from '../ports';
 import { logger } from '../../infra/observability/logger';
+import { getConfig } from '../../infra/config';
+import { adapterRegistry } from '../../infra/entry';
 import { estimateTokens } from './context';
 import type { OpenAITool, ChatMessage } from './types';
 import type { Session } from '../session';
@@ -83,19 +85,98 @@ function toOpenAITool(tool: ToolDefinition): OpenAITool {
 }
 
 // ---------------------------------------------------------------------------
-// Tool Collection (unchanged)
+// Phase 2: Feature Flags for Optional Tool Modules
 // ---------------------------------------------------------------------------
 
-export function getAllTools(): OpenAITool[] {
-  const memoryTools = getMemoryToolsForAI();
-  const skillTools = getSkillToolsForAI();
-  const goalTools = getGoalToolsForAI();
-  const proactiveTools = getProactiveToolsForAI();
-  const builtinTools = getBuiltinToolsForAI();
-  const personaTools = getPersonaToolsForAI();
+/**
+ * Resolve whether each optional tool module should be loaded.
+ *
+ * The resolution logic:
+ * - goals:     enabled by default (backward compat); disabled via config.goals.enabled = false
+ * - proactive: disabled by default; enabled in daemon mode (bot/web adapters) OR config.proactive.enabled = true
+ * - persona:   enabled by default (backward compat); disabled via config.persona.enabled = false
+ *
+ * Exported so that tool-executor.ts can check the same flags for graceful degradation.
+ */
+export function resolveToolFeatureFlags(): {
+  goalToolsEnabled: boolean;
+  proactiveToolsEnabled: boolean;
+  personaToolsEnabled: boolean;
+} {
+  let config: ReturnType<typeof getConfig> | null = null;
+  try {
+    config = getConfig();
+  } catch {
+    // Config not yet loaded (e.g. during early init) — use defaults
+  }
 
-  // Feishu tools are now handled by feishu-cli-toolkit skill
-  // const feishuTools = [];
+  // Goal tools — default enabled for backward compat
+  const goalToolsEnabled = config?.goals?.enabled !== false;
+
+  // Proactive tools — only load in daemon mode (feishu bot, web server) or explicit config
+  const proactiveToolsEnabled = (() => {
+    // Explicit config override takes precedence
+    if (config?.proactive?.enabled === true) return true;
+    if (config?.proactive?.enabled === false) return false;
+
+    // Auto-detect: enable for persistent adapters (bot/web/daemon), not CLI one-shot
+    try {
+      const adapters = adapterRegistry.getAll();
+      return adapters.some((a: { type: string }) => a.type === 'bot' || a.type === 'web' || a.type === 'daemon');
+    } catch {
+      return false; // Adapter registry not ready — conservative default
+    }
+  })();
+
+  // Persona tools — default enabled for backward compat
+  const personaToolsEnabled = config?.persona?.enabled !== false;
+
+  return { goalToolsEnabled, proactiveToolsEnabled, personaToolsEnabled };
+}
+
+// ---------------------------------------------------------------------------
+// Tool Collection — with conditional loading (Phase 2)
+// ---------------------------------------------------------------------------
+
+export function getAllTools(options?: { isSubagentContext?: boolean }): OpenAITool[] {
+  const { goalToolsEnabled, proactiveToolsEnabled, personaToolsEnabled } = resolveToolFeatureFlags();
+
+  // Phase 4: Use core memory tools by default, advanced on demand
+  const memoryTools = getCoreMemoryTools();
+  const advancedMemory = getAdvancedMemoryTools();
+
+  // Phase 4: Use core skill tools by default, management on demand
+  const skillTools = getCoreSkillTools();
+  const managementSkill = getManagementSkillTools();
+
+  // Detect sandbox status to enable mutual exclusion of file/sandbox tools
+  let sandboxEnabled = false;
+  try {
+    sandboxEnabled = getConfig().sandbox?.enabled ?? false;
+  } catch {
+    // Config not loaded yet — default to no exclusion
+  }
+
+  // Phase 4: Use conditional builtin tool loading
+  const builtinTools = getBuiltinToolsConditional({
+    sandboxEnabled,
+    isSubagentContext: options?.isSubagentContext ?? false,
+  });
+
+  // Optional modules — loaded conditionally based on feature flags
+  const goalTools = goalToolsEnabled ? getGoalToolsForAI() : [];
+  const proactiveTools = proactiveToolsEnabled ? getProactiveToolsForAI() : [];
+  const personaTools = personaToolsEnabled ? getPersonaToolsForAI() : [];
+
+  if (!goalToolsEnabled) {
+    logger.debug('[Tools] Goal tools disabled (config.goals.enabled = false)');
+  }
+  if (!proactiveToolsEnabled) {
+    logger.debug('[Tools] Proactive tools disabled (not in daemon mode and config.proactive.enabled != true)');
+  }
+  if (!personaToolsEnabled) {
+    logger.debug('[Tools] Persona tools disabled (config.persona.enabled = false)');
+  }
 
   let mcpTools: OpenAITool[] = [];
   try {
@@ -124,7 +205,7 @@ export function getAllTools(): OpenAITool[] {
     // Plugin system not initialized
   }
 
-  return [
+  const coreTools = [
     ...memoryTools.map(t => toOpenAITool(t as ToolDefinition)),
     ...skillTools.map(t => toOpenAITool(t as ToolDefinition)),
     ...goalTools.map(t => toOpenAITool(t as ToolDefinition)),
@@ -135,6 +216,19 @@ export function getAllTools(): OpenAITool[] {
     ...mcpTools,
     ...pluginTools,
   ];
+
+  // Phase 4: Conditionally add advanced/management tools
+  // These are only loaded when explicitly needed (e.g., maintenance tasks)
+  const advancedTools = [
+    ...advancedMemory.map(t => toOpenAITool(t as ToolDefinition)),
+    ...managementSkill.map(t => toOpenAITool(t as ToolDefinition)),
+  ];
+
+  const allTools = [...coreTools, ...advancedTools];
+
+  logger.info(`[Tools] Loaded ${allTools.length} tools: core=${coreTools.length}, advanced=${advancedTools.length} (goal=${goalToolsEnabled}, proactive=${proactiveToolsEnabled}, persona=${personaToolsEnabled})`);
+
+  return allTools;
 }
 
 export const getAllToolsForAI = getAllTools;
@@ -143,8 +237,22 @@ export function getMemoryTools(): OpenAITool[] {
   return getMemoryToolsForAI().map(toOpenAITool);
 }
 
+/**
+ * Get only core memory tools (Phase 4).
+ */
+export function getCoreMemoryToolsForAI(): OpenAITool[] {
+  return getCoreMemoryTools().map(toOpenAITool);
+}
+
 export function getSkillTools(): OpenAITool[] {
   return getSkillToolsForAI().map(toOpenAITool);
+}
+
+/**
+ * Get only core skill tools (Phase 4).
+ */
+export function getCoreSkillToolsForAI(): OpenAITool[] {
+  return getCoreSkillTools().map(toOpenAITool);
 }
 
 // ---------------------------------------------------------------------------
@@ -152,22 +260,44 @@ export function getSkillTools(): OpenAITool[] {
 // ---------------------------------------------------------------------------
 
 export const TOOL_CATEGORIES = {
+  // --- Always-loaded core modules ---
   memory: ['memory_ls', 'memory_grep', 'memory_read', 'memory_write', 'memory_record'],
-  skill: ['skill_list', 'skill_get', 'skill_ensure', 'skill_delete', 'skill_search', 'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set', 'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create'],
-  goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],
-  proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once', 'notification_send', 'notification_list', 'notification_mark_read', 'notification_delete', 'notification_history', 'notification_stats'],
+  skill: [
+    'skill_list', 'skill_get', 'skill_ensure', 'skill_delete', 'skill_search',
+    'skill_record', 'skill_maturity', 'skill_evals_get', 'skill_evals_set',
+    'skill_resource_read', 'skill_resource_write', 'skill_structure', 'skill_workspace_create',
+    // Note: skill_create, skill_update were never registered tools — they were ghost entries
+    // from an earlier design. Skill creation is handled via skill_record. (cleaned v0.5.0)
+  ],
+
+  // --- Optional modules — loaded conditionally based on config (Phase 2) ---
+  goal: ['goal_list', 'goal_get', 'goal_create', 'goal_update', 'goal_checkpoint', 'goal_decompose', 'goal_delete', 'goal_summary'],                                    // Requires config.goals.enabled !== false (default: true)
+  proactive: ['proactive_schedule', 'proactive_pattern', 'proactive_list', 'proactive_cancel', 'proactive_enable', 'proactive_disable', 'schedule_once', 'notification_send', 'notification_list', 'notification_mark_read', 'notification_delete', 'notification_history', 'notification_stats'],  // Requires daemon mode (bot/web) or config.proactive.enabled === true (default: false)
+  persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],  // Requires config.persona.enabled !== false (default: true)
+
+  // --- Other always-loaded modules ---
   state: ['state_manage', 'state_query', 'state_lock_manage'],
-  state_legacy: ['state_set', 'state_get', 'state_delete', 'state_update', 'state_exists', 'state_list', 'state_stats', 'state_lock', 'state_unlock'],
+
+  // [CLEANED v0.5.0] state_legacy — These individual state tools (state_set, state_get, etc.)
+  // were consolidated into state_manage / state_query / state_lock_manage in v0.4.0.
+  // The legacy names are kept here only for reference; they are no longer registered as tools.
+  // Migrated: state_set, state_get, state_delete, state_update, state_exists, state_list,
+  //           state_stats, state_lock, state_unlock → state_manage / state_query / state_lock_manage
+  state_legacy: [] as string[],
+
   get builtin() { return [...builtinToolNames]; },
   sandbox: ['sandbox_exec', 'sandbox_write_file', 'sandbox_read_file', 'sandbox_list_files', 'sandbox_status'],
-  persona: ['persona_get', 'persona_update_traits', 'persona_export', 'persona_import', 'persona_explain_traits'],
-  feishu: [
-    'feishu_calendar_list', 'feishu_calendar_get', 'feishu_calendar_event_create', 'feishu_calendar_event_list', 'feishu_calendar_event_get', 'feishu_calendar_event_update', 'feishu_calendar_event_delete', 'feishu_calendar_event_search', 'feishu_calendar_today', 'feishu_calendar_quick_event',
-    'feishu_docx_get', 'feishu_docx_list_children', 'feishu_docx_search', 'feishu_docx_create_text', 'feishu_docx_append', 'feishu_docx_update', 'feishu_docx_delete', 'feishu_docx_create_table',
-    'feishu_drive_list', 'feishu_drive_get', 'feishu_drive_create_folder', 'feishu_drive_move', 'feishu_drive_copy', 'feishu_drive_rename', 'feishu_drive_delete', 'feishu_drive_search', 'feishu_drive_download', 'feishu_drive_upload', 'feishu_drive_share',
-    'feishu_bitable_get_meta', 'feishu_bitable_list_tables', 'feishu_bitable_list_fields', 'feishu_bitable_create_field', 'feishu_bitable_list_records', 'feishu_bitable_get_record', 'feishu_bitable_create_record', 'feishu_bitable_update_record', 'feishu_bitable_delete_record', 'feishu_bitable_create_app',
-    'feishu_wiki_list_spaces', 'feishu_wiki_get_space', 'feishu_wiki_list_nodes', 'feishu_wiki_get_node', 'feishu_wiki_create_page', 'feishu_wiki_move_node', 'feishu_wiki_rename_node', 'feishu_wiki_delete_node', 'feishu_wiki_copy_node', 'feishu_wiki_search', 'feishu_wiki_tree',
-  ],
+
+  // [CLEANED v0.5.0] feishu — All Feishu tools have been migrated to the
+  // feishu-cli-toolkit skill. These tool names are no longer registered as
+  // builtin tools; they are provided dynamically when the skill is loaded
+  // via skill_ensure({name: "feishu-cli-toolkit"}).
+  //
+  // Migration history:
+  //   - v0.4.x: feishu_calendar_*, feishu_docx_*, feishu_drive_*,
+  //             feishu_bitable_*, feishu_wiki_* → feishu-cli-toolkit skill
+  //   - The tool names below are preserved as documentation only.
+  feishu: [] as string[],
 };
 
 export function getToolsByCategory(categories: (keyof typeof TOOL_CATEGORIES)[]): OpenAITool[] {

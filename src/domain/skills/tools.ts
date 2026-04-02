@@ -426,15 +426,58 @@ export async function executeSkillTool(name: string, params: Record<string, unkn
   }
 }
 
-// Get all skill tools for AI
+// ============================================================================
+// Phase 4: Layered Tool Loading
+// ============================================================================
+
+/** Core skill tool names — always registered */
+const CORE_SKILL_TOOL_NAMES = [
+  'skill_list',
+  'skill_get',
+  'skill_ensure',
+  'skill_search',
+] as const;
+
+/** Management skill tool names — conditionally registered */
+const MANAGEMENT_SKILL_TOOL_NAMES = [
+  'skill_delete',
+  'skill_record',
+  'skill_maturity',
+  'skill_evals',
+] as const;
+
+/**
+ * Get core skill tools (always registered).
+ * These are the essential tools for using skills.
+ */
+export function getCoreSkillTools() {
+  return CORE_SKILL_TOOL_NAMES
+    .filter(name => name in skillTools)
+    .map(name => skillTools[name as keyof typeof skillTools]);
+}
+
+/**
+ * Get management skill tools (conditionally registered).
+ * These are maintenance/admin tools for skill lifecycle management.
+ */
+export function getManagementSkillTools() {
+  return MANAGEMENT_SKILL_TOOL_NAMES
+    .filter(name => name in skillTools)
+    .map(name => skillTools[name as keyof typeof skillTools]);
+}
+
+// Get all skill tools for AI (backward compatible — returns all)
 export function getSkillToolsForAI() {
   return Object.values(skillTools);
 }
 
-// Get all skill tools (alias)
+// Get all skill tools (alias, backward compatible)
 export function getAllSkillTools() {
   return getSkillToolsForAI();
 }
 
-// Export tool names
+// Export tool names (backward compatible — all tool names)
 export const SKILL_TOOL_NAMES = Object.keys(skillTools);
+
+// Export layered name arrays for external use
+export { CORE_SKILL_TOOL_NAMES, MANAGEMENT_SKILL_TOOL_NAMES };

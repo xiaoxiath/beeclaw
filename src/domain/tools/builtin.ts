@@ -8,11 +8,17 @@
  *   - time-tools.ts     — Time, Weather
  *   - info-tools.ts     — BeeclawInfo
  *   - calc-tools.ts     — Calc, CodeExecute, ClaudeCode
- *   - finance-tools.ts  — StockQuote, StockHistory, StockFinancial, StockInfo
+ *   - finance-tools.ts  — [DEPRECATED] Migrated to beeclaw-hedge-fund-research skill
  *   - file-system-tools.ts — FileRead/Write/List/Delete, Shell
  *   - deep-research-tools.ts — DeepResearch
  *
  * Shared types and utilities remain here to avoid circular dependencies.
+ *
+ * ## Migration History (v0.5.0)
+ * - stock_quote, stock_history, stock_financial, stock_info → beeclaw-hedge-fund-research skill
+ * - datasource_health_check → internal-only (removed from LLM tool exposure)
+ * - create_chart → removed from LLM tool registry (renderer still available internally)
+ * - get_holiday_info → deprecated, use web_search instead
  */
 
 import { z } from 'zod';
@@ -79,6 +85,7 @@ import {
   processDatasourceHealthCheck,
   DataSourceHealthChecker,
 } from './datasource-health';
+import { FINANCE_MIGRATION_MESSAGE } from './finance-tools';
 
 // ============================================================================
 // Re-export all submodule tools
@@ -123,7 +130,9 @@ export {
   executeClaudeCode,
 } from './calc-tools';
 
-// Finance tools
+// Finance tools — DEPRECATED stubs for backward compatibility
+// These re-exports are kept so that any external code importing from builtin.ts
+// will still compile, but the executors return migration messages at runtime.
 export {
   StockQuoteSchema,
   stockQuoteTool,
@@ -138,6 +147,9 @@ export {
   stockInfoTool,
   executeStockInfo,
 } from './finance-tools';
+
+// Finance migration exports
+export { FINANCE_TOOL_NAMES, FINANCE_MIGRATION_MESSAGE } from './finance-tools';
 
 // File system & Shell tools
 export {
@@ -460,6 +472,10 @@ export async function executeStateLockManageTool(params: Record<string, unknown>
 
 // ============================================================================
 // Chart Creation Tool (for Card V2)
+// [DEPRECATED] Removed from LLM tool registry in v0.5.0.
+// The createChartTool definition and executeCreateChart function are kept
+// for internal use by the card renderer, but are no longer registered in
+// builtinTools below.
 // ============================================================================
 
 const ChartTypeSchema = z.enum([
@@ -476,29 +492,10 @@ const ChartTypeSchema = z.enum([
   'common',
 ]);
 
+/** @deprecated Since v0.5.0 — Removed from LLM tool registry. Kept for internal card rendering. */
 export const createChartTool = {
   name: 'create_chart',
-  description: `Create a chart visualization for Feishu Card V2 messages. Use this tool to present data visually instead of plain text when:
-- Showing trends over time (use line/area charts)
-- Comparing quantities (use bar/pie charts)
-- Displaying proportions (use pie charts)
-- Showing relationships (use scatter charts)
-- Tracking progress (use progress charts)
-
-IMPORTANT: This tool returns a special content block that will be rendered as an interactive chart in Feishu. Always use this when presenting numerical data, comparisons, or trends.
-
-Available chart types:
-- line: Line chart for trends
-- area: Area chart for cumulative trends
-- bar: Bar chart for comparisons
-- pie: Pie chart for proportions
-- scatter: Scatter plot for correlations
-- radar: Radar chart for multi-dimensional data
-- funnel: Funnel chart for stages/flows
-- wordCloud: Word cloud for text frequency
-- linearProgress: Linear progress bar
-- circularProgress: Circular progress indicator
-- common: Generic chart (for custom VChart specs)`,
+  description: `[DEPRECATED] Create a chart visualization for Feishu Card V2 messages. This tool has been removed from the LLM tool registry. Chart creation is now handled internally by the card renderer.`,
 
   parameters: {
     type: 'object' as const,
@@ -550,6 +547,7 @@ Available chart types:
   },
 };
 
+/** @deprecated Since v0.5.0 — Kept for internal card rendering use only. */
 export async function executeCreateChart(params: Record<string, unknown>): Promise<BuiltinToolResult> {
   try {
     const chartType = ChartTypeSchema.parse(params.chartType);
@@ -573,7 +571,7 @@ export async function executeCreateChart(params: Record<string, unknown>): Promi
       ...(typeof params.colorTheme !== 'undefined' ? { colorTheme: params.colorTheme as string } : {}),
     };
 
-    logger.debug('[create_chart] 🎨 Returning chart block:', {
+    logger.debug('[create_chart] Returning chart block:', {
       hasContentBlock: true,
       success: true,
       dataType: chartBlock.type,
@@ -587,7 +585,7 @@ export async function executeCreateChart(params: Record<string, unknown>): Promi
       _contentBlock: true,
     };
   } catch (error) {
-    logger.error('[create_chart] ❌ Error:', error);
+    logger.error('[create_chart] Error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create chart',
@@ -609,10 +607,6 @@ import { beeclawInfoTool, executeBeeclawInfo } from './info-tools';
 import { calcTool, executeCalc } from './calc-tools';
 import { codeExecuteTool, executeCode } from './calc-tools';
 import { claudeCodeTool, executeClaudeCode } from './calc-tools';
-import { stockQuoteTool, executeStockQuote } from './finance-tools';
-import { stockHistoryTool, executeStockHistory } from './finance-tools';
-import { stockFinancialTool, executeStockFinancial } from './finance-tools';
-import { stockInfoTool, executeStockInfo } from './finance-tools';
 import { deepResearchTool, executeDeepResearch } from './deep-research-tools';
 import {
   fileReadTool, executeFileRead,
@@ -622,7 +616,22 @@ import {
   shellTool, executeShell,
 } from './file-system-tools';
 
-export const builtinTools = {
+// ---------------------------------------------------------------------------
+// Removed tools (v0.5.0 migration):
+//   - stock_quote, stock_history, stock_financial, stock_info
+//     → migrated to beeclaw-hedge-fund-research skill
+//   - datasource_health_check
+//     → removed from LLM exposure; internal class still available
+//   - create_chart
+//     → removed from LLM exposure; internal function still available
+// ---------------------------------------------------------------------------
+
+// ============================================================================
+// Phase 4: Layered Built-in Tool Loading
+// ============================================================================
+
+/** Core builtin tools — always registered */
+export const coreBuiltinTools: Record<string, any> = {
   web_search: webSearchTool,
   web_fetch: webFetchTool,
   time_now: timeTool,
@@ -631,12 +640,11 @@ export const builtinTools = {
   code_execute: codeExecuteTool,
   weather: weatherTool,
   get_holiday_info: holidayToolDef,
-  stock_quote: stockQuoteTool,
-  stock_history: stockHistoryTool,
-  stock_financial: stockFinancialTool,
-  stock_info: stockInfoTool,
+  // stock_quote — REMOVED: migrated to beeclaw-hedge-fund-research skill (v0.5.0)
+  // stock_history — REMOVED: migrated to beeclaw-hedge-fund-research skill (v0.5.0)
+  // stock_financial — REMOVED: migrated to beeclaw-hedge-fund-research skill (v0.5.0)
+  // stock_info — REMOVED: migrated to beeclaw-hedge-fund-research skill (v0.5.0)
   claude_code: claudeCodeTool,
-  deep_research: deepResearchTool,
   file_read: fileReadTool,
   file_write: fileWriteTool,
   file_list: fileListTool,
@@ -644,11 +652,6 @@ export const builtinTools = {
   shell: shellTool,
   spawn_subagent: spawnSubagentToolDef,
   spawn_parallel: spawnParallelToolDef,
-  // Consolidated state tools (recommended)
-  state_manage: stateManageTool,
-  state_query: stateQueryTool,
-  state_lock_manage: stateLockManageTool,
-  request_deep_analysis: requestDeepAnalysisTool,
   update_user_settings: updateUserSettingsTool,
   // Sandbox tools
   sandbox_exec: sandboxTools.sandbox_exec,
@@ -656,20 +659,199 @@ export const builtinTools = {
   sandbox_read_file: sandboxTools.sandbox_read_file,
   sandbox_list_files: sandboxTools.sandbox_list_files,
   sandbox_status: sandboxTools.sandbox_status,
-  datasource_health_check: datasourceHealthCheckTool,
+  // datasource_health_check — REMOVED: deprecated, internal only (v0.5.0)
   ask_user_question: askUserQuestionTool,
-  create_chart: createChartTool,
+  // create_chart — REMOVED: deprecated, internal renderer only (v0.5.0)
+};
+
+/** Deep research/analysis tools — only when search provider is configured */
+export const conditionalDeepResearchTools: Record<string, any> = {
+  deep_research: deepResearchTool,
+  request_deep_analysis: requestDeepAnalysisTool,
+};
+
+/** Subagent state tools — only when subagent orchestration is active */
+export const conditionalSubagentStateTools: Record<string, any> = {
+  state_manage: stateManageTool,
+  state_query: stateQueryTool,
+  state_lock_manage: stateLockManageTool,
+};
+
+/** Tool name arrays for conditional groups */
+export const DEEP_RESEARCH_TOOL_NAMES = Object.keys(conditionalDeepResearchTools);
+export const SUBAGENT_STATE_TOOL_NAMES = Object.keys(conditionalSubagentStateTools);
+
+/**
+ * Check if any search provider is configured.
+ * Returns true if at least one search API key is present.
+ */
+export function isSearchProviderConfigured(): boolean {
+  try {
+    // Use dynamic require to avoid circular dependency
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getSearchConfig } = require('../../infra/config');
+    const searchConfig = getSearchConfig();
+    return !!(
+      searchConfig.bochaApiKey ||
+      searchConfig.tavilyApiKey ||
+      searchConfig.googleApiKey ||
+      searchConfig.bingApiKey ||
+      searchConfig.braveApiKey
+    );
+  } catch {
+    // Config not available — default to including the tools for safety
+    return true;
+  }
+}
+
+/**
+ * Get core builtin tools (always registered).
+ */
+export function getCoreBuiltinTools() {
+  return Object.values(coreBuiltinTools);
+}
+
+/**
+ * Get deep research tools (conditionally registered).
+ * Only available when a search provider is configured.
+ */
+export function getDeepResearchTools() {
+  return Object.values(conditionalDeepResearchTools);
+}
+
+/**
+ * Get subagent state tools (conditionally registered).
+ * Only needed during subagent orchestration.
+ */
+export function getSubagentStateTools() {
+  return Object.values(conditionalSubagentStateTools);
+}
+
+/**
+ * Get builtin tools with conditional loading applied.
+ * This is the recommended function for production use.
+ *
+ * @param options.sandboxEnabled - Whether sandbox is active (hides superseded tools)
+ * @param options.isSubagentContext - Whether subagent orchestration is active
+ * @param options.forceAll - Force loading all tools (backward compat)
+ */
+export function getBuiltinToolsConditional(options: {
+  sandboxEnabled?: boolean;
+  isSubagentContext?: boolean;
+  forceAll?: boolean;
+} = {}): any[] {
+  if (options.forceAll) {
+    return Object.values(builtinTools);
+  }
+
+  let toolEntries = Object.entries(coreBuiltinTools);
+
+  // Conditionally add deep research tools
+  if (isSearchProviderConfigured()) {
+    toolEntries = [...toolEntries, ...Object.entries(conditionalDeepResearchTools)];
+  }
+
+  // Conditionally add subagent state tools
+  if (options.isSubagentContext) {
+    toolEntries = [...toolEntries, ...Object.entries(conditionalSubagentStateTools)];
+  }
+
+  // Apply sandbox filtering if needed
+  if (options.sandboxEnabled) {
+    return toolEntries
+      .filter(([name]) => !SANDBOX_SUPERSEDED_TOOLS.has(name))
+      .map(([, tool]) => tool);
+  }
+
+  return toolEntries.map(([, tool]) => tool);
+}
+
+/**
+ * Full builtinTools map — backward compatible, includes ALL tools.
+ * Used by executeBuiltinTool and isBuiltinTool for dispatch.
+ */
+export const builtinTools: Record<string, any> = {
+  ...coreBuiltinTools,
+  ...conditionalDeepResearchTools,
+  ...conditionalSubagentStateTools,
 };
 
 export const builtinToolNames = Object.keys(builtinTools);
 
-// Get all builtin tools in OpenAI format
-export function getBuiltinToolsForAI() {
-  return Object.values(builtinTools);
+/**
+ * Tools that overlap with sandbox and should be hidden when sandbox is enabled.
+ * Execution logic in executeBuiltinTool is preserved for backward compatibility
+ * (in case the LLM still calls them), but they won't appear in the tool list.
+ */
+const SANDBOX_SUPERSEDED_TOOLS: ReadonlySet<string> = new Set([
+  'file_read',
+  'file_write',
+  'file_list',
+  'file_delete',
+  'shell',
+  'code_execute',
+]);
+
+/**
+ * Get all builtin tools in OpenAI format (backward compatible — returns ALL).
+ *
+ * When `sandboxEnabled` is true, tools that are superseded by sandbox
+ * equivalents (file_read/write/list/delete, shell, code_execute) are
+ * excluded from the returned list to avoid wasting tool slots.
+ *
+ * NOTE: executeBuiltinTool() still handles these tools — this only
+ * controls what the LLM *sees* as available options.
+ *
+ * For production use with conditional loading, prefer `getBuiltinToolsConditional()`.
+ */
+export function getBuiltinToolsForAI(options?: { sandboxEnabled?: boolean }) {
+  const allTools = Object.entries(builtinTools);
+
+  if (options?.sandboxEnabled) {
+    return allTools
+      .filter(([name]) => !SANDBOX_SUPERSEDED_TOOLS.has(name))
+      .map(([, tool]) => tool);
+  }
+
+  return allTools.map(([, tool]) => tool);
 }
+
+// ---------------------------------------------------------------------------
+// Deprecated / migrated tool names — used for fallback migration messages
+// ---------------------------------------------------------------------------
+const MIGRATED_FINANCE_TOOLS = new Set(['stock_quote', 'stock_history', 'stock_financial', 'stock_info']);
+const DEPRECATED_TOOL_MESSAGES: Record<string, string> = {
+  datasource_health_check: 'datasource_health_check has been deprecated. Health checks are now performed automatically by the system.',
+  create_chart: 'create_chart has been removed from the tool registry. Chart rendering is now handled internally by the card renderer.',
+};
 
 // Execute a builtin tool
 export async function executeBuiltinTool(name: string, params: Record<string, unknown>): Promise<BuiltinToolResult> {
+  // --- Fallback for migrated/deprecated tools (v0.5.0) ---
+  if (MIGRATED_FINANCE_TOOLS.has(name)) {
+    return { success: false, error: FINANCE_MIGRATION_MESSAGE };
+  }
+  if (name in DEPRECATED_TOOL_MESSAGES) {
+    // datasource_health_check: still execute internally for backward compat
+    if (name === 'datasource_health_check') {
+      if (!_healthChecker) {
+        return { success: false, error: 'Health checker not initialized. Call setupHealthChecker() during app bootstrap.' };
+      }
+      try {
+        const healthResult = await processDatasourceHealthCheck(params, _healthChecker, logger);
+        return { success: true, data: healthResult };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: `Health check failed: ${msg}` };
+      }
+    }
+    // create_chart: still execute internally for backward compat
+    if (name === 'create_chart') {
+      return executeCreateChart(params);
+    }
+    return { success: false, error: DEPRECATED_TOOL_MESSAGES[name] };
+  }
+
   switch (name) {
     case 'web_search':
       return executeWebSearch(params);
@@ -687,14 +869,6 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
       return executeWeather(params);
     case 'get_holiday_info':
       return executeHolidayTool(params);
-    case 'stock_quote':
-      return executeStockQuote(params);
-    case 'stock_history':
-      return executeStockHistory(params);
-    case 'stock_financial':
-      return executeStockFinancial(params);
-    case 'stock_info':
-      return executeStockInfo(params);
     case 'claude_code':
       return executeClaudeCode(params);
     case 'deep_research':
@@ -733,19 +907,6 @@ export async function executeBuiltinTool(name: string, params: Record<string, un
     case 'sandbox_list_files':
     case 'sandbox_status':
       return executeSandboxTool(name, params);
-    case 'datasource_health_check':
-      if (!_healthChecker) {
-        return { success: false, error: 'Health checker not initialized. Call setupHealthChecker() during app bootstrap.' };
-      }
-      try {
-        const healthResult = await processDatasourceHealthCheck(params, _healthChecker, logger);
-        return { success: true, data: healthResult };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { success: false, error: `Health check failed: ${msg}` };
-      }
-    case 'create_chart':
-      return executeCreateChart(params);
     default:
       return { success: false, error: `Unknown builtin tool: ${name}` };
   }
@@ -764,4 +925,8 @@ export function isBuiltinTool(name: string): boolean {
 // Re-export consolidated state tools for backward compatibility
 export { stateManageTool, stateQueryTool, stateLockManageTool } from '../subagent/state-tools-consolidated';
 
-
+// Phase 4 summary:
+// - Core builtin tools: always loaded (getCoreBuiltinTools)
+// - Deep research tools (deep_research, request_deep_analysis): loaded when search provider configured — 2 tools
+// - Subagent state tools (state_manage, state_query, state_lock_manage): loaded in subagent context — 3 tools
+// - Use getBuiltinToolsConditional() for production, getBuiltinToolsForAI() for backward compat

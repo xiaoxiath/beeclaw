@@ -270,6 +270,17 @@ export const DEFAULT_CONFIG: AppConfig = {
       enablePriority: true,
     },
   },
+
+  // Phase 2: Feature toggles for optional tool modules
+  goals: {
+    enabled: true,  // default enabled for backward compat
+  },
+  proactive: {
+    enabled: false,  // default disabled — requires daemon mode
+  },
+  persona: {
+    enabled: true,  // default enabled for backward compat
+  },
 };
 
 /**

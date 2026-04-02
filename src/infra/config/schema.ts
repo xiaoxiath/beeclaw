@@ -525,6 +525,25 @@ export const WebConfigSchema = z.object({
   }).default({}),
 });
 
+// ---------------------------------------------------------------------------
+// Feature Toggle Schemas — Optional modules (Phase 2: conditional loading)
+// ---------------------------------------------------------------------------
+
+/** Goals feature toggle. When disabled, goal_* tools are not loaded. */
+export const GoalsFeatureSchema = z.object({
+  enabled: z.boolean().default(true),  // default true for backward compat
+});
+
+/** Proactive feature toggle. When disabled, proactive, notification, and schedule_once tools are not loaded. */
+export const ProactiveFeatureSchema = z.object({
+  enabled: z.boolean().default(false),  // default false — requires daemon mode
+});
+
+/** Persona feature toggle. When disabled, persona_* tools are not loaded. */
+export const PersonaFeatureSchema = z.object({
+  enabled: z.boolean().default(true),  // default true for backward compat
+});
+
 // Main configuration schema (v6)
 export const AppConfigSchema = z.object({
   server: ServerConfigSchema.default({}),
@@ -566,6 +585,11 @@ export const AppConfigSchema = z.object({
   recovery: RecoveryConfigSchema.optional(),
   web: WebConfigSchema.default({}),
   llmRouter: LLMRouterConfigSchema.optional(),
+
+  // Phase 2: Feature toggles for optional tool modules
+  goals: GoalsFeatureSchema.default({}),
+  proactive: ProactiveFeatureSchema.default({}),
+  persona: PersonaFeatureSchema.default({}),
 });
 
 // Type exports
@@ -607,4 +631,7 @@ export type LLMTierConfig = z.infer<typeof LLMTierConfigSchema>;
 export type LLMTiersConfig = z.infer<typeof LLMTiersConfigSchema>;
 export type LLMConcurrencyConfig = z.infer<typeof LLMConcurrencyConfigSchema>;
 export type LLMRouterConfig = z.infer<typeof LLMRouterConfigSchema>;
+export type GoalsFeatureConfig = z.infer<typeof GoalsFeatureSchema>;
+export type ProactiveFeatureConfig = z.infer<typeof ProactiveFeatureSchema>;
+export type PersonaFeatureConfig = z.infer<typeof PersonaFeatureSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

@@ -1,5 +1,5 @@
 export { MemoryStore, getMemoryStore, resetMemoryStore } from './store';
-export { executeMemoryTool, getMemoryToolsForAI, memoryTools, MEMORY_TOOL_NAMES } from './tools';
+export { executeMemoryTool, getMemoryToolsForAI, getCoreMemoryTools, getAdvancedMemoryTools, memoryTools, MEMORY_TOOL_NAMES, CORE_MEMORY_TOOL_NAMES, ADVANCED_MEMORY_TOOL_NAMES } from './tools';
 export { MemoryCompression, getCompressionEngine, resetCompressionEngine, DEFAULT_COMPRESSION_CONFIG } from './compression';
 export type { CompressionConfig, CompressionResult, SummaryEntry } from './compression';
 export {

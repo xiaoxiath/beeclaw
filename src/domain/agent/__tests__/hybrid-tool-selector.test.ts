@@ -51,25 +51,18 @@ const ALL_TOOLS: OpenAITool[] = [
   // Core tools (always included)
   ...CORE_NAMES.map(n => makeTool(n)),
   // Other tools
-  makeTool('web_search', 'Search the web'), makeTool('web_browse', 'Browse a URL'), makeTool('web_scrape', 'Scrape a URL'),
+  makeTool('web_search', 'Search the web'), makeTool('web_fetch', 'Fetch a URL'),
   makeTool('goal_create', 'Create a goal'), makeTool('goal_list', 'List goals'),
   makeTool('goal_get', 'Get goal'), makeTool('goal_update', 'Update a goal'), makeTool('goal_checkpoint', 'Checkpoint goal'),
   makeTool('sandbox_exec', 'Execute code'), makeTool('sandbox_write_file', 'Write file'),
   makeTool('sandbox_read_file', 'Read file'), makeTool('sandbox_list_files', 'List files'),
-  makeTool('get_current_time', 'Get current time'), makeTool('get_weather', 'Get weather'), makeTool('get_holidays', 'Get holidays'),
-  makeTool('feishu_calendar_list', 'Calendar list'), makeTool('feishu_calendar_event_create', 'Create calendar event'),
-  makeTool('feishu_calendar_event_list', 'List events'), makeTool('feishu_calendar_today', 'Calendar today'),
-  makeTool('feishu_calendar_quick_event', 'Quick event'),
-  makeTool('feishu_docx_get', 'Get doc'), makeTool('feishu_docx_search', 'Search doc'),
-  makeTool('feishu_drive_list', 'Drive list'), makeTool('feishu_drive_search', 'Drive search'),
-  makeTool('feishu_wiki_search', 'Wiki search'), makeTool('feishu_wiki_list_nodes', 'Wiki nodes'),
+  makeTool('time_now', 'Get current time'), makeTool('weather', 'Get weather'), makeTool('get_holiday_info', 'Get holidays'),
   makeTool('skill_ensure', 'Ensure skill'), makeTool('skill_delete', 'Delete skill'), makeTool('skill_record', 'Record skill'),
   makeTool('request_deep_analysis', 'Deep analysis'),
   makeTool('proactive_schedule', 'Schedule task'), makeTool('proactive_list', 'List proactive'),
   makeTool('proactive_cancel', 'Cancel proactive'), makeTool('schedule_once', 'Schedule once'),
   makeTool('notification_send', 'Send notification'),
   makeTool('memory_record', 'Record memory'),
-  makeTool('feishu_docx_create_text', 'Create doc text'),
 ];
 
 // ---------------------------------------------------------------------------
@@ -117,8 +110,7 @@ describe('HybridToolSelector', () => {
       const result = await selector.select(ALL_TOOLS, '帮我搜索最新新闻');
       const names = result.map(t => t.function.name);
       expect(names).toContain('web_search');
-      expect(names).toContain('web_browse');
-      expect(names).toContain('web_scrape');
+      expect(names).toContain('web_fetch');
     });
 
     it('matches search tools on English keyword', async () => {
@@ -159,33 +151,39 @@ describe('HybridToolSelector', () => {
       expect(names).toContain('goal_list');
     });
 
-    it('matches calendar tools on 日程 keyword', async () => {
+    it('matches calendar/doc/drive/wiki queries to skill tools', async () => {
       const selector = new HybridToolSelector({ strategy: 'layered', semanticEnabled: false });
       const result = await selector.select(ALL_TOOLS, '查看我的日程');
       const names = result.map(t => t.function.name);
-      expect(names).toContain('feishu_calendar_list');
+      // Calendar/doc/drive/wiki tools now route through skill_list/skill_get/skill_ensure
+      expect(names).toContain('skill_list');
+      expect(names).toContain('skill_get');
+      expect(names).toContain('skill_ensure');
     });
 
-    it('matches calendar tools on meeting keyword', async () => {
+    it('matches calendar queries on meeting keyword', async () => {
       const selector = new HybridToolSelector({ strategy: 'layered', semanticEnabled: false });
       const result = await selector.select(ALL_TOOLS, 'schedule a meeting');
       const names = result.map(t => t.function.name);
-      expect(names).toContain('feishu_calendar_list');
+      expect(names).toContain('skill_list');
+      expect(names).toContain('skill_ensure');
     });
 
-    it('matches document tools on 文档 keyword', async () => {
+    it('matches document queries on 文档 keyword', async () => {
       const selector = new HybridToolSelector({ strategy: 'layered', semanticEnabled: false });
       const result = await selector.select(ALL_TOOLS, '查看这份文档');
       const names = result.map(t => t.function.name);
-      expect(names).toContain('feishu_docx_get');
-      expect(names).toContain('feishu_docx_search');
+      expect(names).toContain('skill_list');
+      expect(names).toContain('skill_get');
+      expect(names).toContain('skill_ensure');
     });
 
-    it('matches document tools on file/wiki keyword', async () => {
+    it('matches document queries on file/wiki keyword', async () => {
       const selector = new HybridToolSelector({ strategy: 'layered', semanticEnabled: false });
       const result = await selector.select(ALL_TOOLS, 'find file in wiki');
       const names = result.map(t => t.function.name);
-      expect(names).toContain('feishu_wiki_search');
+      expect(names).toContain('skill_list');
+      expect(names).toContain('skill_ensure');
     });
 
     it('matches sandbox tools on 代码 keyword', async () => {
@@ -200,7 +198,7 @@ describe('HybridToolSelector', () => {
       const selector = new HybridToolSelector({ strategy: 'layered', semanticEnabled: false });
       const result = await selector.select(ALL_TOOLS, '现在几点了');
       const names = result.map(t => t.function.name);
-      expect(names).toContain('get_current_time');
+      expect(names).toContain('time_now');
     });
 
     it('matches deep analysis tools on 深度分析', async () => {

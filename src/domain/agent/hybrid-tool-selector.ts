@@ -74,7 +74,7 @@ const RULE_MAPPINGS: RuleMapping[] = [
       /搜索|查找|查询|查一下|百度|谷歌|搜一下/,
       /search|find|query|look up|google/i,
     ],
-    toolNames: ['web_search', 'web_browse', 'web_scrape'],
+    toolNames: ['web_search', 'web_fetch'],
   },
   {
     patterns: [
@@ -82,24 +82,16 @@ const RULE_MAPPINGS: RuleMapping[] = [
     ],
     toolNames: ['skill_list', 'skill_get', 'skill_search', 'skill_ensure', 'skill_delete', 'skill_record'],
   },
+  // [CLEANED v0.5.0] Feishu calendar/doc/drive/wiki rules removed.
+  // These tools are now provided by the feishu-cli-toolkit skill and are
+  // loaded dynamically via skill_ensure. The hybrid selector will match
+  // them via semantic similarity once the skill is loaded.
   {
     patterns: [
       /日历|日程|会议|提醒|calendar|schedule|meeting|remind/i,
-    ],
-    toolNames: [
-      'feishu_calendar_list', 'feishu_calendar_event_create', 'feishu_calendar_event_list',
-      'feishu_calendar_today', 'feishu_calendar_quick_event',
-    ],
-  },
-  {
-    patterns: [
       /文档|文件|doc|file|drive|wiki/i,
     ],
-    toolNames: [
-      'feishu_docx_get', 'feishu_docx_search', 'feishu_docx_create_text',
-      'feishu_drive_list', 'feishu_drive_search',
-      'feishu_wiki_search', 'feishu_wiki_list_nodes',
-    ],
+    toolNames: ['skill_list', 'skill_get', 'skill_ensure'],
   },
   {
     patterns: [
@@ -117,7 +109,17 @@ const RULE_MAPPINGS: RuleMapping[] = [
     patterns: [
       /时间|天气|日期|几点|weather|time|date|clock/i,
     ],
-    toolNames: ['get_current_time', 'get_weather', 'get_holidays'],
+    toolNames: ['time_now', 'weather', 'get_holiday_info'],
+  },
+  // [CLEANED v0.5.0] Finance tool rules removed.
+  // stock_quote, stock_history, stock_financial, stock_info have been
+  // migrated to the beeclaw-hedge-fund-research skill.
+  // Finance-related queries will be routed through skill_ensure instead.
+  {
+    patterns: [
+      /股票|基金|行情|K线|财报|市值|stock|finance|fund|quote/i,
+    ],
+    toolNames: ['skill_list', 'skill_get', 'skill_ensure'],
   },
   {
     patterns: [

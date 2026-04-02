@@ -174,17 +174,24 @@ export function clearHolidayCache(): void {
 
 
 // =============================================================================
-// [KV-Cache] Holiday info as an on-demand tool
+// [DEPRECATED] Holiday info as an on-demand tool
 //
 // Previously injected into the system prompt on every turn (~30 tokens).
 // Now the LLM calls this tool only when holiday/workday info is relevant,
 // saving tokens and keeping the prompt prefix stable for KV Cache reuse.
+//
+// @deprecated Since v0.5.0 — The dedicated holiday tool is being phased out.
+// Users should use web_search for holiday/calendar queries instead.
+// The tool is kept for backward compatibility but returns a deprecation notice.
 // =============================================================================
 
-/** Tool definition for the agent tool registry */
+/**
+ * @deprecated Since v0.5.0 — Use web_search for holiday queries instead.
+ * Tool definition kept for backward compatibility in the agent tool registry.
+ */
 export const holidayToolDef = {
   name: 'get_holiday_info',
-  description: '获取指定日期的节假日/工作日/调休信息。当用户询问"今天放不放假"、"是不是工作日"、"调休安排"、日历相关问题时调用此工具。',
+  description: '[DEPRECATED] 获取指定日期的节假日/工作日/调休信息。此工具即将下线，请改用 web_search 查询节假日信息。',
   parameters: {
     type: 'object',
     properties: {
@@ -197,12 +204,17 @@ export const holidayToolDef = {
   },
 };
 
-/** Execute the holiday tool — fetches live data (with 24h cache) */
+/**
+ * @deprecated Since v0.5.0 — Use web_search for holiday queries instead.
+ * Execute the holiday tool — now returns a deprecation notice alongside data.
+ */
 export async function executeHolidayTool(params: Record<string, unknown>): Promise<{
   success: boolean;
   result?: string;
   error?: string;
 }> {
+  const DEPRECATION_NOTICE = '[DEPRECATED] get_holiday_info 工具即将下线。请改用 web_search 查询节假日和调休信息，可获得更准确和最新的结果。';
+
   try {
     const dateStr = params.date as string | undefined;
     const targetDate = dateStr ? new Date(dateStr) : undefined;
@@ -216,11 +228,11 @@ export async function executeHolidayTool(params: Record<string, unknown>): Promi
       const d = String(now.getDate()).padStart(2, '0');
       return {
         success: true,
-        result: `${y}-${m}-${d} ${weekDays[now.getDay()]}（节假日 API 暂不可用，无法确认是否调休）`,
+        result: `${y}-${m}-${d} ${weekDays[now.getDay()]}（节假日 API 暂不可用，无法确认是否调休）\n\n${DEPRECATION_NOTICE}`,
       };
     }
 
-    return { success: true, result: formatHolidayDescription(info) };
+    return { success: true, result: `${formatHolidayDescription(info)}\n\n${DEPRECATION_NOTICE}` };
   } catch (error) {
     return { success: false, error: String(error) };
   }

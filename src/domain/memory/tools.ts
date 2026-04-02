@@ -512,15 +512,57 @@ export async function executeMemoryTool(name: string, params: Record<string, unk
   }
 }
 
-// Get all memory tools for AI
+// ============================================================================
+// Phase 4: Layered Tool Loading
+// ============================================================================
+
+/** Core memory tool names — always registered */
+const CORE_MEMORY_TOOL_NAMES = [
+  'memory_ls',
+  'memory_grep',
+  'memory_read',
+  'memory_write',
+  'memory_record',
+] as const;
+
+/** Advanced memory tool names — conditionally registered */
+const ADVANCED_MEMORY_TOOL_NAMES = [
+  'memory_compress',
+  'memory_score',
+  'memory_dedupe',
+  'memory_knowledge_create',
+  'memory_index',
+  'memory_search',
+] as const;
+
+/**
+ * Get core memory tools (always registered).
+ * These are the essential tools for basic memory operations.
+ */
+export function getCoreMemoryTools() {
+  return CORE_MEMORY_TOOL_NAMES.map(name => memoryTools[name]);
+}
+
+/**
+ * Get advanced memory tools (conditionally registered).
+ * These are maintenance/management tools for power users.
+ */
+export function getAdvancedMemoryTools() {
+  return ADVANCED_MEMORY_TOOL_NAMES.map(name => memoryTools[name]);
+}
+
+// Get all memory tools for AI (backward compatible — returns all 11)
 export function getMemoryToolsForAI() {
   return Object.values(memoryTools);
 }
 
-// Get all memory tools (alias)
+// Get all memory tools (alias, backward compatible)
 export function getAllMemoryTools() {
   return getMemoryToolsForAI();
 }
 
-// Export tool names
+// Export tool names (backward compatible — all tool names)
 export const MEMORY_TOOL_NAMES = Object.keys(memoryTools);
+
+// Export layered name arrays for external use
+export { CORE_MEMORY_TOOL_NAMES, ADVANCED_MEMORY_TOOL_NAMES };

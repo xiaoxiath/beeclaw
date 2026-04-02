@@ -149,19 +149,16 @@ describe('Agent Tools', () => {
       expect(TOOL_CATEGORIES.state).toContain('state_manage');
     });
 
-    test('has state_legacy category', () => {
-      expect(TOOL_CATEGORIES.state_legacy).toContain('state_set');
-      expect(TOOL_CATEGORIES.state_legacy).toContain('state_get');
+    test('has state_legacy category (now empty)', () => {
+      expect(TOOL_CATEGORIES.state_legacy).toBeDefined();
+      expect(Array.isArray(TOOL_CATEGORIES.state_legacy)).toBe(true);
+      expect(TOOL_CATEGORIES.state_legacy).toEqual([]);
     });
 
-    test('has feishu category', () => {
+    test('has feishu category (now empty)', () => {
       expect(TOOL_CATEGORIES.feishu).toBeDefined();
-      expect(TOOL_CATEGORIES.feishu.length).toBeGreaterThan(0);
-      expect(TOOL_CATEGORIES.feishu).toContain('feishu_calendar_list');
-      expect(TOOL_CATEGORIES.feishu).toContain('feishu_docx_get');
-      expect(TOOL_CATEGORIES.feishu).toContain('feishu_drive_list');
-      expect(TOOL_CATEGORIES.feishu).toContain('feishu_bitable_get_meta');
-      expect(TOOL_CATEGORIES.feishu).toContain('feishu_wiki_search');
+      expect(Array.isArray(TOOL_CATEGORIES.feishu)).toBe(true);
+      expect(TOOL_CATEGORIES.feishu).toEqual([]);
     });
   });
 

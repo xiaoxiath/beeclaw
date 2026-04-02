@@ -311,8 +311,9 @@ describe('Builtin Tools', () => {
       expect(builtinTools.state_manage).toBeDefined();
       expect(builtinTools.state_query).toBeDefined();
       expect(builtinTools.state_lock_manage).toBeDefined();
-      expect(builtinTools.create_chart).toBeDefined();
-      expect(builtinTools.datasource_health_check).toBeDefined();
+      // create_chart and datasource_health_check removed from builtinTools in v0.5.0
+      expect(builtinTools.create_chart).toBeUndefined();
+      expect(builtinTools.datasource_health_check).toBeUndefined();
     });
   });
 
@@ -323,7 +324,8 @@ describe('Builtin Tools', () => {
       expect(builtinToolNames).toContain('calc');
       expect(builtinToolNames).toContain('state_manage');
       expect(builtinToolNames).toContain('state_query');
-      expect(builtinToolNames).toContain('create_chart');
+      // create_chart removed from tool registry in v0.5.0
+      expect(builtinToolNames).not.toContain('create_chart');
     });
   });
 
@@ -353,7 +355,8 @@ describe('Builtin Tools', () => {
       expect(isBuiltinTool('web_search')).toBe(true);
       expect(isBuiltinTool('calc')).toBe(true);
       expect(isBuiltinTool('state_manage')).toBe(true);
-      expect(isBuiltinTool('create_chart')).toBe(true);
+      // create_chart removed from tool registry in v0.5.0
+      expect(isBuiltinTool('create_chart')).toBe(false);
     });
 
     test('returns false for non-builtin tools', () => {
@@ -715,7 +718,7 @@ describe('Builtin Tools', () => {
       expect(result.success).toBe(true);
     });
 
-    test('executes create_chart', async () => {
+    test('executes create_chart via deprecated fallback', async () => {
       const result = await executeBuiltinTool('create_chart', {
         chartType: 'bar',
         data: [{ name: 'A', value: 10 }],
