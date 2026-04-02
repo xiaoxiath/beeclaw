@@ -8,6 +8,7 @@
 import { logger } from '../../infra/observability/logger';
 import type { ToolExecutor, ToolCall, UserContext, ChatMessage } from './types';
 import type { LoopDetector } from '../../infra/resilience/loop-detector';
+import type { IHookRunner } from '../ports';
 import { groupToolCalls, getGroupingStats } from './tool-dependencies';
 import { TimeoutEnforcer, ToolTimeoutError } from '../../infra/resilience/timeout-enforcer';
 
@@ -32,7 +33,7 @@ export interface ToolBatchResult {
 export class ToolDispatcher {
   constructor(
     private toolExecutor: ToolExecutor,
-    private hookRunner: any | null,
+    private hookRunner: IHookRunner | null,
     private loopDetector: LoopDetector,
     private blockedTools?: string[],
     private timeoutEnforcer?: TimeoutEnforcer,
@@ -125,7 +126,7 @@ export class ToolDispatcher {
     return allResults;
   }
 
-  persistResult(toolName: string, result: any, toolCallId: string): any {
+  persistResult(toolName: string, result: unknown, toolCallId: string): Promise<Record<string, unknown>> | unknown {
     if (!this.hookRunner) return result;
     return this.hookRunner.runToolResultPersist({ toolName, result, toolCallId, timestamp: new Date().toISOString() });
   }

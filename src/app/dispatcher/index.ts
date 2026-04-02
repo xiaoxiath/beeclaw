@@ -7,7 +7,7 @@ import { logger } from '../../infra/observability/logger';
 import { randomUUID } from 'crypto';
 import { getDataConnection } from '../../infra/db';
 import { tasks as tasksTable } from '../../infra/db/schema';
-import { eq, and, lt, gte, isNull, isNotNull, or } from 'drizzle-orm';
+import { eq, and, lt, lte, isNull, isNotNull, or } from 'drizzle-orm';
 import type {
   Task,
   TaskType,
@@ -182,8 +182,7 @@ export class TaskDispatcher {
           isNull(tasksTable.lockedBy),
           lt(tasksTable.lockedAt, new Date(now.getTime() - this.config.lockTimeoutMs))
         ),
-        gte(tasksTable.scheduledAt, new Date(0)), // scheduledAt <= now
-        lt(tasksTable.scheduledAt, now)
+        lte(tasksTable.scheduledAt, now)  // Only pick up tasks scheduled at or before now
       ))
       .orderBy(tasksTable.scheduledAt)
       .limit(this.config.maxConcurrency)

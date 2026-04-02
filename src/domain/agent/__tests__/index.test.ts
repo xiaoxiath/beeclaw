@@ -546,8 +546,8 @@ describe('Agent', () => {
 
       expect(mockHookRunner.runBeforeReset).toHaveBeenCalledWith(
         expect.objectContaining({
-          messageCount: expect.any(Number),
-          tokenCount: expect.any(Number),
+          messages: expect.any(Array),
+          tokensBefore: expect.any(Number),
           timestamp: expect.any(String),
         }),
       );

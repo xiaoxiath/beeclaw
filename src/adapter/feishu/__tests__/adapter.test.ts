@@ -15,18 +15,14 @@ vi.mock('../../../infra/observability/logger', () => ({
 
 const {
   mockRegisterChannel,
-  mockInitFeishuWSIntegration,
+  mockFeishuWSInitializer,
   mockGetFeishuWSClient,
   mockStopClient,
 } = vi.hoisted(() => ({
   mockRegisterChannel: vi.fn(() => {}),
-  mockInitFeishuWSIntegration: vi.fn(() => Promise.resolve()),
+  mockFeishuWSInitializer: vi.fn(() => Promise.resolve()),
   mockGetFeishuWSClient: vi.fn(() => null as any),
   mockStopClient: vi.fn(() => {}),
-}));
-
-vi.mock('../../../app/routes/proactive', () => ({
-  initFeishuWSIntegration: mockInitFeishuWSIntegration,
 }));
 
 vi.mock('../ws-client', () => ({
@@ -50,6 +46,7 @@ function makeContext(overrides: Record<string, any> = {}) {
     gateway: {
       registerChannel: mockRegisterChannel,
     },
+    feishuWSInitializer: mockFeishuWSInitializer,
     ...overrides,
   } as any;
 }
@@ -60,7 +57,7 @@ describe('FeishuAdapter', () => {
   beforeEach(() => {
     adapter = new FeishuAdapter();
     mockRegisterChannel.mockClear();
-    mockInitFeishuWSIntegration.mockClear();
+    mockFeishuWSInitializer.mockClear();
     mockGetFeishuWSClient.mockClear();
     mockStopClient.mockClear();
   });
@@ -92,30 +89,36 @@ describe('FeishuAdapter', () => {
       const ctx = makeContext({ config: { feishu: { enabled: false } } });
       await adapter.initialize(ctx);
       await adapter.start();
-      expect(mockInitFeishuWSIntegration).not.toHaveBeenCalled();
+      expect(mockFeishuWSInitializer).not.toHaveBeenCalled();
     });
 
     it('skips start if feishu config is missing', async () => {
       const ctx = makeContext({ config: {} });
       await adapter.initialize(ctx);
       await adapter.start();
-      expect(mockInitFeishuWSIntegration).not.toHaveBeenCalled();
+      expect(mockFeishuWSInitializer).not.toHaveBeenCalled();
     });
 
-    it('calls initFeishuWSIntegration and marks running', async () => {
+    it('calls feishuWSInitializer and marks running', async () => {
       const ctx = makeContext();
       await adapter.initialize(ctx);
       await adapter.start();
-      expect(mockInitFeishuWSIntegration).toHaveBeenCalledTimes(1);
+      expect(mockFeishuWSInitializer).toHaveBeenCalledTimes(1);
       expect(adapter.getStatus().running).toBe(true);
       expect(adapter.getStatus().connections).toBe(1);
     });
 
-    it('throws if initFeishuWSIntegration fails', async () => {
-      mockInitFeishuWSIntegration.mockRejectedValueOnce(new Error('ws fail'));
+    it('throws if feishuWSInitializer fails', async () => {
+      mockFeishuWSInitializer.mockRejectedValueOnce(new Error('ws fail'));
       const ctx = makeContext();
       await adapter.initialize(ctx);
       await expect(adapter.start()).rejects.toThrow('ws fail');
+    });
+
+    it('throws if feishuWSInitializer is not provided', async () => {
+      const ctx = makeContext({ feishuWSInitializer: undefined });
+      await adapter.initialize(ctx);
+      await expect(adapter.start()).rejects.toThrow('feishuWSInitializer not provided');
     });
   });
 

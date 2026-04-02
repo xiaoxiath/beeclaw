@@ -23,8 +23,26 @@ export function createWebApp(config?: WebConfig) {
   app.use('*', secureHeaders());
 
   // CORS configuration
+  // Note: config.host is a bind address (e.g., '0.0.0.0'), NOT a valid browser origin.
+  // Use explicit origin allowlist derived from port, or allow all in dev mode.
+  const port = config?.port || 3000;
+  const corsOrigins = [
+    `http://localhost:${port}`,
+    `http://127.0.0.1:${port}`,
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ];
   app.use('*', cors({
-    origin: config?.host === 'localhost' ? '*' : config?.host || '*',
+    origin: (origin) => {
+      // Allow requests with no origin (e.g., curl, server-to-server)
+      if (!origin) return corsOrigins[0];
+      // Allow listed origins
+      if (corsOrigins.includes(origin)) return origin;
+      // In development, allow all localhost variants
+      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) return origin;
+      // Reject unknown origins
+      return corsOrigins[0];
+    },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],

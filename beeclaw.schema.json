@@ -35,7 +35,6 @@
               "anthropic",
               "zhipu",
               "minimax",
-              "deepseek",
               "custom"
             ],
             "description": "Provider type"
@@ -176,6 +175,30 @@
         "costTracking": {
           "type": "boolean",
           "default": true
+        },
+        "concurrency": {
+          "type": "object",
+          "description": "LLM concurrency control",
+          "properties": {
+            "maxConcurrent": {
+              "type": "integer",
+              "default": 2,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "maxQueueSize": {
+              "type": "integer",
+              "default": 50
+            },
+            "queueTimeoutMs": {
+              "type": "integer",
+              "default": 100000
+            },
+            "enablePriority": {
+              "type": "boolean",
+              "default": true
+            }
+          }
         }
       }
     },
@@ -242,6 +265,21 @@
           "minimum": 0.5,
           "maximum": 0.95,
           "default": 0.8
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "llm",
+            "rule",
+            "hybrid"
+          ],
+          "default": "hybrid"
+        },
+        "maxSummaryTokens": {
+          "type": "integer",
+          "default": 1000,
+          "minimum": 200,
+          "maximum": 2000
         }
       }
     },
@@ -257,6 +295,16 @@
           "type": "boolean",
           "default": false,
           "description": "Use Card V2 for streaming messages"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "sdk",
+            "cli",
+            "hybrid"
+          ],
+          "default": "sdk",
+          "description": "Feishu integration mode"
         }
       }
     },
@@ -831,6 +879,281 @@
               "description": "Pool health check interval in milliseconds"
             }
           }
+        }
+      }
+    },
+    "server": {
+      "type": "object",
+      "description": "Server configuration",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "default": 3000
+        },
+        "host": {
+          "type": "string",
+          "default": "0.0.0.0"
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "description": "Authentication configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "cors": {
+      "type": "object",
+      "description": "CORS configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "origins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "localhost"
+          ]
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowHeaders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exposeHeaders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "maxAge": {
+          "type": "integer",
+          "default": 86400
+        },
+        "credentials": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "description": "Legacy agents array (deprecated in v6, use 'agent' instead)",
+      "items": {
+        "$ref": "#/properties/agent"
+      }
+    },
+    "sessionStorage": {
+      "type": "object",
+      "description": "Session storage configuration",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "jsonl",
+            "memory",
+            "sqlite"
+          ],
+          "default": "jsonl"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "description": "Skills system configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "directories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "autoDiscover": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "plugins": {
+      "type": "object",
+      "description": "Plugin system configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "directories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "description": "Channel plugin configurations",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "tools": {
+      "type": "object",
+      "description": "Tool plugin configurations",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "defaultPushTarget": {
+      "type": "object",
+      "description": "Default push notification target",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "enum": [
+            "cli",
+            "feishu",
+            "webhook"
+          ],
+          "default": "feishu"
+        },
+        "chatId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        }
+      }
+    },
+    "finance": {
+      "type": "object",
+      "description": "Finance tools configuration",
+      "properties": {
+        "defaultSource": {
+          "type": "string",
+          "enum": [
+            "tushare",
+            "sina",
+            "eastmoney",
+            "auto"
+          ],
+          "default": "auto"
+        },
+        "cacheEnabled": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "agentDisplay": {
+      "type": "object",
+      "description": "Agent display configuration",
+      "properties": {
+        "showTokenStats": {
+          "type": "boolean",
+          "default": false
+        },
+        "tokenStatsFormat": {
+          "type": "string",
+          "enum": [
+            "inline",
+            "block"
+          ],
+          "default": "inline"
+        }
+      }
+    },
+    "extraction": {
+      "type": "object",
+      "description": "Auto knowledge extraction configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "periodicInterval": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 50
+        },
+        "confidenceThreshold": {
+          "type": "number",
+          "default": 0.9,
+          "minimum": 0.5,
+          "maximum": 1
+        },
+        "maxExtractionsPerRun": {
+          "type": "integer",
+          "default": 20
+        }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "description": "Session recovery configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "maxAge": {
+          "type": "integer",
+          "default": 300000
+        },
+        "minAge": {
+          "type": "integer",
+          "default": 10000
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "feishu"
+          ]
+        },
+        "batchSize": {
+          "type": "integer",
+          "default": 5
+        },
+        "delayMs": {
+          "type": "integer",
+          "default": 2000
+        },
+        "startupDelay": {
+          "type": "integer",
+          "default": 10000
         }
       }
     }

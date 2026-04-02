@@ -8,6 +8,52 @@
  */
 
 // ============================================================================
+// Hook Event Types (P1-4: type-safe IHookRunner)
+// ============================================================================
+
+/** Base hook event with common fields */
+export interface BaseHookEvent {
+  timestamp: string;
+}
+
+/** Tool-related hook events */
+export interface ToolHookEvent extends BaseHookEvent {
+  toolName: string;
+  params?: Record<string, unknown>;
+  result?: unknown;
+  toolCallId?: string;
+}
+
+/** Model-related hook events */
+export interface ModelHookEvent extends BaseHookEvent {
+  model?: string;
+  provider?: string;
+  messages?: unknown[];
+  response?: unknown;
+}
+
+/** Session-related hook events */
+export interface SessionHookEvent extends BaseHookEvent {
+  sessionId?: string;
+  userId?: string;
+}
+
+/** Message-related hook events */
+export interface MessageHookEvent extends BaseHookEvent {
+  message?: unknown;
+  content?: string;
+  role?: string;
+}
+
+/** Compression-related hook events */
+export interface CompressionHookEvent extends BaseHookEvent {
+  messages?: unknown[];
+  summary?: string;
+  tokensBefore?: number;
+  tokensAfter?: number;
+}
+
+// ============================================================================
 // Port Interfaces
 // ============================================================================
 
@@ -29,57 +75,59 @@ export interface IPluginRegistry {
  * Hook Runner Port — abstracts plugin hook execution.
  *
  * Mirrors the named convenience methods returned by the adapter's
- * createHookRunner(). Each method is typed as `(event: any) => any`
- * because the domain layer doesn't depend on the adapter's hook-event
- * type definitions; the adapter is responsible for type safety.
+ * createHookRunner(). Each method is typed with concrete hook-event
+ * types so that the domain layer benefits from compile-time safety.
+ *
+ * - Void hooks return `Promise<void>` (fire-and-forget notification).
+ * - Modifying hooks return `Promise<Record<string, unknown>>` (may alter the event).
  */
 export interface IHookRunner {
   // Low-level hooks
-  runVoidHook?(hookName: string, event: any): Promise<void>;
-  runModifyingHook?(hookName: string, event: any): Promise<any>;
-  runSyncHook?(hookName: string, event: any): any;
+  runVoidHook?(hookName: string, event: BaseHookEvent): Promise<void>;
+  runModifyingHook?(hookName: string, event: BaseHookEvent): Promise<Record<string, unknown>>;
+  runSyncHook?(hookName: string, event: BaseHookEvent): Record<string, unknown>;
 
   // Model / Prompt (Modifying)
-  runBeforeModelResolve(event: any): any;
-  runBeforePromptBuild(event: any): any;
-  runLlmInput(event: any): any;
-  runLlmOutput(event: any): any;
+  runBeforeModelResolve(event: ModelHookEvent): Promise<Record<string, unknown>>;
+  runBeforePromptBuild(event: ModelHookEvent): Promise<Record<string, unknown>>;
+  runLlmInput(event: ModelHookEvent): Promise<Record<string, unknown>>;
+  runLlmOutput(event: ModelHookEvent): Promise<Record<string, unknown>>;
 
-  // Agent
-  runBeforeAgentStart(event: any): any;
-  runAgentEnd(event: any): any;
+  // Agent (Void)
+  runBeforeAgentStart(event: SessionHookEvent): Promise<void>;
+  runAgentEnd(event: SessionHookEvent): Promise<void>;
 
-  // Messages
-  runMessageReceived(event: any): any;
-  runMessageSending(event: any): any;
-  runMessageSent(event: any): any;
+  // Messages (Modifying for sending, Void for received/sent)
+  runMessageReceived(event: MessageHookEvent): Promise<void>;
+  runMessageSending(event: MessageHookEvent): Promise<Record<string, unknown>>;
+  runMessageSent(event: MessageHookEvent): Promise<void>;
 
-  // Tools
-  runBeforeToolCall(event: any): any;
-  runAfterToolCall(event: any): any;
-  runToolResultPersist(event: any): any;
+  // Tools (Modifying)
+  runBeforeToolCall(event: ToolHookEvent): Promise<Record<string, unknown>>;
+  runAfterToolCall(event: ToolHookEvent): Promise<Record<string, unknown>>;
+  runToolResultPersist(event: ToolHookEvent): Promise<Record<string, unknown>>;
 
-  // Session
-  runSessionStart(event: any): any;
-  runSessionEnd(event: any): any;
+  // Session (Void)
+  runSessionStart(event: SessionHookEvent): Promise<void>;
+  runSessionEnd(event: SessionHookEvent): Promise<void>;
 
-  // Compression
-  runBeforeCompaction(event: any): any;
-  runAfterCompaction(event: any): any;
-  runBeforeReset(event: any): any;
+  // Compression (Modifying for before, Void for after)
+  runBeforeCompaction(event: CompressionHookEvent): Promise<Record<string, unknown>>;
+  runAfterCompaction(event: CompressionHookEvent): Promise<void>;
+  runBeforeReset(event: CompressionHookEvent): Promise<Record<string, unknown>>;
 
-  // Persistence
-  runBeforeMessageWrite(event: any): any;
+  // Persistence (Modifying)
+  runBeforeMessageWrite(event: MessageHookEvent): Promise<Record<string, unknown>>;
 
-  // Sub-Agent
-  runSubagentSpawning?(event: any): any;
-  runSubagentDeliveryTarget?(event: any): any;
-  runSubagentSpawned?(event: any): any;
-  runSubagentEnded?(event: any): any;
+  // Sub-Agent (Modifying for spawning/delivery, Void for spawned/ended)
+  runSubagentSpawning?(event: SessionHookEvent): Promise<Record<string, unknown>>;
+  runSubagentDeliveryTarget?(event: SessionHookEvent): Promise<Record<string, unknown>>;
+  runSubagentSpawned?(event: SessionHookEvent): Promise<void>;
+  runSubagentEnded?(event: SessionHookEvent): Promise<void>;
 
-  // Gateway
-  runGatewayStart?(event: any): any;
-  runGatewayStop?(event: any): any;
+  // Gateway (Void)
+  runGatewayStart?(event: BaseHookEvent): Promise<void>;
+  runGatewayStop?(event: BaseHookEvent): Promise<void>;
 }
 
 /** Message Controller Port — abstracts Feishu card-v2 or other streaming renderers */

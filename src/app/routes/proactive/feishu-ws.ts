@@ -1,94 +1,22 @@
 /**
- * Proactive Integration Module
+ * Feishu WebSocket Integration Module
  *
- * Provides Feishu bot integration with memory system
+ * Handles the Feishu long-connection (WebSocket) message processing loop.
+ * Manages message deduplication, queuing, reaction feedback, and reply delivery.
  */
 
-import { initSessionManager, sendProactiveMessage, confirmDelivery, isMessageProcessed, markMessageProcessing, markMessageCompleted, markMessageFailed, getCachedAgentResponse } from '../../domain/session';
-import { pushNotification } from '../../domain/proactive/pusher';
-import { evaluatePatterns } from '../../domain/proactive/triggers';
-import { getGoalStore } from '../../domain/agent/goal/store';
-import { initFeishuWSClient, getFeishuWSClient } from '../../adapter/feishu';
-import type { AIProvider, FeishuConfig } from '../../infra/config/schema';
-import { checkPreferenceTriggers, recordQuery } from '../../domain/agent/evolution';
-import type { TokenStatsConfig } from '../../domain/agent';
-import { getMessageGateway } from '../gateway-channel';
-import { SessionMessageQueue } from '../../infra/resilience/session-lock';
-import { logger } from '../../infra/observability/logger';
+import { sendProactiveMessage, confirmDelivery, isMessageProcessed, markMessageProcessing, markMessageCompleted, markMessageFailed, getCachedAgentResponse } from '../../../domain/session';
+import { initFeishuWSClient, getFeishuWSClient } from '../../../adapter/feishu';
+import type { FeishuConfig } from '../../../infra/config/schema';
+import { checkPreferenceTriggers, recordQuery } from '../../../domain/agent/evolution';
+import { getMessageGateway } from '../../gateway-channel';
+import { SessionMessageQueue } from '../../../infra/resilience/session-lock';
+import { logger } from '../../../infra/observability/logger';
 
-// Reference to shutdown manager
-// const _shutdownManager = GracefulShutdown.getInstance({ installSignalHandlers: false });
+import { downloadFeishuImage, buildMultimodalContent } from './image-handler';
 
 // Bot start time - only process messages sent after this time
 const botStartTime = Date.now();
-
-// Cache tenant access token
-let cachedTenantAccessToken: string | null = null;
-let tokenExpireTime = 0;
-
-/**
- * Get Feishu tenant access token with caching
- */
-async function getTenantAccessToken(): Promise<string> {
-  // Return cached token if still valid
-  if (cachedTenantAccessToken && Date.now() < tokenExpireTime) {
-    return cachedTenantAccessToken;
-  }
-
-  const appId = process.env.LARK_BEECLAW_APPID;
-  const appSecret = process.env.LARK_BEECLAW_AS;
-
-  if (!appId || !appSecret) {
-    throw new Error('Missing Feishu credentials');
-  }
-
-  const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      app_id: appId,
-      app_secret: appSecret,
-    }),
-  });
-
-  const data = await response.json();
-
-  if (data.code !== 0) {
-    throw new Error(`Failed to get tenant access token: ${data.msg}`);
-  }
-
-  // Cache token (expire in 1 hour, but refresh 5 minutes before)
-  cachedTenantAccessToken = data.tenant_access_token;
-  tokenExpireTime = Date.now() + (data.expire - 300) * 1000;
-
-  return data.tenant_access_token;
-}
-
-// Initialize session manager with config (call this during app startup)
-export function initProactiveApi(config: {
-  provider: AIProvider;
-  model: string;
-  systemPrompt?: string;
-  useTools?: boolean;
-  tokenStatsConfig?: Partial<TokenStatsConfig>;
-  visionConfig?: {
-    visionModel?: string;
-    textModel?: string;
-    visionSystemPrompt?: string;
-    fallbackOnError?: 'description' | 'placeholder' | 'retry';
-    maxRetries?: number;
-  };
-  params?: {
-    temperature?: number;
-    max_tokens?: number;
-    top_p?: number;
-    [key: string]: any;
-  };
-}): void {
-  initSessionManager(config);
-}
 
 // Initialize Feishu WebSocket integration (Long connection mode)
 export async function initFeishuWSIntegration(config: FeishuConfig): Promise<void> {
@@ -214,40 +142,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       let imageBase64: string | null = null;
       if (isImageMessage) {
         logger.info(`[FeishuWS:${process.pid}] Image message detected`);
-
-        try {
-          // Extract image key and download
-          const content = JSON.parse(data.message.content);
-          const imageKey = content.image_key;
-
-          if (imageKey) {
-            logger.debug(`[FeishuWS:${process.pid}] Downloading image: ${imageKey}`);
-
-            // Download image from user message using "Get Message Resources" API
-            // API: GET /open-apis/im/v1/messages/:message_id/resources/:file_key?type=image
-            // Note: This is different from downloading bot-uploaded images
-            const imageResponse = await fetch(
-              `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${imageKey}?type=image`,
-              {
-                method: 'GET',  // Use GET, not POST
-                headers: {
-                  'Authorization': `Bearer ${await getTenantAccessToken()}`,
-                },
-              }
-            );
-
-            if (imageResponse.ok) {
-              const arrayBuffer = await imageResponse.arrayBuffer();
-              imageBase64 = Buffer.from(arrayBuffer).toString('base64');
-              logger.info(`[FeishuWS:${process.pid}] Image downloaded (${Math.round(imageBase64.length / 1024)}KB)`);
-            } else {
-              const errorText = await imageResponse.text();
-              logger.error(`[FeishuWS:${process.pid}] Failed to download image: ${imageResponse.status} - ${errorText}`);
-            }
-          }
-        } catch (error) {
-          logger.error(`[FeishuWS:${process.pid}] Error processing image:`, error);
-        }
+        imageBase64 = await downloadFeishuImage(messageId, data.message.content, process.pid);
       }
 
       // Ignore empty messages (unless it's an image message)
@@ -270,23 +165,7 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
       }
 
       // Build multimodal message content (image + text)
-      let messageContent: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
-      if (imageBase64) {
-        // Image message - build multimodal content
-        const dataUrl = `data:image/jpeg;base64,${imageBase64}`;
-        const textPrompt = (messageText && !messageText.includes('{') && messageText.trim().length > 0)
-          ? messageText
-          : '请识别并分析这张图片';
-
-        messageContent = [
-          { type: 'image_url', image_url: { url: dataUrl } },
-          { type: 'text', text: textPrompt }
-        ];
-        logger.debug(`[FeishuWS:${process.pid}] Built multimodal message with image (${Math.round(imageBase64.length / 1024)}KB) and text: "${textPrompt.substring(0, 50)}..."`);
-      } else {
-        // Text-only message
-        messageContent = messageText;
-      }
+      const messageContent = buildMultimodalContent(imageBase64, messageText, process.pid);
 
       // Process message through session manager
       logger.debug(`[FeishuWS:${process.pid}] Processing message with session ${sessionId}...`);
@@ -471,6 +350,3 @@ export async function initFeishuWSIntegration(config: FeishuConfig): Promise<voi
     throw error;
   }
 }
-
-// Export utilities for external use
-export { sendProactiveMessage, pushNotification, evaluatePatterns, getGoalStore };

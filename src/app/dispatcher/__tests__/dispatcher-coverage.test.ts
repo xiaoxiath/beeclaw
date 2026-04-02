@@ -89,6 +89,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args: any[]) => args),
   and: vi.fn((...args: any[]) => args),
   lt: vi.fn((...args: any[]) => args),
+  lte: vi.fn((...args: any[]) => args),
   gte: vi.fn((...args: any[]) => args),
   isNull: vi.fn((...args: any[]) => args),
   isNotNull: vi.fn((...args: any[]) => args),

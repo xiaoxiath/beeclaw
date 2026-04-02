@@ -5,9 +5,37 @@
  */
 
 import type { AppConfig, AIProvider } from '../config/schema';
-import type { MultiChannelMessageGateway } from '../../app/gateway-channel';
-import type { TaskDispatcher } from '../../app/dispatcher';
-import type { createAgent } from '../../domain/agent';
+import type { MessageChannel, ChannelType } from '../../types/channel';
+import type { FeishuConfig } from '../config/schema';
+
+// ---------------------------------------------------------------------------
+// Lightweight interfaces that mirror app-layer concrete types without
+// importing them.  Adapters only need these minimal contracts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Generic message-gateway interface.
+ * Mirrors the public surface of MultiChannelMessageGateway that adapters use.
+ */
+export interface MessageGateway {
+  registerChannel(channel: MessageChannel): void;
+  unregisterChannel(channelType: ChannelType): void;
+}
+
+/**
+ * Generic task-dispatcher interface.
+ * Kept intentionally minimal — adapters should not depend on concrete
+ * TaskDispatcher implementation details.
+ */
+export interface TaskDispatcherLike {
+  [key: string]: unknown;
+}
+
+/**
+ * Feishu WebSocket initializer function type.
+ * Injected via EntryContext so that adapter layer does not import app layer.
+ */
+export type FeishuWSInitializer = (config: FeishuConfig) => Promise<void>;
 
 /**
  * 入口适配器接口
@@ -38,14 +66,20 @@ export interface EntryAdapter {
 
 /**
  * Adapter 初始化上下文
+ *
+ * Uses lightweight interfaces instead of concrete app/domain types so that
+ * the infra layer never imports from app/ or domain/.
  */
 export interface EntryContext {
   config: AppConfig;
-  agent: ReturnType<typeof createAgent>;
+  /** Agent instance — opaque to adapters, typed as `unknown`. */
+  agent: unknown;
   provider: AIProvider;
   model: string;
-  gateway?: MultiChannelMessageGateway;
-  dispatcher?: TaskDispatcher;
+  gateway?: MessageGateway;
+  dispatcher?: TaskDispatcherLike;
+  /** Injected Feishu WS initializer (set by app layer at bootstrap). */
+  feishuWSInitializer?: FeishuWSInitializer;
 }
 
 /**
@@ -56,7 +90,7 @@ export interface AdapterStatus {
   uptime?: number;
   connections?: number;
   errors?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -65,5 +99,5 @@ export interface AdapterStatus {
 export interface AdapterConfig {
   enabled: boolean;
   type: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }

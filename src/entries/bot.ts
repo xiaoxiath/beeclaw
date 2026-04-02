@@ -15,6 +15,7 @@ import { join } from 'path';
 import { initApp, getAgent } from '../app';
 import { getMessageGateway } from '../app/gateway-channel';
 import { getTaskDispatcher } from '../app/dispatcher';
+import { initFeishuWSIntegration } from '../app/routes/proactive';
 import { FeishuAdapter } from '../adapter/feishu/adapter';
 import { WebAdapter } from '../adapter/web/adapter';
 import { adapterRegistry } from '../infra/entry';
@@ -114,6 +115,7 @@ async function main() {
       model,
       gateway: getMessageGateway(),
       dispatcher: getTaskDispatcher(),
+      feishuWSInitializer: initFeishuWSIntegration,
     });
     await feishuAdapter.start();
   } catch (error) {

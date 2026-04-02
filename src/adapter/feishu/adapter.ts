@@ -6,7 +6,6 @@
 
 import type { EntryAdapter, EntryContext, AdapterStatus } from '../../infra/entry/types';
 import { FeishuChannel } from './channel';
-import { initFeishuWSIntegration } from '../../app/routes/proactive';
 import { getFeishuWSClient } from './ws-client';
 import { logger } from '../../infra/observability/logger';
 
@@ -41,8 +40,12 @@ export class FeishuAdapter implements EntryAdapter {
     }
 
     try {
-      // 初始化飞书 WebSocket 连接
-      await initFeishuWSIntegration(feishuConfig);
+      // 初始化飞书 WebSocket 连接 — via injected initializer (no direct app import)
+      const initWS = this.context.feishuWSInitializer;
+      if (!initWS) {
+        throw new Error('[FeishuAdapter] feishuWSInitializer not provided in EntryContext');
+      }
+      await initWS(feishuConfig);
 
       this.running = true;
       this.startTime = Date.now();

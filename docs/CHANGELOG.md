@@ -6,7 +6,12 @@
 
 ---
 
-## [v2.1.3] - 2026-03-15 (飞书工具修复)
+> **Note**: Document version numbers have been unified. All previous v2.x.x / v1.x.x entries
+> are pre-unification milestones. The canonical version is now **v0.4.0** (matching package.json).
+
+## [v0.4.0-doc.3] - 2026-03-15 (飞书工具修复)
+
+> *Previously labeled v2.1.3*
 
 ### 🐛 Bug 修复
 
@@ -74,7 +79,9 @@
 
 ---
 
-## [v2.1.2] - 2026-03-14 (Cookbook 修复)
+## [v0.4.0-doc.2] - 2026-03-14
+
+> *Previously labeled v2.1.2* (Cookbook 修复)
 
 ### 🐛 重大修复
 
@@ -131,7 +138,9 @@ Beeclaw 会:
 
 ---
 
-## [v2.1.1] - 2026-03-14 (P1-P2 完成)
+## [v0.4.0-doc.1] - 2026-03-14
+
+> *Previously labeled v2.1.1* (P1-P2 完成)
 
 ### 🎉 重大更新
 

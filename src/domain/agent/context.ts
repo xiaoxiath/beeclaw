@@ -246,32 +246,47 @@ export const DEFAULT_CONTEXT_CONFIG: AgentContextConfig = {
  * Reference: https://platform.openai.com/docs/models
  */
 export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  // OpenAI models
+  // OpenAI models (updated 2026-04)
   'gpt-4': 128000,
   'gpt-4-turbo': 128000,
   'gpt-4-turbo-preview': 128000,
   'gpt-4o': 128000,
   'gpt-4o-mini': 128000,
-  'gpt-4-32k': 32768,
-  'gpt-3.5-turbo': 16385,
-  'gpt-3.5-turbo-16k': 16385,
+  'gpt-4.1': 1047576,          // GPT-4.1: 1M context
+  'gpt-4.1-mini': 1047576,     // GPT-4.1 Mini: 1M context
+  'gpt-4.1-nano': 1047576,     // GPT-4.1 Nano: 1M context
+  'o1': 200000,
+  'o1-mini': 128000,
+  'o1-pro': 200000,
+  'o3': 200000,
+  'o3-mini': 200000,
+  'o4-mini': 200000,
+  'gpt-4-32k': 32768,          // Legacy
+  'gpt-3.5-turbo': 16385,      // Legacy
+  'gpt-3.5-turbo-16k': 16385,  // Legacy
 
-  // Claude models
+  // Claude models (updated 2026-04)
   'claude-3-opus': 200000,
   'claude-3-sonnet': 200000,
   'claude-3-haiku': 200000,
-  'claude-3-5-sonnet': 200000,
-  'claude-2': 100000,
-  'claude-instant': 100000,
+  'claude-3.5-sonnet': 200000,
+  'claude-3.5-haiku': 200000,
+  'claude-3.7-sonnet': 200000,
+  'claude-4-sonnet': 200000,
+  'claude-4-opus': 200000,
+  'claude-2': 100000,           // Legacy
+  'claude-instant': 100000,     // Legacy
 
-  // Zhipu models
+  // Zhipu models (updated 2026-04)
   'glm-4': 128000,
   'glm-4-plus': 128000,
   'glm-4-air': 128000,
   'glm-4-airx': 128000,
   'glm-4-flash': 128000,
+  'glm-4.7-flashx': 131072,
+  'glm-4.6v': 32768,
   'glm-3-turbo': 128000,
-  'glm-5': 200000,  // GLM-5 supports 200K context window
+  'glm-5': 200000,
 
   // MiniMax models
   'abab6.5-chat': 245000,
@@ -279,14 +294,20 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   'abab5.5-chat': 16384,
   'abab5.5s-chat': 16384,
 
-  // DeepSeek models
-  'deepseek-chat': 32768,
-  'deepseek-coder': 16384,
+  // DeepSeek models (updated 2026-04)
+  'deepseek-chat': 131072,      // DeepSeek V3: 128K context
+  'deepseek-coder': 131072,     // DeepSeek Coder V2: 128K context
+  'deepseek-reasoner': 131072,  // DeepSeek R1
 
   // Moonshot models
   'moonshot-v1-8k': 8192,
   'moonshot-v1-32k': 32768,
   'moonshot-v1-128k': 128000,
+
+  // Google Gemini models
+  'gemini-2.0-flash': 1048576,
+  'gemini-2.5-pro': 1048576,
+  'gemini-2.5-flash': 1048576,
 };
 
 /**

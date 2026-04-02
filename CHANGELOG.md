@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.4.0] - 2026-03-31
 
+> **Version Unification**: Starting from v0.4.0, version numbers follow semantic versioning
+> from `package.json`. All previous v1.x.x / v2.x.x entries below are pre-unification milestones.
+
 ### Fixed
 - Unified all Feishu bot messages to Card V2 format (proactive, recovery, reminder)
 - Eliminated domain/session → app/ reverse dependency (`getConfig_` → injected `feishuConfig`)
@@ -25,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Version number unified to 0.4.0 (was inconsistent: package.json 1.3.0 vs CHANGELOG 2.1.3)
 - Updated `ARCHITECTURE-REFACTORING.md` with current progress
 
-## [v2.1.3] - 2026-03-15
+## [v2.1.3] - 2026-03-15 *(pre-unification, now part of v0.4.0)*
 
 ### Fixed
 - Drive tool parameter passing error in Feishu adapter (`folder_token` parameter)
@@ -43,14 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored hybrid tool selector to use FastLLMJudge
 - Enhanced pattern selector with better error handling
 
-## [v2.1.2] - 2026-03-14
+## [v2.1.2] - 2026-03-14 *(pre-unification)*
 
 ### Changed
 - Rewrote all 7 cookbook examples from developer-perspective to conversational guides
 - Users now interact with Beeclaw through natural conversation instead of manual configuration
 - Average time to complete cookbook examples reduced by 50%
 
-## [v2.1.1] - 2026-03-14
+## [v2.1.1] - 2026-03-14 *(pre-unification)*
 
 ### Added
 - Cookbook case library expansion (4 new examples)
@@ -64,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced memory workflow examples
 - Improved plugin development documentation
 
-## [v2.1.0] - 2026-03-13
+## [v2.1.0] - 2026-03-13 *(pre-unification)*
 
 ### Added
 - Feishu Card V2 support with streaming messages
@@ -77,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session recovery after crashes
 - Context compression edge cases
 
-## [v2.0.0] - 2026-03-06
+## [v2.0.0] - 2026-03-06 *(pre-unification)*
 
 ### Added
 - Unified initialization system with `initApp()`

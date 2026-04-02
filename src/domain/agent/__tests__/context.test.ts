@@ -221,7 +221,7 @@ describe('MODEL_CONTEXT_WINDOWS', () => {
     expect(MODEL_CONTEXT_WINDOWS['glm-4']).toBe(128000);
     expect(MODEL_CONTEXT_WINDOWS['glm-5']).toBe(200000);
     expect(MODEL_CONTEXT_WINDOWS['abab6.5-chat']).toBe(245000);
-    expect(MODEL_CONTEXT_WINDOWS['deepseek-chat']).toBe(32768);
+    expect(MODEL_CONTEXT_WINDOWS['deepseek-chat']).toBe(131072);
     expect(MODEL_CONTEXT_WINDOWS['moonshot-v1-128k']).toBe(128000);
   });
 });
@@ -252,7 +252,7 @@ describe('getModelContextWindow', () => {
   });
 
   test('matches DeepSeek models', () => {
-    expect(getModelContextWindow('deepseek-chat')).toBe(32768);
+    expect(getModelContextWindow('deepseek-chat')).toBe(131072);
   });
 
   test('matches Moonshot models', () => {
