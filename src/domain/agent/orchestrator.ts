@@ -26,9 +26,9 @@ import { getSkillStore } from '../skills/store';
 // Task 3: Use port interfaces instead of direct adapter imports
 import { getHookRunnerPort, getHealthMonitorPort } from '../ports';
 import type { IHookRunner, IHealthMonitor } from '../ports';
-import { recordSkillFailure, getReflectionStats } from './evolution';
+import { recordSkillFailure } from './evolution';
+import { EvolutionCoordinator } from './evolution/evolution-coordinator';
 // [SIMPLIFIED] preference-learning import removed — LLM handles preference detection via system prompt
-// [SIMPLIFIED] triggerSelfEvolution import removed — evolution no longer auto-triggers
 import {
   estimateMessageTokens,
   estimateTokens,
@@ -119,10 +119,8 @@ export class Agent {
   // Phase 4: Extracted focused modules
   private toolDispatcher: ToolDispatcher;
 
-  // [P1] Evolution system: tracks reflection triggers and preference signals
-  private evolutionEnabled: boolean = true;
-  private turnsSinceLastReflection: number = 0;
-  private readonly REFLECTION_TURN_INTERVAL = 5; // Check every N turns
+  // [SIMPLIFIED] Evolution concerns delegated to EvolutionCoordinator
+  private evolutionCoordinator = new EvolutionCoordinator();
 
   // Compressed context summary (from LLM compression)
   private compressedSummary: string = '';
@@ -1077,8 +1075,8 @@ export class Agent {
       });
     }
 
-    // [P1] Post-turn evolution check (non-blocking, fire-and-forget)
-    this.checkEvolutionTriggers(this.messages).catch(err => {
+    // [SIMPLIFIED] Evolution check delegated to coordinator
+    this.evolutionCoordinator.checkTriggers().catch(err => {
       logger.debug('[Evolution] Post-turn check failed (non-fatal):', err);
     });
 
@@ -1089,36 +1087,9 @@ export class Agent {
   // [P1] Evolution System Integration
   // ====================================================================
 
-  /**
-   * Check if evolution triggers should fire after a conversation turn.
-   *
-   * [SIMPLIFIED] Only tracks skill failures for observability. Self-evolution
-   * no longer auto-modifies SOUL.md — it only generates suggestions.
-   */
-  private async checkEvolutionTriggers(_messages: ChatMessage[]): Promise<void> {
-    if (!this.evolutionEnabled) return;
+  // [SIMPLIFIED] checkEvolutionTriggers extracted to EvolutionCoordinator
 
-    this.turnsSinceLastReflection++;
 
-    try {
-      const reflectionStats = getReflectionStats();
-      const hasRecentFailures = reflectionStats.recentFailures >= 3;
-
-      if (!hasRecentFailures && this.turnsSinceLastReflection < this.REFLECTION_TURN_INTERVAL) return;
-
-      logger.info('[Evolution] Reflection stats logged (no auto-apply)', {
-        recentFailures: reflectionStats.recentFailures,
-        turnsSinceLastReflection: this.turnsSinceLastReflection,
-      });
-
-      this.turnsSinceLastReflection = 0;
-    } catch (error) {
-      logger.warn('[Evolution] checkEvolutionTriggers failed (non-fatal):', error);
-    }
-  }
-
-  // [SIMPLIFIED] collectPreferenceSignals removed.
-  // LLM natively handles preference detection via system prompt and memory_write.
 
   // ====================================================================
   // chatStream — delegated to stream-handler module

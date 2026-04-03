@@ -37,3 +37,6 @@ export {
   triggerSelfEvolution,
   type SelfEvolutionConfig,
 } from './self-evolution';
+
+// [SIMPLIFIED] Evolution coordinator (extracted from Agent god-object)
+export { EvolutionCoordinator } from './evolution-coordinator';
