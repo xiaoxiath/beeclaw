@@ -27,8 +27,8 @@ import { getSkillStore } from '../skills/store';
 import { getHookRunnerPort, getHealthMonitorPort } from '../ports';
 import type { IHookRunner, IHealthMonitor } from '../ports';
 import { recordSkillFailure, getReflectionStats } from './evolution';
-import { checkPreferenceTriggers } from './evolution/preference-learning';
-import { triggerSelfEvolution } from './evolution/self-evolution';
+// [SIMPLIFIED] preference-learning import removed — LLM handles preference detection via system prompt
+// [SIMPLIFIED] triggerSelfEvolution import removed — evolution no longer auto-triggers
 import {
   estimateMessageTokens,
   estimateTokens,
@@ -517,10 +517,7 @@ export class Agent {
       }
     }
 
-    // [P1] Collect preference signals from user message
-    if (typeof enrichedMessage === 'string') {
-      this.collectPreferenceSignals(enrichedMessage);
-    }
+    // [SIMPLIFIED] Preference signal collection removed — LLM handles this natively via system prompt
 
     if (this.hookRunner) {
       await this.hookRunner.runMessageReceived({
@@ -1095,12 +1092,8 @@ export class Agent {
   /**
    * Check if evolution triggers should fire after a conversation turn.
    *
-   * Called after each successful chat() completion. Evaluates:
-   * 1. Skill failure patterns (via reflection-trigger stats)
-   * 2. Turn-count threshold for periodic reflection
-   * 3. Triggers self-evolution when conditions are met
-   *
-   * Runs asynchronously and never blocks the main response path.
+   * [SIMPLIFIED] Only tracks skill failures for observability. Self-evolution
+   * no longer auto-modifies SOUL.md — it only generates suggestions.
    */
   private async checkEvolutionTriggers(_messages: ChatMessage[]): Promise<void> {
     if (!this.evolutionEnabled) return;
@@ -1108,59 +1101,24 @@ export class Agent {
     this.turnsSinceLastReflection++;
 
     try {
-      // Check skill failure stats from reflection-trigger module
       const reflectionStats = getReflectionStats();
       const hasRecentFailures = reflectionStats.recentFailures >= 3;
-      const reachedTurnThreshold = this.turnsSinceLastReflection >= this.REFLECTION_TURN_INTERVAL;
 
-      // Only trigger reflection if there's a reason to
-      if (!hasRecentFailures && !reachedTurnThreshold) return;
+      if (!hasRecentFailures && this.turnsSinceLastReflection < this.REFLECTION_TURN_INTERVAL) return;
 
-      logger.info('[Evolution] Reflection trigger activated', {
-        reason: hasRecentFailures ? 'skill_failures' : 'turn_threshold',
+      logger.info('[Evolution] Reflection stats logged (no auto-apply)', {
         recentFailures: reflectionStats.recentFailures,
         turnsSinceLastReflection: this.turnsSinceLastReflection,
-        failureDetails: reflectionStats.failureDetails,
       });
 
-      // Reset turn counter
       this.turnsSinceLastReflection = 0;
-
-      // Fire self-evolution (non-blocking)
-      const evolutionResult = await triggerSelfEvolution();
-      logger.info('[Evolution] Self-evolution result:', evolutionResult);
-
     } catch (error) {
-      // Evolution should never crash the main loop
       logger.warn('[Evolution] checkEvolutionTriggers failed (non-fatal):', error);
     }
   }
 
-  /**
-   * Collect preference signals from user messages.
-   *
-   * Called when processing a user message. Detects preference expressions
-   * and feeds them into the preference learning pipeline.
-   *
-   * Currently the preference-learning module delegates to LLM via system prompt,
-   * but this hook ensures we have an explicit code path for future enhancements.
-   */
-  private collectPreferenceSignals(userMessage: string): void {
-    try {
-      const result = checkPreferenceTriggers(userMessage, []);
-      if (result.hasPreference && result.expressions.length > 0) {
-        logger.info('[Evolution] Preference signals detected', {
-          count: result.expressions.length,
-          types: result.expressions.map(e => e.type),
-        });
-        // Future: persist signals for batch analysis
-        // Currently LLM handles preference saving via system prompt
-      }
-    } catch (error) {
-      // Preference collection should never block the main loop
-      logger.debug('[Evolution] collectPreferenceSignals failed (non-fatal):', error);
-    }
-  }
+  // [SIMPLIFIED] collectPreferenceSignals removed.
+  // LLM natively handles preference detection via system prompt and memory_write.
 
   // ====================================================================
   // chatStream — delegated to stream-handler module

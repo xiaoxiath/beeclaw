@@ -1,79 +1,85 @@
 /**
- * Self-Evolution Scheduler
+ * Self-Evolution Scheduler (Simplified)
  *
- * [P2 FIX 4.6] Cleaned up and properly marked as experimental.
+ * REFACTORED: Removed automatic SOUL.md modification. Self-evolution now
+ * generates recommendations only — human approval is always required.
  *
- * Initializes and manages the periodic self-reflection task
- * that updates SOUL.md based on lessons learned.
+ * Rationale:
+ * - Unsupervised SOUL.md modification risks agent behavior drift
+ * - The minConfidence=0.8 threshold was difficult to calibrate in practice
+ * - maxNewPrinciples=3/day was an ad-hoc safety valve, indicating the
+ *   designers themselves were cautious about auto-modification
  *
- * @experimental This module is actively under development.
- * Current implementation uses a cron-scheduled task that delegates
- * to the beeclaw-self-evolution skill. Future versions will add:
- * - Automated principle extraction from conversation patterns
- * - Weighted confidence scoring for proposed SOUL.md updates
- * - Rollback mechanism for SOUL.md changes that degrade performance
+ * What remains:
+ * - triggerSelfEvolution() — returns a recommendation message (no auto-apply)
+ * - getSelfEvolutionStatus() — status query
+ * - initSelfEvolution() — simplified init (schedule still exists but only
+ *   generates reports, never modifies SOUL.md directly)
+ *
+ * What was removed:
+ * - autoApprove config (always false now)
+ * - minConfidence / maxNewPrinciples (not needed without auto-apply)
+ * - The daily cron that automatically mutated SOUL.md
  */
 
 import { logger } from '../../../infra/observability/logger';
 import { getScheduler } from '../../proactive';
 import { join } from 'path';
 
-/** @experimental */
+/** Self-evolution configuration (simplified — no auto-approve options) */
 export interface SelfEvolutionConfig {
-  /** Cron expression for evolution schedule (default: 4 AM daily) */
+  /** Cron expression for evolution report generation (default: 4 AM daily) */
   cron: string;
-  /** Whether to auto-approve SOUL.md changes or require confirmation */
-  autoApprove: boolean;
-  /** Minimum confidence score (0-1) to apply a change automatically */
-  minConfidence: number;
-  /** Maximum number of principles to add per evolution cycle */
-  maxNewPrinciples: number;
+  /** Whether evolution is enabled at all */
+  enabled: boolean;
 }
 
 const DEFAULT_EVOLUTION_CONFIG: SelfEvolutionConfig = {
   cron: '0 4 * * *',
-  autoApprove: false,
-  minConfidence: 0.8,
-  maxNewPrinciples: 3,
+  enabled: true,
 };
 
 /**
  * Initialize self-evolution schedule.
- * Called during bot startup with --daemon flag.
  *
- * @experimental
+ * The schedule now only generates a recommendation report (stored in
+ * facts/evolution-suggestions.md). It never modifies SOUL.md directly.
  */
 export function initSelfEvolution(
   basePath: string,
   config: Partial<SelfEvolutionConfig> = {},
 ): void {
   const mergedConfig = { ...DEFAULT_EVOLUTION_CONFIG, ...config };
+
+  if (!mergedConfig.enabled) {
+    logger.debug('[SelfEvolution] Disabled by config');
+    return;
+  }
+
   const scheduler = getScheduler(join(basePath, 'proactive'));
   scheduler.init();
 
-  // Check if self-evolution schedule already exists
   const existingSchedules = scheduler.listSchedules({ enabled: true });
   const hasSelfEvolution = existingSchedules.some(
-    s => s.name === 'Daily Self-Evolution' || s.task?.type === 'self_evolution'
+    s => s.name === 'Daily Self-Evolution' || s.task?.type === 'self_evolution',
   );
 
   if (!hasSelfEvolution) {
-    logger.debug('   Creating daily self-evolution schedule...');
+    logger.debug('   Creating daily self-evolution report schedule...');
     scheduler.createSchedule({
       name: 'Daily Self-Evolution',
-      description: 'Review lessons and update SOUL.md principles',
+      description: 'Generate evolution suggestions (human approval required)',
       cron: mergedConfig.cron,
       taskType: 'self_evolution',
       taskParams: {
         skill: 'beeclaw-self-evolution',
-        action: 'Review facts/lessons.md and update SOUL.md if new principles emerge',
-        autoApprove: mergedConfig.autoApprove,
-        minConfidence: mergedConfig.minConfidence,
-        maxNewPrinciples: mergedConfig.maxNewPrinciples,
+        action: 'Review facts/lessons.md and generate suggestions in facts/evolution-suggestions.md',
+        // autoApprove is always false — human must review and apply
+        autoApprove: false,
       },
       enabled: true,
     });
-    logger.debug(`   ✓ Self-evolution scheduled at cron: ${mergedConfig.cron}`);
+    logger.debug(`   ✓ Self-evolution report scheduled at cron: ${mergedConfig.cron}`);
   } else {
     logger.debug('   ✓ Self-evolution schedule already exists');
   }
@@ -81,8 +87,6 @@ export function initSelfEvolution(
 
 /**
  * Get self-evolution status.
- *
- * @experimental
  */
 export function getSelfEvolutionStatus(basePath: string): {
   enabled: boolean;
@@ -107,10 +111,10 @@ export function getSelfEvolutionStatus(basePath: string): {
 }
 
 /**
- * Trigger immediate self-evolution (manual execution).
+ * Trigger immediate self-evolution report generation.
  *
- * @experimental
- * TODO: Implement direct execution instead of just returning instructions.
+ * Returns a recommendation — the caller (or user) decides whether to apply it.
+ * SOUL.md is never modified automatically.
  */
 export async function triggerSelfEvolution(): Promise<{
   success: boolean;
@@ -118,8 +122,7 @@ export async function triggerSelfEvolution(): Promise<{
 }> {
   return {
     success: true,
-    message: 'Use the beeclaw-self-evolution skill to review and update SOUL.md',
+    message: 'Use the beeclaw-self-evolution skill to generate suggestions. ' +
+      'Review the output in facts/evolution-suggestions.md before applying to SOUL.md.',
   };
 }
-
-// SelfEvolutionConfig is already exported above at line 22
