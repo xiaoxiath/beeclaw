@@ -70,6 +70,7 @@ const mocks = vi.hoisted(() => {
     handleSelfEvolutionJob: vi.fn().mockResolvedValue(undefined),
     handleLlmProactiveChatJob: vi.fn().mockResolvedValue(undefined),
     handleRunSkillJob: vi.fn().mockResolvedValue(undefined),
+    registerCardV2Renderer: vi.fn(),
   };
 });
 
@@ -145,6 +146,7 @@ vi.mock('../../infra/utils/graceful-shutdown', () => ({
 }));
 
 vi.mock('../../domain/proactive/job-handlers', () => ({
+  registerCardV2Renderer: (...args: any[]) => mocks.registerCardV2Renderer(...args),
   handleRunSkillJob: (...args: any[]) => mocks.handleRunSkillJob(...args),
   handleLlmProactiveChatJob: (...args: any[]) => mocks.handleLlmProactiveChatJob(...args),
   handleSelfEvolutionJob: (...args: any[]) => mocks.handleSelfEvolutionJob(...args),
@@ -152,6 +154,10 @@ vi.mock('../../domain/proactive/job-handlers', () => ({
   handleGoalProgressCheckJob: (...args: any[]) => mocks.handleGoalProgressCheckJob(...args),
   handleCustomJob: (...args: any[]) => mocks.handleCustomJob(...args),
   handleSendReminderJob: (...args: any[]) => mocks.handleSendReminderJob(...args),
+}));
+
+vi.mock('../../app/routes/proactive', () => ({
+  initFeishuWSIntegration: vi.fn(),
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────
@@ -169,7 +175,7 @@ function defaultConfig() {
       memory: { path: '/tmp/test-bot-mem' },
       web: { enabled: true },
     },
-    provider: 'openai',
+    provider: { chat: vi.fn() },
     model: 'gpt-4',
   };
 }
@@ -267,7 +273,7 @@ describe('entries/bot - missing Feishu credentials', () => {
   it('exits with code 1 when appId is missing', async () => {
     mocks.initApp.mockResolvedValue({
       config: { feishu: { appId: '', appSecret: 'secret' }, memory: { path: '/tmp/m' }, web: { enabled: false } },
-      provider: 'openai',
+      provider: { chat: vi.fn() },
       model: 'gpt-4',
     });
     await runBot();
@@ -279,7 +285,7 @@ describe('entries/bot - missing Feishu credentials', () => {
   it('exits with code 1 when appSecret is missing', async () => {
     mocks.initApp.mockResolvedValue({
       config: { feishu: { appId: 'test', appSecret: '' }, memory: { path: '/tmp/m' }, web: { enabled: false } },
-      provider: 'openai',
+      provider: { chat: vi.fn() },
       model: 'gpt-4',
     });
     await runBot();
@@ -289,7 +295,7 @@ describe('entries/bot - missing Feishu credentials', () => {
   it('exits with code 1 when feishu config is undefined', async () => {
     mocks.initApp.mockResolvedValue({
       config: { feishu: undefined, memory: { path: '/tmp/m' }, web: { enabled: false } },
-      provider: 'openai',
+      provider: { chat: vi.fn() },
       model: 'gpt-4',
     });
     await runBot();
@@ -382,7 +388,7 @@ describe('entries/bot - --web flag', () => {
         memory: { path: '/tmp/m' },
         web: { enabled: false },
       },
-      provider: 'openai',
+      provider: { chat: vi.fn() },
       model: 'gpt-4',
     });
     await runBot();

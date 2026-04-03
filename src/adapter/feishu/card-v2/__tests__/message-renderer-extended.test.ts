@@ -17,7 +17,7 @@ vi.mock('../../../../infra/observability/logger', () => ({
   logger: mockLogger,
 }));
 
-vi.mock('../../../../infra/utils', () => ({
+vi.mock('../../utils', () => ({
   sanitizeForCard: (...a: any[]) => mockSanitizeForCard(...a),
 }));
 
