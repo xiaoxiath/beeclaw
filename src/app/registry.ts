@@ -6,8 +6,9 @@
  */
 
 import { shouldShowTokenStats } from '../infra/config';
-import { createAgent, getAllToolsForAI, SYSTEM_PROMPTS } from '../domain/agent';
-import { initExtractionManager, type ExtractionManager } from '../domain/extraction';
+import { createAgent } from '../domain/agent';
+
+import type { ExtractionManager } from '../domain/extraction';
 
 import type { AIProvider, AppConfig } from '../infra/config/schema';
 import type { TokenStatsConfig } from '../domain/agent/context';

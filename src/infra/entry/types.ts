@@ -28,7 +28,11 @@ export interface MessageGateway {
  * TaskDispatcher implementation details.
  */
 export interface TaskDispatcherLike {
-  [key: string]: unknown;
+  start(): void;
+  stop(): void;
+  submitTask(sessionId: string, type: string, payload: Record<string, unknown>, scheduledAt?: Date, cron?: string): Promise<string>;
+  registerHandler(type: string, handler: (task: unknown) => Promise<void>): void;
+  getStats(): Promise<unknown>;
 }
 
 /**

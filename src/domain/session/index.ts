@@ -726,6 +726,7 @@ export function deleteSession(sessionId: string): boolean {
             messageCount: session.messages.length,
             createdAt: session.createdAt,
             endedAt: new Date().toISOString(),
+            timestamp: new Date().toISOString(),
           });
         });
       }

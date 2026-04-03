@@ -81,7 +81,6 @@ import {
   executeSandboxTool,
 } from '../sandbox/tools';
 import {
-  datasourceHealthCheckTool,
   processDatasourceHealthCheck,
   DataSourceHealthChecker,
 } from './datasource-health';

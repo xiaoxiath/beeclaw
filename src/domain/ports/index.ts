@@ -30,12 +30,19 @@ export interface ModelHookEvent extends BaseHookEvent {
   provider?: string;
   messages?: unknown[];
   response?: unknown;
+  basePrompt?: string;
+  context?: unknown;
 }
 
 /** Session-related hook events */
 export interface SessionHookEvent extends BaseHookEvent {
   sessionId?: string;
   userId?: string;
+  channel?: string;
+  metadata?: unknown;
+  messageCount?: number;
+  createdAt?: string;
+  endedAt?: string;
 }
 
 /** Message-related hook events */
@@ -43,6 +50,9 @@ export interface MessageHookEvent extends BaseHookEvent {
   message?: unknown;
   content?: string;
   role?: string;
+  sessionId?: string;
+  messages?: unknown[];
+  metadata?: unknown;
 }
 
 /** Compression-related hook events */

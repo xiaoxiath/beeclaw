@@ -33,23 +33,35 @@ export function getSessionFilePath(storagePath: string, sessionId: string): stri
  */
 export function saveSession(session: Session, storagePath: string): void {
   try {
-    // Trigger before_message_write hook (synchronous)
+    // Trigger before_message_write hook (fire-and-forget)
     try {
       const registry = getPluginRegistryPort();
       const hookRunner = getHookRunnerPort();
 
       if (registry && hookRunner) {
-        const modifiedSession = hookRunner.runBeforeMessageWrite({
+        const result = hookRunner.runBeforeMessageWrite({
           sessionId: session.id,
           messages: session.messages,
           metadata: session.metadata,
           timestamp: new Date().toISOString(),
         });
 
-        // Use modified data if returned
-        if (modifiedSession) {
-          session.messages = modifiedSession.messages || session.messages;
-          session.metadata = modifiedSession.metadata || session.metadata;
+        // Handle both sync and async hook implementations
+        if (result && typeof result === 'object' && 'then' in result) {
+          // Async hook — fire-and-forget (modifications apply to next save)
+          (result as Promise<Record<string, unknown>>).then((modifiedSession) => {
+            if (modifiedSession) {
+              session.messages = (modifiedSession.messages as SessionMessage[]) || session.messages;
+              session.metadata = (modifiedSession.metadata as Record<string, unknown>) || session.metadata;
+            }
+          }).catch(() => {});
+        } else {
+          // Sync hook — apply immediately
+          const modifiedSession = result as unknown as Record<string, unknown> | undefined;
+          if (modifiedSession) {
+            session.messages = (modifiedSession.messages as SessionMessage[]) || session.messages;
+            session.metadata = (modifiedSession.metadata as Record<string, unknown>) || session.metadata;
+          }
         }
       }
     } catch (error) {

@@ -8,7 +8,7 @@
 import { join } from 'path';
 
 // Infra layer
-import { loadConfig, shouldShowTokenStats } from '../infra/config';
+import { loadConfig } from '../infra/config';
 import { setHookNotifier } from '../infra/config/hot-reload';
 import { bootstrapStores } from './bootstrap-stores';
 import { initDataConnection } from '../infra/db/connection';
@@ -28,7 +28,7 @@ import { setSimilarityProvider } from '../domain/memory/scoring';
 import { getLifecycleManager } from '../domain/memory/lifecycle-manager';
 import { getReflectionEngine } from '../domain/agent/reflection-engine';
 import { getSkillDiscoveryEngine } from '../domain/agent/skill-discovery';
-import { initExtractionManager, type ExtractionManager } from '../domain/extraction';
+import { initExtractionManager } from '../domain/extraction';
 import { SandboxManager } from '../domain/sandbox/manager';
 import { createEmbeddingProvider } from '../domain/memory/embeddings';
 import { TieredLLMRouter, LLMTier } from '../infra/ai/tiered-router';
@@ -465,7 +465,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
       pluginRegistry: () => getPluginRegistry(),
       hookRunnerFactory: (registry) => {
         // createHookRunner is statically imported at the top
-        return createHookRunner(registry as any);
+        return createHookRunner(registry as any) as unknown as import('../domain/ports').IHookRunner;
       },
       channelClient: () => getFeishuWSClient(),
       messageControllerFactory: (options) => new StreamingMessageController(options),
