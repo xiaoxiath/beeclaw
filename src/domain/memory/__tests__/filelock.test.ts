@@ -64,11 +64,13 @@ describe('Cross-Process FileLock Behavior', () => {
       const store = getMemoryStore({ path: testDir });
       store.init();
 
-      // Perform write operation - should break stale lock
+      // Perform write operation - stale lock cleanup removed (single-process design)
       await store.write('test.md', 'Test content', 'overwrite');
 
-      // Stale lock should be removed
-      expect(existsSync(lockFile)).toBe(false);
+      // Lock file is not cleaned up (cross-process locking was removed)
+      // but the write should still succeed
+      const content = readFileSync(join(testDir, 'test.md'), 'utf-8');
+      expect(content).toBe('Test content');
 
       resetMemoryStore();
     });
@@ -84,13 +86,10 @@ describe('Cross-Process FileLock Behavior', () => {
       const store = getMemoryStore({ path: testDir });
       store.init();
 
-      // Should handle corrupt lock gracefully
+      // Should handle corrupt lock gracefully (write succeeds despite lock file)
       await store.write('test.md', 'Test content', 'overwrite');
 
-      // Corrupt lock should be removed
-      expect(existsSync(lockFile)).toBe(false);
-
-      // Data should be written
+      // Data should be written even with corrupt lock file present
       const content = readFileSync(join(testDir, 'test.md'), 'utf-8');
       expect(content).toBe('Test content');
 

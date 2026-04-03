@@ -173,6 +173,10 @@ vi.mock('@domain/agent/evolution', () => ({
   recordSkillFailure: (...args: any[]) => mockRecordSkillFailure(...args),
   getReflectionStats: (...args: any[]) => mockGetReflectionStats(...args),
 }));
+// Also mock the direct import path used by EvolutionCoordinator
+vi.mock('@domain/agent/evolution/reflection-trigger', () => ({
+  getReflectionStats: (...args: any[]) => mockGetReflectionStats(...args),
+}));
 const mockCheckPreferenceTriggers = vi.fn(() => ({ hasPreference: false, expressions: [] }));
 vi.mock('@domain/agent/evolution/preference-learning', () => ({
   checkPreferenceTriggers: (...args: any[]) => mockCheckPreferenceTriggers(...args),
@@ -565,7 +569,7 @@ describe('Agent — additional coverage', () => {
   // chat — evolution triggers (lines 1417-1465)
   // =====================================================================
   describe('chat — evolution triggers', () => {
-    test('triggers self-evolution when recent failures >= 3', async () => {
+    test('logs reflection stats when recent failures >= 3', async () => {
       mockGetReflectionStats.mockReturnValue({ recentFailures: 5, failureDetails: ['a', 'b', 'c'] });
 
       const agent = new Agent({ provider: makeProvider(), model: 'gpt-4', systemPrompt: 'Test' });
@@ -573,10 +577,11 @@ describe('Agent — additional coverage', () => {
 
       // Allow the fire-and-forget promise to resolve
       await new Promise(resolve => setTimeout(resolve, 50));
-      expect(mockTriggerSelfEvolution).toHaveBeenCalled();
+      // EvolutionCoordinator calls getReflectionStats internally
+      expect(mockGetReflectionStats).toHaveBeenCalled();
     });
 
-    test('triggers evolution on turn threshold', async () => {
+    test('logs stats on turn threshold', async () => {
       const agent = new Agent({ provider: makeProvider(), model: 'gpt-4', systemPrompt: 'Test' });
 
       // Chat 5 times to reach the turn interval threshold
@@ -587,7 +592,8 @@ describe('Agent — additional coverage', () => {
       }
 
       await new Promise(resolve => setTimeout(resolve, 50));
-      expect(mockTriggerSelfEvolution).toHaveBeenCalled();
+      // EvolutionCoordinator calls getReflectionStats internally
+      expect(mockGetReflectionStats).toHaveBeenCalled();
     });
 
     test('handles evolution trigger failure gracefully', async () => {
@@ -605,7 +611,7 @@ describe('Agent — additional coverage', () => {
   // chat — preference signals (lines 1472-1496)
   // =====================================================================
   describe('chat — preference signals', () => {
-    test('collects preference signals from user message', async () => {
+    test('does not call checkPreferenceTriggers (removed — LLM handles natively)', async () => {
       mockCheckPreferenceTriggers.mockReturnValue({
         hasPreference: true,
         expressions: [{ type: 'like', text: 'I like concise responses' }],
@@ -614,7 +620,8 @@ describe('Agent — additional coverage', () => {
       const agent = new Agent({ provider: makeProvider(), model: 'gpt-4', systemPrompt: 'Test' });
       await agent.chat('I like concise responses');
 
-      expect(mockCheckPreferenceTriggers).toHaveBeenCalledWith('I like concise responses', []);
+      // Preference signal collection was removed — LLM handles this natively via system prompt
+      expect(mockCheckPreferenceTriggers).not.toHaveBeenCalled();
     });
 
     test('handles preference signal collection failure', async () => {

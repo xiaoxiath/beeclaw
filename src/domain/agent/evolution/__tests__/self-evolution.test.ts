@@ -73,16 +73,13 @@ describe('self-evolution', () => {
 
       initSelfEvolution('/tmp/test-evolution', {
         cron: '0 6 * * *',
-        autoApprove: true,
-        minConfidence: 0.9,
-        maxNewPrinciples: 5,
+        enabled: true,
       });
 
       const createCall = mockScheduler.createSchedule.mock.calls[0][0];
       expect(createCall.cron).toBe('0 6 * * *');
-      expect(createCall.taskParams.autoApprove).toBe(true);
-      expect(createCall.taskParams.minConfidence).toBe(0.9);
-      expect(createCall.taskParams.maxNewPrinciples).toBe(5);
+      // autoApprove is always false — human must review and apply
+      expect(createCall.taskParams.autoApprove).toBe(false);
     });
 
     it('should use default config when no custom config given', () => {
@@ -93,8 +90,6 @@ describe('self-evolution', () => {
       const createCall = mockScheduler.createSchedule.mock.calls[0][0];
       expect(createCall.cron).toBe('0 4 * * *');
       expect(createCall.taskParams.autoApprove).toBe(false);
-      expect(createCall.taskParams.minConfidence).toBe(0.8);
-      expect(createCall.taskParams.maxNewPrinciples).toBe(3);
     });
   });
 

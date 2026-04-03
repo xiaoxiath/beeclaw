@@ -124,6 +124,18 @@ vi.mock('@domain/agent/compression', () => ({
   hybridCompress: (...args: any[]) => mockHybridCompress(...args),
 }));
 
+// --- TieredCompressor (used by context-manager) ---
+const mockTieredCompress = vi.fn(async () => ({
+  compressed: 'Compressed summary of conversation',
+  originalTokens: 5000,
+  compressedTokens: 2500,
+  ratio: 0.5,
+}));
+const mockTieredCompressor = { compress: (...args: any[]) => mockTieredCompress(...args), getStats: vi.fn(() => ({})), resetStats: vi.fn() };
+vi.mock('@domain/agent/compression/tiered-compressor', () => ({
+  getTieredCompressor: vi.fn(() => mockTieredCompressor),
+}));
+
 // --- Memory ---
 const mockMemoryStore = {
   getCoreContext: vi.fn(() => ({ user: 'Test User', soul: 'friendly AI' })),
@@ -1249,9 +1261,11 @@ describe('Agent', () => {
     });
 
     test('compresses when enough messages exist', async () => {
-      mockHybridCompress.mockResolvedValueOnce({
-        summary: 'Compressed summary of conversation',
-        compressionRatio: 0.5,
+      mockTieredCompress.mockResolvedValueOnce({
+        compressed: 'Compressed summary of conversation',
+        originalTokens: 5000,
+        compressedTokens: 2500,
+        ratio: 0.5,
       });
 
       const agent = new Agent({
@@ -1267,11 +1281,11 @@ describe('Agent', () => {
       (agent as any).estimatedTokens = 5000;
 
       const result = await agent.compressContextWithLLM();
-      expect(mockHybridCompress).toHaveBeenCalled();
+      expect(mockTieredCompress).toHaveBeenCalled();
     });
 
     test('handles compression failure and falls back to trim', async () => {
-      mockHybridCompress.mockRejectedValueOnce(new Error('LLM compression failed'));
+      mockTieredCompress.mockRejectedValueOnce(new Error('LLM compression failed'));
 
       const agent = new Agent({
         provider: makeProvider(),
@@ -1449,8 +1463,8 @@ describe('Agent', () => {
       // Only 3 messages (2 system + 1 user added by chat)
       await agent.chat('Hi');
 
-      // shouldCompress should not have been called
-      expect(mockShouldCompress).not.toHaveBeenCalled();
+      // TieredCompressor should not have been called (not enough messages)
+      expect(mockTieredCompress).not.toHaveBeenCalled();
     });
 
     test('calls compression pipeline when enough messages and above threshold', async () => {
@@ -1462,20 +1476,21 @@ describe('Agent', () => {
 
       // Add 12 messages to trigger manageContextCompression
       for (let i = 0; i < 12; i++) {
-        (agent as any).messages.push({ role: 'user', content: `msg ${i}` });
+        (agent as any).messages.push({ role: 'user', content: `msg ${i}`.repeat(30) });
       }
       (agent as any).estimatedTokens = 7000; // above 80% threshold
 
-      mockShouldCompress.mockReturnValue(true);
-      mockCompressMessages.mockResolvedValueOnce({
-        messages: (agent as any).messages.slice(0, 5),
-        stats: { originalTokens: 7000, compressedTokens: 3000, ratio: 0.57 },
+      mockTieredCompress.mockResolvedValue({
+        compressed: 'compressed content',
+        originalTokens: 700,
+        compressedTokens: 300,
+        ratio: 0.57,
       });
 
       await agent.chat('Trigger compression');
 
-      expect(mockShouldCompress).toHaveBeenCalled();
-      expect(mockCompressMessages).toHaveBeenCalled();
+      // TieredCompressor.compress should be called for old messages
+      expect(mockTieredCompress).toHaveBeenCalled();
     });
   });
 

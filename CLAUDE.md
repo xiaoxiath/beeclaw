@@ -14,7 +14,7 @@ bun run cli              # CLI mode (interactive chat)
 bun run bot              # Feishu bot mode
 bun run bot --daemon     # Bot with proactive scheduling
 bun run pm2:start        # Production with PM2
-bun test                 # Run all tests
+bun run test              # Run all tests (vitest)
 bun lint                 # Lint code
 ```
 
@@ -168,9 +168,9 @@ await store.write('facts/test.md', 'content', 'overwrite');
 
 **Running Tests**:
 ```bash
-bun test                                    # All tests
-bun test src/domain/agent/__tests__/        # Specific file
-bun test -t "should handle"                 # Pattern matching
+bun run test                                    # All tests
+bun run test src/domain/agent/__tests__/        # Specific file
+bun run test -t "should handle"                 # Pattern matching
 ```
 
 ### Import Best Practices
