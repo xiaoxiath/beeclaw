@@ -685,13 +685,10 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // Initialize HybridToolSelector with config
   if (config.toolSelector) {
     getHybridToolSelector({
-      strategy: (config.toolSelector.strategy as any) || 'hybrid',
+      strategy: (config.toolSelector.strategy as any) || 'budget-cap',
       maxTools: config.toolSelector.maxTools || 30,
-      rulesEnabled: config.toolSelector.rules?.enabled !== false,
-      semanticEnabled: config.toolSelector.semantic?.enabled !== false,
-      fallbackToCore: config.toolSelector.semantic?.fallbackToCore !== false,
     });
-    logger.info(`[App] HybridToolSelector initialized with strategy: ${config.toolSelector.strategy || 'hybrid'}`);
+    logger.info(`[App] HybridToolSelector initialized with strategy: ${config.toolSelector.strategy || 'budget-cap'}`);
   }
 
   // Initialize reflection engine (optional)
