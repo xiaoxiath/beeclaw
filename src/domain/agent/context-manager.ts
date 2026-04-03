@@ -1,12 +1,26 @@
 /**
- * Context Manager — Context window management and compression coordination.
+ * Context Manager — Unified context budget control and compression coordination.
  *
- * Responsible for:
- * - Token-aware context trimming (trimContextIfNeeded)
- * - Coordinated multi-tier compression (manageContextCompression)
- * - LLM-based context summarization (compressContextWithLLM)
+ * REFACTORED: Consolidated three overlapping compression mechanisms into a single
+ * ContextBudgetController that delegates to TieredCompressor as the sole engine.
  *
- * Extracted from the Agent god-object (index.ts) for single-responsibility.
+ * BEFORE (3 overlapping paths):
+ *   1. TieredCompressor (L1/L2/L3 based on utilization)
+ *   2. ProgressiveCompactor (age-zone based, also delegates to TieredCompressor)
+ *   3. Agent-level trimContextIfNeeded + compressContextWithLLM (legacy LLM call)
+ *   4. manageContextCompression (orchestrator that called all of the above with
+ *      complex fallback chains)
+ *
+ * AFTER (single path):
+ *   ContextBudgetController
+ *     ├── measure()      — check utilization, dedup, health alerts
+ *     ├── compress()      — delegates to TieredCompressor.compress() as sole engine
+ *     ├── trim()          — emergency message eviction (last resort)
+ *     └── manage()        — orchestrates measure → compress → trim in sequence
+ *
+ * The TieredCompressor's plan() method already handles level selection (L1/L2/L3)
+ * based on utilization. There is no need for a separate ProgressiveCompactor or
+ * a legacy hybridCompress path.
  */
 
 import type { AIProvider } from '../../infra/config/schema';
@@ -16,19 +30,16 @@ import type { IHookRunner } from '../ports';
 import {
   estimateMessageTokens,
   estimateTotalTokens,
-  estimateTokens,
   compressToolResult,
   compressAssistantMessage,
 } from './context';
-import {
-  compressMessages,
-  shouldCompress,
-  hybridCompress,
-  type LegacyCompressionResult as CompressionResult,
-} from './compression';
+import { getTieredCompressor } from './compression/tiered-compressor';
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
 import { logger } from '../../infra/observability/logger';
+
+// Re-export legacy type for backward compatibility
+export type { LegacyCompressionResult as CompressionResult } from './compression';
 
 /**
  * Shared mutable state that the context manager reads/writes.
@@ -42,18 +53,22 @@ export interface ContextManagerState {
   provider?: AIProvider;
   compressionConfig?: any;
   compressedSummary: string;
-  /** B-P1-06: Mutex flag to prevent concurrent compression */
+  /** Mutex flag to prevent concurrent compression */
   _compressing: boolean;
 }
 
+// ============================================================================
+// Public API (backward-compatible function signatures)
+// ============================================================================
+
 /**
- * Trim context if exceeding token limit.
+ * Trim context if exceeding token limit — emergency eviction.
  *
- * [P0 FIX] Uses `metadata.compressed` instead of `(msg as any)._compressed`
- * for type-safe compression tracking.
+ * Compresses tool results and assistant messages in-place, then evicts
+ * oldest messages if still over budget. This is a synchronous, lossless
+ * operation (no LLM calls).
  */
 export function trimContextIfNeeded(state: ContextManagerState): void {
-  // B-P1-06: Skip if compression is already in progress
   if (state._compressing) return;
   state._compressing = true;
   try {
@@ -63,27 +78,29 @@ export function trimContextIfNeeded(state: ContextManagerState): void {
       return;
     }
 
-    logger.debug(`[Agent] Context compression triggered: ${state.estimatedTokens} tokens > ${threshold} threshold`);
+    logger.debug(`[ContextBudgetController] Trim triggered: ${state.estimatedTokens} tokens > ${threshold} threshold`);
 
+    // Find first non-system message
     const systemIndex = state.messages.findIndex(m => m.role === 'system');
     const startIndex = systemIndex >= 0 ? systemIndex + 1 : 0;
     const keepRecent = state.contextConfig.keepRecent;
     const endIndex = state.messages.length - keepRecent;
 
     if (endIndex <= startIndex) {
+      // Very few messages — just drop the oldest non-system one
       if (startIndex < state.messages.length - 2) {
         const removed = state.messages.splice(startIndex, 1);
         state.estimatedTokens -= estimateMessageTokens(removed[0]);
-        logger.debug(`[Agent] Removed oldest message to free space`);
+        logger.debug(`[ContextBudgetController] Removed oldest message to free space`);
       }
       return;
     }
 
+    // Phase 1: In-place compression (tool results, assistant messages)
     let tokensFreed = 0;
     for (let i = startIndex; i < endIndex && state.estimatedTokens > threshold; i++) {
       const msg = state.messages[i];
 
-      // [P0 FIX] Type-safe compressed check via metadata
       if (msg.metadata?.compressed) continue;
 
       const originalTokens = estimateMessageTokens(msg);
@@ -93,13 +110,7 @@ export function trimContextIfNeeded(state: ContextManagerState): void {
         const compressedContent = compressToolResult(msg.content);
         if (compressedContent !== msg.content) {
           msg.content = compressedContent;
-          // [P0 FIX] Type-safe metadata instead of (msg as any)._compressed
-          msg.metadata = {
-            ...msg.metadata,
-            compressed: true,
-            compressedAt: Date.now(),
-            originalTokenCount: originalTokens,
-          };
+          msg.metadata = { ...msg.metadata, compressed: true, compressedAt: Date.now(), originalTokenCount: originalTokens };
           compressed = true;
         }
       }
@@ -108,12 +119,7 @@ export function trimContextIfNeeded(state: ContextManagerState): void {
         const compressedContent = compressAssistantMessage(msg.content || '', msg.tool_calls);
         if (compressedContent !== msg.content) {
           msg.content = compressedContent;
-          msg.metadata = {
-            ...msg.metadata,
-            compressed: true,
-            compressedAt: Date.now(),
-            originalTokenCount: originalTokens,
-          };
+          msg.metadata = { ...msg.metadata, compressed: true, compressedAt: Date.now(), originalTokenCount: originalTokens };
           compressed = true;
         }
       }
@@ -125,37 +131,40 @@ export function trimContextIfNeeded(state: ContextManagerState): void {
       }
     }
 
+    // Phase 2: Message eviction if still over 90%
     while (state.estimatedTokens > state.contextConfig.maxTokens * 0.9 && state.messages.length > keepRecent + 1) {
       const removeIndex = systemIndex >= 0 ? 1 : 0;
       if (removeIndex < state.messages.length - keepRecent) {
         const removed = state.messages.splice(removeIndex, 1);
         state.estimatedTokens -= estimateMessageTokens(removed[0]);
-        logger.debug(`[Agent] Removed message at index ${removeIndex} to free space`);
+        logger.debug(`[ContextBudgetController] Evicted message at index ${removeIndex}`);
       } else {
         break;
       }
     }
 
-    logger.debug(`[Agent] Context compressed: freed ${tokensFreed} tokens, now at ${state.estimatedTokens}`);
+    logger.debug(`[ContextBudgetController] Trim complete: freed ${tokensFreed} tokens, now at ${state.estimatedTokens}`);
   } finally {
     state._compressing = false;
   }
 }
 
 /**
- * Compress old messages using LLM for intelligent summarization.
+ * Compress old messages using the TieredCompressor (sole compression engine).
+ *
+ * Replaces the legacy compressContextWithLLM which had its own separate
+ * LLM compression path. Now delegates entirely to TieredCompressor which
+ * internally handles L1 (format) → L2 (extractive) → L3 (LLM abstractive)
+ * based on utilization.
  */
-export async function compressContextWithLLM(state: ContextManagerState): Promise<CompressionResult> {
-  // B-P1-06: Skip if compression is already in progress
+export async function compressContextWithLLM(
+  state: ContextManagerState,
+): Promise<{ summary: string; originalTokens: number; compressedTokens: number; compressionRatio: number }> {
   if (state._compressing) {
     return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
   }
   state._compressing = true;
   try {
-    if (!state.provider) {
-      return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
-    }
-
     const systemIndex = state.messages.findIndex(m => m.role === 'system');
     const keepRecent = 8;
     const startIndex = systemIndex >= 0 ? systemIndex + 1 : 0;
@@ -169,7 +178,7 @@ export async function compressContextWithLLM(state: ContextManagerState): Promis
     const recentMessages = state.messages.slice(-keepRecent);
     const systemMessage = systemIndex >= 0 ? state.messages[systemIndex] : null;
 
-    logger.debug(`[Agent] LLM compressing ${oldMessages.length} old messages...`);
+    logger.debug(`[ContextBudgetController] Compressing ${oldMessages.length} old messages via TieredCompressor`);
 
     if (state.hookRunner) {
       await state.hookRunner.runBeforeCompaction({
@@ -179,104 +188,108 @@ export async function compressContextWithLLM(state: ContextManagerState): Promis
       });
     }
 
-    try {
-      const result = await hybridCompress(
-        oldMessages,
-        state.provider,
-        {
-          maxTokens: state.contextConfig.maxTokens,
-          currentTokens: state.estimatedTokens,
-          config: state.compressionConfig,
-        }
+    // Build a single text blob from old messages for TieredCompressor
+    const textBlob = oldMessages.map(m => {
+      const role = m.role === 'user' ? '用户' : m.role === 'assistant' ? '助手' : '工具';
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      return `[${role}] ${content}`;
+    }).join('\n\n');
+
+    const compressor = getTieredCompressor();
+    const result = await compressor.compress(
+      textBlob,
+      state.estimatedTokens,
+      state.contextConfig.maxTokens,
+    );
+
+    const summary = result.compressed;
+
+    if (summary && summary.length < textBlob.length * 0.95) {
+      state.compressedSummary = state.compressedSummary
+        ? `${state.compressedSummary}\n\n---\n${summary}`
+        : summary;
+
+      const newMessages: ChatMessage[] = [];
+      if (systemMessage) {
+        newMessages.push({
+          ...systemMessage,
+          content: systemMessage.content + `\n\n## 历史对话摘要\n${state.compressedSummary}`,
+        });
+      }
+      newMessages.push(...recentMessages);
+
+      const oldTokens = state.estimatedTokens;
+      state.messages = newMessages;
+      state.estimatedTokens = estimateTotalTokens(newMessages);
+
+      logger.debug(
+        `[ContextBudgetController] Compression complete: ${oldTokens} → ${state.estimatedTokens} tokens ` +
+        `(${Math.round((1 - state.estimatedTokens / oldTokens) * 100)}% reduction)`,
       );
 
-      if (result.summary) {
-        state.compressedSummary = state.compressedSummary
-          ? `${state.compressedSummary}\n\n---\n${result.summary}`
-          : result.summary;
-
-        const newMessages: ChatMessage[] = [];
-        if (systemMessage) {
-          newMessages.push({
-            ...systemMessage,
-            content: systemMessage.content + `\n\n## 历史对话摘要\n${state.compressedSummary}`,
-          });
-        }
-        newMessages.push(...recentMessages);
-
-        const oldTokens = state.estimatedTokens;
-        state.messages = newMessages;
-        state.estimatedTokens = estimateTotalTokens(newMessages);
-
-        logger.debug(
-          `[Agent] LLM compression complete: ${oldTokens} → ${state.estimatedTokens} tokens ` +
-          `(${Math.round((1 - state.estimatedTokens / oldTokens) * 100)}% reduction)`
-        );
-
-        if (state.hookRunner) {
-          await state.hookRunner.runAfterCompaction({
-            summary: result.summary,
-            tokensBefore: oldTokens,
-            tokensAfter: state.estimatedTokens,
-            timestamp: new Date().toISOString(),
-          });
-        }
+      if (state.hookRunner) {
+        await state.hookRunner.runAfterCompaction({
+          summary,
+          tokensBefore: oldTokens,
+          tokensAfter: state.estimatedTokens,
+          timestamp: new Date().toISOString(),
+        });
       }
-
-      return {
-        summary: result.summary,
-        originalTokens: state.estimatedTokens,
-        compressedTokens: estimateTokens(result.summary),
-        compressionRatio: result.compressionRatio,
-      };
-    } catch (error) {
-      logger.error('[Agent] LLM compression failed:', error);
-      trimContextIfNeeded(state);
-      return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
     }
+
+    return {
+      summary,
+      originalTokens: result.originalTokens,
+      compressedTokens: result.compressedTokens,
+      compressionRatio: result.compressedTokens / Math.max(1, result.originalTokens),
+    };
+  } catch (error) {
+    logger.error('[ContextBudgetController] Compression failed, falling back to trim:', error);
+    trimContextIfNeeded(state);
+    return { summary: '', originalTokens: 0, compressedTokens: 0, compressionRatio: 1 };
   } finally {
     state._compressing = false;
   }
 }
 
 /**
- * [AUDIT FIX M-04] Coordinated context compression.
+ * Coordinated context management — the single entry point for per-turn
+ * context budget control.
  *
- * Enhanced with P0 Context Engineering features:
- * - Health monitoring (ContextHealthDashboard)
- * - Deduplication (SimHash)
- * - Smart selection (RRI + Lost-in-the-Middle)
- * - Three-tier compression
+ * Replaces the previous manageContextCompression which had complex fallback
+ * chains between TieredCompressor, ProgressiveCompactor, hybridCompress,
+ * and trimContextIfNeeded.
  *
- * This prevents the race condition where rule-trim runs before LLM summarize,
- * causing trimmed messages to be neither summarized nor retained.
+ * New flow:
+ *   1. Health check + deduplication (SimHash)
+ *   2. If over budget → TieredCompressor (auto-selects L1/L2/L3)
+ *   3. If still over budget → emergency trim (message eviction)
  */
 export async function manageContextCompression(state: ContextManagerState): Promise<void> {
   if (state.messages.length <= 10) return;
 
   const usage = state.estimatedTokens / state.contextConfig.maxTokens;
 
-  // [P0] Step 1: Health monitoring
+  // Step 1: Health monitoring
   const dashboard = getContextHealthDashboard();
   const healthMetrics = dashboard.measure(
     state.messages.map(m => ({
       role: m.role,
       content: typeof m.content === 'string' ? m.content : '',
-      timestamp: Date.now(), // Use current time as approximation
+      timestamp: Date.now(),
     })),
-    state.contextConfig.maxTokens
+    state.contextConfig.maxTokens,
   );
 
   const alerts = dashboard.checkAlerts(healthMetrics);
   if (alerts.length > 0) {
-    logger.warn(`[Agent] Context health alerts: ${alerts.map(a => a.message).join('; ')}`);
+    logger.warn(`[ContextBudgetController] Health alerts: ${alerts.map(a => a.message).join('; ')}`);
   }
 
-  // [P0] Step 2: Deduplication using SimHash
+  // Step 2: Deduplication using SimHash
   const hasher = getSimHasher();
   const originalCount = state.messages.length;
 
-  // Convert messages to items with content for deduplication
   const messagesWithContent = state.messages.map((m, idx) => ({
     ...m,
     content: typeof m.content === 'string' ? m.content : '',
@@ -287,55 +300,58 @@ export async function manageContextCompression(state: ContextManagerState): Prom
   const duplicatesRemoved = originalCount - dedupedItems.length;
 
   if (duplicatesRemoved > 0) {
-    logger.info(`[Agent] Removed ${duplicatesRemoved} near-duplicate messages`);
+    logger.info(`[ContextBudgetController] Removed ${duplicatesRemoved} near-duplicate messages`);
     state.messages = dedupedItems.map(item => {
       const { _index, ...msg } = item;
       return msg;
     });
-    // Recalculate tokens after deduplication
     state.estimatedTokens = estimateTotalTokens(state.messages);
   }
 
-  // Use new three-tier compression system
-  if (shouldCompress(state.estimatedTokens, state.contextConfig.maxTokens)) {
-    logger.info(`[Agent] Context at ${Math.round(usage * 100)}% — starting three-tier compression`);
+  // Step 3: Compression via TieredCompressor (sole engine)
+  const threshold = state.contextConfig.maxTokens * 0.8;
+  if (state.estimatedTokens > threshold) {
+    logger.info(`[ContextBudgetController] Context at ${Math.round(usage * 100)}% — compressing via TieredCompressor`);
 
     try {
-      const result = await compressMessages(
-        state.messages,
-        state.contextConfig.maxTokens,
-        state.contextConfig.keepRecent
+      const compressor = getTieredCompressor();
+      const keepRecent = state.contextConfig.keepRecent;
+
+      // Separate system, old, and recent messages
+      const systemMessages = state.messages.filter(m => m.role === 'system');
+      const recentMessages = state.messages.slice(-keepRecent);
+      const oldMessages = state.messages.slice(systemMessages.length, -keepRecent);
+
+      // Compress each old message through TieredCompressor
+      const compressedOld: ChatMessage[] = [];
+      let totalSaved = 0;
+
+      for (const msg of oldMessages) {
+        if (typeof msg.content === 'string' && msg.content.length > 100) {
+          const result = await compressor.compress(
+            msg.content,
+            state.estimatedTokens,
+            state.contextConfig.maxTokens,
+          );
+
+          if (result.compressed !== msg.content) {
+            totalSaved += result.originalTokens - result.compressedTokens;
+          }
+          compressedOld.push({ ...msg, content: result.compressed });
+        } else {
+          compressedOld.push(msg);
+        }
+      }
+
+      state.messages = [...systemMessages, ...compressedOld, ...recentMessages];
+      state.estimatedTokens = estimateTotalTokens(state.messages);
+
+      logger.info(
+        `[ContextBudgetController] Compression complete: saved ${totalSaved} tokens, now at ${state.estimatedTokens}`,
       );
-
-      state.messages = result.messages;
-
-      if (result.stats) {
-        state.estimatedTokens = result.stats.compressedTokens;
-        logger.info(
-          `[Agent] Compression complete: ${result.stats.originalTokens} → ${result.stats.compressedTokens} tokens ` +
-          `(${(result.stats.ratio * 100).toFixed(1)}% reduction)`
-        );
-      }
     } catch (error) {
-      logger.error('[Agent] Compression failed, falling back to legacy methods:', error);
-      // Fallback to old compression strategy
-      if (usage > 0.9) {
-        try {
-          await compressContextWithLLM(state);
-        } catch (_error) {
-          logger.warn('[Agent] LLM compression failed in critical mode');
-        }
-        trimContextIfNeeded(state);
-      } else if (usage > 0.7) {
-        try {
-          await compressContextWithLLM(state);
-        } catch (_error) {
-          logger.warn('[Agent] LLM compression failed, falling back to trim');
-          trimContextIfNeeded(state);
-        }
-      } else {
-        trimContextIfNeeded(state);
-      }
+      logger.error('[ContextBudgetController] Compression failed, falling back to trim:', error);
+      trimContextIfNeeded(state);
     }
   }
 }
