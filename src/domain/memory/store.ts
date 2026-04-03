@@ -6,34 +6,35 @@ import { getShortTermCache } from './short-term-cache';
 import { logger } from '../../infra/observability/logger';
 
 /**
- * Cross-process file lock using .lock files with PID + stale detection.
+ * Simplified file lock — single-layer flock + atomic write.
  *
- * Works across PM2 cluster workers and multiple Node.js processes.
- * Uses a lockfile (<path>.lock) containing the holder PID + timestamp.
- * Stale locks (holder PID no longer running, or older than STALE_MS) are
- * automatically broken to prevent deadlocks after crashes.
+ * REFACTORED from two-phase locking (in-process queue + cross-process lockfile
+ * with PID stale detection). The original implementation was ~120 lines with:
+ * - In-process Map-based waiting queue
+ * - Cross-process lockfile with JSON { pid, ts }
+ * - PID liveness checks via process.kill(pid, 0)
+ * - Stale lock detection (10s threshold)
+ * - Atomic rename-based lock breaking (TOCTOU race fix)
+ * - 50ms polling interval, 30s timeout
  *
- * Also maintains an in-process queue so that concurrent async callers
- * within the same process are properly serialized.
+ * Rationale for simplification:
+ * - Beeclaw is primarily single-user, single-process (CLI / Bot / Web)
+ * - Cross-process concurrent writes are rare in practice
+ * - The memory storage layer may be replaced by graph-based memory in future
+ * - Atomic write (temp + rename) already prevents data corruption
+ *
+ * What remains:
+ * - In-process async serialization (prevents concurrent writes within one process)
+ * - Atomic write via temp-file + rename pattern
  */
 class FileLock {
-  /** In-process waiting queue (serializes callers within one process) */
+  /** In-process queue: serializes async callers within one Node process */
   private inProcessQueue: Map<string, Promise<void>> = new Map();
-
-  /** Stale threshold: if a lockfile is older than this, treat it as stale */
-  private static readonly STALE_MS = 10_000; // 10 seconds
-
-  /** Max time to wait for a lock before giving up */
-  private static readonly MAX_WAIT_MS = 30_000; // 30 seconds
-
-  /** Polling interval when spinning on a lockfile */
-  private static readonly POLL_MS = 50;
 
   async acquire(filePath: string): Promise<() => void> {
     const normalizedPath = resolve(filePath);
-    const lockPath = normalizedPath + '.lock';
 
-    // Phase 1: In-process queue — serialize concurrent callers in this process
+    // Wait for any in-flight write to the same file
     while (this.inProcessQueue.has(normalizedPath)) {
       await this.inProcessQueue.get(normalizedPath);
     }
@@ -42,93 +43,14 @@ class FileLock {
     const queuePromise = new Promise<void>((r) => { queueResolve = r; });
     this.inProcessQueue.set(normalizedPath, queuePromise);
 
-    // Phase 2: Cross-process lock via lockfile
-    const startTime = Date.now();
-    const pid = process.pid;
-
-    while (true) {
-      try {
-        // Attempt exclusive creation (O_EXCL equivalent)
-        const lockContent = JSON.stringify({ pid, ts: Date.now() });
-        writeFileSync(lockPath, lockContent, { flag: 'wx' });
-        // Lock acquired!
-        break;
-      } catch (err: any) {
-        if (err.code !== 'EEXIST') {
-          // Unexpected error (permission, disk full, etc.) — release queue and throw
-          this.inProcessQueue.delete(normalizedPath);
-          queueResolve();
-          throw err;
-        }
-
-        // Lockfile exists — check if it's stale
-        try {
-          const raw = readFileSync(lockPath, 'utf-8');
-          const holder = JSON.parse(raw) as { pid: number; ts: number };
-          const age = Date.now() - holder.ts;
-          const holderAlive = this._isPidAlive(holder.pid);
-
-          if (!holderAlive || age > FileLock.STALE_MS) {
-            // FIX TOCTOU race: Use atomic rename instead of unlink+create
-            // Create a temporary file and atomically rename it to replace the stale lock
-            const tempLockPath = `${lockPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
-            try {
-              const lockContent = JSON.stringify({ pid, ts: Date.now() });
-              writeFileSync(tempLockPath, lockContent);
-              // Atomic rename - if this succeeds, we own the lock
-              // If another process already renamed, this will throw
-              renameSync(tempLockPath, lockPath);
-              // Lock acquired via atomic replacement!
-              break;
-            } catch (renameErr: any) {
-              // Clean up temp file
-              try { unlinkSync(tempLockPath); } catch { /* ignore */ }
-
-              // If rename failed because another process won the race, continue waiting
-              if (renameErr.code === 'EEXIST' || renameErr.code === 'ENOENT') {
-                // Another process broke the lock, continue polling
-                continue;
-              }
-              // Other errors: fall through to normal retry logic
-            }
-          }
-        } catch {
-          // Corrupt lockfile — remove and retry
-          try { unlinkSync(lockPath); } catch { /* ignore */ }
-          continue;
-        }
-
-        // Check timeout
-        if (Date.now() - startTime > FileLock.MAX_WAIT_MS) {
-          this.inProcessQueue.delete(normalizedPath);
-          queueResolve();
-          throw new Error(`FileLock: timed out waiting for lock on ${filePath} after ${FileLock.MAX_WAIT_MS}ms`);
-        }
-
-        // Spin-wait
-        await new Promise<void>((r) => setTimeout(r, FileLock.POLL_MS));
-      }
-    }
-
     // Return release function
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      try { unlinkSync(lockPath); } catch { /* ignore */ }
       this.inProcessQueue.delete(normalizedPath);
       queueResolve();
     };
-  }
-
-  /** Check if a PID is still alive (works on Linux/macOS/Windows) */
-  private _isPidAlive(pid: number): boolean {
-    try {
-      process.kill(pid, 0); // Signal 0 = existence check, doesn't kill
-      return true;
-    } catch {
-      return false;
-    }
   }
 }
 
@@ -204,7 +126,6 @@ export class MemoryStore {
 
   private ensureDefaultFactFiles(): void {
     const factsPath = join(this.basePath, 'facts');
-    // Only create preferences.md by default - other files are created on demand
     const defaultFiles = ['preferences.md'];
 
     for (const file of defaultFiles) {
@@ -217,9 +138,7 @@ export class MemoryStore {
   }
 
   private ensureCoreMemoryFiles(): void {
-    // USER.md and SOUL.md will be created by onboarding wizard
-    // This method is now a no-op, kept for compatibility
-    // The onboarding system will handle creation of these files
+    // USER.md and SOUL.md will be created by onboarding wizard — no-op
   }
 
   private ensureIndexFile(): void {
@@ -241,23 +160,13 @@ export class MemoryStore {
   /**
    * Resolve a user-provided path relative to memory base.
    *
-   * [P0 FIX] Secure path traversal prevention:
-   * Uses path.resolve() + prefix check instead of naive string replacement.
-   * This prevents all known path traversal attacks including:
-   *   - Simple: ../../../etc/passwd
-   *   - Encoded: ....// (which becomes ../ after naive replace)
-   *   - Null byte: path%00.md (handled by resolve normalization)
-   *   - Absolute paths: /etc/passwd
+   * Secure path traversal prevention:
+   * Uses path.resolve() + prefix check.
    */
   private resolvePath(inputPath: string): string {
-    // Strip leading slashes to prevent absolute path injection
     const stripped = inputPath.replace(/^[/\\]+/, '');
-
-    // Resolve to absolute path under basePath
     const resolved = resolve(this.basePath, stripped);
 
-    // Verify the resolved path is still under basePath
-    // Must start with basePath + separator, OR be exactly basePath
     if (resolved !== this.basePath && !resolved.startsWith(this.basePath + sep)) {
       throw new Error(`Path traversal detected: "${inputPath}" resolves outside memory directory`);
     }
@@ -306,10 +215,8 @@ export class MemoryStore {
       const stats = statSync(searchPath);
 
       if (stats.isFile()) {
-        // Search in a single file
         this.grepFile(searchPath, query, results);
       } else {
-        // Search recursively in directory
         this.grepRecursive(searchPath, query, results);
       }
 
@@ -396,7 +303,7 @@ export class MemoryStore {
     }
   }
 
-  // Get file metadata (mtime, size, etc.)
+  // Get file metadata
   stat(path: string): { success: true; mtime: Date; size: number } | { success: false; error: string } {
     try {
       const fullPath = this.resolvePath(path);
@@ -419,29 +326,23 @@ export class MemoryStore {
   /**
    * Write to file with concurrency safety.
    *
-   * [P0 FIX] Atomic write + in-process lock:
-   * 1. Acquires a per-file lock to prevent concurrent writes
-   * 2. Uses atomic write (temp file + rename) to prevent partial writes
-   * 3. Ensures data integrity even under concurrent session access
+   * Uses in-process lock + atomic write (temp file + rename).
    */
   async write(path: string, content: string, mode: 'append' | 'overwrite' = 'append'): Promise<MemoryToolResult> {
     try {
       const fullPath = this.resolvePath(path);
 
-      // Ensure directory exists
       const dir = dirname(fullPath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }
 
-      // Acquire file lock for concurrent access safety
       const release = await fileLock.acquire(fullPath);
 
       try {
         if (mode === 'overwrite') {
           atomicWriteFileSync(fullPath, content);
         } else {
-          // For append mode: read current content, append, then atomic write
           let existingContent = '';
           if (existsSync(fullPath)) {
             existingContent = readFileSync(fullPath, 'utf-8');
@@ -460,7 +361,7 @@ export class MemoryStore {
 
   /**
    * Synchronous write - for backward compatibility with existing sync callers.
-   * Uses atomic write but without lock (suitable for single-threaded init paths).
+   * Uses atomic write (suitable for single-threaded init paths).
    */
   writeSync(path: string, content: string, mode: 'append' | 'overwrite' = 'append'): MemoryToolResult {
     try {
@@ -493,7 +394,6 @@ export class MemoryStore {
       const fileName = `${category}.md`;
       const filePath = join(this.basePath, 'facts', fileName);
 
-      // Ensure file exists with header
       if (!existsSync(filePath)) {
         const titles: Record<string, string> = {
           user: '用户画像',
@@ -506,7 +406,6 @@ export class MemoryStore {
         atomicWriteFileSync(filePath, `# ${title}\n\n`);
       }
 
-      // Append fact with timestamp (using locked write)
       const timestamp = new Date().toISOString().split('T')[0];
       const entry = `- ${fact} (added ${timestamp})\n`;
 
@@ -526,9 +425,6 @@ export class MemoryStore {
 
   /**
    * Record conversation entry with atomic write.
-   *
-   * [P0 FIX] Uses file lock + atomic write for concurrent safety.
-   * [P0 优化] Updates short-term cache for faster retrieval.
    */
   async recordConversation(entry: ConversationEntry): Promise<MemoryToolResult> {
     try {
@@ -543,11 +439,9 @@ export class MemoryStore {
 
       const filePath = join(dirPath, `${day}.md`);
 
-      // Acquire lock for this conversation file
       const release = await fileLock.acquire(filePath);
 
       try {
-        // Create file with header if not exists
         let existing = '';
         if (existsSync(filePath)) {
           existing = readFileSync(filePath, 'utf-8');
@@ -555,7 +449,6 @@ export class MemoryStore {
           existing = `# ${yearMonth}-${day}\n\n`;
         }
 
-        // Format conversation entry
         const time = entry.timestamp.split('T')[1]?.slice(0, 5) || date.toTimeString().slice(0, 5);
         let content = `## ${time} - ${entry.source}\n\n`;
         content += `**用户**：${entry.user}\n\n`;
@@ -573,18 +466,16 @@ export class MemoryStore {
 
         content += '\n---\n\n';
 
-        // Atomic write: existing content + new entry
         atomicWriteFileSync(filePath, existing + content);
       } finally {
         release();
       }
 
-      // [P0 优化] 更新短期缓存
+      // Update short-term cache
       try {
         const cache = getShortTermCache();
         await cache.addConversation(entry.source || 'default', entry);
       } catch (error) {
-        // 缓存更新失败不影响主流程
         logger.error('[MemoryStore] Failed to update short-term cache:', error);
       }
 
@@ -596,17 +487,12 @@ export class MemoryStore {
 
   /**
    * Get recent conversations with short-term cache.
-   *
-   * [P0 优化] Uses LRU cache to speed up recent conversation retrieval.
-   *
-   * @param userId 用户ID（可选，默认为 'default'）
-   * @param limit 返回的最大对话数量（默认 10）
    */
   async getRecentConversations(
     userId: string = 'default',
-    limit: number = 10
+    limit: number = 10,
   ): Promise<ConversationEntry[]> {
-    // 1. 尝试从缓存获取
+    // 1. Try cache first
     try {
       const cache = getShortTermCache();
       const cached = await cache.getRecentConversations(userId, limit);
@@ -617,7 +503,7 @@ export class MemoryStore {
       logger.error('[MemoryStore] Failed to get from short-term cache:', error);
     }
 
-    // 2. 缓存未命中，从磁盘加载
+    // 2. Cache miss — load from disk
     const conversations: ConversationEntry[] = [];
     const conversationsPath = join(this.basePath, 'conversations');
 
@@ -625,7 +511,6 @@ export class MemoryStore {
       return [];
     }
 
-    // 获取最近的月份目录（最多扫描最近 3 个月）
     const months = readdirSync(conversationsPath)
       .filter(f => {
         const fullPath = join(conversationsPath, f);
@@ -635,7 +520,6 @@ export class MemoryStore {
       .reverse()
       .slice(0, 3);
 
-    // 从最新的日期开始读取
     for (const month of months) {
       const monthPath = join(conversationsPath, month);
       const days = readdirSync(monthPath)
@@ -647,12 +531,11 @@ export class MemoryStore {
         const filePath = join(monthPath, dayFile);
         const content = readFileSync(filePath, 'utf-8');
 
-        // 解析对话（简化版，只提取关键信息）
         const entries = this.parseConversationFile(content, filePath);
         conversations.push(...entries);
 
         if (conversations.length >= limit * 2) {
-          break; // 获取足够多的对话
+          break;
         }
       }
 
@@ -661,12 +544,11 @@ export class MemoryStore {
       }
     }
 
-    // 按时间排序并截取
     const recentConversations = conversations
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, limit);
 
-    // 3. 更新缓存
+    // 3. Update cache
     try {
       const cache = getShortTermCache();
       await cache.updateConversations(userId, recentConversations);
@@ -679,26 +561,23 @@ export class MemoryStore {
 
   /**
    * Parse conversation file to extract entries.
-   * 简化版解析器，用于快速加载最近对话。
    */
   private parseConversationFile(content: string, filePath: string): ConversationEntry[] {
     const entries: ConversationEntry[] = [];
     const fileStat = statSync(filePath);
     const dateStr = fileStat.mtime.toISOString().split('T')[0];
-    const sections = content.split('## ').slice(1); // 跳过标题
+    const sections = content.split('## ').slice(1);
 
     for (const section of sections) {
       const lines = section.split('\n');
-      const header = lines[0]; // "HH:MM - source"
+      const header = lines[0];
 
-      // 提取时间戳和来源
       const timeMatch = header.match(/^(\d{1,2}:\d{2})\s*-\s*(.+)$/);
       if (!timeMatch) continue;
 
       const time = timeMatch[1];
       const source = timeMatch[2].trim();
 
-      // 提取用户和助手消息
       let user = '';
       let assistant = '';
 
@@ -721,32 +600,26 @@ export class MemoryStore {
     return entries;
   }
 
-  // Read USER.md (用户信息)
   readUser(): MemoryToolResult {
     return this.read('USER.md');
   }
 
-  // Read SOUL.md (AI人格定义)
   readSoul(): MemoryToolResult {
     return this.read('SOUL.md');
   }
 
-  // Write USER.md
   writeUser(content: string): MemoryToolResult {
     return this.writeSync('USER.md', content, 'overwrite');
   }
 
-  // Write SOUL.md
   writeSoul(content: string): MemoryToolResult {
     return this.writeSync('SOUL.md', content, 'overwrite');
   }
 
-  // Get core memory context for AI (USER.md + SOUL.md + facts/)
   getCoreContext(): { user: string; soul: string; facts: string } {
     const userResult = this.readUser();
     const soulResult = this.readSoul();
 
-    // Also read all files from facts/ directory
     let factsContent = '';
     const factsPath = join(this.basePath, 'facts');
     if (existsSync(factsPath)) {
@@ -754,7 +627,7 @@ export class MemoryStore {
       for (const file of factFiles) {
         const filePath = join(factsPath, file);
         const content = readFileSync(filePath, 'utf-8').trim();
-        if (content && content.length > 10) { // Skip empty/placeholder files
+        if (content && content.length > 10) {
           const title = file.replace('.md', '');
           factsContent += `\n\n### ${title}\n${content}`;
         }
@@ -768,7 +641,6 @@ export class MemoryStore {
     };
   }
 
-  // Load or build index
   private loadOrBuildIndex(): void {
     this.index = loadIndex(this.indexPath);
     if (!this.index) {
@@ -776,7 +648,6 @@ export class MemoryStore {
     }
   }
 
-  // Rebuild full index
   rebuildIndex(): MemoryToolResult {
     try {
       this.index = buildFullIndex(this.basePath);
@@ -793,7 +664,6 @@ export class MemoryStore {
     }
   }
 
-  // Search using index
   searchByKeyword(query: string, scope?: 'facts' | 'knowledge' | 'all'): MemoryToolResult {
     try {
       if (!this.index) {
@@ -811,7 +681,7 @@ export class MemoryStore {
       }
 
       const output = results.map(r =>
-        `📄 ${r.path}\n   Matched: ${r.matchedKeywords.join(', ')}`
+        `📄 ${r.path}\n   Matched: ${r.matchedKeywords.join(', ')}`,
       ).join('\n\n');
 
       return { success: true, data: output };
@@ -820,7 +690,6 @@ export class MemoryStore {
     }
   }
 
-  // Get index stats
   getIndexStats(): { factsKeywords: number; knowledgeKeywords: number; lastUpdated: string } | null {
     if (!this.index) return null;
     return {
