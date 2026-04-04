@@ -87,7 +87,8 @@ export type StandardIconElement = z.infer<typeof StandardIconElementSchema>;
 export const PlainTextElementSchema = z.object({
   tag: z.literal('plain_text'),
   content: z.string(),
-  text_styles: TextStyleSchema.optional(),
+  text_color: z.string().optional(),
+  text_size: z.enum(['normal', 'small', 'large', 'heading', 'notation']).optional(),
 });
 
 export type PlainTextElement = z.infer<typeof PlainTextElementSchema>;
@@ -463,11 +464,14 @@ export function createStandardIconElement(
 /**
  * Create a Plain Text element
  */
-export function createPlainTextElement(content: string, style?: TextStyle): PlainTextElement {
+export function createPlainTextElement(
+  content: string,
+  options?: { text_color?: string; text_size?: 'normal' | 'small' | 'large' | 'heading' | 'notation' }
+): PlainTextElement {
   return PlainTextElementSchema.parse({
     tag: 'plain_text',
     content,
-    text_styles: style,
+    ...options,
   });
 }
 

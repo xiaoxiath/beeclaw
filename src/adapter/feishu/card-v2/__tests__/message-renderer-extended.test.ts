@@ -429,7 +429,7 @@ describe('MessageRenderer Extended', () => {
       expect(step.icon?.token).toBe('robot_outlined');
       expect(step.icon?.color).toBe('grey');
       expect(step.text?.tag).toBe('plain_text');
-      expect(step.text?.text_styles?.color).toBe('grey');
+      expect(step.text?.text_color).toBe('grey');
       expect(step.text?.content).toBe('Let me analyze this problem');
     });
   });

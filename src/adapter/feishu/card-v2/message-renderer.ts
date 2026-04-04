@@ -166,10 +166,8 @@ export function renderStepsPanel(
       title: {
         tag: 'plain_text',
         content: headerText,
-        text_styles: {
-          color: 'grey',
-          size: 'small',
-        },
+        text_color: 'grey',
+        text_size: 'notation',
       },
       icon: {
         tag: 'standard_icon',
@@ -231,7 +229,8 @@ export function renderThinkingStep(block: ThinkingBlock): DivElement {
       size: 'small',
     }),
     text: createPlainTextElement(block.thinking, {
-      color: 'grey',
+      text_color: 'grey',
+      text_size: 'notation',
     }),
   });
 }
