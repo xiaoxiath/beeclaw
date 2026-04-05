@@ -9,6 +9,7 @@ export type {
   CompressionLLMClient,
   CompressionStats,
   AgeZone,
+  Compressor,
 } from './types';
 
 export {
