@@ -83,26 +83,47 @@ The `initApp()` function is the single entry point for both CLI and Bot modes:
 ## File Organization
 ```
 src/
-├── app/          # Unified initialization
-├── domain/       # Core domain logic
-│   ├── agent/    # AI agent and tool calling
-│   ├── memory/   # Memory storage and retrieval
-│   ├── skills/   # Skill system
-│   ├── session/  # Session management
-│   └── subagent/ # Subagent orchestration
-├── adapter/      # External adapters
-│   ├── feishu/   # Feishu bot integration
-│   ├── mcp/      # MCP protocol integration
-│   ├── plugins/  # Plugin system
-│   ├── cli/      # CLI interface
-│   └── web/      # Web interface
-├── infra/        # Infrastructure
-│   ├── config/   # Configuration
+├── app/              # Unified initialization & lifecycle
+│   ├── dispatcher/   # Event dispatching
+│   ├── queue-handlers/ # Background task workers
+│   └── routes/       # HTTP API routes
+├── domain/           # Core domain logic
+│   ├── agent/        # AI agent, tool calling, prompts
+│   │   ├── compression/  # Context compression
+│   │   ├── context/      # Context window management
+│   │   ├── evolution/    # Self-evolution engine
+│   │   ├── goal/         # Goal tracking
+│   │   ├── persona/      # Persona/traits system
+│   │   └── prompts/      # Prompt layer templates
+│   ├── extraction/   # Content extraction
+│   ├── memory/       # Memory storage, search, scoring
+│   ├── proactive/    # Scheduled tasks & notifications
+│   ├── sandbox/      # Sandbox execution (process/container)
+│   ├── search/       # Multi-provider search & deep research
+│   ├── skills/       # Skill system with evolution
+│   ├── session/      # Session management & recovery
+│   ├── subagent/     # Subagent orchestration & state
+│   └── tools/        # Tool registry & built-in tools
+│       └── categories/   # search, shell, finance, sandbox, subagent, utility
+├── adapter/          # External adapters
+│   ├── cli/          # CLI interface
+│   ├── feishu/       # Feishu bot integration (Card V2)
+│   ├── mcp/          # MCP protocol integration
+│   ├── plugins/      # Plugin system (hooks, loader, registry)
+│   └── web/          # Web UI (React client + Hono server)
+├── infra/            # Infrastructure
+│   ├── ai/           # AI provider abstractions
+│   ├── cache/        # Caching layer
+│   ├── config/       # Configuration (Zod schema)
+│   ├── db/           # Database layer (SQLite + Drizzle ORM)
+│   ├── entry/        # Entry point registry
 │   ├── observability/ # Logging & monitoring
-│   ├── queue/    # Job queue
-│   ├── resilience/ # Circuit breaker & retry
-│   └── utils/    # Utility functions
-└── types/        # TypeScript type definitions
+│   ├── queue/        # Job queue
+│   ├── resilience/   # Circuit breaker & retry
+│   ├── testing/      # Test helpers & mocks
+│   └── utils/        # Utility functions
+├── entries/          # Entry points (cli.ts, bot.ts, web.ts)
+└── types/            # Shared TypeScript type definitions
 ```
 
 ## Important Patterns
@@ -229,14 +250,17 @@ Supports environment variable interpolation: `${VAR_NAME}` and `${VAR:-default}`
 ## Common Development Tasks
 
 ### Adding a New Tool
-1. Define schema in appropriate module
-2. Implement executor with error handling
-3. Add to tool registry in `src/domain/agent/tools.ts`
-4. Update `getAllToolsForAI()`
-5. Add tests in `__tests__/`
+1. Implement tool in `src/domain/tools/` (e.g., new file or existing category module)
+2. Define Zod schema and OpenAI function definition
+3. Register in `src/domain/tools/builtin.ts`:
+   - Always-loaded → add to `coreBuiltinTools`
+   - Conditional → add to `conditionalDeepResearchTools` or `conditionalSubagentStateTools`
+4. For category access, add re-export in `src/domain/tools/categories/`
+5. `getBuiltinToolsForAI()` auto-collects from registries — no manual update needed
+6. Add tests in `__tests__/`
 
 ### Adding a New AI Provider
-1. Add provider type to `AIProviderSchema`
+1. Add provider type to `AIProviderSchema` in `src/infra/config/schema.ts`
 2. Implement API client in `src/domain/agent/api.ts`
 3. Add provider-specific error handling
 4. Update documentation

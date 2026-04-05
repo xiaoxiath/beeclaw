@@ -59,7 +59,7 @@ bun run bot        # 飞书 Bot 模式
 | 新手入门 | 进阶使用 | 架构设计 | 运维部署 |
 |---------|---------|---------|---------|
 | [快速开始](./docs/getting-started.md) | [工具参考](./docs/references/tools.md) | [系统架构](./docs/architecture.md) | [PM2 部署](./docs/operations/deployment.md) |
-| [配置指南](./docs/configuration.md) | [记忆系统](./docs/guide/memory-system.md) | [框架路线图](./docs/framework-roadmap.md) | [性能优化](./docs/performance-optimization-session-compression.md) |
+| [配置指南](./docs/configuration.md) | [记忆系统](./docs/guide/memory-system.md) | [插件系统](./docs/guide/plugin-system.md) | [性能优化](./docs/performance-optimization-session-compression.md) |
 | [飞书集成](./docs/guide/feishu-integration.md) | [技能系统](./docs/guide/skill-system.md) | [子代理系统](./docs/guide/subagent-system.md) | [故障排查](./docs/troubleshooting/) |
 
 **→ [完整文档目录](./docs/README.md)** · **[故障排查](./docs/troubleshooting/)**
@@ -102,7 +102,7 @@ bun run bot        # 飞书 Bot 模式
 ## 🔧 开发
 
 ```bash
-bun test              # 运行测试
+bun run test          # 运行测试
 bunx tsc --noEmit     # 类型检查
 bun run lint          # 代码检查
 bun run build:web     # 构建 Web UI

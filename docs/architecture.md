@@ -1,41 +1,83 @@
 # Beeclaw 架构设计
 
-> 本文档描述 Beeclaw 的核心系统架构，包括子代理系统、会话管理和状态管理。
-
-## 目录
-
-1. [系统概览](#系统概览)
-2. [子代理系统](#子代理系统)
-3. [会话管理](#会话管理)
-4. [共享状态](#共享状态)
-5. [配置参考](#配置参考)
-
----
+> 本文档描述 Beeclaw 的核心系统架构和各子系统概要。
 
 ## 系统概览
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Orchestrator Agent                          │
-│  (主代理 - 任务分解、调度、结果聚合)                              │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-          ┌─────────────┼─────────────┬─────────────┐
-          ▼             ▼             ▼             ▼
-    ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-    │ Research │  │  Memory  │  │  Skill   │  │  Code    │
-    │ Subagent │  │ Subagent │  │ Subagent │  │ Subagent │
-    │ (搜索/调研)│  │ (记忆操作)│  │ (技能执行)│  │ (代码任务)│
-    └──────────┘  └──────────┘  └──────────┘  └──────────┘
-          │             │             │             │
-          └─────────────┴─────────────┴─────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  Shared State   │
-                    │  (任务状态/结果) │
-                    └─────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        Entry Points                          │
+│              CLI (cli.ts) · Bot (bot.ts) · Web (web.ts)      │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     Adapter Layer                            │
+│          CLI Adapter · Feishu Adapter · Web Adapter          │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   App Layer (bootstrap)                       │
+│     initApp() · Dispatcher · Queue Handlers · Routes         │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+┌──────────────────┐ ┌──────────┐ ┌──────────────────┐
+│   Agent System   │ │  Tools   │ │   Subagent       │
+│ createAgent()    │ │ Registry │ │   Orchestrator   │
+│ chat() / stream  │ │          │ │ DAG Scheduling   │
+│ Context Manager  │ │          │ │ Shared State     │
+└────────┬─────────┘ └──────────┘ └──────────────────┘
+         │
+    ┌────┼────┬─────────┬──────────┐
+    ▼    ▼    ▼         ▼          ▼
+┌──────┐┌──────┐┌──────────┐┌──────────┐┌──────────┐
+│Memory││Skills││  Search  ││ Sandbox  ││ Proactive│
+│Store ││System││ Providers││ Executor ││ Scheduler│
+└──────┘└──────┘└──────────┘└──────────┘└──────────┘
 ```
+
+---
+
+## Agent 系统
+
+Agent 是系统的核心，负责对话循环、工具调度和上下文管理。
+
+**核心组件**（`src/domain/agent/`）：
+- `agent-factory.ts` — `createAgent()` 工厂函数，配置 Provider、模型和工具
+- `orchestrator.ts` — `Agent` 类，实现主对话循环 `chat()`
+- `stream-handler.ts` — `chatStream()` 异步生成器，流式对话
+- `context-manager.ts` — 上下文窗口管理，Token 预算分配和自动压缩
+- `prompt-builder.ts` — 系统提示词组装（记忆注入、技能加载）
+- `tool-dispatcher.ts` — 工具调用分发
+- `fast-llm-judge.ts` — 统一工程判断引擎（模式选择、工具选择、任务分解等）
+
+**支持的 Provider**: OpenAI、智谱 GLM、Anthropic、MiniMax
+
+**关键流程**:
+1. 用户消息进入 → 组装 System Prompt（含记忆、技能、人格）
+2. 调用 LLM → 解析响应（文本 / 工具调用）
+3. 执行工具调用 → 结果注入上下文 → 继续对话循环
+4. 上下文超限时自动压缩旧消息
+
+---
+
+## 工具系统
+
+工具通过统一注册机制管理（`src/domain/tools/`）：
+
+**注册方式**（`builtin.ts`）：
+- `coreBuiltinTools` — 始终加载的核心工具
+- `conditionalDeepResearchTools` — 搜索 Provider 配置后加载
+- `conditionalSubagentStateTools` — 子代理编排激活后加载
+
+**工具分类**（`categories/`）：search、shell、finance、sandbox、subagent、utility
+
+工具以 OpenAI Function 格式定义，`getBuiltinToolsForAI()` 自动从注册表收集。
+
+详见 [工具参考](./references/tools.md)。
 
 ---
 
@@ -51,130 +93,93 @@
 | `code` | 代码生成、文件操作 | file_*, shell |
 | `general` | 通用任务 | 所有工具 |
 
-### 工具接口
-
-#### spawn_subagent - 生成单个子代理
-
-```typescript
-spawn_subagent({
-  type: "research",        // 子代理类型
-  task: "Search React 19 features",  // 任务描述
-  context: "User prefers TypeScript",  // 可选上下文
-  timeout: 60000           // 可选超时（毫秒）
-})
-```
-
-#### spawn_parallel - 并行生成多个子代理
-
-```typescript
-spawn_parallel({
-  tasks: [
-    { type: "research", task: "Search official docs" },
-    { type: "memory", task: "Read existing knowledge" }
-  ],
-  maxParallelism: 3  // 最大并行数
-})
-```
-
 ### DAG 任务编排
 
 系统支持自动任务分解和 DAG 调度：
 
 ```
-1. 分解任务 (decompose)
-   ├─ LLM 分解复杂任务
-   ├─ 验证依赖关系
-   └─ 生成 TaskDecomposition
-
-2. 初始化调度器 (scheduler.initialize)
-   └─ 创建任务状态映射
-
-3. 执行循环 (while !scheduler.isComplete)
-   ├─ 获取可并行任务
-   ├─ 并行执行任务
-   └─ 进度回调
-
-4. 聚合结果
-   ├─ 按类型分组
-   └─ 合并输出
+1. 分解任务 (decompose) → LLM 分解 + 验证依赖
+2. 初始化调度器 → 创建任务状态映射
+3. 执行循环 → 获取可并行任务 → 并行执行 → 进度回调
+4. 聚合结果 → 按类型分组 → 合并输出
 ```
+
+### 工具接口
+
+```typescript
+// 单个子代理
+spawn_subagent({ type: "research", task: "Search React 19 features" })
+
+// 并行多个子代理
+spawn_parallel({
+  tasks: [
+    { type: "research", task: "Search official docs" },
+    { type: "memory", task: "Read existing knowledge" }
+  ],
+  maxParallelism: 3
+})
+```
+
+详见 [子代理系统](./guide/subagent-system.md)。
 
 ---
 
 ## 会话管理
 
-### 统一架构
-
-CLI 和 Bot 共享同一个 SessionManager：
+CLI、Bot 和 Web 共享同一个 SessionManager：
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   统一会话管理                        │
-│                (Unified Session Manager)             │
-├─────────────────────────────────────────────────────┤
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐        │
-│  │   CLI    │   │ Feishu   │   │   API    │        │
-│  │  Channel │   │ Channel  │   │ Channel  │        │
-│  └────┬─────┘   └────┬─────┘   └────┬─────┘        │
-│       └──────────────┼──────────────┘                │
-│                      │                               │
-│           ┌──────────┴──────────┐                   │
-│           │  SessionManager     │                   │
-│           └──────────┬──────────┘                   │
-│                      │                               │
-│           ┌──────────┴──────────┐                   │
-│           │  Memory System      │                   │
-│           │  (共享记忆)          │                   │
-│           └─────────────────────┘                   │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│              SessionManager                      │
+├─────────────────────────────────────────────────┤
+│  CLI Channel · Feishu Channel · Web Channel     │
+│                    │                             │
+│         Session (持久化到 data/sessions/)        │
+│                    │                             │
+│         Memory System (共享记忆)                  │
+└─────────────────────────────────────────────────┘
 ```
 
-### 会话 ID 格式
-
-```
-{channel}-{userId}-{timestamp}
-
-例如：
-- cli-default-user-1709020800000
-- feishu-ou_xxx-1709020800000
-- api-user123-1709020800000
-```
-
-### 会话持久化
-
-会话自动持久化到 `data/memory/sessions/`：
+**Session 接口**（`src/domain/session/index.ts`）：
 
 ```typescript
-interface UnifiedSession {
+interface Session {
   id: string;
   userId: string;
-  channel: 'cli' | 'feishu' | 'api';
-  messages: ChatMessage[];
-  metadata: {
-    createdAt: string;
-    updatedAt: string;
-    title?: string;
-  };
+  channel: string;       // 'cli' | 'feishu' | 'web' | 'webhook' | 'api'
+  messages: SessionMessage[];
+  summary?: string;      // 压缩后的旧消息摘要
+  createdAt: string;
+  updatedAt: string;
+  pendingRecovery?: boolean;
+  responseDelivered?: boolean;
+  // ... 更多字段
 }
 ```
+
+**会话 ID 格式**: `{channel}-{userId}-{timestamp}`
+
+**关键特性**:
+- 自动持久化，重启后恢复
+- 消息去重（dedup）
+- 上下文超限时自动压缩
+- HITL（Human-in-the-Loop）管理
 
 ---
 
 ## 共享状态
 
-### 状态管理工具
+子代理间通过共享状态交换数据（条件加载，需子代理编排激活）。
+
+### 状态工具（整合后）
 
 | 工具 | 说明 |
 |------|------|
-| `state_set` | 存储值（支持 TTL） |
-| `state_get` | 获取值 |
-| `state_delete` | 删除值 |
-| `state_update` | 原子更新 |
-| `state_exists` | 检查存在 |
-| `state_list` | 列出所有键 |
-| `state_stats` | 获取统计 |
-| `state_lock` | 获取锁 |
-| `state_unlock` | 释放锁 |
+| `state_manage` | 组合 set / get / update / delete 操作 |
+| `state_query` | 组合 list / exists / stats 操作 |
+| `state_lock_manage` | 组合 acquire / release 锁操作 |
+
+每个工具通过 `action` 参数区分具体操作，取代旧版的 9 个独立工具。
 
 ### Key 命名规范
 
@@ -187,71 +192,94 @@ category:subcategory:item
 - counter:tasks_completed
 ```
 
-### 使用示例
+---
 
-```typescript
-// 存储研究结果
-state_set({
-  key: "research:react19:hooks",
-  value: ["useOptimistic", "useFormStatus"],
-  ttl: 3600000  // 1小时
-})
+## 记忆系统
 
-// 读取结果
-const hooks = state_get({ key: "research:react19:hooks" })
+文件系统持久化记忆（`src/domain/memory/`），支持关键词索引和混合搜索。
 
-// 原子更新
-state_update({
-  key: "counter:completed",
-  operation: "increment",
-  value: 1
-})
-```
+**核心组件**:
+- `store.ts` — MemoryStore，支持 JSONL/SQLite 双模式
+- `scoring.ts` — 重要性评分
+- `compression.ts` — 记忆压缩
+- `vector-store.ts` — 向量嵌入搜索
+- `hybrid-search.ts` — 混合检索（关键词 + 语义）
+- `short-term-cache.ts` — 短期记忆缓存
+- `dynamic-injector.ts` — 动态记忆注入到上下文
+
+**分类**: conversations, facts, decisions, skills
+
+详见 [记忆系统](./guide/memory-system.md)。
 
 ---
 
-## 配置参考
+## 技能系统
 
-### 子代理配置
+可复用提示词模块（`src/domain/skills/`），支持自动创建和进化。
 
-```json
-{
-  "subagent": {
-    "defaultTimeout": 180000,
-    "maxParallelism": 3,
-    "maxRetries": 2
-  }
-}
-```
+- Markdown 文件 + YAML frontmatter
+- 成熟度级别: seed → growing → mature → deprecated
+- 自动发现、推荐和 A/B 测试
+- 基于使用反馈的自我进化
 
-### 会话配置
+详见 [技能系统](./guide/skill-system.md)。
 
-```json
-{
-  "session": {
-    "timeout": 120000,
-    "compressionThreshold": 20,
-    "retention": "90d"
-  }
-}
-```
+---
 
-### 状态配置
+## 插件系统
 
-```json
-{
-  "state": {
-    "defaultTtl": 3600000,
-    "cleanupInterval": 60000,
-    "enableAutoCleanup": true
-  }
-}
-```
+OpenClaw 兼容插件架构（`src/adapter/plugins/`）：
+
+- **发现** — 自动扫描插件目录
+- **注册** — 插件注册表管理
+- **加载** — 动态加载和运行时
+- **Hook** — 事件钩子系统（onToolCall, onAgentMessage 等）
+- **SDK Shim** — OpenClaw 兼容层
+
+详见 [插件系统](./guide/plugin-system.md)。
+
+---
+
+## MCP 集成
+
+Model Context Protocol 客户端（`src/adapter/mcp/`）：
+
+- 支持 stdio 传输
+- 自动发现 MCP 服务端工具
+- 转换为 OpenAI Function 格式
+- 与内置工具统一管理
+
+配置在 `beeclaw.json` 的 `mcp.servers` 字段。
+
+---
+
+## 配置系统
+
+Zod 验证的配置管理（`src/infra/config/`）：
+
+- **v6 结构**: providers → roles → llmRouter → agent
+- 支持环境变量插值: `${VAR_NAME}` 和 `${VAR:-default}`
+- 配置文件: `beeclaw.json`（JSON Schema: `beeclaw.schema.json`）
+
+详见 [配置指南](./configuration.md)。
+
+---
+
+## 搜索系统
+
+多 Provider 搜索（`src/domain/search/`）：
+
+- **Provider**: Bocha、Tavily、Google、Bing、Brave
+- **深度研究**: 多角度系统搜索 + 自动综合报告
+- **网页抓取**: URL 内容提取和格式转换
 
 ---
 
 ## 相关文档
 
-- [记忆系统](./guide/memory-system.md) - 记忆存储设计
-- [工具参考](./references/tools.md) - 所有工具详情
-- [故障排查](./troubleshooting/README.md) - 问题诊断和解决方案
+- [记忆系统](./guide/memory-system.md) — 记忆存储详细设计
+- [技能系统](./guide/skill-system.md) — 技能管理详细说明
+- [子代理系统](./guide/subagent-system.md) — 子代理编排详细说明
+- [工具参考](./references/tools.md) — 所有工具参数和示例
+- [配置指南](./configuration.md) — 完整配置参考
+- [故障排查](./troubleshooting/README.md) — 问题诊断和解决方案
