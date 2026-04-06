@@ -9,6 +9,7 @@ export default defineConfig({
       '@domain': resolve(__dirname, 'src/domain'),
       '@adapter': resolve(__dirname, 'src/adapter'),
       '@app': resolve(__dirname, 'src/app'),
+      '@bee': resolve(__dirname, 'packages/bee/src'),
     },
   },
   test: {

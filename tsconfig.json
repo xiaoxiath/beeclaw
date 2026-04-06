@@ -12,7 +12,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "baseUrl": ".",
     "jsx": "react-jsx",
     "noUnusedLocals": true,
@@ -22,9 +22,10 @@
       "@infra/*": ["./src/infra/*"],
       "@domain/*": ["./src/domain/*"],
       "@adapter/*": ["./src/adapter/*"],
-      "@app/*": ["./src/app/*"]
+      "@app/*": ["./src/app/*"],
+      "@bee/*": ["./packages/bee/src/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "packages/bee/src/**/*"],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"]
 }
