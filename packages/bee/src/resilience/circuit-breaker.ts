@@ -5,10 +5,6 @@
  * Extracted from beeclaw's src/infra/resilience/circuit-breaker.ts.
  */
 
-import { getLogger } from '../core/logger';
-
-const logger = getLogger();
-
 // ============================================================================
 // Types
 // ============================================================================

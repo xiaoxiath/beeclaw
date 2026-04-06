@@ -8,7 +8,6 @@
  * Changes: uses bee's getLogger and estimateTokens, no singleton.
  */
 
-import { getLogger } from '../../core/logger';
 import { estimateTokens } from '../token-estimator';
 import type { CompressionResult, CompressionLLMClient } from './types';
 
@@ -16,14 +15,12 @@ export class L3AbstractiveCompressor {
   readonly name = 'L3-Abstractive';
 
   private llmClient: CompressionLLMClient | null;
-  private fallbackToL2: boolean;
-
   constructor(config?: {
     llmClient?: CompressionLLMClient;
     fallbackToL2?: boolean;
   }) {
     this.llmClient = config?.llmClient ?? null;
-    this.fallbackToL2 = config?.fallbackToL2 ?? true;
+    // fallbackToL2 reserved for future L2 cascade
   }
 
   setLLMClient(client: CompressionLLMClient): void {
@@ -33,7 +30,6 @@ export class L3AbstractiveCompressor {
   async compress(text: string, targetTokens?: number): Promise<CompressionResult> {
     const startTime = Date.now();
     const originalTokens = estimateTokens(text);
-    const logger = getLogger();
 
     if (!this.llmClient) {
       return {

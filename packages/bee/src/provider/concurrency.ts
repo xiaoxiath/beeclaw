@@ -9,8 +9,6 @@
  * - Uses bee's getLogger() instead of direct logger import
  */
 
-import { getLogger } from '../core/logger';
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -254,7 +252,7 @@ export class ConcurrencyLimiter {
 
   // --- Internal ---
 
-  private createRelease(caller: string): () => void {
+  private createRelease(_caller: string): () => void {
     let released = false;
     return () => {
       if (released) return;

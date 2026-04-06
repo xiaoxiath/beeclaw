@@ -7,7 +7,6 @@
  */
 
 import type { ToolCall, ToolResult } from '../core/types';
-import { getLogger } from '../core/logger';
 
 export type ToolExecutorFn = (name: string, params: Record<string, unknown>) => Promise<unknown>;
 
@@ -54,8 +53,6 @@ export class ToolDispatcher {
     call: ToolCall,
     executor: ToolExecutorFn,
   ): Promise<ToolResult> {
-    const logger = getLogger();
-
     // Check blocked
     if (this.isToolBlocked(call.function.name)) {
       return {

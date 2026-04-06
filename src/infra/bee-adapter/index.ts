@@ -5,6 +5,7 @@
  */
 
 import type { ProviderConfig } from '@bee/core/types';
+import { AIClient } from '@bee/provider/call-ai';
 import { ToolRegistry } from '@bee/tool/registry';
 import { logger } from '../observability/logger';
 
@@ -37,6 +38,40 @@ export function toProviderConfig(provider: BeeclawProvider): ProviderConfig {
 }
 
 // ============================================================================
+// AIClient factory (for new code)
+// ============================================================================
+
+let _aiClient: AIClient | null = null;
+
+/**
+ * Get a bee AIClient wired to beeclaw's retry + concurrency singletons.
+ *
+ * For new code, prefer using this over beeclaw's callAI() directly:
+ *   const client = getBeeAIClient();
+ *   const response = await client.callAI({ provider, model, messages });
+ *
+ * beeclaw's existing api.ts (callAI/streamAI) continues to work unchanged
+ * for backward compatibility.
+ */
+export function getBeeAIClient(): AIClient {
+  if (!_aiClient) {
+    // Lazy-import to avoid circular deps at module load.
+    // beeclaw's singletons are structurally compatible with bee's interfaces
+    // (bee was extracted from beeclaw, same method signatures).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getRetryEngine } = require('../../infra/resilience/unified-retry') as typeof import('../../infra/resilience/unified-retry');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getLLMConcurrencyLimiter } = require('../../infra/ai/concurrency-limiter') as typeof import('../../infra/ai/concurrency-limiter');
+
+    _aiClient = new AIClient({
+      retryEngine: getRetryEngine() as any, // structurally compatible
+      concurrencyLimiter: getLLMConcurrencyLimiter() as any,
+    });
+  }
+  return _aiClient;
+}
+
+// ============================================================================
 // Tool registry bridge
 // ============================================================================
 
@@ -51,11 +86,6 @@ interface OpenAIToolDef {
 
 /**
  * Create a bee ToolRegistry from beeclaw's existing OpenAI-format tools.
- *
- * This adapter lets beeclaw use bee's ToolRegistry for tool management
- * while keeping its existing tool definition format.
- *
- * For new tools, prefer registering directly with ToolRegistry + Zod schema.
  */
 export function createToolRegistryFromOpenAI(
   tools: OpenAIToolDef[],
@@ -83,5 +113,6 @@ export function createToolRegistryFromOpenAI(
  * Reset any shared state (for testing).
  */
 export function resetBeeAdapter(): void {
+  _aiClient = null;
   logger.debug('[BeeAdapter] Reset');
 }
