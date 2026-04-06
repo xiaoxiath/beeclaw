@@ -4,6 +4,12 @@ import { getRetryEngine, RETRY_STRATEGIES } from '../../infra/resilience/unified
 import { logger } from '../../infra/observability/logger';
 import { getLLMConcurrencyLimiter, type AcquireOptions } from '../../infra/ai/concurrency-limiter';
 
+// Re-use bee's Anthropic format conversion (extracted from beeclaw)
+import { convertToAnthropicFormat, convertFromAnthropicFormat } from '@bee/provider/format/anthropic';
+
+// Re-use bee's utility functions (extracted from beeclaw)
+export { hasToolCalls, extractToolCalls } from '@bee/provider/call-ai';
+
 // Provider-specific configurations
 const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBody?: Record<string, unknown> }> = {
   openai: {
@@ -44,123 +50,8 @@ function getProviderConfig(provider: AIProvider): { baseUrl: string; path: strin
 }
 
 // ============================================================================
-// B-P0-03: Anthropic API Format Conversion
+// B-P0-03: Anthropic API Format Conversion (imported from bee)
 // ============================================================================
-
-/**
- * Convert OpenAI-format messages and tools to Anthropic format.
- */
-function convertToAnthropicFormat(
-  messages: ChatMessage[],
-  tools?: OpenAITool[],
-): { system?: string; messages: Record<string, unknown>[]; tools?: Record<string, unknown>[] } {
-  let systemPrompt: string | undefined;
-  const anthropicMessages: Record<string, unknown>[] = [];
-
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      // Anthropic uses a top-level `system` field instead of system messages
-      systemPrompt = systemPrompt
-        ? `${systemPrompt}\n\n${msg.content}`
-        : (msg.content as string);
-      continue;
-    }
-
-    if (msg.role === 'assistant') {
-      const content: unknown[] = [];
-      if (msg.content) {
-        content.push({ type: 'text', text: msg.content });
-      }
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        for (const tc of msg.tool_calls) {
-          let input: unknown = {};
-          try { input = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
-          content.push({
-            type: 'tool_use',
-            id: tc.id,
-            name: tc.function.name,
-            input,
-          });
-        }
-      }
-      anthropicMessages.push({ role: 'assistant', content });
-      continue;
-    }
-
-    if (msg.role === 'tool') {
-      // Anthropic expects tool results inside a user message with type tool_result
-      anthropicMessages.push({
-        role: 'user',
-        content: [{
-          type: 'tool_result',
-          tool_use_id: (msg as any).tool_call_id,
-          content: msg.content,
-        }],
-      });
-      continue;
-    }
-
-    // user messages
-    anthropicMessages.push({ role: msg.role, content: msg.content });
-  }
-
-  // Convert tools
-  let anthropicTools: Record<string, unknown>[] | undefined;
-  if (tools && tools.length > 0) {
-    anthropicTools = tools.map(t => ({
-      name: t.function.name,
-      description: t.function.description || '',
-      input_schema: t.function.parameters,
-    }));
-  }
-
-  return {
-    ...(systemPrompt ? { system: systemPrompt } : {}),
-    messages: anthropicMessages,
-    ...(anthropicTools ? { tools: anthropicTools } : {}),
-  };
-}
-
-/**
- * Convert Anthropic response to OpenAI-compatible AIResponse format.
- */
-function convertFromAnthropicFormat(response: Record<string, unknown>): AIResponse {
-  const content = response.content as Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> || [];
-  let textContent = '';
-  const toolCalls: ToolCall[] = [];
-
-  for (const block of content) {
-    if (block.type === 'text' && block.text) {
-      textContent += block.text;
-    } else if (block.type === 'tool_use') {
-      toolCalls.push({
-        id: block.id || `call_${Date.now()}`,
-        type: 'function',
-        function: {
-          name: block.name || '',
-          arguments: JSON.stringify(block.input || {}),
-        },
-      });
-    }
-  }
-
-  return {
-    id: (response.id as string) || '',
-    object: 'chat.completion',
-    created: Date.now(),
-    model: (response.model as string) || '',
-    choices: [{
-      index: 0,
-      message: {
-        role: 'assistant',
-        content: textContent || null,
-        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
-      },
-      finish_reason: toolCalls.length > 0 ? 'tool_calls' : ((response.stop_reason as string) || 'stop'),
-    }],
-    usage: response.usage as any,
-  } as AIResponse;
-}
 
 /**
  * Check if a provider is Anthropic-type.
@@ -662,17 +553,7 @@ export async function executeToolCalls(
   return results;
 }
 
-// Check if response has tool calls
-export function hasToolCalls(response: AIResponse): boolean {
-  return response.choices.some(
-    c => c.message.tool_calls && c.message.tool_calls.length > 0
-  );
-}
-
-// Extract tool calls from response
-export function extractToolCalls(response: AIResponse): ToolCall[] {
-  return response.choices.flatMap(c => c.message.tool_calls || []);
-}
+// hasToolCalls and extractToolCalls — re-exported from bee (see import at top)
 
 // Extract content from response
 export function extractContent(response: AIResponse): string {

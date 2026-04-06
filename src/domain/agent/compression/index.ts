@@ -6,22 +6,22 @@
  * - L2: Extractive compression (TextRank, ~10ms)
  * - L3: Abstractive compression (LLM, ~1s)
  *
- * Plus progressive compaction for long conversations.
+ * Classes re-exported from bee package. Singletons and beeclaw-specific
+ * integration remain here.
  */
 
-// Types
+// Types — re-exported from bee
 export type {
   CompressionLevel,
-  CompressionPlan,
   CompressionResult,
+  CompressionPlan,
   CompressionStats,
   CompressionLLMClient,
   AgeZone,
-  TimedMessage,
   Compressor,
 } from './types';
 
-export { DEFAULT_AGE_ZONES } from './types';
+export { DEFAULT_AGE_ZONES, createEmptyStats } from './types';
 
 // L1 Format Compressor
 export {
@@ -53,7 +53,7 @@ export {
   configureTieredCompressor,
 } from './tiered-compressor';
 
-// Progressive Compactor
+// Progressive Compactor (beeclaw-specific)
 export {
   ProgressiveCompactor,
   getProgressiveCompactor,
@@ -61,7 +61,7 @@ export {
 } from './progressive-compactor';
 export type { CompactResult } from './progressive-compactor';
 
-// Agent Integration
+// Agent Integration (beeclaw-specific)
 export {
   compressMessages,
   shouldCompress,
