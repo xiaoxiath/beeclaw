@@ -1,20 +1,84 @@
 {
-  "name": "bee",
+  "name": "@anthropic/bee",
   "version": "0.1.0",
   "description": "A production-honed AI agent harness extracted from beeclaw",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./core": {
+      "import": "./dist/core/index.js",
+      "types": "./dist/core/index.d.ts"
+    },
+    "./core/*": {
+      "import": "./dist/core/*.js",
+      "types": "./dist/core/*.d.ts"
+    },
+    "./provider": {
+      "import": "./dist/provider/index.js",
+      "types": "./dist/provider/index.d.ts"
+    },
+    "./provider/*": {
+      "import": "./dist/provider/*.js",
+      "types": "./dist/provider/*.d.ts"
+    },
+    "./context/*": {
+      "import": "./dist/context/*.js",
+      "types": "./dist/context/*.d.ts"
+    },
+    "./context/compression": {
+      "import": "./dist/context/compression/index.js",
+      "types": "./dist/context/compression/index.d.ts"
+    },
+    "./context/compression/*": {
+      "import": "./dist/context/compression/*.js",
+      "types": "./dist/context/compression/*.d.ts"
+    },
+    "./resilience": {
+      "import": "./dist/resilience/index.js",
+      "types": "./dist/resilience/index.d.ts"
+    },
+    "./resilience/*": {
+      "import": "./dist/resilience/*.js",
+      "types": "./dist/resilience/*.d.ts"
+    },
+    "./tool": {
+      "import": "./dist/tool/index.js",
+      "types": "./dist/tool/index.d.ts"
+    },
+    "./tool/*": {
+      "import": "./dist/tool/*.js",
+      "types": "./dist/tool/*.d.ts"
+    },
+    "./agent": {
+      "import": "./dist/agent/index.js",
+      "types": "./dist/agent/index.d.ts"
+    },
+    "./hooks": {
+      "import": "./dist/hooks/index.js",
+      "types": "./dist/hooks/index.d.ts"
+    },
+    "./memory": {
+      "import": "./dist/memory/index.js",
+      "types": "./dist/memory/index.d.ts"
+    },
+    "./mcp": {
+      "import": "./dist/mcp/index.js",
+      "types": "./dist/mcp/index.d.ts"
     }
   },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "zod": ">=3.22"
@@ -24,5 +88,18 @@
     "vitest": "^3.0.0",
     "zod": "^3.23.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiaoxiath/beeclaw",
+    "directory": "packages/bee"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "llm",
+    "tool-use",
+    "claude",
+    "openai"
+  ]
 }

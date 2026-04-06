@@ -89,7 +89,10 @@ vi.mock('../../agent', () => ({
   buildSystemPrompt: vi.fn((s: string) => s),
   formatSkillsForPrompt: vi.fn((skills: any[]) => `Skills: ${skills.length}`),
 }));
-vi.mock('../../agent/api', () => ({ callAI: mockCallAI }));
+vi.mock('../../../infra/bee-adapter', () => ({
+  getBeeAIClient: () => ({ callAI: mockCallAI }),
+  toProviderConfig: (p: any) => p,
+}));
 vi.mock('../../agent/fast-llm-judge', () => ({ getFastModelFromConfig: mockGetFastModel }));
 vi.mock('../../agent/types', () => ({
   DEFAULT_VISION_CONFIG: {

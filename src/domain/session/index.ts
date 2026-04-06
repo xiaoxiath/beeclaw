@@ -17,7 +17,7 @@ import { existsSync, mkdirSync } from 'fs';
 import type { ChatMessage, MultimodalContent } from '../agent/types';
 import { DEFAULT_VISION_CONFIG } from '../agent/types';
 import { createAgent, SYSTEM_PROMPTS, getAllToolsForAI, buildSystemPrompt, formatSkillsForPrompt, type TokenStatsConfig } from '../agent';
-import { callAI } from '../agent/api';
+import { getBeeAIClient, toProviderConfig } from '../../infra/bee-adapter';
 import { getFastModelFromConfig } from '../agent/fast-llm-judge';
 import { getMemoryStore } from '../memory';
 import { getSkillStore } from '../skills/store';
@@ -598,8 +598,8 @@ async function compressMessages(
 
     logger.info(`[Session] 🗜️ Compressing ${oldMessages.length} messages using ${compressionModel}...`);
 
-    const response = await callAI({
-      provider: agentConfig.provider,
+    const response = await getBeeAIClient().callAI({
+      provider: toProviderConfig(agentConfig.provider),
       model: compressionModel,
       messages: [
         {

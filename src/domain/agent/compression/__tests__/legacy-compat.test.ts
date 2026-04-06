@@ -25,7 +25,11 @@ const { mockCallAI } = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock('../../api', () => ({ callAI: mockCallAI }));
+const mockBeeAIClient = { callAI: mockCallAI };
+vi.mock('../../../../infra/bee-adapter', () => ({
+  getBeeAIClient: () => mockBeeAIClient,
+  toProviderConfig: (p: any) => p,
+}));
 
 import { hybridCompress, type LegacyCompressionResult } from '../legacy-compat';
 
