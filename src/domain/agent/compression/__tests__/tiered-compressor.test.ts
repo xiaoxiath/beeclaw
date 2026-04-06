@@ -6,13 +6,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
-// Mocks
+// Mocks — target bee package internals (TieredCompressor now comes from bee)
 // ---------------------------------------------------------------------------
 vi.mock('../../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 }));
 
-vi.mock('../context', () => ({
+// Mock bee's dependencies (resolved via @bee alias in vitest.config.ts)
+vi.mock('@bee/core/logger', () => ({
+  getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
+}));
+
+vi.mock('@bee/context/token-estimator', () => ({
   estimateTokens: (text: string) => Math.ceil(text.length / 3),
 }));
 
@@ -20,18 +25,16 @@ const mockL1Compress = vi.fn((text: string) => ({
   compressed: text.replace(/\s+/g, ' ').trim(),
   method: 'L1:format',
 }));
-vi.mock('../l1-format-compressor', () => ({
-  L1FormatCompressor: class {},
-  getL1Compressor: () => ({ compress: mockL1Compress }),
+vi.mock('@bee/context/compression/l1-format-compressor', () => ({
+  L1FormatCompressor: class { compress = mockL1Compress; },
 }));
 
 const mockL2Compress = vi.fn((text: string, _ratio: number) => ({
   compressed: text.slice(0, Math.ceil(text.length * 0.6)),
   method: 'L2:extractive',
 }));
-vi.mock('../l2-extractive-compressor', () => ({
-  L2ExtractiveCompressor: class {},
-  getL2Compressor: () => ({ compress: mockL2Compress }),
+vi.mock('@bee/context/compression/l2-extractive-compressor', () => ({
+  L2ExtractiveCompressor: class { compress = mockL2Compress; },
 }));
 
 const mockL3Compress = vi.fn(async (text: string, _target: number) => ({
@@ -39,12 +42,8 @@ const mockL3Compress = vi.fn(async (text: string, _target: number) => ({
   method: 'L3:abstractive',
 }));
 const mockL3SetLLMClient = vi.fn(() => {});
-vi.mock('../l3-abstractive-compressor', () => ({
-  L3AbstractiveCompressor: class {},
-  getL3Compressor: () => ({
-    compress: mockL3Compress,
-    setLLMClient: mockL3SetLLMClient,
-  }),
+vi.mock('@bee/context/compression/l3-abstractive-compressor', () => ({
+  L3AbstractiveCompressor: class { compress = mockL3Compress; setLLMClient = mockL3SetLLMClient; },
 }));
 
 import { TieredCompressor, getTieredCompressor, resetTieredCompressor } from '../tiered-compressor';

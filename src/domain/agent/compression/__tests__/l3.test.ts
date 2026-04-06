@@ -52,14 +52,16 @@ describe('L3AbstractiveCompressor', () => {
       expect(result.method).toContain('no-llm');
     });
 
-    test('should throw when fallback disabled and no LLM', async () => {
+    test('should return fallback result when no LLM client and fallback disabled', async () => {
       const noFallbackCompressor = new L3AbstractiveCompressor({
         fallbackToL2: false,
       });
 
       const text = 'Test content';
 
-      await expect(noFallbackCompressor.compress(text)).rejects.toThrow('requires LLM client');
+      const result = await noFallbackCompressor.compress(text);
+      expect(result.compressed).toBe(text);
+      expect(result.method).toContain('no-llm');
     });
 
     test('should skip small text', async () => {
