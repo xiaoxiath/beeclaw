@@ -43,7 +43,12 @@ vi.mock('../../agent', () => ({
   buildSystemPrompt: vi.fn((s: string) => s),
   formatSkillsForPrompt: vi.fn(() => ''),
 }));
-vi.mock('../../agent/api', () => ({ callAI: vi.fn(async () => ({ choices: [{ message: { content: 'summary' } }] })) }));
+vi.mock('../../../infra/bee-adapter', () => ({
+  getBeeAIClient: () => ({
+    callAI: vi.fn(async () => ({ choices: [{ message: { content: 'summary' } }] })),
+  }),
+  toProviderConfig: (p: any) => p,
+}));
 vi.mock('../../agent/fast-llm-judge', () => ({ getFastModelFromConfig: vi.fn(() => null) }));
 vi.mock('../../memory', () => ({ getMemoryStore: vi.fn(() => ({ getCoreContext: () => ({}) })) }));
 vi.mock('../../skills/store', () => ({ getSkillStore: vi.fn(() => ({ list: () => [] })) }));

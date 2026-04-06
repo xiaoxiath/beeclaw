@@ -14,7 +14,7 @@
 import type { AIProvider, CompressionConfig } from '../../../infra/config/schema';
 import type { ChatMessage } from '../types';
 import { estimateTokens, estimateTotalTokens } from '../context';
-import { callAI } from '../api';
+import { getBeeAIClient, toProviderConfig } from '../../../infra/bee-adapter';
 
 // ---- Legacy types ----
 
@@ -89,8 +89,8 @@ async function compressWithLLM(
   const prompt = buildCompressionPrompt(conversationText, originalTokens);
 
   try {
-    const response = await callAI({
-      provider,
+    const response = await getBeeAIClient().callAI({
+      provider: toProviderConfig(provider),
       model,
       messages: [
         { role: 'system', content: '你是对话压缩专家，擅长在大幅减少文本长度的同时保留关键信息和上下文。' },

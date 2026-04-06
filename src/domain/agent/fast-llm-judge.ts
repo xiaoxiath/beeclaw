@@ -19,7 +19,7 @@
  */
 
 import { logger } from '../../infra/observability/logger';
-import { callAI } from '../agent/api';
+import { getBeeAIClient, toProviderConfig } from '../../infra/bee-adapter';
 import type { AIProvider } from '../../infra/config/schema';
 import type { ChatMessage } from '../agent/types';
 import { getConfig_ } from '../../app';
@@ -191,9 +191,9 @@ export class FastLLMJudge {
       temperature: options.temperature ?? this.config.defaultTemperature,
     });
 
-    // 调用 AI
-    const response = await callAI({
-      provider: this.provider,
+    // 调用 AI (via bee AIClient)
+    const response = await getBeeAIClient().callAI({
+      provider: toProviderConfig(this.provider),
       model: this.fastModel,
       messages,
       temperature: options.temperature ?? this.config.defaultTemperature,

@@ -10,7 +10,7 @@ import {
   getContentExtractor,
 } from '../search';
 import { createDeepResearchHandler, type ResearchDepth } from '../search/research/deep-research-v2';
-import { callAI } from '../agent/api';
+import { getBeeAIClient, toProviderConfig } from '../../infra/bee-adapter';
 import { getProvider, getModel } from '../../app';
 import type { BuiltinToolResult } from './builtin';
 import { cleanText } from './builtin';
@@ -101,8 +101,8 @@ export async function executeDeepResearch(params: Record<string, unknown>): Prom
           content: msg.content,
         }));
 
-        const response = await callAI({
-          provider,
+        const response = await getBeeAIClient().callAI({
+          provider: toProviderConfig(provider),
           model,
           messages: apiMessages,
           temperature: opts?.temperature,

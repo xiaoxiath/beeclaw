@@ -23,10 +23,13 @@ vi.mock('../../search/research/deep-research-v2', () => ({
   }),
 }));
 
-vi.mock('../../agent/api', () => ({
-  callAI: vi.fn(() => Promise.resolve({
-    choices: [{ message: { content: 'AI response' } }],
-  })),
+vi.mock('../../../infra/bee-adapter', () => ({
+  getBeeAIClient: () => ({
+    callAI: vi.fn(() => Promise.resolve({
+      choices: [{ message: { content: 'AI response' } }],
+    })),
+  }),
+  toProviderConfig: (p: any) => p,
 }));
 
 vi.mock('../../../app', () => ({

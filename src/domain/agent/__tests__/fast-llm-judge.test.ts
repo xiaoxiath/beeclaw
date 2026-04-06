@@ -29,7 +29,11 @@ const { mockCallAI, mockGetConfig } = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock('../api', () => ({ callAI: mockCallAI }));
+const mockBeeAIClient = { callAI: mockCallAI };
+vi.mock('../../../infra/bee-adapter', () => ({
+  getBeeAIClient: () => mockBeeAIClient,
+  toProviderConfig: (p: any) => p,
+}));
 vi.mock('../../../app', () => ({ getConfig_: mockGetConfig }));
 
 import {
