@@ -12,7 +12,6 @@
  * - getLogger() replaces direct logger import
  */
 
-import { getLogger } from '../core/logger';
 import type { ChatMessage, OpenAITool, AIResponse, ToolCall, ToolResult, ToolExecutor, ProviderConfig } from '../core/types';
 import { convertToAnthropicFormat, convertFromAnthropicFormat } from './format/anthropic';
 import type { UnifiedRetryEngine } from '../resilience/retry';
@@ -151,7 +150,6 @@ export class AIClient {
 
   private async _callAIRaw(options: Omit<CallAIOptions, 'concurrency'>): Promise<AIResponse> {
     const { provider, model, messages, tools, temperature, topP, maxTokens } = options;
-    const logger = getLogger();
 
     const { baseUrl, path, extraBody } = getProviderConfig(provider);
 
@@ -263,7 +261,6 @@ export class AIClient {
 
   private async *_streamAIRaw(options: Omit<StreamAIOptions, 'concurrency'>): AsyncGenerator<string, void, unknown> {
     const { provider, model, messages, tools, temperature, topP, maxTokens } = options;
-    const logger = getLogger();
 
     const { baseUrl, path } = getProviderConfig(provider);
     const isAnthropic = isAnthropicProvider(provider);

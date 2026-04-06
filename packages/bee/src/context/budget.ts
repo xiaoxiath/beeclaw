@@ -16,8 +16,6 @@ import {
   compressToolResult,
   compressAssistantMessage,
 } from './token-estimator';
-// TODO: Replace with actual compression module once extracted
-// import { compressMessages, shouldCompress } from './compression';
 
 const logger = getLogger();
 
