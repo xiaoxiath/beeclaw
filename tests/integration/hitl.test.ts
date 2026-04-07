@@ -261,12 +261,12 @@ describe('HITL Integration Tests', () => {
       delete testSession.metadata?.pendingQuestion;
 
       const result = await handleHITLResponse(testSessionId, 'approve');
-      expect(result).toBe('');
+      expect(result).toBeNull();
     });
 
     it('should return empty string for non-HITL message', async () => {
       const result = await handleHITLResponse(testSessionId, 'Hello world');
-      expect(result).toBe('');
+      expect(result).toBeNull();
     });
   });
 });

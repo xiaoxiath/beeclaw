@@ -40,8 +40,8 @@ describe('Layer Priorities Configuration', () => {
       expect(LAYER_PRIORITIES.FACTS).toBe(70);
     });
 
-    test('should have SKILLS priority at 65', () => {
-      expect(LAYER_PRIORITIES.SKILLS).toBe(65);
+    test('should have SKILLS priority at 75', () => {
+      expect(LAYER_PRIORITIES.SKILLS).toBe(75);
     });
 
     test('should have EXAMPLES priority at 10', () => {
@@ -71,8 +71,8 @@ describe('Layer Priorities Configuration', () => {
         LAYER_PRIORITIES.TRAITS,
         LAYER_PRIORITIES.SOUL,
         LAYER_PRIORITIES.USER_CONTEXT,
-        LAYER_PRIORITIES.FACTS,
         LAYER_PRIORITIES.SKILLS,
+        LAYER_PRIORITIES.FACTS,
         LAYER_PRIORITIES.EXAMPLES,
       ];
 
@@ -148,7 +148,7 @@ describe('Layer Priorities Configuration', () => {
         },
       ];
 
-      // When trimming, EXAMPLES (10) should be dropped before SKILLS (65)
+      // When trimming, EXAMPLES (10) should be dropped before SKILLS (75)
       const sorted = [...layers].sort((a, b) => a.priority - b.priority);
 
       expect(sorted[0].name).toBe('examples'); // Lowest priority first
@@ -281,7 +281,7 @@ describe('Layer Priorities Configuration', () => {
       // Runtime context (date/time) > User preferences > Facts > Skills > Examples
       expect(LAYER_PRIORITIES.RUNTIME).toBeGreaterThan(LAYER_PRIORITIES.USER_CONTEXT);
       expect(LAYER_PRIORITIES.USER_CONTEXT).toBeGreaterThan(LAYER_PRIORITIES.FACTS);
-      expect(LAYER_PRIORITIES.FACTS).toBeGreaterThan(LAYER_PRIORITIES.SKILLS);
+      expect(LAYER_PRIORITIES.SKILLS).toBeGreaterThan(LAYER_PRIORITIES.FACTS);
       expect(LAYER_PRIORITIES.SKILLS).toBeGreaterThan(LAYER_PRIORITIES.EXAMPLES);
     });
   });

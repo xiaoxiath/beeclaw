@@ -187,7 +187,7 @@ describe('Agent API', () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://my-llm.example.com/v1/chat/completions',
+        'https://my-llm.example.com/v1',
         expect.anything(),
       );
     });

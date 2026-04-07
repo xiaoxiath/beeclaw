@@ -14,65 +14,64 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── hoisted mocks ─────────────────────────────────────────────────────
-const mocks = vi.hoisted(() => {
-  const feishuAdapterInstance = {
-    initialize: vi.fn().mockResolvedValue(undefined),
-    start: vi.fn().mockResolvedValue(undefined),
-  };
-  const webAdapterInstance = {
-    initialize: vi.fn().mockResolvedValue(undefined),
-    start: vi.fn().mockResolvedValue(undefined),
-  };
-  const daemonInstance = {
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
-  };
-  const schedulerInstance = {
-    init: vi.fn(),
-    listSchedules: vi.fn().mockReturnValue([]),
-    createSchedule: vi.fn(),
-  };
-  const shutdownInstance = {
+const feishuAdapterInstance = {
+  initialize: vi.fn().mockResolvedValue(undefined),
+  start: vi.fn().mockResolvedValue(undefined),
+};
+const webAdapterInstance = {
+  initialize: vi.fn().mockResolvedValue(undefined),
+  start: vi.fn().mockResolvedValue(undefined),
+};
+const daemonInstance = {
+  start: vi.fn().mockResolvedValue(undefined),
+  stop: vi.fn().mockResolvedValue(undefined),
+};
+const schedulerInstance = {
+  init: vi.fn(),
+  listSchedules: vi.fn().mockReturnValue([]),
+  createSchedule: vi.fn(),
+};
+const shutdownInstance = {
+  register: vi.fn(),
+};
+
+const mocks = {
+  feishuAdapterInstance,
+  webAdapterInstance,
+  daemonInstance,
+  schedulerInstance,
+  shutdownInstance,
+
+  initApp: vi.fn(),
+  getAgent: vi.fn().mockReturnValue({ name: 'test-agent' }),
+  getMessageGateway: vi.fn().mockReturnValue({ gw: true }),
+  getTaskDispatcher: vi.fn().mockReturnValue({ dp: true }),
+  registerFeishuHandler: vi.fn(),
+  setCliDeliveryHandler: vi.fn(),
+  getFeishuWSClient: vi.fn().mockReturnValue(null),
+  getDaemon: vi.fn(),
+  getScheduler: vi.fn(),
+  adapterRegistry: {
     register: vi.fn(),
-  };
+    stopAll: vi.fn().mockResolvedValue(undefined),
+  },
+  saveAllSessions: vi.fn(),
+  loadAllSessions: vi.fn(),
+  initSelfEvolution: vi.fn(),
+  initTaskManager: vi.fn().mockResolvedValue(undefined),
+  initWorkers: vi.fn().mockResolvedValue(undefined),
+  renderMessageCard: vi.fn().mockReturnValue({ card: 'v2' }),
 
-  return {
-    feishuAdapterInstance,
-    webAdapterInstance,
-    daemonInstance,
-    schedulerInstance,
-    shutdownInstance,
-
-    initApp: vi.fn(),
-    getAgent: vi.fn().mockReturnValue({ name: 'test-agent' }),
-    getMessageGateway: vi.fn().mockReturnValue({ gw: true }),
-    getTaskDispatcher: vi.fn().mockReturnValue({ dp: true }),
-    registerFeishuHandler: vi.fn(),
-    setCliDeliveryHandler: vi.fn(),
-    getFeishuWSClient: vi.fn().mockReturnValue(null),
-    getDaemon: vi.fn(),
-    getScheduler: vi.fn(),
-    adapterRegistry: {
-      register: vi.fn(),
-      stopAll: vi.fn().mockResolvedValue(undefined),
-    },
-    saveAllSessions: vi.fn(),
-    loadAllSessions: vi.fn(),
-    initSelfEvolution: vi.fn(),
-    initTaskManager: vi.fn().mockResolvedValue(undefined),
-    initWorkers: vi.fn().mockResolvedValue(undefined),
-    renderMessageCard: vi.fn().mockReturnValue({ card: 'v2' }),
-
-    handleSendReminderJob: vi.fn().mockResolvedValue(undefined),
-    handleGoalProgressCheckJob: vi.fn().mockResolvedValue(undefined),
-    handleMemoryCompressJob: vi.fn().mockResolvedValue(undefined),
-    handleCustomJob: vi.fn().mockResolvedValue(undefined),
-    handleSelfEvolutionJob: vi.fn().mockResolvedValue(undefined),
-    handleLlmProactiveChatJob: vi.fn().mockResolvedValue(undefined),
-    handleRunSkillJob: vi.fn().mockResolvedValue(undefined),
-    registerCardV2Renderer: vi.fn(),
-  };
-});
+  handleSendReminderJob: vi.fn().mockResolvedValue(undefined),
+  handleGoalProgressCheckJob: vi.fn().mockResolvedValue(undefined),
+  handleMemoryCompressJob: vi.fn().mockResolvedValue(undefined),
+  handleCustomJob: vi.fn().mockResolvedValue(undefined),
+  handleSelfEvolutionJob: vi.fn().mockResolvedValue(undefined),
+  handleLlmProactiveChatJob: vi.fn().mockResolvedValue(undefined),
+  handleRunSkillJob: vi.fn().mockResolvedValue(undefined),
+  registerCardV2Renderer: vi.fn(),
+  registerDeepAnalysisCardRenderer: vi.fn(),
+};
 
 // ── vi.mock declarations (inline classes survive restoreMocks) ────────
 vi.mock('../../app', () => ({
@@ -154,6 +153,10 @@ vi.mock('../../domain/proactive/job-handlers', () => ({
   handleGoalProgressCheckJob: (...args: any[]) => mocks.handleGoalProgressCheckJob(...args),
   handleCustomJob: (...args: any[]) => mocks.handleCustomJob(...args),
   handleSendReminderJob: (...args: any[]) => mocks.handleSendReminderJob(...args),
+}));
+
+vi.mock('../../domain/tools/deep-analysis', () => ({
+  registerDeepAnalysisCardRenderer: (...args: any[]) => mocks.registerDeepAnalysisCardRenderer(...args),
 }));
 
 vi.mock('../../app/routes/proactive', () => ({

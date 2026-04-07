@@ -360,14 +360,12 @@ describe('Agent Tools', () => {
       expect(formatSkillsForPrompt(null as any)).toBe('');
     });
 
-    test('formats single skill with XML tags', () => {
+    test('formats single skill with compact markdown list', () => {
       const skills = [{ name: 'test-skill', description: 'Test description' }];
       const result = formatSkillsForPrompt(skills);
-      expect(result).toContain('<skill>');
-      expect(result).toContain('<name>test-skill</name>');
-      expect(result).toContain('<description>Test description</description>');
-      expect(result).toContain('</skill>');
-      expect(result).toContain('<available_skills>');
+      expect(result).toContain('## Available Skills (1)');
+      expect(result).toContain('**test-skill**: Test description');
+      expect(result).toContain('skill_get(name)');
     });
 
     test('formats multiple skills', () => {
@@ -387,22 +385,21 @@ describe('Agent Tools', () => {
       const result = formatSkillsForPrompt(skills);
       expect(result).toContain('trigger1');
       expect(result).toContain('trigger2');
-      expect(result).toContain('Triggers:');
+      expect(result).toContain('[trigger1, trigger2]');
     });
 
     test('handles skills without triggers', () => {
       const skills = [{ name: 'no-triggers', description: 'No triggers here' }];
       const result = formatSkillsForPrompt(skills);
       expect(result).toContain('no-triggers');
-      expect(result).not.toContain('Triggers:');
+      expect(result).not.toContain('[');
     });
 
-    test('includes IMPORTANT instructions about skill_get/skill_record', () => {
+    test('includes usage instructions about skill_get', () => {
       const skills = [{ name: 'any-skill', description: 'Any' }];
       const result = formatSkillsForPrompt(skills);
       expect(result).toContain('skill_get');
-      expect(result).toContain('skill_record');
-      expect(result).toContain('IMPORTANT');
+      expect(result).toContain('Usage');
     });
 
     test('handles skills with empty triggers array', () => {
@@ -420,12 +417,12 @@ describe('Agent Tools', () => {
     test('returns a string with date info', () => {
       const ctx = getCurrentTimeContext();
       expect(typeof ctx).toBe('string');
-      expect(ctx).toContain('当前:');
+      expect(ctx).toContain('当前真实时间:');
     });
 
-    test('contains time slot (XX:00段)', () => {
+    test('contains quantized time slot', () => {
       const ctx = getCurrentTimeContext();
-      expect(ctx).toMatch(/\d{2}:00段/);
+      expect(ctx).toMatch(/\d{2}:\d{2}/);
     });
 
     test('contains timezone info (tz=)', () => {
@@ -439,7 +436,7 @@ describe('Agent Tools', () => {
       // They call the same underlying function
       const volatile = buildVolatileContext();
       expect(typeof volatile).toBe('string');
-      expect(volatile).toContain('当前:');
+      expect(volatile).toContain('当前真实时间:');
       expect(volatile).toContain('tz=');
     });
   });

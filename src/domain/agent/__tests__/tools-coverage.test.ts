@@ -713,7 +713,7 @@ describe('Agent tools.ts coverage - uncovered lines', () => {
     it('should handle different time periods via getCurrentTimeContext', () => {
       // getCurrentTimeContext uses real Date, so it always works
       const ctx = getCurrentTimeContext();
-      expect(ctx).toContain('当前:');
+      expect(ctx).toContain('当前真实时间:');
       // Contains a time period (one of the Chinese labels)
       expect(ctx).toMatch(/凌晨|早上|上午|中午|下午|傍晚|晚上/);
     });

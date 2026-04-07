@@ -9,6 +9,7 @@ import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { Session, SessionMessage } from './index';
 import { logger } from '../../infra/observability/logger';
+import { isSessionIdle, buildIdleRotationSummary } from './idle-rotation';
 import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../../infra/utils/atomic-fs';
 import { getDataConnection } from '../../infra/db';
 import { sessions as sessionsTable } from '../../infra/db/schema';
@@ -256,9 +257,7 @@ export function loadAllSessions(
     f => f.endsWith('.json') && !f.endsWith('.bak') && !f.endsWith('.tmp')
   );
 
-  // Import idle rotation helpers lazily to avoid circular deps at module level
   let rotated = 0;
-  const { isSessionIdle, buildIdleRotationSummary } = require('./idle-rotation');
 
   for (const file of files) {
     try {
