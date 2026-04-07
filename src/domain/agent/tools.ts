@@ -681,22 +681,31 @@ export function formatSkillsForPrompt(
 ): string {
   if (!skills || skills.length === 0) return '';
 
-  const skillEntries = skills.map(skill => {
-    const triggers = skill.triggers?.length ? ` Triggers: ${skill.triggers.join(', ')}.` : '';
-    return `<skill>
-<name>${skill.name}</name>
-<description>${skill.description}${triggers}</description>
-</skill>`;
+  // Compressed format: skill name + short desc + key triggers
+  // Balances token efficiency (~1100 for 30 skills) with matching accuracy
+  const maxDescLen = 45;
+  const maxTriggers = 3;
+
+  const skillList = skills.map(skill => {
+    // Truncate description
+    const shortDesc = skill.description.length > maxDescLen
+      ? skill.description.substring(0, maxDescLen - 2) + '..'
+      : skill.description;
+
+    // Extract key triggers (first N)
+    const keyTriggers = skill.triggers?.slice(0, maxTriggers) || [];
+    const triggerStr = keyTriggers.length > 0
+      ? ` [${keyTriggers.join(', ')}${skill.triggers && skill.triggers.length > maxTriggers ? ', ...' : ''}]`
+      : '';
+
+    return `- **${skill.name}**: ${shortDesc}${triggerStr}`;
   }).join('\n');
 
-  return `<available_skills>
-${skillEntries}
-</available_skills>
+  return `## Available Skills (${skills.length})
 
-**IMPORTANT**: These are summaries for matching only. Before executing any skill, you MUST:
-1. Call \`skill_get(name)\` to load the full workflow.
-2. Follow the loaded steps exactly.
-3. Call \`skill_record()\` after execution with success/failure.`;
+${skillList}
+
+**Usage**: Call \`skill_get(name)\` to load full workflow before execution.`;
 }
 
 // ---------------------------------------------------------------------------

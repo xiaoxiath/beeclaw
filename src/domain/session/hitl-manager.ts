@@ -17,7 +17,7 @@ import { logger } from '../../infra/observability/logger';
 export async function handleHITLResponse(
   sessionId: string,
   userMessage: string
-): Promise<string> {
+): Promise<string | null> {
   const session = getSession(sessionId);
   if (!session) {
     logger.error(`[HITL] Session not found: ${sessionId}`);
@@ -142,7 +142,7 @@ export async function handleHITLResponse(
 
   // 没有待处理的 HITL 状态（这是正常情况，表示这是普通消息）
   logger.debug?.(`[HITL] No pending HITL state for session ${sessionId} - treating as regular message`);
-  return ''; // 当作普通消息处理
+  return null; // 当作普通消息处理，null 表示无 HITL 状态
 }
 
 /**

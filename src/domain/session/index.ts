@@ -918,19 +918,36 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     // Build system prompt with core memory
     let systemPrompt = agentConfig.systemPrompt || SYSTEM_PROMPTS.default;
 
-    // Add conversation summary if exists
+    // Add conversation summary if exists (skip stale summaries)
     if (session.summary) {
-      logger.debug('[Session] ⚠️ Adding summary to system prompt:', {
-        summaryLength: session.summary.length,
-        summaryPreview: session.summary.substring(0, 100) + '...',
-        messageCount: session.messages.length,
-        recentMessages: session.messages.slice(-3).map(m => ({
-          role: m.role,
-          contentPreview: m.content.substring(0, 50),
-        })),
-      });
+      // Calculate summary age based on session's last update
+      const lastUpdate = new Date(session.updatedAt);
+      const daysSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24);
 
-      systemPrompt += `\n\n## 历史对话摘要\n${session.summary}`;
+      // Time-based filtering strategy:
+      // - > 7 days: always skip (stale context)
+      // - > 2 days AND no recent messages: skip (idle session with old topics)
+      // - Otherwise: inject summary
+      const isStale =
+        daysSinceUpdate > 7 ||
+        (daysSinceUpdate > 2 && session.messages.length === 0);
+
+      if (isStale) {
+        logger.debug('[Session] Skipping stale summary:', {
+          age: `${Math.floor(daysSinceUpdate)} days`,
+          reason: daysSinceUpdate > 7 ? 'too old' : 'idle session',
+          messageCount: session.messages.length,
+        });
+      } else {
+        logger.debug('[Session] ⚠️ Adding summary to system prompt:', {
+          summaryLength: session.summary.length,
+          summaryPreview: session.summary.substring(0, 100) + '...',
+          age: `${Math.floor(daysSinceUpdate)} days`,
+          messageCount: session.messages.length,
+        });
+
+        systemPrompt += `\n\n## 历史对话摘要\n${session.summary}`;
+      }
     }
 
     // [AUDIT FIX M-05] Consume lastMessageSource for context-aware behavior

@@ -256,10 +256,27 @@ export function loadAllSessions(
     f => f.endsWith('.json') && !f.endsWith('.bak') && !f.endsWith('.tmp')
   );
 
+  // Import idle rotation helpers lazily to avoid circular deps at module level
+  let rotated = 0;
+  const { isSessionIdle, buildIdleRotationSummary } = require('./idle-rotation');
+
   for (const file of files) {
     try {
       const content = readFileSync(join(storagePath, file), 'utf-8');
       const session = JSON.parse(content) as Session;
+
+      // Rotate stale sessions at load time so old messages don't pollute context
+      if (session.messages?.length > 0 && isSessionIdle(session.updatedAt)) {
+        const archiveSummary = buildIdleRotationSummary(session.messages, session.summary);
+        session.summary = archiveSummary;
+        session.messages = [];
+        session.updatedAt = new Date().toISOString();
+        // Save rotated state to disk immediately
+        const filePath = getSessionFilePath(storagePath, session.id);
+        writeFileAtomic(filePath, JSON.stringify(session, null, 2));
+        rotated++;
+      }
+
       sessionsMap.set(session.id, session);
       loaded++;
     } catch (error) {
@@ -267,7 +284,7 @@ export function loadAllSessions(
     }
   }
 
-  logger.info(`[Session] Loaded ${loaded} sessions from disk`);
+  logger.info(`[Session] Loaded ${loaded} sessions from disk${rotated > 0 ? ` (${rotated} rotated due to idle)` : ''}`);
   return loaded;
 }
 
