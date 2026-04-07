@@ -34,9 +34,11 @@ const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBod
 // Get provider-specific base URL
 function getProviderConfig(provider: AIProvider): { baseUrl: string; path: string; extraBody?: Record<string, unknown> } {
   if (provider.baseUrl) {
+    const url = new URL(provider.baseUrl);
+    const hasPathSegment = url.pathname !== '/' && url.pathname !== '';
     return {
       baseUrl: provider.baseUrl,
-      path: '/chat/completions',
+      path: hasPathSegment ? '' : '/chat/completions',
       extraBody: provider.options?.extraBody as Record<string, unknown> | undefined,
     };
   }

@@ -333,6 +333,25 @@ describe('callAI', () => {
     expect(url).toContain('https://custom.api.com/v1');
   });
 
+  it('should not append chat completions path when custom baseUrl already has a path', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: '1',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      }),
+    });
+
+    await client.callAI({
+      provider: { type: 'openai', apiKey: 'key', baseUrl: 'https://custom.api.com/v1/responses' },
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toBe('https://custom.api.com/v1/responses');
+  });
+
   it('should throw on API error', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
@@ -469,10 +488,9 @@ describe('streamAI', () => {
 
   it('should handle Anthropic streaming format', async () => {
     const chunks = [
-      'event: content_block_delta\n'
-      + 'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}\n\n',
-      'event: message_stop\n'
-      + 'data: {"type":"message_stop"}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":" there"}}\n\n',
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n',
     ];
 
     const encoder = new TextEncoder();
@@ -499,8 +517,51 @@ describe('streamAI', () => {
       collected.push(chunk);
     }
 
-    // Anthropic streaming should yield something (either parsed content or raw)
-    // The exact format depends on the SSE parsing
     expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(collected).toContain('Hi');
+    expect(collected).toContain(' there');
+    expect(collected.join('')).toContain('Hi there');
+  });
+
+  it('should collect Anthropic tool_calls with streamed input_json_delta', async () => {
+    const chunks = [
+      'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{}}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\""}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":":\\"Tokyo\\"}"}}\n\n',
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}\n\n',
+    ];
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(chunk));
+        }
+        controller.close();
+      },
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      body: stream,
+    });
+
+    const collected: string[] = [];
+    for await (const chunk of client.streamAI({
+      provider: { type: 'anthropic', apiKey: 'key' },
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'Weather?' }],
+    })) {
+      collected.push(chunk);
+    }
+
+    const toolCallMarker = collected.find(c => c.includes('<!--tool_calls:'));
+    expect(toolCallMarker).toBeDefined();
+
+    const toolCallsJson = toolCallMarker!.match(/<!--tool_calls:(.+)-->/)![1];
+    const toolCalls = JSON.parse(toolCallsJson);
+    expect(toolCalls[0].id).toBe('toolu_1');
+    expect(toolCalls[0].function.name).toBe('get_weather');
+    expect(toolCalls[0].function.arguments).toBe('{"city":"Tokyo"}');
   });
 });

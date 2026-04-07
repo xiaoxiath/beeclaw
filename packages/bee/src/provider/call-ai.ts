@@ -45,9 +45,11 @@ const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBod
 
 function getProviderConfig(provider: ProviderConfig): { baseUrl: string; path: string; extraBody?: Record<string, unknown> } {
   if (provider.baseUrl) {
+    const url = new URL(provider.baseUrl);
+    const hasPathSegment = url.pathname !== '/' && url.pathname !== '';
     return {
       baseUrl: provider.baseUrl,
-      path: '/chat/completions',
+      path: hasPathSegment ? '' : '/chat/completions',
       extraBody: provider.options?.extraBody as Record<string, unknown> | undefined,
     };
   }
@@ -343,6 +345,67 @@ export class AIClient {
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
+
+          if (isAnthropic) {
+            if (!trimmed.startsWith('data: ')) continue;
+
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              if (toolCallChunks.size > 0) {
+                yield `\n<!--tool_calls:${JSON.stringify(Array.from(toolCallChunks.values()))}-->`;
+              }
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+
+              if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
+                if (parsed.delta.text) yield parsed.delta.text;
+                continue;
+              }
+
+              if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
+                const idx = parsed.index ?? toolCallChunks.size;
+                toolCallChunks.set(idx, {
+                  id: parsed.content_block.id || '',
+                  type: 'function',
+                  function: {
+                    name: parsed.content_block.name || '',
+                    arguments: '',
+                  },
+                });
+                continue;
+              }
+
+              if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'input_json_delta') {
+                const idx = parsed.index ?? 0;
+                const existing = toolCallChunks.get(idx);
+                if (existing && parsed.delta.partial_json) {
+                  existing.function.arguments += parsed.delta.partial_json;
+                }
+                continue;
+              }
+
+              if (parsed.type === 'message_delta' && parsed.delta?.stop_reason) {
+                if (toolCallChunks.size > 0) {
+                  yield `\n<!--tool_calls:${JSON.stringify(Array.from(toolCallChunks.values()))}-->`;
+                }
+                return;
+              }
+
+              if (parsed.type === 'message_stop') {
+                if (toolCallChunks.size > 0) {
+                  yield `\n<!--tool_calls:${JSON.stringify(Array.from(toolCallChunks.values()))}-->`;
+                }
+                return;
+              }
+            } catch {
+              continue;
+            }
+
+            continue;
+          }
 
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);

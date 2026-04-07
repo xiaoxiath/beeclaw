@@ -299,31 +299,22 @@ describe('UnifiedRetryEngine', () => {
   });
 
   it('retries on retryable errors and eventually succeeds', async () => {
-    vi.useFakeTimers();
-    try {
-      const engine = new UnifiedRetryEngine();
-      let attempt = 0;
+    const engine = new UnifiedRetryEngine();
+    let attempt = 0;
 
-      const promise = engine.execute(
-        'retry_op',
-        async () => {
-          attempt++;
-          if (attempt < 3) throw new Error('ECONNREFUSED: connection refused');
-          return 'recovered';
-        },
-        { ...RETRY_STRATEGIES.api, jitter: 0 },
-      );
+    const result = await engine.execute(
+      'retry_op',
+      async () => {
+        attempt++;
+        if (attempt < 3) throw new Error('ECONNREFUSED: connection refused');
+        return 'recovered';
+      },
+      { ...RETRY_STRATEGIES.api, jitter: 0, initialDelayMs: 1, maxDelayMs: 2 },
+    );
 
-      // Advance timers to let retries execute
-      await vi.advanceTimersByTimeAsync(60_000);
-
-      const result = await promise;
-      expect(result.success).toBe(true);
-      expect(result.value).toBe('recovered');
-      expect(result.context.errors.length).toBe(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(result.success).toBe(true);
+    expect(result.value).toBe('recovered');
+    expect(result.context.errors.length).toBe(2);
   });
 
   it('does not retry on non-retryable errors', async () => {
@@ -342,55 +333,39 @@ describe('UnifiedRetryEngine', () => {
   });
 
   it('returns failure when max retries are exhausted', async () => {
-    vi.useFakeTimers();
-    try {
-      const engine = new UnifiedRetryEngine();
-      const strategy = { ...RETRY_STRATEGIES.api, maxRetries: 2, jitter: 0 };
+    const engine = new UnifiedRetryEngine();
+    const strategy = { ...RETRY_STRATEGIES.api, maxRetries: 2, jitter: 0, initialDelayMs: 1, maxDelayMs: 2 };
 
-      const promise = engine.execute(
-        'failing_op',
-        async () => {
-          throw new Error('ECONNREFUSED');
-        },
-        strategy,
-      );
+    const result = await engine.execute(
+      'failing_op',
+      async () => {
+        throw new Error('ECONNREFUSED');
+      },
+      strategy,
+    );
 
-      await vi.advanceTimersByTimeAsync(120_000);
-      const result = await promise;
-
-      expect(result.success).toBe(false);
-      expect(result.context.errors.length).toBe(3); // initial + 2 retries
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(result.success).toBe(false);
+    expect(result.context.errors.length).toBe(3); // initial + 2 retries
   });
 
   it('emits retry events', async () => {
-    vi.useFakeTimers();
-    try {
-      const engine = new UnifiedRetryEngine();
-      const events: Array<{ type: string }> = [];
-      engine.onRetryEvent((e) => events.push({ type: e.type }));
+    const engine = new UnifiedRetryEngine();
+    const events: Array<{ type: string }> = [];
+    engine.onRetryEvent((e) => events.push({ type: e.type }));
 
-      let attempt = 0;
-      const promise = engine.execute(
-        'event_op',
-        async () => {
-          attempt++;
-          if (attempt < 2) throw new Error('ECONNREFUSED');
-          return 'done';
-        },
-        { ...RETRY_STRATEGIES.api, jitter: 0 },
-      );
+    let attempt = 0;
+    await engine.execute(
+      'event_op',
+      async () => {
+        attempt++;
+        if (attempt < 2) throw new Error('ECONNREFUSED');
+        return 'done';
+      },
+      { ...RETRY_STRATEGIES.api, jitter: 0, initialDelayMs: 1, maxDelayMs: 2 },
+    );
 
-      await vi.advanceTimersByTimeAsync(60_000);
-      await promise;
-
-      expect(events.some((e) => e.type === 'retry')).toBe(true);
-      expect(events.some((e) => e.type === 'success')).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(events.some((e) => e.type === 'retry')).toBe(true);
+    expect(events.some((e) => e.type === 'success')).toBe(true);
   });
 
   it('respects circuit breaker state', async () => {

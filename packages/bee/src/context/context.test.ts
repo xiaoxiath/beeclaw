@@ -511,6 +511,23 @@ describe('TokenBudgetManager', () => {
       // The manager keeps at least keepRecent messages
       expect(messages.length).toBeLessThan(5);
     });
+
+    it('does not leave token count negative after aggressive trimming', () => {
+      const config = makeConfig({ maxTokens: 100, compressionThreshold: 0.2, keepRecent: 1 });
+      const mgr = new TokenBudgetManager(config, 150);
+
+      const messages: ChatMessage[] = [
+        { role: 'system', content: 'System prompt' },
+        { role: 'user', content: 'Message one with enough content to count tokens' },
+        { role: 'assistant', content: 'Reply one with enough content to count tokens' },
+        { role: 'user', content: 'Message two with enough content to count tokens' },
+        { role: 'assistant', content: 'Latest reply with enough content to count tokens' },
+      ];
+
+      mgr.trimContextIfNeeded(messages);
+
+      expect(mgr.tokens).toBeGreaterThanOrEqual(0);
+    });
   });
 
   describe('manageContextCompression', () => {
