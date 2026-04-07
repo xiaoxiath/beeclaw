@@ -420,7 +420,7 @@ export function getCurrentTimeContext(): string {
   const period = getTimePeriod(hour);
   const timeSlot = `${String(hour).padStart(2, '0')}:${String(quantizedMinute).padStart(2, '0')}`;
 
-  return `当前: ${dateStr} ${period} ${timeSlot}, ${userLocation}, tz=${userTimezone}`;
+  return `[Runtime Context] 当前真实时间: ${dateStr} ${period} ${timeSlot}, ${userLocation}, tz=${userTimezone}。注意: 对话历史中提到的时间可能是过去的，以此处标注的时间为准。`;
 }
 
 /**

@@ -34,6 +34,7 @@ import { getHookRunnerPort, getChannelClientPort, getMessageControllerFactory } 
 import type { IMessageController } from '../ports';
 import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
+import { isSessionIdle, buildIdleRotationSummary, buildTemporalMarker } from './idle-rotation';
 import type { SessionMessageQueueOptions } from '../../infra/resilience/session-lock';
 import { SmartTimeout } from '../../infra/resilience/smart-timeout';
 import { handleHITLResponse } from './hitl-manager';
@@ -637,7 +638,22 @@ export function getOrCreateSession(options: SessionOptions): Session {
   // Check memory cache first
   const cached = sessions.get(options.sessionId);
   if (cached) {
-    cached.updatedAt = new Date().toISOString();
+    // [FIX] Rotate idle sessions to prevent stale time context
+    if (cached.messages.length > 0 && isSessionIdle(cached.updatedAt)) {
+      logger.info('[Session] Rotating idle session:', {
+        sessionId: cached.id,
+        lastUpdated: cached.updatedAt,
+        messageCount: cached.messages.length,
+      });
+      // Archive old messages into summary, keep session identity
+      const archiveSummary = buildIdleRotationSummary(cached.messages, cached.summary);
+      cached.summary = archiveSummary;
+      cached.messages = [];
+      cached.updatedAt = new Date().toISOString();
+      saveSession(cached);
+    } else {
+      cached.updatedAt = new Date().toISOString();
+    }
     return cached;
   }
 
@@ -647,6 +663,19 @@ export function getOrCreateSession(options: SessionOptions): Session {
     sessions.set(options.sessionId, loaded);
     logger.info('[Session] Loaded from disk:', options.sessionId, `(${loaded.messages.length} messages)`);
     pruneProcessedMessages(loaded);
+    // [FIX] Rotate idle sessions loaded from disk
+    if (loaded.messages.length > 0 && isSessionIdle(loaded.updatedAt)) {
+      logger.info('[Session] Rotating idle session (from disk):', {
+        sessionId: loaded.id,
+        lastUpdated: loaded.updatedAt,
+        messageCount: loaded.messages.length,
+      });
+      const archiveSummary = buildIdleRotationSummary(loaded.messages, loaded.summary);
+      loaded.summary = archiveSummary;
+      loaded.messages = [];
+      loaded.updatedAt = new Date().toISOString();
+      saveSession(loaded);
+    }
     return loaded;
   }
 
@@ -1027,18 +1056,27 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       })),
     });
 
+    // [FIX] Add temporal marker if history is from a different day
+    // This prevents the LLM from confusing old conversation dates with today
+    const temporalMarker = buildTemporalMarker(session.messages);
+    let temporalMarkerInjected = false;
+
     for (let i = 0; i < session.messages.length; i++) {
       const msg = session.messages[i];
       if (msg.role === 'user') {
+        let userContent: string;
         if (msg._meta?.originalType === 'multimodal' && msg._meta.visionDescription) {
-          agent.addMessage({
-            role: 'user',
-            content: `[用户发送了图片，以下是图片内容描述] ${msg._meta.visionDescription}` +
-              (msg.content.includes('[图片]') ? '' : `\n用户附言: ${msg.content}`),
-          });
+          userContent = `[用户发送了图片，以下是图片内容描述] ${msg._meta.visionDescription}` +
+            (msg.content.includes('[图片]') ? '' : `\n用户附言: ${msg.content}`);
         } else {
-          agent.addMessage({ role: 'user', content: msg.content });
+          userContent = msg.content;
         }
+        // Inject temporal marker before the first replayed user message
+        if (temporalMarker && !temporalMarkerInjected) {
+          userContent = `${temporalMarker}\n\n${userContent}`;
+          temporalMarkerInjected = true;
+        }
+        agent.addMessage({ role: 'user', content: userContent });
       } else if (msg.role === 'assistant') {
         agent.addMessage({ role: 'assistant', content: msg.content });
       }
