@@ -49,17 +49,30 @@ async function sendFeishuMessage(
   options?: { title?: string }
 ): Promise<void> {
   if (_renderMessageCard) {
-    // [Card V2] Unified format — all Feishu messages use Card V2
-    const textBlock: ContentBlock = { type: 'text', text: message };
-    const card = _renderMessageCard([textBlock], { streaming: false });
-    await client.sendCard(chatId, 'chat_id', card);
-  } else {
-    // Fallback to markdown message if Card V2 not available
-    if (options) {
-      await client.sendMarkdownMessage(chatId, 'chat_id', message, options);
-    } else {
-      await client.sendMarkdownMessage(chatId, 'chat_id', message);
+    try {
+      // [Card V2] Unified format — all Feishu messages use Card V2
+      const blocks: ContentBlock[] = [];
+
+      // If title is provided, prepend it as bold text
+      if (options?.title) {
+        blocks.push({ type: 'text', text: `**${options.title}**\n\n${message}` });
+      } else {
+        blocks.push({ type: 'text', text: message });
+      }
+
+      const card = _renderMessageCard(blocks, { streaming: false });
+      await client.sendCard(chatId, 'chat_id', card);
+      return;
+    } catch (error) {
+      logger.warn('[sendFeishuMessage] Card V2 failed, falling back to markdown:', error);
     }
+  }
+
+  // Fallback to markdown message if Card V2 not available or failed
+  if (options) {
+    await client.sendMarkdownMessage(chatId, 'chat_id', message, options);
+  } else {
+    await client.sendMarkdownMessage(chatId, 'chat_id', message);
   }
 }
 

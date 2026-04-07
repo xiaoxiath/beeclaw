@@ -119,17 +119,30 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
 async function deliverNotification(notification: PendingNotification): Promise<boolean> {
   const channels = notification.delivery.channels;
 
-  for (const channel of channels) {
-    const handler = deliveryHandlers.get(channel);
+  // [FIX] Reverse mapping: storage channel names → pusher channel names
+  // mapToStorageChannels converts 'feishu' → 'websocket', but delivery handlers
+  // are registered under original pusher channel names (e.g., 'feishu').
+  // We need to check both the stored name and possible original names.
+  const STORAGE_TO_PUSHER: Record<string, string[]> = {
+    websocket: ['feishu', 'webhook'],
+  };
 
-    if (handler) {
-      try {
-        const delivered = await handler(notification);
-        if (delivered) {
-          return true;
+  for (const channel of channels) {
+    // Try the stored channel name first, then any reverse-mapped aliases
+    const channelsToTry = [channel, ...(STORAGE_TO_PUSHER[channel] || [])];
+
+    for (const ch of channelsToTry) {
+      const handler = deliveryHandlers.get(ch);
+
+      if (handler) {
+        try {
+          const delivered = await handler(notification);
+          if (delivered) {
+            return true;
+          }
+        } catch (error) {
+          console.error(`[Pusher] Delivery failed for channel ${ch}:`, error);
         }
-      } catch (error) {
-        console.error(`[Pusher] Delivery failed for channel ${channel}:`, error);
       }
     }
 

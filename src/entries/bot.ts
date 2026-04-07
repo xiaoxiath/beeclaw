@@ -26,6 +26,7 @@ import { initSelfEvolution } from '../domain/agent/evolution/self-evolution';
 import { initTaskManager } from '../infra/queue';
 import { renderMessageCard } from '../adapter/feishu/card-v2/message-renderer';
 import { registerCardV2Renderer } from '../domain/proactive/job-handlers';
+import { registerDeepAnalysisCardRenderer } from '../domain/tools/deep-analysis';
 import type { ContentBlock } from '../types/content-block';
 import { initWorkers } from '../app/queue-handlers/workers';
 import { GracefulShutdown } from '../infra/utils/graceful-shutdown';
@@ -163,6 +164,7 @@ async function main() {
 
   // [FIX] Register Card V2 renderer for unified Feishu message format
   registerCardV2Renderer(renderMessageCard);
+  registerDeepAnalysisCardRenderer(renderMessageCard);
 
   // Register Feishu push handler for proactive messaging
   registerFeishuHandler(async (chatId: string, message: string) => {

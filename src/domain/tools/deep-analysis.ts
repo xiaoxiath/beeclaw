@@ -8,6 +8,20 @@ import { logger } from '../../infra/observability/logger';
 import { z } from 'zod';
 import { getTaskManager } from '../../infra/queue/manager';
 import { getChannelClientPort } from '../ports';
+import type { ContentBlock } from '../../types/content-block';
+
+// Lazy Card V2 renderer — registered by entry point (same pattern as job-handlers.ts)
+let _renderMessageCard: ((blocks: ContentBlock[], options?: any) => any) | null = null;
+
+/**
+ * Register the Card V2 renderer for deep-analysis quick replies.
+ * Called from entry point (e.g. bot.ts) after adapter initialisation.
+ */
+export function registerDeepAnalysisCardRenderer(
+  renderer: (blocks: ContentBlock[], options?: any) => any,
+): void {
+  _renderMessageCard = renderer;
+}
 
 // Local interface (no external queue/types module exists)
 interface AnalysisJobData {
@@ -136,14 +150,31 @@ export async function executeRequestDeepAnalysis(
   const { sessionId, userId, chatId, originalMessage } = context;
 
   try {
-    // Use port interface to send quick reply (avoids domain → adapter import)
-    // getChannelClientPort is statically imported at the top
-
-    // 1. Send quick reply via port interface
+    // 1. Send quick reply via port interface (Card V2 preferred, text fallback)
     const client = getChannelClientPort();
     if (client && chatId) {
-      await client.sendTextMessage?.(chatId, 'chat_id', quick_response);
-      logger.debug(`[DeepAnalysis] Quick reply sent to chat: ${chatId}`);
+      let sent = false;
+
+      // [Card V2] Try Card V2 first for consistent Feishu card experience
+      if (_renderMessageCard && client.sendCard) {
+        try {
+          const blocks: ContentBlock[] = [
+            { type: 'text', text: quick_response },
+          ];
+          const card = _renderMessageCard(blocks, { streaming: false });
+          await client.sendCard(chatId, 'chat_id', card);
+          sent = true;
+          logger.debug(`[DeepAnalysis] Quick reply sent via Card V2 to chat: ${chatId}`);
+        } catch (cardError) {
+          logger.warn('[DeepAnalysis] Card V2 quick reply failed, falling back to text:', cardError);
+        }
+      }
+
+      // Fallback to plain text
+      if (!sent) {
+        await client.sendTextMessage?.(chatId, 'chat_id', quick_response);
+        logger.debug(`[DeepAnalysis] Quick reply sent via text to chat: ${chatId}`);
+      }
     }
 
     // 2. Create analysis job

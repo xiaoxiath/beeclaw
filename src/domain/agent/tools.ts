@@ -380,9 +380,17 @@ function getTimePeriod(hour: number): string {
 /**
  * Build the **volatile** runtime context string.
  *
- * Time is quantized to hourly slots (`下午 15:00段`) so that all
- * requests within the same clock-hour produce byte-identical strings.
- * This maximises LLM prefix-cache (KV Cache) hit rate.
+ * Time is quantized to 5-minute slots (e.g. `下午 15:45`) so that
+ * requests within the same 5-minute window produce byte-identical
+ * strings — preserving reasonable LLM prefix-cache (KV Cache) hit
+ * rate while keeping the reported time accurate to within 5 minutes.
+ *
+ * Previous implementation quantized to hourly slots (`15:00段`), which
+ * could be off by up to 59 minutes and used an ambiguous "段" suffix
+ * that confused the LLM about the actual time.
+ *
+ * Uses `Intl.DateTimeFormat.formatToParts()` for reliable hour/minute
+ * extraction across all timezones, avoiding locale-dependent parsing.
  *
  * Weather and holiday are NOT included here — they are available as
  * on-demand tools (`weather`, `get_holiday_info`).
@@ -397,14 +405,22 @@ export function getCurrentTimeContext(): string {
     timeZone: userTimezone,
   });
 
-  // Quantize to hour boundary — e.g. "下午 15:00段"
-  const hour = parseInt(now.toLocaleTimeString('zh-CN', {
-    hour: '2-digit', hour12: false, timeZone: userTimezone,
-  }), 10);
-  const period = getTimePeriod(hour);
-  const timeSlot = `${String(hour).padStart(2, '0')}:00`;
+  // Use formatToParts for reliable hour/minute extraction (no locale parsing)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimezone,
+  }).formatToParts(now);
 
-  return `当前: ${dateStr} ${period} ${timeSlot}段, ${userLocation}, tz=${userTimezone}`;
+  const hourStr = parts.find(p => p.type === 'hour')?.value ?? '00';
+  const minuteStr = parts.find(p => p.type === 'minute')?.value ?? '00';
+  const hour = parseInt(hourStr, 10);
+  const minute = parseInt(minuteStr, 10);
+
+  // Quantize to 5-minute boundary for cache friendliness
+  const quantizedMinute = Math.floor(minute / 5) * 5;
+  const period = getTimePeriod(hour);
+  const timeSlot = `${String(hour).padStart(2, '0')}:${String(quantizedMinute).padStart(2, '0')}`;
+
+  return `当前: ${dateStr} ${period} ${timeSlot}, ${userLocation}, tz=${userTimezone}`;
 }
 
 /**

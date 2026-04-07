@@ -151,7 +151,36 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
   }
 
   try {
-    // Determine channels and metadata: use Feishu if available, otherwise CLI
+    // [Card V2] Try to send via Feishu Card V2 directly (preferred)
+    try {
+      const client = getFeishuWSClient();
+      if (client?.lastActiveChatId) {
+        const chatId = client.lastActiveChatId;
+        logger.debug(`[Worker:proactive] Sending reminder via Card V2 to chatId: ${chatId}`);
+
+        const textBlock: ContentBlock = {
+          type: 'text',
+          text: `**⏰ 提醒**\n\n${message}`,
+        };
+        const card = renderMessageCard([textBlock], { streaming: false });
+        const messageId = await client.sendCard(chatId, 'chat_id', card);
+
+        logger.info(`[Worker:proactive] 📤 Reminder sent via Card V2: ${messageId}`);
+
+        return {
+          delivered: true,
+          message,
+          userId,
+          channels: ['feishu'],
+          chatId,
+          messageId,
+        };
+      }
+    } catch (cardError) {
+      logger.warn('[Worker:proactive] Card V2 reminder failed, falling back to notification:', cardError);
+    }
+
+    // Fallback: use notification system
     let channels: ('cli' | 'feishu')[] = ['cli'];
     const metadata: Record<string, unknown> = {};
 
@@ -160,13 +189,11 @@ async function handleSendReminder(params?: Record<string, unknown>): Promise<unk
       if (client?.lastActiveChatId) {
         channels = ['feishu'];
         metadata.feishuChatId = client.lastActiveChatId;
-        logger.debug(`[Worker:proactive] Using Feishu channel, chatId: ${client.lastActiveChatId}`);
       }
     } catch {
       // Feishu not available
     }
 
-    // Create and push notification immediately
     const result = await pushNotification({
       message,
       priority,

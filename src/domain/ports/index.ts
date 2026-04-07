@@ -158,6 +158,7 @@ export type MessageControllerFactory = (options: {
 export interface IChannelClient {
   sendTextMessage?(chatId: string, receiveIdType: string, content: string): Promise<void>;
   sendMarkdownMessage?(chatId: string, receiveIdType: string, content: string, options?: any): Promise<void>;
+  sendCard?(chatId: string, receiveIdType: string, card: any): Promise<any>;
 }
 
 // ============================================================================
