@@ -5,11 +5,11 @@
  * Extracted from session/index.ts to reduce god-object complexity.
  */
 
-import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { Session, SessionMessage } from './index';
 import { logger } from '../../infra/observability/logger';
-import { isSessionIdle, buildIdleRotationSummary } from './idle-rotation';
+import { isSessionIdle } from './idle-rotation';
 import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../../infra/utils/atomic-fs';
 import { getDataConnection } from '../../infra/db';
 import { sessions as sessionsTable } from '../../infra/db/schema';
@@ -27,6 +27,91 @@ export function getSessionFilePath(storagePath: string, sessionId: string): stri
   // Sanitize session ID for filesystem
   const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
   return join(storagePath, `${safeId}.json`);
+}
+
+function getSessionArchiveDir(storagePath: string, sessionId: string): string {
+  const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return join(storagePath, `${safeId}.archive`);
+}
+
+function buildArchiveSegmentName(timestamp: string): string {
+  return timestamp.replace(/[:.]/g, '-');
+}
+
+export function archiveSessionMessages(
+  storagePath: string,
+  session: Session,
+  reason: 'idle' | 'day-cut',
+  messages: SessionMessage[],
+): string | null {
+  if (messages.length === 0) return null;
+
+  try {
+    const archiveDir = getSessionArchiveDir(storagePath, session.id);
+    if (!existsSync(archiveDir)) {
+      mkdirSync(archiveDir, { recursive: true });
+    }
+
+    const startedAt = messages[0]?.timestamp || session.updatedAt;
+    const endedAt = messages[messages.length - 1]?.timestamp || session.updatedAt;
+    const fileName = `${buildArchiveSegmentName(endedAt)}-${reason}.json`;
+    const archivePath = join(archiveDir, fileName);
+
+    writeFileAtomic(archivePath, JSON.stringify({
+      sessionId: session.id,
+      archivedAt: new Date().toISOString(),
+      reason,
+      startedAt,
+      endedAt,
+      messageCount: messages.length,
+      messages,
+    }, null, 2));
+
+    return archivePath;
+  } catch (error) {
+    logger.error('[Session] Failed to archive session messages:', error);
+    return null;
+  }
+}
+
+export interface ArchivedSessionSegment {
+  sessionId: string;
+  archivedAt: string;
+  reason: 'idle' | 'day-cut';
+  startedAt: string;
+  endedAt: string;
+  messageCount: number;
+  messages: SessionMessage[];
+}
+
+export function loadArchivedSessionSegment(archivePath: string): ArchivedSessionSegment | null {
+  try {
+    const content = readFileSync(archivePath, 'utf-8');
+    return JSON.parse(content) as ArchivedSessionSegment;
+  } catch (error) {
+    logger.error('[Session] Failed to load archived session segment:', error);
+    return null;
+  }
+}
+
+function getLocalDateBucket(timestamp: string): string {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function shouldArchiveForDayBoundary(messages: SessionMessage[]): boolean {
+  if (messages.length < 2) return false;
+  const first = messages[0]?.timestamp;
+  const last = messages[messages.length - 1]?.timestamp;
+  if (!first || !last) return false;
+  return getLocalDateBucket(first) !== getLocalDateBucket(last);
+}
+
+function splitMessagesForDayBoundary(messages: SessionMessage[]): SessionMessage[] {
+  if (!shouldArchiveForDayBoundary(messages)) return [];
+  const latestBucket = getLocalDateBucket(messages[messages.length - 1]!.timestamp);
+  const splitIndex = messages.findIndex(m => getLocalDateBucket(m.timestamp) === latestBucket);
+  if (splitIndex <= 0) return [];
+  return messages.slice(0, splitIndex);
 }
 
 /**
@@ -67,6 +152,12 @@ export function saveSession(session: Session, storagePath: string): void {
       }
     } catch (error) {
       logger.debug('Plugin system not initialized:', error);
+    }
+
+    const dayBoundaryMessages = splitMessagesForDayBoundary(session.messages);
+    if (dayBoundaryMessages.length > 0) {
+      archiveSessionMessages(storagePath, session, 'day-cut', dayBoundaryMessages);
+      session.messages = session.messages.slice(dayBoundaryMessages.length);
     }
 
     // Save to JSON (always for backward compatibility)
@@ -266,8 +357,7 @@ export function loadAllSessions(
 
       // Rotate stale sessions at load time so old messages don't pollute context
       if (session.messages?.length > 0 && isSessionIdle(session.updatedAt)) {
-        const archiveSummary = buildIdleRotationSummary(session.messages, session.summary);
-        session.summary = archiveSummary;
+        archiveSessionMessages(storagePath, session, 'idle', session.messages);
         session.messages = [];
         session.updatedAt = new Date().toISOString();
         // Save rotated state to disk immediately

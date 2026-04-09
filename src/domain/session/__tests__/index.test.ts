@@ -128,12 +128,16 @@ import {
   getCachedAgentResponse,
   injectProactiveResult,
   getRecentSessionHistory,
+  getArchivedSessionSegments,
+  readArchivedSessionSegment,
+  searchArchivedSessionSegments,
   pruneProcessedMessages,
   isValidSession,
   MESSAGE_DEDUP_TTL_MS,
   MESSAGE_DEDUP_MAX_SIZE,
   MAX_MESSAGE_RETRY_COUNT,
   PROCESSING_STALE_TIMEOUT_MS,
+  type Session,
 } from '../index';
 
 describe('session/index', () => {
@@ -705,6 +709,93 @@ describe('session/index', () => {
       await sendProactiveMessage({ message: 'next', channel: 'cli', sessionId: id });
       expect(mockAgent.addMessage).toHaveBeenCalledWith({ role: 'user', content: 'hi' });
       expect(mockAgent.addMessage).toHaveBeenCalledWith({ role: 'assistant', content: 'hello' });
+    });
+
+    it('should not replay idle archived history into a fresh active turn', async () => {
+      const id = 'proactive-archived-' + Date.now();
+      const session = getOrCreateSession({ sessionId: id, channel: 'cli' }) as Session;
+      session.messages.push(
+        { role: 'user', content: '给我查询蓝色光标', timestamp: '2026-04-07T08:00:00.000Z' },
+        { role: 'assistant', content: '这是蓝色光标结果', timestamp: '2026-04-07T08:01:00.000Z' },
+      );
+      session.updatedAt = '2026-04-07T08:01:00.000Z';
+      saveSession(session);
+
+      mockAgent.addMessage.mockClear();
+      await sendProactiveMessage({ message: '新闻', channel: 'cli', sessionId: id });
+
+      expect(mockAgent.addMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ content: expect.stringContaining('蓝色光标') }),
+      );
+    });
+
+    it('can list archived segments after idle archival', async () => {
+      const id = 'proactive-archive-read-' + Date.now();
+      const session = getOrCreateSession({ sessionId: id, channel: 'cli' }) as Session;
+      session.messages.push(
+        { role: 'user', content: '昨天的话题', timestamp: '2026-04-07T08:00:00.000Z' },
+        { role: 'assistant', content: '昨天的回复', timestamp: '2026-04-07T08:01:00.000Z' },
+      );
+      session.updatedAt = '2026-04-07T08:01:00.000Z';
+      saveSession(session);
+
+      await sendProactiveMessage({ message: '今天的新闻', channel: 'cli', sessionId: id });
+
+      const archived = getArchivedSessionSegments(id);
+      expect(archived.length).toBeGreaterThan(0);
+    });
+
+    it('can search archived segments by time range', async () => {
+      const id = 'proactive-archive-time-' + Date.now();
+      const session = getOrCreateSession({ sessionId: id, channel: 'cli' }) as Session;
+      session.messages.push(
+        { role: 'user', content: '四月七日的话题', timestamp: '2026-04-07T08:00:00.000Z' },
+        { role: 'assistant', content: '旧内容', timestamp: '2026-04-07T08:01:00.000Z' },
+      );
+      session.updatedAt = '2026-04-07T08:01:00.000Z';
+      saveSession(session);
+
+      await sendProactiveMessage({ message: '今天新闻', channel: 'cli', sessionId: id });
+
+      const matches = searchArchivedSessionSegments(id, {
+        from: '2026-04-07T00:00:00.000Z',
+        to: '2026-04-07T23:59:59.000Z',
+      });
+      expect(matches.length).toBeGreaterThan(0);
+    });
+
+    it('returns empty results when archive search misses', async () => {
+      const id = 'proactive-archive-miss-' + Date.now();
+      const session = getOrCreateSession({ sessionId: id, channel: 'cli' }) as Session;
+      session.messages.push(
+        { role: 'user', content: '四月七日的话题', timestamp: '2026-04-07T08:00:00.000Z' },
+        { role: 'assistant', content: '旧内容', timestamp: '2026-04-07T08:01:00.000Z' },
+      );
+      session.updatedAt = '2026-04-07T08:01:00.000Z';
+      saveSession(session);
+
+      await sendProactiveMessage({ message: '今天新闻', channel: 'cli', sessionId: id });
+
+      const matches = searchArchivedSessionSegments(id, { keyword: '不存在的词' });
+      expect(matches).toEqual([]);
+    });
+
+    it('does not restore archived context for ordinary fresh requests', async () => {
+      const id = 'proactive-archive-restore-' + Date.now();
+      const session = getOrCreateSession({ sessionId: id, channel: 'cli' }) as Session;
+      session.messages.push(
+        { role: 'user', content: '之前我们聊过蓝色光标', timestamp: '2026-04-07T08:00:00.000Z' },
+        { role: 'assistant', content: '这是之前的分析', timestamp: '2026-04-07T08:01:00.000Z' },
+      );
+      session.updatedAt = '2026-04-07T08:01:00.000Z';
+      saveSession(session);
+
+      mockAgent.addMessage.mockClear();
+      await sendProactiveMessage({ message: '新闻', channel: 'cli', sessionId: id });
+
+      expect(mockAgent.addMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ content: expect.stringContaining('按用户明确要求恢复的历史对话片段') }),
+      );
     });
 
     it('should replay multimodal user messages with visionDescription', async () => {

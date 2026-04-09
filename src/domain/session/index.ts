@@ -34,7 +34,7 @@ import { getHookRunnerPort, getChannelClientPort, getMessageControllerFactory } 
 import type { IMessageController } from '../ports';
 import { logger } from '../../infra/observability/logger';
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
-import { isSessionIdle, buildIdleRotationSummary, buildTemporalMarker } from './idle-rotation';
+import { isSessionIdle, buildTemporalMarker } from './idle-rotation';
 import type { SessionMessageQueueOptions } from '../../infra/resilience/session-lock';
 import { SmartTimeout } from '../../infra/resilience/smart-timeout';
 import { handleHITLResponse } from './hitl-manager';
@@ -58,6 +58,8 @@ import {
   loadAllSessions as _loadAllSessionsFromStorage,
   clearOldSessions as _clearOldSessions,
   saveAllSessions as _saveAllSessions,
+  archiveSessionMessages as _archiveSessionMessages,
+  loadArchivedSessionSegment as _loadArchivedSessionSegment,
 } from './storage';
 import {
   injectProactiveResult as _injectProactiveResult,
@@ -158,6 +160,13 @@ export interface Session {
    * See MessageProcessingState for state machine documentation.
    */
   processedMessageIds?: Record<string, boolean | MessageProcessingState>;
+  archivedSegments?: Array<{
+    path: string;
+    reason: 'idle' | 'day-cut';
+    startedAt: string;
+    endedAt: string;
+    messageCount: number;
+  }>;
 }
 
 export interface ProactiveMessageOptions {
@@ -249,6 +258,25 @@ export function saveSession(session: Session): void {
   _saveSessionToStorage(session, sessionConfig.storagePath);
 }
 
+function archiveSessionMessages(
+  session: Session,
+  reason: 'idle' | 'day-cut',
+  messages: SessionMessage[],
+): void {
+  const path = _archiveSessionMessages(sessionConfig.storagePath, session, reason, messages);
+  if (!path) return;
+
+  session.archivedSegments = session.archivedSegments || [];
+  session.archivedSegments.push({
+    path,
+    reason,
+    startedAt: messages[0]?.timestamp || session.updatedAt,
+    endedAt: messages[messages.length - 1]?.timestamp || session.updatedAt,
+    messageCount: messages.length,
+  });
+  saveSession(session);
+}
+
 /**
  * Load session from disk (private, delegates to storage submodule)
  */
@@ -334,6 +362,54 @@ export function getRecentSessionHistory(
   const session = sessions.get(sessionId) || loadSession(sessionId);
   return _getRecentSessionHistory(session, maxMessages);
 }
+
+export function getArchivedSessionSegments(sessionId: string): NonNullable<Session['archivedSegments']> {
+  const session = sessions.get(sessionId) || loadSession(sessionId);
+  return session?.archivedSegments || [];
+}
+
+export function readArchivedSessionSegment(sessionId: string, archivePath: string): SessionMessage[] {
+  const session = sessions.get(sessionId) || loadSession(sessionId);
+  const archivedSegments = session?.archivedSegments || [];
+  const matched = archivedSegments.find(segment => segment.path === archivePath);
+  if (!matched) return [];
+
+  const segment = _loadArchivedSessionSegment(archivePath);
+  if (!segment || segment.sessionId !== sessionId) return [];
+  return segment.messages;
+}
+
+export function searchArchivedSessionSegments(
+  sessionId: string,
+  options: {
+    keyword?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  } = {},
+): Array<NonNullable<Session['archivedSegments']>[number]> {
+  const session = sessions.get(sessionId) || loadSession(sessionId);
+  const archivedSegments = session?.archivedSegments || [];
+  const keyword = options.keyword?.trim();
+  const fromTs = options.from ? new Date(options.from).getTime() : null;
+  const toTs = options.to ? new Date(options.to).getTime() : null;
+
+  const matches = archivedSegments.filter(segment => {
+    const startedAt = new Date(segment.startedAt).getTime();
+    const endedAt = new Date(segment.endedAt).getTime();
+
+    if (fromTs !== null && endedAt < fromTs) return false;
+    if (toTs !== null && startedAt > toTs) return false;
+
+    if (!keyword) return true;
+    const messages = _loadArchivedSessionSegment(segment.path)?.messages || [];
+    return messages.some(message => message.content.includes(keyword));
+  });
+
+  const sorted = matches.sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime());
+  return sorted.slice(0, options.limit || 5);
+}
+
 
 // --- Storage wrappers ---
 
@@ -645,9 +721,7 @@ export function getOrCreateSession(options: SessionOptions): Session {
         lastUpdated: cached.updatedAt,
         messageCount: cached.messages.length,
       });
-      // Archive old messages into summary, keep session identity
-      const archiveSummary = buildIdleRotationSummary(cached.messages, cached.summary);
-      cached.summary = archiveSummary;
+      archiveSessionMessages(cached, 'idle', cached.messages);
       cached.messages = [];
       cached.updatedAt = new Date().toISOString();
       saveSession(cached);
@@ -670,8 +744,7 @@ export function getOrCreateSession(options: SessionOptions): Session {
         lastUpdated: loaded.updatedAt,
         messageCount: loaded.messages.length,
       });
-      const archiveSummary = buildIdleRotationSummary(loaded.messages, loaded.summary);
-      loaded.summary = archiveSummary;
+      archiveSessionMessages(loaded, 'idle', loaded.messages);
       loaded.messages = [];
       loaded.updatedAt = new Date().toISOString();
       saveSession(loaded);
@@ -915,6 +988,8 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       }
     }
 
+    const isRecovery = options.context?.isRecovery === true;
+
     // Build system prompt with core memory
     let systemPrompt = agentConfig.systemPrompt || SYSTEM_PROMPTS.default;
 
@@ -1047,9 +1122,6 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
       logger.info(`[Session] 📝 Using text model (${selectedModel}) for text message`);
     }
 
-    // Check if this is a recovery - don't duplicate the user message
-    const isRecovery = options.context?.isRecovery === true;
-
     // Create agent
     const agent = createAgent({
       provider: selectedProvider,
@@ -1064,8 +1136,10 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     });
 
     // Replay conversation history
+    const replayMessages = session.messages;
+
     logger.debug('[Session] ⚠️ Replaying conversation history:', {
-      messageCount: session.messages.length,
+      messageCount: replayMessages.length,
       messages: session.messages.map(m => ({
         role: m.role,
         contentPreview: m.content.substring(0, 50),
@@ -1075,11 +1149,11 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
 
     // [FIX] Add temporal marker if history is from a different day
     // This prevents the LLM from confusing old conversation dates with today
-    const temporalMarker = buildTemporalMarker(session.messages);
+    const temporalMarker = buildTemporalMarker(replayMessages);
     let temporalMarkerInjected = false;
 
-    for (let i = 0; i < session.messages.length; i++) {
-      const msg = session.messages[i];
+    for (let i = 0; i < replayMessages.length; i++) {
+      const msg = replayMessages[i];
       if (msg.role === 'user') {
         let userContent: string;
         if (msg._meta?.originalType === 'multimodal' && msg._meta.visionDescription) {

@@ -70,6 +70,7 @@ import {
   isValidSession,
   saveSession,
   loadSession,
+  loadArchivedSessionSegment,
   loadSessionFromSQLite,
   saveSessionToSQLite,
   deleteSessionFile,
@@ -232,6 +233,23 @@ describe('storage', () => {
       const session = makeSession();
       expect(() => saveSession(session, '/data')).not.toThrow();
     });
+
+    it('archives previous-day messages and keeps current-day active messages', () => {
+      const session = makeSession({
+        messages: [
+          { role: 'user', content: 'old topic', timestamp: '2026-04-07T01:00:00.000Z' },
+          { role: 'assistant', content: 'old reply', timestamp: '2026-04-07T01:05:00.000Z' },
+          { role: 'user', content: 'today news', timestamp: '2026-04-08T01:00:00.000Z' },
+        ],
+      });
+
+      saveSession(session, '/data');
+
+      expect(session.messages).toHaveLength(1);
+      expect(mockWriteFileAtomic.mock.calls.length).toBeGreaterThanOrEqual(1);
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].content).toBe('today news');
+    });
   });
 
   // ─── loadSession ──────────────────────────────────────────────────────
@@ -263,6 +281,33 @@ describe('storage', () => {
     it('should handle exception from readFileWithRecovery', () => {
       mockReadFileWithRecovery.mockImplementationOnce(() => { throw new Error('read error'); });
       const result = loadSession('test', '/data');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('loadArchivedSessionSegment', () => {
+    it('returns parsed archived segment content', () => {
+      vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({
+        sessionId: 's1',
+        archivedAt: '2026-04-08T00:00:00.000Z',
+        reason: 'idle',
+        startedAt: '2026-04-07T00:00:00.000Z',
+        endedAt: '2026-04-07T01:00:00.000Z',
+        messageCount: 1,
+        messages: [{ role: 'user', content: 'old topic', timestamp: '2026-04-07T00:00:00.000Z' }],
+      }));
+
+      const result = loadArchivedSessionSegment('/data/s1.archive/seg.json');
+      expect(result?.sessionId).toBe('s1');
+      expect(result?.messages[0]?.content).toBe('old topic');
+    });
+
+    it('returns null when archived segment cannot be read', () => {
+      vi.mocked(readFileSync).mockImplementationOnce(() => {
+        throw new Error('archive read failed');
+      });
+
+      const result = loadArchivedSessionSegment('/data/s1.archive/missing.json');
       expect(result).toBeNull();
     });
   });
