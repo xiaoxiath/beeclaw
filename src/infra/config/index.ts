@@ -373,9 +373,10 @@ export function shouldShowTokenStats(): boolean {
   return getConfig().agentDisplay.showTokenStats;
 }
 
-export function reloadConfig(basePath: string = process.cwd()): Promise<AppConfig> {
-  cachedConfig = null;
-  return loadConfig(basePath);
+export async function reloadConfig(basePath: string = process.cwd()): Promise<AppConfig> {
+  const newConfig = await loadConfig(basePath);
+  cachedConfig = newConfig;
+  return newConfig;
 }
 
 /**

@@ -8,6 +8,7 @@
  */
 
 import { logger } from '../../infra/observability/logger';
+import { AsyncMutex } from '../../infra/utils/async-mutex';
 
 /**
  * State entry with metadata
@@ -106,6 +107,7 @@ export class SharedState {
   private subscriptions: Map<string, Subscription[]> = new Map();
   private cleanupTimer?: NodeJS.Timeout;
   private options: Required<SharedStateOptions>;
+  private _writeMutex = new AsyncMutex();
 
   constructor(options: SharedStateOptions = {}) {
     this.options = {
@@ -134,31 +136,36 @@ export class SharedState {
     ttl?: number,
     metadata?: Record<string, any>
   ): Promise<void> {
-    // Check max entries limit
-    if (this.options.maxEntries > 0 && !this.store.has(key)) {
-      if (this.store.size >= this.options.maxEntries) {
-        throw new Error(`Maximum entries limit (${this.options.maxEntries}) reached`);
+    const release = await this._writeMutex.acquire();
+    try {
+      // Check max entries limit
+      if (this.options.maxEntries > 0 && !this.store.has(key)) {
+        if (this.store.size >= this.options.maxEntries) {
+          throw new Error(`Maximum entries limit (${this.options.maxEntries}) reached`);
+        }
       }
+
+      const now = new Date();
+      const effectiveTtl = ttl ?? this.options.defaultTtl;
+
+      const entry: StateEntry<T> = {
+        value,
+        createdAt: this.store.has(key) ? this.store.get(key)!.createdAt : now,
+        updatedAt: now,
+        ttl: effectiveTtl > 0 ? effectiveTtl : undefined,
+        expiresAt: effectiveTtl > 0 ? new Date(now.getTime() + effectiveTtl) : undefined,
+        metadata,
+      };
+
+      const oldValue = this.store.has(key) ? this.store.get(key)!.value : undefined;
+
+      this.store.set(key, entry);
+
+      // Notify subscribers
+      this.notifySubscribers(key, value, oldValue);
+    } finally {
+      release();
     }
-
-    const now = new Date();
-    const effectiveTtl = ttl ?? this.options.defaultTtl;
-
-    const entry: StateEntry<T> = {
-      value,
-      createdAt: this.store.has(key) ? this.store.get(key)!.createdAt : now,
-      updatedAt: now,
-      ttl: effectiveTtl > 0 ? effectiveTtl : undefined,
-      expiresAt: effectiveTtl > 0 ? new Date(now.getTime() + effectiveTtl) : undefined,
-      metadata,
-    };
-
-    const oldValue = this.store.has(key) ? this.store.get(key)!.value : undefined;
-
-    this.store.set(key, entry);
-
-    // Notify subscribers
-    this.notifySubscribers(key, value, oldValue);
   }
 
   /**
@@ -234,15 +241,20 @@ export class SharedState {
    * @returns True if the key existed
    */
   async delete(key: string): Promise<boolean> {
-    const entry = this.store.get(key);
-    const existed = this.store.delete(key);
+    const release = await this._writeMutex.acquire();
+    try {
+      const entry = this.store.get(key);
+      const existed = this.store.delete(key);
 
-    if (existed && entry) {
-      // Notify subscribers with undefined new value
-      this.notifySubscribers(key, undefined, entry.value);
+      if (existed && entry) {
+        // Notify subscribers with undefined new value
+        this.notifySubscribers(key, undefined, entry.value);
+      }
+
+      return existed;
+    } finally {
+      release();
     }
-
-    return existed;
   }
 
   /**
@@ -257,9 +269,32 @@ export class SharedState {
     updater: (current: T | undefined) => T,
     ttl?: number
   ): Promise<void> {
-    const current = await this.get<T>(key);
-    const newValue = updater(current);
-    await this.set(key, newValue, ttl);
+    const release = await this._writeMutex.acquire();
+    try {
+      const current = await this.get<T>(key);
+      const newValue = updater(current);
+      // Call set's internal logic directly to avoid double-acquire deadlock
+      // Replicate set logic inline:
+      if (this.options.maxEntries > 0 && !this.store.has(key)) {
+        if (this.store.size >= this.options.maxEntries) {
+          throw new Error(`Maximum entries limit (${this.options.maxEntries}) reached`);
+        }
+      }
+      const now = new Date();
+      const effectiveTtl = ttl ?? this.options.defaultTtl;
+      const entry: StateEntry<T> = {
+        value: newValue,
+        createdAt: this.store.has(key) ? this.store.get(key)!.createdAt : now,
+        updatedAt: now,
+        ttl: effectiveTtl > 0 ? effectiveTtl : undefined,
+        expiresAt: effectiveTtl > 0 ? new Date(now.getTime() + effectiveTtl) : undefined,
+      };
+      const oldValue = this.store.has(key) ? this.store.get(key)!.value : undefined;
+      this.store.set(key, entry as StateEntry);
+      this.notifySubscribers(key, newValue, oldValue);
+    } finally {
+      release();
+    }
   }
 
   /**

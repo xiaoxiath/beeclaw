@@ -27,6 +27,7 @@ import { getSkillStore } from '../skills/store';
 import { getHookRunnerPort, getHealthMonitorPort } from '../ports';
 import type { IHookRunner, IHealthMonitor } from '../ports';
 import { recordSkillFailure } from './evolution';
+import { AsyncMutex } from '../../infra/utils/async-mutex';
 import { EvolutionCoordinator } from './evolution/evolution-coordinator';
 // [SIMPLIFIED] preference-learning import removed — LLM handles preference detection via system prompt
 import {
@@ -114,7 +115,7 @@ export class Agent {
   private healthMonitor?: IHealthMonitor;
   private memoryManager: MemoryManager = new MemoryManager();
   // B-P1-06: Mutex flag to prevent concurrent compression
-  private _compressing = false;
+  private _compressionMutex = new AsyncMutex();
 
   // Phase 4: Extracted focused modules
   private toolDispatcher: ToolDispatcher;
@@ -407,7 +408,7 @@ export class Agent {
       provider: this.options.provider,
       compressionConfig: (this.options as any).compressionConfig,
       compressedSummary: this.compressedSummary,
-      _compressing: this._compressing,
+      _compressing: this._compressionMutex.locked,
     };
   }
 
@@ -415,7 +416,6 @@ export class Agent {
   private _syncCtxState(s: ContextManagerState): void {
     this.estimatedTokens = s.estimatedTokens;
     this.compressedSummary = s.compressedSummary;
-    this._compressing = s._compressing;
     // messages array is shared by reference — no reassignment needed
     // unless manageContextCompression replaced the array entirely:
     if (s.messages !== this.messages) {
@@ -433,16 +433,28 @@ export class Agent {
    * Compress old messages using LLM for intelligent summarization
    */
   async compressContextWithLLM(): Promise<CompressionResult> {
-    const s = this._ctxState();
-    const result = await compressContextWithLLMImpl(s);
-    this._syncCtxState(s);
-    return result;
+    const release = await this._compressionMutex.acquire();
+    try {
+      const s = this._ctxState();
+      s._compressing = false; // mutex already guards concurrency
+      const result = await compressContextWithLLMImpl(s);
+      this._syncCtxState(s);
+      return result;
+    } finally {
+      release();
+    }
   }
 
   private async _manageContextCompression(): Promise<void> {
-    const s = this._ctxState();
-    await manageContextCompression(s);
-    this._syncCtxState(s);
+    const release = await this._compressionMutex.acquire();
+    try {
+      const s = this._ctxState();
+      s._compressing = false; // mutex already guards concurrency
+      await manageContextCompression(s);
+      this._syncCtxState(s);
+    } finally {
+      release();
+    }
   }
 
   // ====================================================================
@@ -1125,7 +1137,7 @@ export class Agent {
       usedSkillsInTurn: this.usedSkillsInTurn,
       lastToolCalls: this.lastToolCalls,
       currentUserContext: this.currentUserContext,
-      _compressing: this._compressing,
+      _compressing: this._compressionMutex.locked,
       compressedSummary: this.compressedSummary,
       refreshTime: () => this.refreshTime(),
       refreshMemory: () => this.refreshMemory(),
@@ -1139,7 +1151,6 @@ export class Agent {
     this.estimatedTokens = deps.estimatedTokens;
     this.lastToolCalls = deps.lastToolCalls;
     this.currentUserContext = deps.currentUserContext;
-    this._compressing = deps._compressing;
     this.compressedSummary = deps.compressedSummary;
   }
 }

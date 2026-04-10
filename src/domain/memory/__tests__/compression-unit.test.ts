@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
   mockExistsSync, mockMkdirSync, mockReaddirSync, mockReadFileSync,
-  mockWriteFileSync, mockStatSync, mockRmSync,
+  mockWriteFileSync, mockStatSync, mockRmSync, mockRenameSync, mockUnlinkSync,
   mockScoreImportance, mockScoreImportanceAsync,
 } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(() => false),
@@ -18,6 +18,8 @@ const {
   mockWriteFileSync: vi.fn(),
   mockStatSync: vi.fn(() => ({ mtimeMs: Date.now(), mtime: new Date() })),
   mockRmSync: vi.fn(),
+  mockRenameSync: vi.fn(),
+  mockUnlinkSync: vi.fn(),
   mockScoreImportance: vi.fn(() => ({ score: 50, recommendation: 'keep' as const, factors: {} })),
   mockScoreImportanceAsync: vi.fn(async () => ({ score: 50, recommendation: 'keep' as const, factors: {} })),
 }));
@@ -30,6 +32,8 @@ vi.mock('fs', () => ({
   writeFileSync: mockWriteFileSync,
   statSync: mockStatSync,
   rmSync: mockRmSync,
+  renameSync: mockRenameSync,
+  unlinkSync: mockUnlinkSync,
 }));
 
 vi.mock('../scoring', () => ({

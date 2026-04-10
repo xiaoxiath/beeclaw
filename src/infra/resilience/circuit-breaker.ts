@@ -309,8 +309,12 @@ export class CircuitBreaker {
   /**
    * 注册事件监听器
    */
-  onEvent(listener: CircuitBreakerListener): void {
+  onEvent(listener: CircuitBreakerListener): () => void {
     this.listeners.push(listener);
+    return () => {
+      const idx = this.listeners.indexOf(listener);
+      if (idx !== -1) this.listeners.splice(idx, 1);
+    };
   }
 
   /**
@@ -439,12 +443,18 @@ export class CircuitBreakerRegistry {
   /**
    * 注册全局事件监听器 (所有断路器的事件都会触发)
    */
-  onEvent(listener: CircuitBreakerListener): void {
+  onEvent(listener: CircuitBreakerListener): () => void {
     this.globalListeners.push(listener);
+    const unsubscribers: Array<() => void> = [];
     // 为已有的 breaker 也注册
     for (const breaker of this.breakers.values()) {
-      breaker.onEvent(listener);
+      unsubscribers.push(breaker.onEvent(listener));
     }
+    return () => {
+      const idx = this.globalListeners.indexOf(listener);
+      if (idx !== -1) this.globalListeners.splice(idx, 1);
+      unsubscribers.forEach(unsub => unsub());
+    };
   }
 
   /**

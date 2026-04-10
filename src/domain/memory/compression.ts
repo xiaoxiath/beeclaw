@@ -13,6 +13,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, rmSync } from 'fs';
+import { writeFileAtomic } from '../../infra/utils/atomic-fs';
 import { join } from 'path';
 import { scoreImportance, scoreImportanceAsync, type ImportanceScore } from './scoring';
 import { logger } from '../../infra/observability/logger';
@@ -279,8 +280,19 @@ export class MemoryCompression {
     }
 
     summaries.push(entry);
-    writeFileSync(consolidatedFile, JSON.stringify(summaries, null, 2), 'utf-8');
-    rmSync(filePath);
+    // Fix P0-04: use atomic write and verify before deleting original
+    const summaryContent = JSON.stringify(summaries, null, 2);
+    writeFileAtomic(consolidatedFile, summaryContent);
+
+    // Verify write succeeded before removing original file
+    try {
+      const written = readFileSync(consolidatedFile, 'utf-8');
+      JSON.parse(written); // Verify JSON integrity
+      rmSync(filePath);
+    } catch (verifyErr) {
+      // Write verification failed — keep original file
+      logger.error(`[compression] Summary verification failed, keeping original: ${filePath}`, verifyErr);
+    }
   }
 
   /**

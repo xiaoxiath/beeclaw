@@ -341,9 +341,14 @@ export class FastLLMJudge {
 // ---------------------------------------------------------------------------
 
 let judgeInstance: FastLLMJudge | null = null;
+let _judgeConfigHash: string | null = null;
 
 /**
  * 获取 FastLLMJudge 实例
+ *
+ * Re-creates the singleton when the effective configuration (provider, model,
+ * config overrides) changes, so callers always get an instance that reflects
+ * the latest settings.
  *
  * @param provider AI Provider（首次调用时必需）
  * @param config 配置（可选）
@@ -353,9 +358,22 @@ export function getFastLLMJudge(
   modelOrConfig?: string | Partial<FastLLMJudgeConfig>,
   config?: Partial<FastLLMJudgeConfig>
 ): FastLLMJudge {
-  if (!judgeInstance) {
+  // Build a hash of the arguments that influence instance construction so we
+  // can detect configuration changes and recreate the singleton accordingly.
+  const configHash = JSON.stringify([
+    provider?.type,
+    modelOrConfig,
+    config,
+    getFastModelFromConfig(),
+  ]);
+
+  if (!judgeInstance || _judgeConfigHash !== configHash) {
     if (!provider) {
-      throw new Error('FastLLMJudge requires provider on first initialization');
+      if (!judgeInstance) {
+        throw new Error('FastLLMJudge requires provider on first initialization');
+      }
+      // Config hash changed but no provider supplied — keep existing instance
+      return judgeInstance;
     }
 
     // Normalize arguments: modelOrConfig can be a string (model name) or config object
@@ -377,10 +395,12 @@ export function getFastLLMJudge(
       fastModelConfig?.maxTokens,
       mergedConfig
     );
+    _judgeConfigHash = configHash;
   }
   return judgeInstance;
 }
 
 export function resetFastLLMJudge(): void {
   judgeInstance = null;
+  _judgeConfigHash = null;
 }

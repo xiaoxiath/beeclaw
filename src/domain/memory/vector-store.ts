@@ -122,10 +122,12 @@ const DEFAULT_CONFIG: VectorStoreConfig = {
 
 // ─── Embedding Provider 管理 ──────────────────────────────
 
+/** @deprecated Use VectorMemoryStore instance provider instead */
 let currentProvider: EmbeddingProvider | null = null;
 
 /**
  * 注册向量嵌入提供者
+ * @deprecated Use VectorMemoryStore.setProvider() instance method instead
  */
 export function setEmbeddingProvider(provider: EmbeddingProvider): void {
   currentProvider = provider;
@@ -133,6 +135,7 @@ export function setEmbeddingProvider(provider: EmbeddingProvider): void {
 
 /**
  * 获取当前向量嵌入提供者
+ * @deprecated Use VectorMemoryStore.getProvider() instance method instead
  */
 export function getEmbeddingProvider(): EmbeddingProvider | null {
   return currentProvider;
@@ -241,9 +244,24 @@ export class VectorMemoryStore {
   private documents: Map<string, VectorDocument> = new Map();
   private pendingPersist = 0;
   private dirty = false;
+  private _provider: EmbeddingProvider | null = null;
 
   constructor(config: Partial<VectorStoreConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /**
+   * Set instance-level embedding provider (preferred over global).
+   */
+  setProvider(provider: EmbeddingProvider): void {
+    this._provider = provider;
+  }
+
+  /**
+   * Get the effective embedding provider: instance-level first, then global fallback.
+   */
+  private getProvider(): EmbeddingProvider | null {
+    return this._provider ?? currentProvider;
   }
 
   /**
@@ -259,10 +277,11 @@ export class VectorMemoryStore {
       const persisted: PersistedIndex = JSON.parse(raw);
 
       // 检查维度兼容性
-      if (currentProvider && persisted.dimensions !== currentProvider.dimensions) {
+      const provider = this.getProvider();
+      if (provider && persisted.dimensions !== provider.dimensions) {
         console.warn(
           `[VectorStore] Dimension mismatch: index has ${persisted.dimensions}, ` +
-          `provider has ${currentProvider.dimensions}. Rebuilding required.`
+          `provider has ${provider.dimensions}. Rebuilding required.`
         );
         return false;
       }
@@ -296,8 +315,8 @@ export class VectorMemoryStore {
 
     const persisted: PersistedIndex = {
       version: 1,
-      providerName: currentProvider?.name || 'unknown',
-      dimensions: currentProvider?.dimensions || 0,
+      providerName: this.getProvider()?.name || 'unknown',
+      dimensions: this.getProvider()?.dimensions || 0,
       documents: Array.from(this.documents.values()),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -316,8 +335,9 @@ export class VectorMemoryStore {
     text: string,
     metadata: VectorDocument['metadata'] = {}
   ): Promise<number> {
-    if (!currentProvider) {
-      throw new Error('[VectorStore] No embedding provider configured. Call setEmbeddingProvider() first.');
+    const provider = this.getProvider();
+    if (!provider) {
+      throw new Error('[VectorStore] No embedding provider configured. Call setEmbeddingProvider() or instance.setProvider() first.');
     }
 
     // 分块
@@ -335,12 +355,12 @@ export class VectorMemoryStore {
 
     // 批量嵌入
     let embeddings: number[][];
-    if (currentProvider.embedBatch && chunks.length > 1) {
-      embeddings = await currentProvider.embedBatch(chunks);
+    if (provider.embedBatch && chunks.length > 1) {
+      embeddings = await provider.embedBatch(chunks);
     } else {
       embeddings = [];
       for (const chunk of chunks) {
-        embeddings.push(await currentProvider.embed(chunk));
+        embeddings.push(await provider.embed(chunk));
       }
     }
 
@@ -408,14 +428,15 @@ export class VectorMemoryStore {
       since?: number;
     }
   ): Promise<VectorSearchResult[]> {
-    if (!currentProvider) {
+    const provider = this.getProvider();
+    if (!provider) {
       throw new Error('[VectorStore] No embedding provider configured.');
     }
 
     if (this.documents.size === 0) return [];
 
     // 嵌入查询
-    const queryEmbedding = await currentProvider.embed(query);
+    const queryEmbedding = await provider.embed(query);
 
     // 计算相似度
     const scored: Array<{ doc: VectorDocument; score: number }> = [];
@@ -469,7 +490,7 @@ export class VectorMemoryStore {
     return {
       totalDocuments: baseIds.size,
       totalChunks: this.documents.size,
-      dimensions: currentProvider?.dimensions || 0,
+      dimensions: this.getProvider()?.dimensions || 0,
       dirty: this.dirty,
     };
   }

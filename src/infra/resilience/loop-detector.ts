@@ -120,6 +120,12 @@ export class LoopDetector {
     // 防止内存泄漏
     if (this.history.length > this.maxHistory) {
       this.history.splice(0, this.history.length - this.maxHistory);
+      // 同步清理 resultHashes：移除被裁剪掉的 history 条目的 hash
+      const activeHashes = new Set(this.history.map(h => h.resultHash).filter((h): h is string => h !== null));
+      this.resultHashes.clear();
+      for (const hash of activeHashes) {
+        this.resultHashes.add(hash);
+      }
     }
   }
 
