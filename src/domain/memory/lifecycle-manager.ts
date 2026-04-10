@@ -579,10 +579,25 @@ export class MemoryLifecycleManager {
     const archiveName = `${Date.now()}_${path.basename(file.path)}`;
     const archivePath = path.join(archiveDir, archiveName);
 
-    // 复制到归档目录
-    fs.copyFileSync(file.path, archivePath);
-    // 删除原文件
-    fs.unlinkSync(file.path);
+    try {
+      // Fix P0-03: prefer rename (atomic on same filesystem)
+      fs.renameSync(file.path, archivePath);
+    } catch (e: any) {
+      if (e.code === 'EXDEV') {
+        // Cross-filesystem: fallback to copy + verify + unlink
+        fs.copyFileSync(file.path, archivePath);
+        // Verify copy integrity
+        const srcStat = fs.statSync(file.path);
+        const destStat = fs.statSync(archivePath);
+        if (destStat.size !== srcStat.size) {
+          fs.unlinkSync(archivePath);
+          throw new Error(`Archive copy verification failed for ${file.path}`);
+        }
+        fs.unlinkSync(file.path);
+      } else {
+        throw e;
+      }
+    }
   }
 
   private saveCleanupReport(report: CleanupReport): void {

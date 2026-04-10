@@ -17,6 +17,7 @@ const mockFs = vi.hoisted(() => ({
   unlinkSync: vi.fn(),
   copyFileSync: vi.fn(),
   mkdirSync: vi.fn(),
+  renameSync: vi.fn(),
 }));
 
 vi.mock('fs', () => ({ default: mockFs, ...mockFs }));
@@ -154,6 +155,7 @@ describe('MemoryLifecycleManager', () => {
     mockFs.writeFileSync.mockReset();
     mockFs.unlinkSync.mockReset();
     mockFs.copyFileSync.mockReset();
+    mockFs.renameSync.mockReset();
     mockFs.mkdirSync.mockReset();
 
     mockFs.existsSync.mockImplementation(() => false);
@@ -378,6 +380,7 @@ describe('MemoryLifecycleManager scan (deep)', () => {
     mockFs.writeFileSync.mockReset();
     mockFs.unlinkSync.mockReset();
     mockFs.copyFileSync.mockReset();
+    mockFs.renameSync.mockReset();
     mockFs.mkdirSync.mockReset();
     mockFs.existsSync.mockReturnValue(false);
     mockFs.readdirSync.mockReturnValue([]);
@@ -531,6 +534,7 @@ describe('MemoryLifecycleManager runCleanup (deep)', () => {
     mockFs.writeFileSync.mockReset();
     mockFs.unlinkSync.mockReset();
     mockFs.copyFileSync.mockReset();
+    mockFs.renameSync.mockReset();
     mockFs.mkdirSync.mockReset();
   });
 
@@ -589,7 +593,7 @@ describe('MemoryLifecycleManager runCleanup (deep)', () => {
 
     const report = await manager.runCleanup({ categories: ['conversations'], dryRun: false });
     expect(report.categories['conversations']?.archived).toBeGreaterThanOrEqual(1);
-    expect(mockFs.copyFileSync).toHaveBeenCalled();
+    expect(mockFs.renameSync).toHaveBeenCalled();
   });
 
   it('should count demoted for warm tier files', async () => {
@@ -711,7 +715,7 @@ describe('MemoryLifecycleManager runCleanup (deep)', () => {
       },
     });
     setupFilesWithTier('warm');
-    mockFs.copyFileSync.mockImplementation(() => { throw new Error('copy fail'); });
+    mockFs.renameSync.mockImplementation(() => { throw new Error('copy fail'); });
 
     const report = await manager.runCleanup({ categories: ['facts'], dryRun: false });
     expect(report.categories['facts']?.errors).toBeGreaterThanOrEqual(1);
@@ -769,6 +773,7 @@ describe('MemoryLifecycleManager checkAfterRecord (deep)', () => {
     mockFs.writeFileSync.mockReset();
     mockFs.unlinkSync.mockReset();
     mockFs.copyFileSync.mockReset();
+    mockFs.renameSync.mockReset();
     mockFs.mkdirSync.mockReset();
   });
 

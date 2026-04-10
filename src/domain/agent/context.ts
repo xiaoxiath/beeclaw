@@ -30,6 +30,10 @@ function _loadTiktoken(): ((text: string) => number) | null {
   if (_tiktokenEncode !== undefined) return _tiktokenEncode;
   try {
     // Try tiktoken first (official OpenAI tokenizer)
+    // NOTE: Using require() intentionally — this function must be synchronous
+    // because it is called from the synchronous estimateTokens() hot path.
+    // Dynamic import() cannot be used without making the entire token estimation
+    // pipeline async. The try/catch handles the optional-dependency case gracefully.
     // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
     const tiktoken = require('tiktoken');
     const enc = tiktoken.encoding_for_model('gpt-4o');
@@ -39,6 +43,7 @@ function _loadTiktoken(): ((text: string) => number) | null {
   } catch {
     try {
       // Fallback: gpt-tokenizer (pure JS, no native deps)
+      // NOTE: Same rationale as above — synchronous require for optional dependency.
       // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
       const { encode } = require('gpt-tokenizer');
       _tiktokenEncode = (text: string) => encode(text).length;

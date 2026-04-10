@@ -169,12 +169,20 @@ export class Agent {
 
   /**
    * Stream a response. Yields StreamEvents for content chunks.
+   * Detects tool_call markers emitted by the provider stream and filters
+   * them out of user-visible output, recording them in history instead.
    */
   async *chatStream(userMessage: string): AsyncGenerator<StreamEvent, void, unknown> {
     this.history.push({ role: 'user', content: userMessage });
 
     const messages = this.buildMessages();
     let fullContent = '';
+    let toolCallBuffer = '';
+    let inToolCallMarker = false;
+    let parsedToolCalls: TCTool[] | undefined;
+
+    const TOOL_CALL_START = '<!--tool_calls:';
+    const TOOL_CALL_END = '-->';
 
     const stream = this.aiClient.streamAI({
       provider: this.provider,
@@ -186,11 +194,91 @@ export class Agent {
     });
 
     for await (const chunk of stream) {
-      fullContent += chunk;
-      yield { type: 'content' as const, content: chunk } as StreamEvent;
+      // When already inside a tool_call marker, keep accumulating
+      if (inToolCallMarker) {
+        toolCallBuffer += chunk;
+        const endIdx = toolCallBuffer.indexOf(TOOL_CALL_END);
+        if (endIdx !== -1) {
+          // Marker complete — extract the JSON payload
+          const markerBody = toolCallBuffer.substring(TOOL_CALL_START.length, endIdx);
+          try {
+            parsedToolCalls = JSON.parse(markerBody) as TCTool[];
+          } catch {
+            // malformed — ignore
+          }
+          inToolCallMarker = false;
+          const afterMarker = toolCallBuffer.substring(endIdx + TOOL_CALL_END.length);
+          toolCallBuffer = '';
+          if (afterMarker) {
+            fullContent += afterMarker;
+            yield { type: 'content' as const, content: afterMarker } as StreamEvent;
+          }
+        }
+        continue;
+      }
+
+      const combined = toolCallBuffer + chunk;
+
+      const startIdx = combined.indexOf(TOOL_CALL_START);
+      if (startIdx !== -1) {
+        // Found the beginning of a tool_call marker
+        const beforeMarker = combined.substring(0, startIdx);
+        if (beforeMarker) {
+          fullContent += beforeMarker;
+          yield { type: 'content' as const, content: beforeMarker } as StreamEvent;
+        }
+        toolCallBuffer = combined.substring(startIdx);
+        inToolCallMarker = true;
+
+        // Check if marker completes within the same chunk
+        const endIdx = toolCallBuffer.indexOf(TOOL_CALL_END);
+        if (endIdx !== -1) {
+          const markerBody = toolCallBuffer.substring(TOOL_CALL_START.length, endIdx);
+          try {
+            parsedToolCalls = JSON.parse(markerBody) as TCTool[];
+          } catch {
+            // malformed — ignore
+          }
+          inToolCallMarker = false;
+          const afterMarker = toolCallBuffer.substring(endIdx + TOOL_CALL_END.length);
+          toolCallBuffer = '';
+          if (afterMarker) {
+            fullContent += afterMarker;
+            yield { type: 'content' as const, content: afterMarker } as StreamEvent;
+          }
+        }
+      } else {
+        // No marker start found.
+        // Guard against partial prefix: if combined ends with a '<' that could
+        // be the beginning of the marker, buffer it for the next iteration.
+        const lastAngle = combined.lastIndexOf('<');
+        if (lastAngle !== -1 && combined.length - lastAngle < TOOL_CALL_START.length) {
+          const safe = combined.substring(0, lastAngle);
+          toolCallBuffer = combined.substring(lastAngle);
+          if (safe) {
+            fullContent += safe;
+            yield { type: 'content' as const, content: safe } as StreamEvent;
+          }
+        } else {
+          toolCallBuffer = '';
+          fullContent += combined;
+          yield { type: 'content' as const, content: combined } as StreamEvent;
+        }
+      }
     }
 
-    this.history.push({ role: 'assistant', content: fullContent });
+    // Flush any remaining buffer (incomplete marker treated as plain text)
+    if (toolCallBuffer) {
+      fullContent += toolCallBuffer;
+      yield { type: 'content' as const, content: toolCallBuffer } as StreamEvent;
+    }
+
+    // Record assistant message in history, including tool_calls when present
+    this.history.push({
+      role: 'assistant',
+      content: fullContent,
+      ...(parsedToolCalls && parsedToolCalls.length > 0 ? { tool_calls: parsedToolCalls } : {}),
+    });
 
     yield { type: 'done' as const } as StreamEvent;
   }

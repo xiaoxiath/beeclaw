@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // ─── Hoisted mocks ─────────────────────────────────────────────────────────
 const {
   mockExistsSync, mockMkdirSync, mockReaddirSync, mockStatSync,
-  mockWriteFileSync, mockReadFileSync, mockRenameSync, mockUnlinkSync,
+  mockWriteFileSync, mockReadFileSync, mockRenameSync, mockUnlinkSync, mockAppendFileSync,
   mockBuildFullIndex, mockLoadIndex, mockSaveIndex, mockSearchIndex,
   mockShortTermCache, mockGetShortTermCache,
 } = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ const {
   mockReadFileSync: vi.fn(() => ''),
   mockRenameSync: vi.fn(),
   mockUnlinkSync: vi.fn(),
+  mockAppendFileSync: vi.fn(),
   mockBuildFullIndex: vi.fn(() => ({
     facts: { keywords: {}, lastUpdated: '' },
     knowledge: { keywords: {}, lastUpdated: '' },
@@ -49,6 +50,7 @@ vi.mock('fs', () => ({
   readFileSync: mockReadFileSync,
   renameSync: mockRenameSync,
   unlinkSync: mockUnlinkSync,
+  appendFileSync: mockAppendFileSync,
 }));
 
 vi.mock('../indexer', () => ({

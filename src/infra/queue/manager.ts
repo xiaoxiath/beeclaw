@@ -95,8 +95,8 @@ class TaskManager {
         if (job) {
           return await this.formatJobResult(job, queueName);
         }
-      } catch {
-        // Job not found in this queue, continue
+      } catch (err) {
+        logger.debug('Job lookup failed', { jobId, error: String(err) });
       }
     }
 
@@ -131,7 +131,8 @@ class TaskManager {
         delayed,
         paused: false,
       };
-    } catch {
+    } catch (err) {
+      logger.warn('Failed to get queue stats', { queue, error: String(err) });
       return {
         waiting: 0,
         active: 0,
@@ -196,8 +197,8 @@ class TaskManager {
           ]);
           jobs = [...waiting, ...active, ...completed, ...failed].slice(0, limit);
       }
-    } catch {
-      // Return empty array on error
+    } catch (err) {
+      logger.warn('Failed to list jobs', { queue, state, error: String(err) });
     }
 
     return await Promise.all(jobs.map(job => this.formatJobResult(job, queue)));
@@ -216,8 +217,8 @@ class TaskManager {
           await job.remove();
           return true;
         }
-      } catch {
-        // Continue to next queue
+      } catch (err) {
+        logger.debug('Cancel job lookup failed', { jobId, error: String(err) });
       }
     }
 
@@ -249,8 +250,8 @@ class TaskManager {
     for (const [, worker] of this.workers) {
       try {
         await worker.close();
-      } catch {
-        // Ignore errors on close
+      } catch (err) {
+        logger.warn('Failed to close worker during shutdown', { error: String(err) });
       }
     }
 
@@ -258,8 +259,8 @@ class TaskManager {
     for (const [, queue] of this.queues) {
       try {
         await queue.close();
-      } catch {
-        // Ignore errors on close
+      } catch (err) {
+        logger.warn('Failed to close queue during shutdown', { error: String(err) });
       }
     }
 

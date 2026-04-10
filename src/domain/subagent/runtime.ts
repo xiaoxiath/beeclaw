@@ -88,6 +88,11 @@ function loadDefaultHookRunner(): RuntimeHookRunner | null {
   if (!_defaultHookRunnerLoader) {
     _defaultHookRunnerLoader = () => {
       try {
+        // NOTE: Using require() intentionally — this is a synchronous lazy-loader
+        // for an optional adapter-layer dependency. The try/catch provides graceful
+        // degradation when the plugin system is not installed. Converting to
+        // dynamic import() would require making the entire hook resolution chain
+        // async, which would be a breaking API change.
         // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax
         const { getPluginRegistry } = require('../../adapter/plugins');
         // eslint-disable-next-line @typescript-eslint/no-require-imports, no-restricted-syntax

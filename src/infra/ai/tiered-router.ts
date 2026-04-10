@@ -5,6 +5,7 @@
  */
 
 import type { AIProvider } from '../../infra/config/schema';
+import { logger } from '../observability/logger';
 
 // ============================================================================
 // LLM Tier Definitions
@@ -237,7 +238,7 @@ export class TieredLLMRouter {
     const candidates = fallbackOrder[currentTier] || [];
 
     for (const fallbackTier of candidates) {
-      console.warn(`[TieredLLMRouter] Falling back from ${currentTier} to ${fallbackTier}`);
+      logger.warn(`[TieredLLMRouter] Falling back from ${currentTier} to ${fallbackTier}`);
 
       const fallbackConfig = LLM_TIER_CONFIGS[fallbackTier];
       const fallbackModel = this.selectModelForTier(fallbackTier);
@@ -245,15 +246,18 @@ export class TieredLLMRouter {
       try {
         return await executor(fallbackModel, fallbackConfig);
       } catch (fallbackError) {
-        console.warn(`[TieredLLMRouter] Fallback to ${fallbackTier} also failed, trying next...`);
+        logger.warn(`[TieredLLMRouter] Fallback to ${fallbackTier} also failed, trying next...`);
         continue;
       }
     }
 
     // All fallbacks exhausted
-    console.error(`[TieredLLMRouter] All fallback tiers exhausted for task`);
+    logger.error(`[TieredLLMRouter] All fallback tiers exhausted for task`);
     throw originalError;
   }
+
+  /** Maximum entries retained in costLog to prevent unbounded growth */
+  private readonly MAX_COST_LOG_SIZE = 1000;
 
   /**
    * 记录成本
@@ -268,6 +272,10 @@ export class TieredLLMRouter {
       tokens,
       cost,
     });
+
+    if (this.costLog.length > this.MAX_COST_LOG_SIZE) {
+      this.costLog.splice(0, this.costLog.length - this.MAX_COST_LOG_SIZE);
+    }
   }
 
   /**

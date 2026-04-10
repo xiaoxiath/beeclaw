@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSync, renameSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSync, renameSync, unlinkSync, appendFileSync } from 'fs';
 import { join, dirname, resolve, sep } from 'path';
 import type { MemoryConfig, MemoryCategory, ConversationEntry, MemoryToolResult } from './types';
 import { buildFullIndex, loadIndex, saveIndex, searchIndex, type MemoryIndex } from './indexer';
@@ -361,7 +361,10 @@ export class MemoryStore {
 
   /**
    * Synchronous write - for backward compatibility with existing sync callers.
-   * Uses atomic write (suitable for single-threaded init paths).
+   * Uses atomic write for overwrite; appendFileSync for append mode to reduce
+   * the race window of read-modify-write.
+   *
+   * @deprecated Use async write() instead for proper file-lock protection.
    */
   writeSync(path: string, content: string, mode: 'append' | 'overwrite' = 'append'): MemoryToolResult {
     try {
@@ -375,11 +378,16 @@ export class MemoryStore {
       if (mode === 'overwrite') {
         atomicWriteFileSync(fullPath, content);
       } else {
-        let existingContent = '';
-        if (existsSync(fullPath)) {
-          existingContent = readFileSync(fullPath, 'utf-8');
+        // Fix P0-02: use appendFileSync instead of read+write to reduce race window
+        try {
+          appendFileSync(fullPath, content, 'utf-8');
+        } catch (e: any) {
+          if (e.code === 'ENOENT') {
+            atomicWriteFileSync(fullPath, content);
+          } else {
+            throw e;
+          }
         }
-        atomicWriteFileSync(fullPath, existingContent + content);
       }
 
       return { success: true, data: `Written to ${path}` };
@@ -553,7 +561,7 @@ export class MemoryStore {
       const cache = getShortTermCache();
       await cache.updateConversations(userId, recentConversations);
     } catch (error) {
-      console.error('[MemoryStore] Failed to update short-term cache:', error);
+      logger.error('[MemoryStore] Failed to update short-term cache:', error);
     }
 
     return recentConversations;

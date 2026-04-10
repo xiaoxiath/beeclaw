@@ -95,6 +95,12 @@ export function recordQuery(
     recentQueries.shift();
   }
 
+  // Hard cap to prevent unbounded growth even within the time window
+  const MAX_RECENT_QUERIES = 500;
+  if (recentQueries.length > MAX_RECENT_QUERIES) {
+    recentQueries.splice(0, recentQueries.length - MAX_RECENT_QUERIES);
+  }
+
   // Persist to memory store (async, non-blocking)
   persistQueryRecord(record).catch((error) => {
     logger.error('[QueryTracking] Failed to persist query record:', error);
@@ -182,7 +188,7 @@ async function persistQueryRecord(record: QueryRecord): Promise<void> {
     }
   } catch (_error) {
     // Memory store might not be initialized
-    console.debug('[QueryTracking] Memory store not available for persistence');
+    logger.debug('[QueryTracking] Memory store not available for persistence');
   }
 }
 

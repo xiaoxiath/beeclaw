@@ -11,6 +11,7 @@ interface CacheEntry<T> {
 
 class MemoryCache {
   private store = new Map<string, CacheEntry<any>>();
+  private _inflight = new Map<string, Promise<any>>();
   private maxSize: number;
 
   constructor(maxSize = 10000) {
@@ -111,9 +112,22 @@ class MemoryCache {
   async getOrSet<T>(key: string, factory: () => T | Promise<T>, ttlSeconds?: number): Promise<T> {
     const cached = this.get<T>(key);
     if (cached !== undefined) return cached;
-    const value = await factory();
-    this.set(key, value, ttlSeconds);
-    return value;
+
+    // Singleflight: if an identical key is already being computed, reuse its Promise
+    const existing = this._inflight.get(key);
+    if (existing) return existing as Promise<T>;
+
+    const promise = Promise.resolve(factory()).then((value) => {
+      this.set(key, value, ttlSeconds);
+      this._inflight.delete(key);
+      return value;
+    }).catch((err) => {
+      this._inflight.delete(key);
+      throw err;
+    });
+
+    this._inflight.set(key, promise);
+    return promise;
   }
   cleanup(): number {
     let cleaned = 0;
