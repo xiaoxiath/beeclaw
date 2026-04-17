@@ -54,6 +54,14 @@ function shouldRotateCredential(classified: { type: string }): boolean {
   return classified.type === 'AUTH_ERROR' || classified.type === 'INSUFFICIENT_BALANCE';
 }
 
+function getProviderRecord(options: CallAIOptions | StreamAIOptions): Record<string, unknown> | undefined {
+  const provider = options.provider as unknown;
+  if (provider && typeof provider === 'object') {
+    return provider as Record<string, unknown>;
+  }
+  return undefined;
+}
+
 /**
  * Resolve the provider type key that maps a set of `CallAIOptions` to its
  * credential pool.  We use `options.provider.type` when present; many
@@ -62,7 +70,7 @@ function shouldRotateCredential(classified: { type: string }): boolean {
 function resolveProviderType(options: CallAIOptions | StreamAIOptions): string | undefined {
   // The provider config is expected to carry a `type` (or `provider`) string
   // that identifies the backend.  We try the most common field names.
-  const provider = (options as Record<string, unknown>).provider as Record<string, unknown> | undefined;
+  const provider = getProviderRecord(options);
   if (!provider) return undefined;
 
   if (typeof provider.type === 'string') return provider.type;
@@ -241,7 +249,7 @@ export class CredentialAwareAIClient {
   ): T {
     // Deep-clone the provider sub-object so we never mutate the caller's
     // original options.
-    const provider = { ...(options as Record<string, unknown>).provider as Record<string, unknown> };
+    const provider = { ...(getProviderRecord(options) ?? {}) };
     provider.apiKey = credential.apiKey;
 
     if (credential.baseUrl !== undefined) {

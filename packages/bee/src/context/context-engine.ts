@@ -6,7 +6,7 @@
  * Future alternatives: LCM, vector-retrieval compression, hybrid strategies.
  */
 
-import type { ChatMessage, AIResponse, OpenAITool, ToolCall, ToolResult } from '../core/types';
+import type { AIResponse, OpenAITool, ToolCall, ToolResult } from '../core/types';
 
 /**
  * Pluggable context engine interface.

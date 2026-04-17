@@ -97,7 +97,7 @@ export class ToolDispatcher {
     messages: Array<{ role: string; content: string }>,
     opts?: ToolDispatchOptions,
   ): Promise<ToolBatchResult> {
-    const params = safeJsonParse(call.function.arguments, {});
+    const params = safeJsonParse<Record<string, unknown>>(call.function.arguments, {});
     const toolName = call.function.name;
     opts?.onToolCall?.(toolName, params);
     opts?.onContentBlock?.({ type: 'tool_use', id: call.id, name: toolName, input: params });
