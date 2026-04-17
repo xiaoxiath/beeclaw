@@ -48,6 +48,7 @@ import { getHybridToolSelector } from './hybrid-tool-selector';
 
 // Phase 4: Extracted modules from Agent god-object
 import { ToolDispatcher } from './tool-dispatcher';
+import type { CommandApprovalPort } from './tool-dispatcher';
 import { createDefaultToolExecutor } from './tool-executor';
 import { MemoryManager } from './memory-manager';
 
@@ -230,12 +231,25 @@ export class Agent {
     }
 
     // Phase 4: Initialize extracted modules
+    // [Upgrade] Initialize command approval if available
+    let commandApproval: CommandApprovalPort | undefined;
+    try {
+      // Lazy-load: concrete implementation lives in bee layer; domain only sees the port interface
+      const mod = require('../../../packages/bee/src/safety/command-approval');
+      if (mod?.CommandApproval) {
+        commandApproval = new mod.CommandApproval();
+      }
+    } catch {
+      // Module not available — command approval disabled
+    }
+
     this.toolDispatcher = new ToolDispatcher(
       this.toolExecutor,
       this.hookRunner,
       this.loopDetector,
       this.options.blockedTools,
       TimeoutEnforcer.fromConfig(),
+      commandApproval,
     );
 
     // Trigger before_agent_start hook (async, fire-and-forget)
@@ -834,7 +848,7 @@ export class Agent {
             }
 
             const resultStr = typeof resultToSave === 'string' ? resultToSave : JSON.stringify(resultToSave);
-            const compressedResult = compressToolResult(resultStr, 4000);
+            const compressedResult = compressToolResult(resultStr, 4000, call.function.name);
 
             this.messages.push({
               role: 'tool',
@@ -895,7 +909,7 @@ export class Agent {
           }
 
           const resultStr = typeof resultToSave === 'string' ? resultToSave : JSON.stringify(resultToSave);
-          const compressedResult = compressToolResult(resultStr, 4000);
+          const compressedResult = compressToolResult(resultStr, 4000, call.function.name);
 
           this.messages.push({
             role: 'tool',
@@ -1027,6 +1041,18 @@ export class Agent {
       ? userMessage
       : '[Multimodal message]';
     await this.memoryManager.recordConversation(userMessageStr, finalContent);
+
+    // [Upgrade] Generate trajectory for RL training (fire-and-forget)
+    try {
+      const { generateAndSaveTrajectory } = require('../../../packages/bee/src/data/trajectory');
+      const sessionId = this.currentUserContext?.sessionId || 'unknown';
+      generateAndSaveTrajectory(sessionId, this.messages, {
+        model: this.options.model,
+        totalTokens: this.estimatedTokens,
+      }).catch(() => { /* non-critical */ });
+    } catch {
+      // Trajectory module not available
+    }
 
     const metadata: string[] = [];
 

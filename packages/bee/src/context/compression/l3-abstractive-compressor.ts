@@ -6,6 +6,9 @@
  *
  * Extracted from beeclaw's src/domain/agent/compression/l3-abstractive-compressor.ts.
  * Changes: uses bee's getLogger and estimateTokens, no singleton.
+ *
+ * P1-3: Added iterative L3 summary support — when a previous summary exists,
+ * the prompt instructs the LLM to merge rather than summarize from scratch.
  */
 
 import { estimateTokens } from '../token-estimator';
@@ -15,6 +18,8 @@ export class L3AbstractiveCompressor {
   readonly name = 'L3-Abstractive';
 
   private llmClient: CompressionLLMClient | null;
+  private previousSummary: string | null = null;
+
   constructor(config?: {
     llmClient?: CompressionLLMClient;
     fallbackToL2?: boolean;
@@ -25,6 +30,15 @@ export class L3AbstractiveCompressor {
 
   setLLMClient(client: CompressionLLMClient): void {
     this.llmClient = client;
+  }
+
+  /**
+   * Set the previous L3 summary for iterative compression.
+   * When set, the next compression will merge new content with this summary
+   * instead of summarizing from scratch.
+   */
+  setPreviousSummary(summary: string | null): void {
+    this.previousSummary = summary;
   }
 
   async compress(text: string, targetTokens?: number): Promise<CompressionResult> {
@@ -80,7 +94,9 @@ export class L3AbstractiveCompressor {
         compressedTokens,
         ratio: originalTokens > 0 ? 1 - compressedTokens / originalTokens : 0,
         infoRetention: 0.70,
-        method: 'L3-Abstractive[llm-summary]',
+        method: this.previousSummary
+          ? 'L3-Abstractive[llm-summary:iterative]'
+          : 'L3-Abstractive[llm-summary]',
         latencyMs,
       };
     } catch (error) {
@@ -111,6 +127,40 @@ export class L3AbstractiveCompressor {
   }
 
   private buildPrompt(text: string, targetTokens: number): string {
+    if (this.previousSummary) {
+      return `You are a text compression expert. Your task is to create a concise summary that:
+
+1. Preserves all key facts, decisions, and data
+2. Removes redundancy, filler words, and low-information content
+3. Uses clear, concise sentences
+4. Target length: approximately ${targetTokens} tokens
+5. Merge with existing summary — update, do not duplicate
+
+## EXISTING SUMMARY (from a previous compaction)
+Update and merge this summary with new information below.
+Preserve resolved/pending tracking. Do NOT simply append.
+
+${this.previousSummary}
+
+## NEW CONVERSATION (since last compaction)
+---
+${text}
+---
+
+Produce a single merged summary using this structure:
+
+### Resolved
+Items that have been completed or answered.
+
+### Pending
+Open questions, unresolved tasks, or items still in progress.
+
+### Key Context
+Important facts, decisions, constraints, and background information.
+
+Compressed summary:`;
+    }
+
     return `You are a text compression expert. Your task is to create a concise summary that:
 
 1. Preserves all key facts, decisions, and data
@@ -122,6 +172,17 @@ Content to compress:
 ---
 ${text}
 ---
+
+Produce a structured summary using this format:
+
+### Resolved
+Items that have been completed or answered.
+
+### Pending
+Open questions, unresolved tasks, or items still in progress.
+
+### Key Context
+Important facts, decisions, constraints, and background information.
 
 Compressed summary:`;
   }

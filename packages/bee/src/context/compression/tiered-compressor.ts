@@ -10,6 +10,13 @@
  *
  * Extracted from beeclaw's src/domain/agent/compression/tiered-compressor.ts.
  * Changes: no singletons, uses bee's getLogger/estimateTokens, direct instantiation.
+ *
+ * P1-3: Iterative L3 summary chaining — stores the last L3 summary and feeds
+ * it back into subsequent L3 compressions so the LLM merges rather than
+ * re-summarizing from scratch.
+ *
+ * P1-4: Anti-thrashing detection — if 2+ compressions occur within 60 seconds
+ * the budget threshold is bumped up to 15% to reduce oscillation.
  */
 
 import { getLogger } from '../../core/logger';
@@ -33,6 +40,15 @@ export class TieredCompressor {
   private l3: L3AbstractiveCompressor;
   private stats: CompressionStats;
 
+  /** Stores the last L3 summary for iterative chaining (P1-3). */
+  private lastL3Summary: string | null = null;
+
+  /** Timestamps of recent compression events for anti-thrashing (P1-4). */
+  private compressionTimestamps: number[] = [];
+
+  /** Current threshold bump percentage (0 to 0.15) applied when thrashing detected. */
+  private thrashingThresholdBump = 0;
+
   constructor(config?: { llmClient?: CompressionLLMClient }) {
     this.l1 = new L1FormatCompressor();
     this.l2 = new L2ExtractiveCompressor();
@@ -48,9 +64,27 @@ export class TieredCompressor {
 
   /**
    * Plan compression strategy based on context utilization.
+   *
+   * Anti-thrashing: if 2+ compressions happen within 60 s the effective budget
+   * is bumped by up to 15 % so the system doesn't oscillate between compress /
+   * expand cycles.
    */
   plan(currentTokens: number, budgetTokens: number): CompressionPlan {
-    const utilization = budgetTokens > 0 ? currentTokens / budgetTokens : 0;
+    // Record this compression event and check for thrashing
+    this.recordCompressionEvent();
+
+    if (this.isThrashing()) {
+      // Bump threshold by 5 % each time, capped at 15 %
+      this.thrashingThresholdBump = Math.min(this.thrashingThresholdBump + 0.05, 0.15);
+      const logger = getLogger();
+      logger.warn(
+        `[TieredCompressor] Thrashing detected — bumping budget threshold by ${(this.thrashingThresholdBump * 100).toFixed(0)}%`,
+      );
+    }
+
+    // Apply adjusted budget so utilization appears lower, reducing compression frequency
+    const adjustedBudget = budgetTokens * (1 + this.thrashingThresholdBump);
+    const utilization = adjustedBudget > 0 ? currentTokens / adjustedBudget : 0;
 
     if (utilization < 0.7) {
       return {
@@ -127,6 +161,11 @@ export class TieredCompressor {
       };
     }
 
+    // P1-3: Inject previous L3 summary for iterative merge
+    if (plan.level === 'L1+L2+L3') {
+      this.l3.setPreviousSummary(this.lastL3Summary);
+    }
+
     // Apply L3 with fallback
     const l2FallbackResult = result;
     const l3Target = Math.ceil(estimateTokens(result) * 0.3);
@@ -135,6 +174,9 @@ export class TieredCompressor {
       const l3Result = await this.l3.compress(result, l3Target);
       result = l3Result.compressed;
       methods.push(l3Result.method);
+
+      // P1-3: Store result for next iterative chain
+      this.lastL3Summary = result;
 
       const latencyMs = Date.now() - startTime;
       this.updateStats('L1+L2+L3', totalOriginalTokens, estimateTokens(result), latencyMs);
@@ -189,6 +231,47 @@ export class TieredCompressor {
   resetStats(): void {
     this.stats = createEmptyStats();
   }
+
+  /**
+   * Reset the iterative summary chain, anti-thrashing state, and timestamps.
+   * Call this when starting a fresh conversation or after a hard context reset.
+   */
+  resetSummaryChain(): void {
+    this.lastL3Summary = null;
+    this.thrashingThresholdBump = 0;
+    this.compressionTimestamps = [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Anti-thrashing helpers (P1-4)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Record the current time as a compression event and prune events older
+   * than the 60-second sliding window.
+   */
+  private recordCompressionEvent(): void {
+    const now = Date.now();
+    this.compressionTimestamps.push(now);
+
+    // Prune events older than 60 seconds
+    const windowMs = 60_000;
+    this.compressionTimestamps = this.compressionTimestamps.filter(
+      (ts) => now - ts <= windowMs,
+    );
+  }
+
+  /**
+   * Returns true if 2 or more compression events have occurred within the
+   * last 60 seconds, indicating potential thrashing.
+   */
+  private isThrashing(): boolean {
+    return this.compressionTimestamps.length >= 2;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stats
+  // ---------------------------------------------------------------------------
 
   private updateStats(
     level: CompressionLevel,

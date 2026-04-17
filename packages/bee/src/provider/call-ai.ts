@@ -158,6 +158,13 @@ export class AIClient {
     // Anthropic format
     if (isAnthropicProvider(provider)) {
       const anthropicPayload = convertToAnthropicFormat(messages, tools);
+      // [Upgrade] Apply Anthropic prompt caching
+      try {
+        const { applyAnthropicCacheControl } = require('./prompt-cache');
+        applyAnthropicCacheControl(anthropicPayload);
+      } catch {
+        // Prompt cache module not available
+      }
       const body: Record<string, unknown> = {
         model,
         ...anthropicPayload,
@@ -267,10 +274,20 @@ export class AIClient {
     const { baseUrl, path } = getProviderConfig(provider);
     const isAnthropic = isAnthropicProvider(provider);
 
+    let anthropicStreamPayload: any = undefined;
+    if (isAnthropic) {
+      anthropicStreamPayload = convertToAnthropicFormat(messages, tools);
+      // [Upgrade] Apply Anthropic prompt caching
+      try {
+        const { applyAnthropicCacheControl } = require('./prompt-cache');
+        applyAnthropicCacheControl(anthropicStreamPayload);
+      } catch { /* prompt cache not available */ }
+    }
+
     const body: Record<string, unknown> = isAnthropic
       ? {
           model,
-          ...convertToAnthropicFormat(messages, tools),
+          ...anthropicStreamPayload,
           max_tokens: maxTokens || 4096,
           stream: true,
         }

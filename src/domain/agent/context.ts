@@ -381,11 +381,117 @@ export interface CompressedMessage {
   compressedTokens?: number;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers for compressToolResult (P2-2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively truncate an object to fit within a character budget.
+ *
+ * Rules:
+ * - Max recursion depth: 3
+ * - Max keys per object: 15 (remaining keys summarised)
+ * - Strings longer than 300 chars are truncated
+ * - Arrays with > 10 elements are collapsed to first 3 + summary
+ */
+function truncateObject(
+  obj: unknown,
+  budget: number,
+  depth: number = 0,
+): unknown {
+  const MAX_DEPTH = 3;
+  const MAX_KEYS = 15;
+  const MAX_STRING_LEN = 300;
+
+  if (depth > MAX_DEPTH) {
+    return '[nested object — truncated]';
+  }
+
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (typeof obj === 'string') {
+    if (obj.length > MAX_STRING_LEN) {
+      return obj.slice(0, MAX_STRING_LEN) + '... [truncated]';
+    }
+    return obj;
+  }
+
+  if (typeof obj === 'number' || typeof obj === 'boolean') {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    if (obj.length > 10) {
+      const preview = obj.slice(0, 3).map(item => truncateObject(item, budget, depth + 1));
+      return [...preview, `... ${obj.length - 3} more items`];
+    }
+    return obj.map(item => truncateObject(item, budget, depth + 1));
+  }
+
+  if (typeof obj === 'object') {
+    const entries = Object.entries(obj as Record<string, unknown>);
+    const truncated: Record<string, unknown> = {};
+    const limit = Math.min(entries.length, MAX_KEYS);
+    // Propagate budget proportionally to each key
+    const perKeyBudget = Math.max(64, Math.floor(budget / Math.max(limit, 1)));
+
+    let totalLen = 2; // opening/closing braces
+    for (let i = 0; i < limit; i++) {
+      const [key, value] = entries[i];
+      truncated[key] = truncateObject(value, perKeyBudget, depth + 1);
+      // Track accumulated size; stop early if over budget
+      totalLen += key.length + 4 + JSON.stringify(truncated[key]).length;
+      if (totalLen > budget && i >= 3) {
+        truncated['__truncated__'] = `${entries.length - (i + 1)} more keys omitted (budget)`;
+        return truncated;
+      }
+    }
+
+    if (entries.length > MAX_KEYS) {
+      truncated['__truncated__'] = `${entries.length - MAX_KEYS} more keys omitted`;
+    }
+
+    return truncated;
+  }
+
+  return String(obj);
+}
+
+/**
+ * Truncate text while preserving context from both head and tail.
+ *
+ * Keeps head (60%) + tail (30%) with line-count stats in the middle gap (10%).
+ */
+function truncateWithContext(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+
+  const headLen = Math.floor(maxLen * 0.6);
+  const tailLen = Math.floor(maxLen * 0.3);
+
+  const head = text.slice(0, headLen);
+  const tail = text.slice(text.length - tailLen);
+
+  // Count omitted lines
+  const omittedSection = text.slice(headLen, text.length - tailLen);
+  const omittedLines = (omittedSection.match(/\n/g) || []).length + 1;
+  const totalLines = (text.match(/\n/g) || []).length + 1;
+
+  const separator = `\n\n... [${omittedLines} of ${totalLines} lines omitted, ${text.length - headLen - tailLen} chars truncated] ...\n\n`;
+
+  return head + separator + tail;
+}
+
 /**
  * Compress a tool result message
  * Keeps tool name and brief result, removes verbose output
+ *
+ * @param content  - The tool result content (often JSON)
+ * @param maxLen   - Maximum length for the compressed result (default: 1000)
+ * @param toolName - Optional tool name for tool-specific compression hints
  */
-export function compressToolResult(content: string, maxLen?: number): string {
+export function compressToolResult(content: string, maxLen?: number, toolName?: string): string {
   const effectiveMax = maxLen ?? 1000;
   try {
     const result = JSON.parse(content);
@@ -394,28 +500,24 @@ export function compressToolResult(content: string, maxLen?: number): string {
     if (result.success && result.data) {
       const data = result.data;
 
-      // For list/array results
+      // For list/array results — show 3 sample items (increased from 2)
       if (Array.isArray(data)) {
         return JSON.stringify({
           success: true,
+          ...(toolName ? { tool: toolName } : {}),
           summary: `Array with ${data.length} items`,
-          preview: data.slice(0, 2),
+          preview: data.slice(0, 3).map((item: unknown) => truncateObject(item, effectiveMax, 0)),
         });
       }
 
-      // For object results, keep structure but truncate long strings
+      // For object results, use recursive truncation
       if (typeof data === 'object') {
-        const compressed: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(data)) {
-          if (typeof value === 'string' && value.length > 500) {
-            compressed[key] = value.slice(0, 200) + '... [truncated]';
-          } else if (Array.isArray(value) && value.length > 10) {
-            compressed[key] = [...value.slice(0, 5), `... ${value.length - 5} more items`];
-          } else {
-            compressed[key] = value;
-          }
-        }
-        return JSON.stringify({ success: true, data: compressed });
+        const compressed = truncateObject(data, effectiveMax, 0);
+        return JSON.stringify({
+          success: true,
+          ...(toolName ? { tool: toolName } : {}),
+          data: compressed,
+        });
       }
     }
 
@@ -424,16 +526,16 @@ export function compressToolResult(content: string, maxLen?: number): string {
       return JSON.stringify({ success: false, error: result.error });
     }
 
-    // Fallback: truncate if too long
+    // Fallback: truncate with context if too long
     if (content.length > effectiveMax) {
-      return content.slice(0, Math.floor(effectiveMax / 2)) + '... [compressed]';
+      return truncateWithContext(content, effectiveMax);
     }
 
     return content;
   } catch {
-    // Not JSON, just truncate
+    // Not JSON — use context-preserving truncation
     if (content.length > effectiveMax) {
-      return content.slice(0, Math.floor(effectiveMax / 2)) + '... [compressed]';
+      return truncateWithContext(content, effectiveMax);
     }
     return content;
   }
@@ -565,4 +667,3 @@ export const DEFAULT_TOKEN_STATS_CONFIG: TokenStatsConfig = {
   showTokenStats: false,
   tokenStatsFormat: 'inline',
 };
-

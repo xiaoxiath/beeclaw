@@ -37,6 +37,10 @@ export interface ClassifiedError {
   originalError: Error;
   httpStatus?: number;
   retryAfterMs?: number;
+  shouldCompress: boolean;
+  shouldRotateCredential: boolean;
+  shouldFallback: boolean;
+  recoveryHint?: string;
 }
 
 export interface RetryStrategy {
@@ -89,6 +93,12 @@ export interface RetryEvent {
   error?: ClassifiedError;
   delayMs?: number;
   totalElapsedMs: number;
+}
+
+export interface RecoveryCallbacks {
+  onShouldCompress?: () => Promise<void>;
+  onShouldRotateCredential?: (err: ClassifiedError) => Promise<boolean>;
+  onShouldFallback?: (err: ClassifiedError) => Promise<RetryResult<any>>;
 }
 
 // ============================================================================
@@ -173,6 +183,30 @@ const RETRYABLE_TYPES = new Set<UnifiedErrorType>([
   'SERVER_ERROR',
   'SERVICE_UNAVAILABLE',
 ]);
+
+/**
+ * Detect context-overflow / token-limit errors that can be recovered
+ * by compressing or truncating the conversation history.
+ */
+function isContextOverflow(msg: string, status?: number): boolean {
+  const lower = msg.toLowerCase();
+  return lower.includes('context length') || lower.includes('context window')
+    || lower.includes('maximum context') || lower.includes('token limit')
+    || lower.includes('too long') || lower.includes('超过最大长度')
+    || lower.includes('上下文长度')
+    || (status === 400 && lower.includes('tokens'));
+}
+
+/**
+ * Build a human-readable recovery hint from the three boolean flags.
+ */
+function buildRecoveryHint(compress: boolean, rotate: boolean, fallback: boolean): string {
+  const hints: string[] = [];
+  if (compress) hints.push('compress context and retry');
+  if (rotate) hints.push('rotate to next credential');
+  if (fallback) hints.push('fallback to alternative model');
+  return hints.join('; ') || 'standard retry';
+}
 
 /**
  * Unified error classifier.
@@ -275,6 +309,11 @@ export function classifyError(error: unknown): ClassifiedError {
     type = 'UNKNOWN';
   }
 
+  // Compute recovery hints
+  const shouldCompress = isContextOverflow(err.message, httpStatus);
+  const shouldRotateCredential = type === 'AUTH_ERROR' || type === 'INSUFFICIENT_BALANCE';
+  const shouldFallback = type === 'NOT_FOUND' || type === 'SERVICE_UNAVAILABLE' || (type === 'SERVER_ERROR' && httpStatus === 503);
+
   return {
     type,
     retryable: RETRYABLE_TYPES.has(type),
@@ -282,6 +321,10 @@ export function classifyError(error: unknown): ClassifiedError {
     originalError: err,
     httpStatus,
     retryAfterMs,
+    shouldCompress,
+    shouldRotateCredential,
+    shouldFallback,
+    recoveryHint: buildRecoveryHint(shouldCompress, shouldRotateCredential, shouldFallback),
   };
 }
 
@@ -411,11 +454,24 @@ export class UnifiedRetryEngine {
    * @param operationName - Name used for logging and circuit-breaker lookup
    * @param fn - Async function to execute
    * @param strategy - Retry strategy (defaults to `api`)
+   * @param callbacks - Optional recovery callbacks for enhanced error handling
    */
   async execute<T>(
     operationName: string,
     fn: () => Promise<T>,
+    strategy?: RetryStrategy,
+  ): Promise<RetryResult<T>>;
+  async execute<T>(
+    operationName: string,
+    fn: () => Promise<T>,
+    strategy: RetryStrategy,
+    callbacks: RecoveryCallbacks,
+  ): Promise<RetryResult<T>>;
+  async execute<T>(
+    operationName: string,
+    fn: () => Promise<T>,
     strategy: RetryStrategy = RETRY_STRATEGIES.api,
+    callbacks?: RecoveryCallbacks,
   ): Promise<RetryResult<T>> {
     const context: RetryContext = {
       operationName,
@@ -434,6 +490,10 @@ export class UnifiedRetryEngine {
           retryable: false,
           message: `Circuit breaker for "${operationName}" is open`,
           originalError: new CircuitOpenError(operationName, breaker.cooldownRemainingMs()),
+          shouldCompress: false,
+          shouldRotateCredential: false,
+          shouldFallback: false,
+          recoveryHint: 'standard retry',
         };
         context.errors.push(classified);
 
@@ -477,6 +537,33 @@ export class UnifiedRetryEngine {
           this.circuitBreakers
             .getBreaker(operationName)
             .recordFailure(classified.message, classified.type === 'TIMEOUT_ERROR');
+        }
+
+        // --- Recovery callbacks ---
+        if (callbacks) {
+          // 1. Context compression recovery
+          if (classified.shouldCompress && callbacks.onShouldCompress) {
+            await callbacks.onShouldCompress();
+            attempt--; // compensate for loop increment
+            // After compression, retry immediately (don't count this attempt)
+            continue;
+          }
+
+          // 2. Credential rotation recovery
+          if (classified.shouldRotateCredential && callbacks.onShouldRotateCredential) {
+            const rotated = await callbacks.onShouldRotateCredential(classified);
+            if (rotated) {
+              // Credential rotated, retry immediately
+              attempt--; // compensate for loop increment
+              continue;
+            }
+          }
+
+          // 3. Fallback recovery
+          if (classified.shouldFallback && callbacks.onShouldFallback) {
+            const fallbackResult = await callbacks.onShouldFallback(classified);
+            return fallbackResult as RetryResult<T>;
+          }
         }
 
         const isLastAttempt = attempt === strategy.maxRetries;

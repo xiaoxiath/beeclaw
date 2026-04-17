@@ -46,6 +46,19 @@ export class MemoryManager {
       const memoryStore = getMemoryStore();
       const coreContext = memoryStore.getCoreContext();
 
+      // [Upgrade] Apply memory fence to prevent injection via recalled content.
+      // getCoreContext() always returns { user: string; soul: string; facts: string }.
+      // We fence each string field to prevent recalled memory from acting as instructions.
+      const fencedContext: { user: string; soul: string; facts: string } = { ...coreContext };
+      try {
+        const { fenceMemoryContent } = require('../../../packages/bee/src/safety/memory-fence');
+        fencedContext.user = fenceMemoryContent(coreContext.user);
+        fencedContext.soul = fenceMemoryContent(coreContext.soul);
+        fencedContext.facts = fenceMemoryContent(coreContext.facts);
+      } catch {
+        // Memory fence module not available — fencedContext stays as-is (unmodified copy)
+      }
+
       let skillsPrompt = '';
       try {
         const skillStore = getSkillStore();
@@ -74,7 +87,7 @@ export class MemoryManager {
       }
 
       const contextWithSkills = {
-        ...coreContext,
+        ...fencedContext,
         skills: skillsPrompt,
       };
 

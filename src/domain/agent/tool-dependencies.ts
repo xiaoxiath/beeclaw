@@ -27,6 +27,12 @@ export interface ToolDependencyConfig {
 }
 
 /**
+ * [P2-3] Tools that operate on file paths and must not target the same file
+ * within a single parallel batch.
+ */
+const PATH_SCOPED_TOOLS = new Set(['file_write', 'file_read', 'file_delete', 'sandbox_write_file', 'sandbox_read_file']);
+
+/**
  * Default dependency configurations for all tools
  *
  * Most tools are independent and can run in parallel.
@@ -240,6 +246,47 @@ export function hasSideEffects(toolName: string): boolean {
 }
 
 /**
+ * [P2-3] Extract the file path from a tool call's arguments.
+ *
+ * Checks common argument names: path, file_path, filename.
+ * Returns null if no path can be determined.
+ */
+export function extractPathFromToolCall<T extends { name: string; arguments?: string | Record<string, unknown> }>(
+  tc: T,
+): string | null {
+  let args: Record<string, unknown> | undefined;
+
+  if (typeof tc.arguments === 'string') {
+    try {
+      args = JSON.parse(tc.arguments);
+    } catch {
+      return null;
+    }
+  } else if (typeof tc.arguments === 'object' && tc.arguments !== null) {
+    args = tc.arguments as Record<string, unknown>;
+  }
+
+  // Also check for a nested `args` property (some schemas wrap arguments)
+  if (!args) {
+    const anyTc = tc as Record<string, unknown>;
+    if (typeof anyTc.args === 'string') {
+      try {
+        args = JSON.parse(anyTc.args);
+      } catch {
+        return null;
+      }
+    } else if (typeof anyTc.args === 'object' && anyTc.args !== null) {
+      args = anyTc.args as Record<string, unknown>;
+    }
+  }
+
+  if (!args) return null;
+
+  const path = args.path ?? args.file_path ?? args.filename;
+  return typeof path === 'string' ? path : null;
+}
+
+/**
  * Group tool calls into parallel and sequential batches
  *
  * @param toolCalls Array of tool calls to group
@@ -279,7 +326,83 @@ export function groupToolCalls<T extends { name: string }>(
     batches.push(currentBatch);
   }
 
-  return batches;
+  // -----------------------------------------------------------------------
+  // [P2-3] Post-processing: detect path conflicts in parallel batches
+  // -----------------------------------------------------------------------
+  // If multiple PATH_SCOPED_TOOLS in the same batch target the same file path,
+  // split them into separate sequential batches to prevent race conditions.
+  const resolvedBatches: T[][] = [];
+
+  for (const batch of batches) {
+    if (batch.length <= 1) {
+      resolvedBatches.push(batch);
+      continue;
+    }
+
+    // Identify path-scoped tools in this batch and group by path
+    const pathMap = new Map<string, T[]>(); // path → conflicting tools
+    const nonPathTools: T[] = [];
+
+    for (const tc of batch) {
+      if (PATH_SCOPED_TOOLS.has(tc.name)) {
+        const filePath = extractPathFromToolCall(tc);
+        if (filePath) {
+          const existing = pathMap.get(filePath);
+          if (existing) {
+            existing.push(tc);
+          } else {
+            pathMap.set(filePath, [tc]);
+          }
+          continue;
+        }
+      }
+      nonPathTools.push(tc);
+    }
+
+    // Check for any actual conflicts (more than 1 tool targeting the same path)
+    let hasConflict = false;
+    for (const tools of pathMap.values()) {
+      if (tools.length > 1) {
+        hasConflict = true;
+        break;
+      }
+    }
+
+    if (!hasConflict) {
+      // No conflicts — keep batch as-is
+      resolvedBatches.push(batch);
+      continue;
+    }
+
+    // Conflicts detected — rebuild batches
+    // Non-conflicting tools (including path tools with unique paths) go into
+    // the first parallel batch. Conflicting tools are split sequentially.
+    const firstBatch: T[] = [...nonPathTools];
+    const sequentialExtras: T[][] = [];
+
+    for (const [, tools] of pathMap) {
+      if (tools.length === 1) {
+        // No conflict for this path — keep in parallel batch
+        firstBatch.push(tools[0]);
+      } else {
+        // Conflict: first tool goes into the parallel batch, rest become
+        // separate sequential batches to preserve ordering.
+        firstBatch.push(tools[0]);
+        for (let i = 1; i < tools.length; i++) {
+          sequentialExtras.push([tools[i]]);
+        }
+      }
+    }
+
+    if (firstBatch.length > 0) {
+      resolvedBatches.push(firstBatch);
+    }
+    for (const extra of sequentialExtras) {
+      resolvedBatches.push(extra);
+    }
+  }
+
+  return resolvedBatches;
 }
 
 /**

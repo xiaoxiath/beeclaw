@@ -189,11 +189,23 @@ export async function compressContextWithLLM(
     }
 
     // Build a single text blob from old messages for TieredCompressor
-    const textBlob = oldMessages.map(m => {
+    let textBlob = oldMessages.map(m => {
       const role = m.role === 'user' ? '用户' : m.role === 'assistant' ? '助手' : '工具';
       const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
       return `[${role}] ${content}`;
     }).join('\n\n');
+
+    // [Upgrade] Scan for injection before compression
+    try {
+      const { scanForInjection, sanitizeText } = require('../../../packages/bee/src/safety/injection-scanner');
+      const scanResult = scanForInjection(textBlob);
+      if (!scanResult.safe) {
+        logger.warn(`[ContextBudgetController] Injection detected in context: ${scanResult.threats.map((t: any) => `[${t.category}] ${t.pattern}`).join(', ')}`);
+        textBlob = sanitizeText(textBlob);
+      }
+    } catch {
+      // Injection scanner not available
+    }
 
     const compressor = getTieredCompressor();
     const result = await compressor.compress(
