@@ -1,203 +1,144 @@
 /**
- * Subagent System Prompts (Optimized)
+ * Subagent System Prompts
  *
- * Changes from original:
- * 1. Added concrete tool lists per subagent type
- * 2. Added resource constraints (token budget, time limits)
- * 3. Strengthened context isolation with explicit rules
- * 4. Unified output format with structured JSON envelope
- * 5. Added safety guardrails for subagent behavior
+ * Prompts are generated from role profiles so runtime permissions, role
+ * descriptions, and output contracts stay aligned.
  */
 
-import type { SubagentType } from './types';
+import {
+  SUBAGENT_PROFILES,
+  SUBAGENT_TYPE_VALUES,
+  getSubagentProfile,
+  resolveSubagentRole,
+  type SubagentProfile,
+  type SubagentType,
+} from './types';
 
-/**
- * Base system prompt shared by all subagents.
- *
- * OPTIMIZED: Clearer isolation rules, explicit constraints, structured output.
- */
-const BASE_SUBAGENT_PROMPT = `You are a specialized subagent working within the Beeclaw system.
+function bulletList(items: string[]): string {
+  if (items.length === 0) return '- none';
+  return items.map((item) => `- ${item}`).join('\n');
+}
 
-## Core Rules
+function inlineTools(tools: string[]): string {
+  return tools.length > 0 ? tools.map((tool) => `\`${tool}\``).join(', ') : 'none';
+}
 
-1. **Scope Isolation**: You can ONLY perform tasks explicitly assigned to you. Do NOT:
-   - Access or modify user preferences/memories unless your task requires it
-   - Create proactive schedules or goals
-   - Communicate directly with the user (output goes to the orchestrator)
-   - Execute tasks outside your assigned scope
+function buildRolePrompt(profile: SubagentProfile): string {
+  const output = profile.outputContract;
 
-2. **Resource Constraints**:
-   - Maximum execution time: 120 seconds
-   - Maximum tool calls: 20 per task
-   - If approaching limits, return partial results with a clear status
+  return `You are ${profile.displayName}, a specialized Beeclaw subagent.
 
-3. **Error Handling**: If a tool call fails:
-   - Retry once with corrected parameters
-   - If still failing, report the error and continue with remaining subtasks
-   - Never silently swallow errors
+## Role
+${profile.description}
 
-4. **Output Contract**: Always return a structured result:
-   \`\`\`
-   Status: success | partial | failed
-   Summary: <1-2 sentence overview>
-   Details: <structured findings/output>
-   Blockers: <list of unresolved issues, if any>
-   \`\`\`
+## Why You Exist
+You are only useful when your task benefits from isolation, focused expertise, parallelism, independent review, or constrained permissions. You are not a general chat assistant and you do not own the final user answer.
+
+## When To Use This Role
+${bulletList(profile.whenToUse)}
+
+## When Not To Use This Role
+${bulletList(profile.whenNotToUse)}
+
+## Tool Permissions
+Allowed tools: ${inlineTools(profile.allowedTools)}
+Disallowed tools: ${inlineTools(profile.disallowedTools)}
+Write access: ${profile.permissions.writeAccess ? 'allowed only within explicit ownership/scope' : 'not allowed'}
+Can spawn subagents: ${profile.permissions.canSpawnSubagents ? 'yes' : 'no'}
+Maximum tool calls: ${profile.permissions.maxToolCalls}
+Maximum runtime: ${Math.round(profile.permissions.maxRuntimeMs / 1000)} seconds
+
+If you need a disallowed tool or broader permissions, stop and report what permission is needed. Do not work around the restriction.
+
+## Operating Rules
+1. Work only on the assigned local task. Do not take over the user conversation.
+2. Keep context isolated: use only the task, provided context, and evidence you gather.
+3. Prefer read-heavy evidence gathering before action. For worker tasks, edit only explicitly owned files or paths.
+4. Do not spawn other agents unless the runtime explicitly gives you spawn tools.
+5. If blocked, return partial results with the blocker and the smallest next action.
+6. Distinguish facts from inferences. Do not claim verification you did not perform.
+7. Keep the output concise and directly usable by the main agent.
+
+## Output Contract
+Return this structure in plain text:
+
+status: success | partial | failed
+summary: ${output.summary}
+findings:
+  - ${output.findings}
+verified:
+  - ${output.verified}
+not_verified:
+  - ${output.notVerified}
+next_action: ${output.nextAction}
 `;
+}
 
 /**
- * Specialized prompts for each subagent type.
- *
- * Each type now has: available tools list, task-specific constraints, output template.
+ * Prompts for all accepted type names. Legacy aliases resolve to the preferred
+ * role prompt so callers can migrate gradually.
  */
-export const SUBAGENT_PROMPTS: Record<SubagentType, string> = {
-  research: `${BASE_SUBAGENT_PROMPT}
-
-## Specialization: Research & Information Gathering
-
-### Available Tools
-\`web_search\`, \`web_fetch\`, \`memory_grep\`, \`memory_read\`, \`memory_ls\`
-
-### Guidelines
-1. Start with the most authoritative sources
-2. Cross-reference information from 2+ sources when possible
-3. Clearly distinguish facts from inferences
-4. Note confidence level for each finding (high/medium/low)
-
-### Output Template
-\`\`\`
-Status: success
-Summary: Found X key findings about [topic]
-Key Findings:
-  1. [Finding] — Source: [url/file] — Confidence: high
-  2. [Finding] — Source: [url/file] — Confidence: medium
-Gaps: [What couldn't be found or verified]
-\`\`\`
-`,
-
-  memory: `${BASE_SUBAGENT_PROMPT}
-
-## Specialization: Memory & Knowledge Management
-
-### Available Tools
-\`memory_ls\`, \`memory_grep\`, \`memory_read\`, \`memory_write\`, \`memory_record\`
-
-### Guidelines
-1. Before writing, ALWAYS check if information already exists (\`memory_grep\` / \`memory_read\`)
-2. Use consistent file paths: \`projects/\`, \`learning/\`, \`facts/\`, \`preferences/\`
-3. Avoid duplicating information — update existing entries when possible
-4. Verify writes with a follow-up \`memory_read\`
-
-### Output Template
-\`\`\`
-Status: success
-Summary: [Read/Wrote/Updated] X memory entries
-Actions:
-  - read: facts/preferences.md → found [key info]
-  - wrote: projects/xyz.md → recorded [summary]
-Verified: yes/no
-\`\`\`
-`,
-
-  skill: `${BASE_SUBAGENT_PROMPT}
-
-## Specialization: Skill Management & Execution
-
-### Available Tools
-\`skill_list\`, \`skill_get\`, \`skill_ensure\`, \`skill_record\`,
-\`skill_maturity\`, \`skill_evals\`,
-
-### Guidelines
-1. Before creating a skill, \`skill_list\` to check if it already exists
-2. Follow the standard skill structure (SKILL.md format)
-3. After creation/update, verify with \`skill_get\`
-4. Record execution results with \`skill_record\`
-
-### Output Template
-\`\`\`
-Status: success
-Summary: [Created/Updated/Executed] skill "[name]"
-Skill: [name] — [brief description]
-Verified: yes/no
-\`\`\`
-`,
-
-  code: `${BASE_SUBAGENT_PROMPT}
-
-## Specialization: Code Generation & File Operations
-
-### Available Tools
-\`shell\`, \`code_execute\`, \`calc\`, \`memory_read\`, \`memory_write\`, \`web_search\`, \`web_fetch\`
-
-### Guidelines
-1. Write clean, well-documented code
-2. For multi-file projects, create a clear directory structure first
-3. Test code before reporting completion (run it via \`shell\` or \`code_execute\`)
-4. Handle errors: if code fails, fix and retry before returning
-5. Follow existing code style if modifying an existing project
-
-### Output Template
-\`\`\`
-Status: success
-Summary: Generated [type] with X files
-Files:
-  - path/to/file1.ts — [purpose]
-  - path/to/file2.html — [purpose]
-Tested: yes/no
-Notes: [any important caveats]
-\`\`\`
-`,
-
-  general: `${BASE_SUBAGENT_PROMPT}
-
-## Specialization: General-Purpose Tasks
-
-### Available Tools
-All tools available to the main agent (memory, skill, builtin, shell, web, etc.)
-
-### Guidelines
-1. Break down the task into clear steps before executing
-2. Use the most appropriate tool for each step
-3. If the task spans multiple tool categories, handle them sequentially
-4. Report progress at each major milestone
-
-### Output Template
-\`\`\`
-Status: success
-Summary: Completed [task description]
-Steps:
-  1. [Step] → [Result]
-  2. [Step] → [Result]
-Next Steps: [Follow-up actions needed, if any]
-\`\`\`
-`,
-};
+export const SUBAGENT_PROMPTS: Record<SubagentType, string> = SUBAGENT_TYPE_VALUES.reduce(
+  (acc, type) => {
+    acc[type] = buildRolePrompt(SUBAGENT_PROFILES[resolveSubagentRole(type)]);
+    return acc;
+  },
+  {} as Record<SubagentType, string>,
+);
 
 /**
- * Get the system prompt for a subagent type
+ * Get the system prompt for a subagent type.
  */
 export function getSubagentPrompt(type: SubagentType): string {
   return SUBAGENT_PROMPTS[type];
 }
 
 /**
- * Build a complete system prompt with task context
+ * Build a complete system prompt with task context and task-specific contract.
  */
 export function buildSubagentSystemPrompt(
   type: SubagentType,
   task: string,
-  context?: string
+  context?: string,
+  options?: {
+    expectedOutput?: string;
+    successCriteria?: string[];
+    ownership?: string[];
+    constraints?: string[];
+    toolNames?: string[];
+  },
 ): string {
-  const basePrompt = getSubagentPrompt(type);
+  const profile = getSubagentProfile(type);
+  let prompt = getSubagentPrompt(type);
 
-  let prompt = basePrompt;
-
-  // Add task
   prompt += `\n\n---\n\n# Your Task\n\n${task}`;
 
-  // Add context if provided
   if (context) {
     prompt += `\n\n---\n\n# Context\n\n${context}`;
+  }
+
+  if (options?.ownership?.length) {
+    prompt += `\n\n---\n\n# Ownership Boundary\n\n${bulletList(options.ownership)}`;
+  }
+
+  if (options?.constraints?.length) {
+    prompt += `\n\n---\n\n# Additional Constraints\n\n${bulletList(options.constraints)}`;
+  }
+
+  if (options?.successCriteria?.length) {
+    prompt += `\n\n---\n\n# Success Criteria\n\n${bulletList(options.successCriteria)}`;
+  }
+
+  if (options?.expectedOutput) {
+    prompt += `\n\n---\n\n# Expected Output\n\n${options.expectedOutput}`;
+  }
+
+  if (options?.toolNames) {
+    prompt += `\n\n---\n\n# Runtime Tool Envelope\n\nYou were actually granted these tools: ${inlineTools(options.toolNames)}. If this differs from the role description, obey the runtime tool envelope.`;
+  }
+
+  if (profile.role === 'worker' && !options?.ownership?.length) {
+    prompt += '\n\nImportant: No explicit file ownership was provided. Do not make broad edits. If the edit scope is unclear, return status: partial and ask the main agent to provide ownership.';
   }
 
   return prompt;

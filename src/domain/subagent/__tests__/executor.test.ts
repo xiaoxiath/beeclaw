@@ -58,14 +58,17 @@ describe('subagent/executor', () => {
 
   describe('executeSpawnParallel', () => {
     it('should return combined results', async () => {
+      const { spawnParallelSubagents } = await import('../runtime');
       const result = await executeSpawnParallel({
         tasks: [
           { type: 'research', task: 'Task A' },
           { type: 'research', task: 'Task B' },
         ],
+        maxParallelism: 2,
       });
       expect(result.success).toBe(true);
       expect(result.data).toContain('Task A');
+      expect(spawnParallelSubagents).toHaveBeenCalledWith(expect.any(Array), 2);
     });
 
     it('should handle thrown errors', async () => {

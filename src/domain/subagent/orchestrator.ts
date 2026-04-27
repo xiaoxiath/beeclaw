@@ -30,6 +30,7 @@ const MIN_SUBTASK_TIMEOUT = 15000;
 
 /** Maximum per-subtask timeout in ms */
 const MAX_SUBTASK_TIMEOUT = 180000;
+const MAX_ORCHESTRATION_PARALLELISM = 6;
 
 /**
  * Compute a per-subtask timeout based on its estimated complexity (1-10).
@@ -144,6 +145,10 @@ export class TaskOrchestrator {
     options?: Partial<OrchestrationOptions>
   ): Promise<OrchestrationResult> {
     const opts = { ...this.defaultOptions, ...options };
+    opts.maxParallelism = Math.min(
+      MAX_ORCHESTRATION_PARALLELISM,
+      Math.max(1, opts.maxParallelism ?? decomposition.maxParallelism ?? 1),
+    );
     const startTime = Date.now();
     const globalTimeout = opts.timeout || 300000;
 
@@ -197,6 +202,10 @@ export class TaskOrchestrator {
             type: task.type,
             task: task.description,
             context: task.context,
+            expectedOutput: task.expectedOutput,
+            successCriteria: task.successCriteria,
+            ownership: task.ownership,
+            constraints: task.constraints,
             timeout: subtaskTimeout,
             signal, // Propagate abort signal to subagent
           });
@@ -456,6 +465,12 @@ export class TaskOrchestrator {
   private capitalizeType(type: string): string {
     const map: Record<string, string> = {
       research: 'Research',
+      researcher: 'Research',
+      explorer: 'Exploration',
+      reviewer: 'Review',
+      triager: 'Triage',
+      worker: 'Implementation',
+      verifier: 'Verification',
       memory: 'Memory Operations',
       skill: 'Skill Management',
       code: 'Code Tasks',

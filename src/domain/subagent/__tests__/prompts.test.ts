@@ -40,9 +40,9 @@ describe('Subagent Prompts', () => {
       expect(SUBAGENT_PROMPTS.code).toContain('execute');
     });
 
-    test('general prompt contains general content', () => {
-      expect(SUBAGENT_PROMPTS.general).toContain('General');
-      expect(SUBAGENT_PROMPTS.general).toContain('General-Purpose');
+    test('general prompt maps to explorer content', () => {
+      expect(SUBAGENT_PROMPTS.general).toContain('Explorer');
+      expect(SUBAGENT_PROMPTS.general).toContain('Read-only');
     });
 
     test('all prompts contain base content', () => {

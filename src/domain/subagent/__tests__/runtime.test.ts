@@ -205,7 +205,42 @@ describe('SubagentRuntime', () => {
       expect(toolNames).not.toContain('shell');
     });
 
-    test('should use custom tools if provided', async () => {
+    test('should expose role metadata, permission envelope, and parsed output contract', async () => {
+      const structuredAgent = createMockAgent({
+        chat: async () => `status: partial
+summary: Mapped the target area but did not run tests.
+findings:
+  - src/domain/subagent/runtime.ts owns spawning.
+verified:
+  - Read runtime implementation.
+not_verified:
+  - Did not run full test suite.
+next_action: Main agent should verify with targeted tests.`,
+      });
+
+      const runtime = createTestRuntime({
+        deps: { agentFactory: createMockAgentFactory(structuredAgent) },
+      });
+
+      const result = await runtime.spawn({
+        type: 'explorer',
+        task: 'Map subagent runtime',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.role).toBe('explorer');
+      expect(result.status).toBe('partial');
+      expect(result.summary).toContain('Mapped the target area');
+      expect(result.findings).toContain('src/domain/subagent/runtime.ts owns spawning.');
+      expect(result.verified).toContain('Read runtime implementation.');
+      expect(result.notVerified).toContain('Did not run full test suite.');
+      expect(result.nextAction).toContain('targeted tests');
+      expect(result.permissions?.writeAccess).toBe(false);
+      expect(result.toolNames).not.toContain('file_write');
+      expect(result.toolNames).not.toContain('spawn_subagent');
+    });
+
+    test('should use custom tools as a subset of the role permission profile', async () => {
       let capturedOptions: Record<string, unknown> | undefined;
 
       const factory: RuntimeDeps['agentFactory'] = (options) => {
@@ -224,7 +259,31 @@ describe('SubagentRuntime', () => {
       expect(result.success).toBe(true);
       const tools = capturedOptions?.tools as any[];
       const toolNames = tools.map((t: any) => t.function.name);
-      expect(toolNames).toEqual(['memory_read', 'memory_write']);
+      expect(toolNames).toEqual(['memory_read']);
+    });
+
+    test('should enforce the role tool-call budget at execution time', async () => {
+      const factory: RuntimeDeps['agentFactory'] = (options) => {
+        return createMockAgent({
+          chat: async () => {
+            const toolExecutor = options.toolExecutor as (name: string, params: Record<string, unknown>) => Promise<unknown>;
+            for (let i = 0; i < 13; i++) {
+              await toolExecutor('unknown_tool', {});
+            }
+            return 'should not reach';
+          },
+        });
+      };
+
+      const runtime = createTestRuntime({ deps: { agentFactory: factory } });
+
+      const result = await runtime.spawn({
+        type: 'explorer',
+        task: 'Try too many tools',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Subagent tool call budget exceeded (12)');
     });
 
     test('should include context in prompt', async () => {
@@ -419,14 +478,17 @@ describe('SubagentRuntime', () => {
       expect(toolNames).toContain('skill_get');
     });
 
-    test('should return all tools for general type', () => {
+    test('should map legacy general type to the read-only explorer profile', () => {
       const runtime = createTestRuntime();
 
       const tools = runtime.getToolsForType('general');
+      const toolNames = tools.map((t: any) => t.function.name);
 
-      // General type should have access to all tools
       expect(tools.length).toBeGreaterThan(0);
-      expect(tools.length).toBe(createMockTools().length);
+      expect(toolNames).toContain('file_read');
+      expect(toolNames).toContain('memory_read');
+      expect(toolNames).not.toContain('file_write');
+      expect(toolNames).not.toContain('spawn_subagent');
     });
 
     test('should get tools for code type', () => {
@@ -439,6 +501,19 @@ describe('SubagentRuntime', () => {
       expect(toolNames).toContain('shell');
       expect(toolNames).toContain('file_read');
       expect(toolNames).toContain('file_write');
+    });
+
+    test('should cap worker tools and block nested subagent fan-out by default', () => {
+      const runtime = createTestRuntime();
+
+      const tools = runtime.getToolsForType('worker');
+      const toolNames = tools.map((t: any) => t.function.name);
+
+      expect(toolNames).toContain('file_write');
+      expect(toolNames).toContain('shell');
+      expect(toolNames).not.toContain('file_delete');
+      expect(toolNames).not.toContain('spawn_subagent');
+      expect(toolNames).not.toContain('spawn_parallel');
     });
   });
 });
@@ -1318,6 +1393,35 @@ describe('SubagentRuntime — pLimit concurrency', () => {
 
     expect(results.length).toBe(6);
     expect(maxConcurrent).toBeLessThanOrEqual(2);
+  });
+
+  test('caps requested concurrency at the runtime fan-out limit', async () => {
+    let maxConcurrent = 0;
+    let currentConcurrent = 0;
+
+    const trackingAgent = createMockAgent({
+      chat: async () => {
+        currentConcurrent++;
+        maxConcurrent = Math.max(maxConcurrent, currentConcurrent);
+        await new Promise(r => setTimeout(r, 20));
+        currentConcurrent--;
+        return 'done';
+      },
+    });
+
+    const runtime = createTestRuntime({
+      deps: { agentFactory: createMockAgentFactory(trackingAgent) },
+    });
+
+    const configs: SubagentConfig[] = Array.from({ length: 8 }, (_, i) => ({
+      type: 'research' as const,
+      task: `Task ${i}`,
+    }));
+
+    const results = await runtime.spawnParallel(configs, 99);
+
+    expect(results.length).toBe(8);
+    expect(maxConcurrent).toBeLessThanOrEqual(6);
   });
 });
 

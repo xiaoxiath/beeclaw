@@ -24,6 +24,11 @@ export async function executeSpawnSubagent(
       type: params.type,
       task: params.task,
       context: params.context,
+      expectedOutput: params.expectedOutput,
+      successCriteria: params.successCriteria,
+      ownership: params.ownership,
+      constraints: params.constraints,
+      tools: params.tools,
       timeout: params.timeout || 180000,
       maxTokens: params.maxTokens,
     });
@@ -85,10 +90,15 @@ export async function executeSpawnParallel(
       type: task.type,
       task: task.task,
       context: task.context,
+      expectedOutput: task.expectedOutput,
+      successCriteria: task.successCriteria,
+      ownership: task.ownership,
+      constraints: task.constraints,
+      tools: task.tools,
       timeout: task.timeout || 180000,
     }));
 
-    const results = await spawnParallelSubagents(configs);
+    const results = await spawnParallelSubagents(configs, params.maxParallelism);
 
     const successful = results.filter(r => r.success).length;
     const total = results.length;

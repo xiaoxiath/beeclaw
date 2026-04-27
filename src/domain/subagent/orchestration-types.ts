@@ -36,6 +36,15 @@ export interface SubTask {
 
   /** Additional context for this subtask */
   context?: string;
+
+  /** Explicit success criteria for this subtask */
+  successCriteria?: string[];
+
+  /** File/module ownership boundary, especially for worker subtasks */
+  ownership?: string[];
+
+  /** Additional constraints */
+  constraints?: string[];
 }
 
 /**

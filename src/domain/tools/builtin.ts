@@ -225,25 +225,34 @@ Use this tool when you need to delegate a focused task to a specialized agent.
 The subagent will have access to a limited set of tools appropriate for its type.
 
 Available subagent types:
-- research: Information gathering, web search, reading documents
+- explorer: Read-only local code/data/document exploration
+- reviewer: Read-only review with concrete findings and evidence
+- researcher: Official docs/external source research
+- triager: Logs, tests, incidents, and root-cause analysis
+- worker: Bounded implementation within explicit ownership
+- verifier: Test/build/lint/behavior verification
 - memory: Memory operations, knowledge management
 - skill: Skill creation, execution, evaluation
-- code: Code generation, file operations
-- general: General-purpose tasks with full tool access
+
+Legacy aliases are still accepted:
+- research -> researcher
+- code -> worker
+- general -> explorer
 
 Best practices:
-1. Choose the appropriate subagent type
-2. Provide a clear, focused task description
-3. Include relevant context
-4. Set reasonable timeout for complex tasks`,
+1. Use subagents only when isolation, parallelism, review, or permission boundaries help
+2. Provide a self-contained, focused task
+3. Include relevant context, constraints, expected output, and success criteria
+4. For worker tasks, provide ownership boundaries
+5. Keep fan-out small and use spawn_parallel only for truly independent tasks`,
 
   parameters: {
     type: 'object' as const,
     properties: {
       type: {
         type: 'string',
-        enum: ['research', 'memory', 'skill', 'code', 'general'],
-        description: 'Type of subagent (determines available tools)',
+        enum: ['explorer', 'reviewer', 'researcher', 'triager', 'worker', 'verifier', 'memory', 'skill', 'research', 'code', 'general'],
+        description: 'Subagent role. Prefer narrow roles; legacy aliases are accepted.',
       },
       task: {
         type: 'string',
@@ -253,9 +262,33 @@ Best practices:
         type: 'string',
         description: 'Additional context or requirements',
       },
+      expectedOutput: {
+        type: 'string',
+        description: 'Expected result shape or deliverable. Include evidence/verified/not_verified/next_action expectations when relevant.',
+      },
+      successCriteria: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Explicit acceptance criteria for this subtask.',
+      },
+      ownership: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Files, directories, or modules the subagent owns. Required for worker-style implementation tasks.',
+      },
+      constraints: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Additional constraints, including what not to do.',
+      },
+      tools: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional subset of the role tool profile. Cannot grant tools outside the role permission envelope.',
+      },
       timeout: {
         type: 'number',
-        description: 'Timeout in milliseconds (default: 60000)',
+        description: 'Timeout in milliseconds (default: 180000, capped by role policy)',
       },
     },
     required: ['type', 'task'],
@@ -271,9 +304,10 @@ This is more efficient than spawning subagents one by one.
 
 Best practices:
 1. Only include truly independent tasks (no dependencies)
-2. Keep the number reasonable (2-5 tasks)
+2. Keep the number reasonable (2-5 tasks; hard cap is 6 concurrent agents)
 3. Use appropriate subagent types for each task
-4. Set maxParallelism based on task complexity`,
+4. Do not parallelize tasks that write the same files or share unresolved design decisions
+5. For worker tasks, provide disjoint ownership boundaries`,
 
   parameters: {
     type: 'object' as const,
@@ -286,13 +320,32 @@ Best practices:
           properties: {
             type: {
               type: 'string',
-              enum: ['research', 'memory', 'skill', 'code', 'general'],
+              enum: ['explorer', 'reviewer', 'researcher', 'triager', 'worker', 'verifier', 'memory', 'skill', 'research', 'code', 'general'],
             },
             task: {
               type: 'string',
             },
             context: {
               type: 'string',
+            },
+            expectedOutput: {
+              type: 'string',
+            },
+            successCriteria: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            ownership: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            constraints: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            tools: {
+              type: 'array',
+              items: { type: 'string' },
             },
             timeout: {
               type: 'number',

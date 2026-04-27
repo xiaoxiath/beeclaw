@@ -11,10 +11,20 @@
  * The infra logger is the sole exception — logging is a cross-cutting concern.
  */
 
-import { SUBAGENT_TOOL_SETS, type SubagentConfig, type SubagentResult, type SubagentStats, type SubagentType } from './types';
+import {
+  getSubagentProfile,
+  resolveSubagentRole,
+  type SubagentConfig,
+  type SubagentPermissionProfile,
+  type SubagentResult,
+  type SubagentStats,
+  type SubagentStatus,
+  type SubagentType,
+} from './types';
 import { getSubagentRegistry } from './registry';
 import { logger } from '../../infra/observability/logger';
-import { createAgent, getAllToolsForAI } from '../agent';
+import { createAgent, createDefaultToolExecutor, getAllToolsForAI } from '../agent';
+import type { ToolExecutor } from '../agent/types';
 import { buildSubagentSystemPrompt } from './prompts';
 
 // ============================================================================
@@ -143,6 +153,48 @@ function pLimit(concurrency: number) {
 
 /** Default max concurrent subagent spawns */
 const DEFAULT_MAX_CONCURRENT_SUBAGENTS = 3;
+const MAX_CONCURRENT_SUBAGENTS = 6;
+
+function parseListSection(output: string, sectionName: string): string[] | undefined {
+  const sectionRegex = new RegExp(`(?:^|\\n)${sectionName}:\\s*\\n([\\s\\S]*?)(?=\\n[a-z_]+:|$)`, 'i');
+  const match = output.match(sectionRegex);
+  if (!match) return undefined;
+
+  const items = match[1]
+    .split('\n')
+    .map((line) => line.trim().replace(/^[-*]\s*/, ''))
+    .filter(Boolean);
+
+  return items.length > 0 ? items : undefined;
+}
+
+function parseScalarField(output: string, fieldName: string): string | undefined {
+  const match = output.match(new RegExp(`(?:^|\\n)${fieldName}:\\s*(.+)`, 'i'));
+  return match?.[1]?.trim();
+}
+
+function parseSubagentOutput(output: string): {
+  status?: SubagentStatus;
+  summary?: string;
+  findings?: string[];
+  verified?: string[];
+  notVerified?: string[];
+  nextAction?: string;
+} {
+  const rawStatus = parseScalarField(output, 'status')?.toLowerCase();
+  const status = rawStatus === 'success' || rawStatus === 'partial' || rawStatus === 'failed'
+    ? rawStatus
+    : undefined;
+
+  return {
+    status,
+    summary: parseScalarField(output, 'summary'),
+    findings: parseListSection(output, 'findings'),
+    verified: parseListSection(output, 'verified'),
+    notVerified: parseListSection(output, 'not_verified'),
+    nextAction: parseScalarField(output, 'next_action'),
+  };
+}
 
 // ============================================================================
 // SubagentRuntime
@@ -208,17 +260,47 @@ export class SubagentRuntime {
    * Public for testing; runtime consumers should not call directly.
    */
   getToolsForType(type: SubagentType): Array<{ function: { name: string }; [k: string]: unknown }> {
-    const allTools = this.toolProvider();
+    return this.getToolsForConfig({ type, task: '' });
+  }
 
-    // For 'general' type, all tools are available
-    if (type === 'general') {
-      return allTools;
+  private getToolsForConfig(config: SubagentConfig): Array<{ function: { name: string }; [k: string]: unknown }> {
+    const allTools = this.toolProvider();
+    const profile = getSubagentProfile(config.type);
+    const allowed = new Set(profile.allowedTools);
+
+    if (config.allowSubagentSpawn || profile.permissions.canSpawnSubagents) {
+      allowed.add('spawn_subagent');
+      allowed.add('spawn_parallel');
     }
 
-    const allowedTools = SUBAGENT_TOOL_SETS[type];
-    return allTools.filter(tool =>
-      allowedTools.includes(tool.function.name)
-    );
+    const disallowed = new Set([
+      ...profile.disallowedTools,
+      ...(config.disallowedTools ?? []),
+    ]);
+
+    if (config.allowSubagentSpawn || profile.permissions.canSpawnSubagents) {
+      disallowed.delete('spawn_subagent');
+      disallowed.delete('spawn_parallel');
+    }
+
+    const requested = config.tools
+      ? config.tools.filter((name) => allowed.has(name))
+      : [...allowed];
+
+    return allTools.filter((tool) => {
+      const name = tool.function.name;
+      return requested.includes(name) && !disallowed.has(name);
+    });
+  }
+
+  private getPermissionProfile(config: SubagentConfig): SubagentPermissionProfile {
+    const profile = getSubagentProfile(config.type);
+    const canSpawnSubagents = Boolean(config.allowSubagentSpawn || profile.permissions.canSpawnSubagents);
+    return {
+      ...profile.permissions,
+      canSpawnSubagents,
+      maxRuntimeMs: Math.min(config.timeout || profile.permissions.maxRuntimeMs, profile.permissions.maxRuntimeMs),
+    };
   }
 
   /**
@@ -226,9 +308,12 @@ export class SubagentRuntime {
    */
   async spawn(config: SubagentConfig): Promise<SubagentResult> {
     const startTime = Date.now();
+    const startedAt = new Date(startTime).toISOString();
     const subagentId = config.id || `subagent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const role = resolveSubagentRole(config.type);
+    const profile = getSubagentProfile(config.type);
 
-    logger.debug(`[Subagent] Spawning ${config.type} subagent: ${subagentId}`);
+    logger.debug(`[Subagent] Spawning ${role} subagent: ${subagentId}`);
     logger.debug(`[Subagent] Task: ${config.task.substring(0, 100)}...`);
 
     // --- Early abort check ---
@@ -240,6 +325,14 @@ export class SubagentRuntime {
         duration: 0,
         error: 'Aborted before start',
         id: subagentId,
+        type: config.type,
+        role,
+        status: 'failed',
+        summary: 'Subagent was aborted before it started.',
+        notVerified: ['Task was not executed.'],
+        nextAction: 'Main agent should decide whether to retry or skip this subtask.',
+        startedAt,
+        endedAt: startedAt,
       };
     }
 
@@ -255,6 +348,14 @@ export class SubagentRuntime {
           duration: 0,
           error: `Subagent nesting depth ${depth} exceeds maximum ${maxDepth}`,
           id: subagentId,
+          type: config.type,
+          role,
+          status: 'failed',
+          summary: 'Subagent nesting depth limit blocked execution.',
+          notVerified: ['Task was not executed due to depth policy.'],
+          nextAction: 'Main agent should run the work locally or flatten the delegation plan.',
+          startedAt,
+          endedAt: new Date().toISOString(),
         };
       }
     } catch {
@@ -296,6 +397,19 @@ export class SubagentRuntime {
 
     this.stats.totalSpawned++;
 
+    const tools = this.getToolsForConfig(modifiedConfig);
+    const toolNames = tools.map((tool) => tool.function.name);
+    const permissions = this.getPermissionProfile(modifiedConfig);
+    let toolCallsCount = 0;
+    const defaultToolExecutor = createDefaultToolExecutor();
+    const budgetedToolExecutor: ToolExecutor = async (name, params, userContext) => {
+      toolCallsCount += 1;
+      if (toolCallsCount > permissions.maxToolCalls) {
+        throw new Error(`Subagent tool call budget exceeded (${permissions.maxToolCalls})`);
+      }
+      return defaultToolExecutor(name, params, userContext);
+    };
+
     // --- Registry: register subagent ---
     try {
       const registry = getSubagentRegistry();
@@ -305,11 +419,14 @@ export class SubagentRuntime {
         requesterSessionKey: this.sessionKey,
         task: modifiedConfig.task,
         type: modifiedConfig.type,
+        role,
         model: modifiedConfig.model || this.model,
         provider: (modifiedConfig.provider || this.provider).type,
         spawnMode: 'run',
         cleanup: 'delete',
         expectsCompletionMessage: false,
+        toolNames,
+        permissions,
       });
       await registry.start(subagentId);
     } catch {
@@ -322,13 +439,15 @@ export class SubagentRuntime {
       const systemPrompt = buildSubagentSystemPrompt(
         modifiedConfig.type,
         modifiedConfig.task,
-        modifiedConfig.context
+        modifiedConfig.context,
+        {
+          expectedOutput: modifiedConfig.expectedOutput,
+          successCriteria: modifiedConfig.successCriteria,
+          ownership: modifiedConfig.ownership,
+          constraints: modifiedConfig.constraints,
+          toolNames,
+        },
       );
-
-      // Get tools
-      const tools = modifiedConfig.tools
-        ? this.toolProvider().filter((t: any) => modifiedConfig.tools!.includes(t.function.name))
-        : this.getToolsForType(modifiedConfig.type);
 
       // Create agent via injected factory
       const agent = this.agentFactory({
@@ -336,6 +455,8 @@ export class SubagentRuntime {
         model: modifiedConfig.model || this.model,
         systemPrompt,
         tools,
+        toolExecutor: budgetedToolExecutor,
+        maxToolIterations: permissions.maxToolCalls,
         maxTokens: modifiedConfig.maxTokens,
         loadCoreMemory: false,
         autoRefreshMemory: false,
@@ -348,7 +469,10 @@ export class SubagentRuntime {
           await hookRunner.runSubagentSpawned({
             subagentId,
             type: modifiedConfig.type,
+            role,
             task: modifiedConfig.task,
+            toolNames,
+            permissions,
             provider: (modifiedConfig.provider || this.provider).type,
             model: modifiedConfig.model || this.model,
             timestamp: new Date().toISOString(),
@@ -360,7 +484,10 @@ export class SubagentRuntime {
 
       // Execute with timeout, abort signal, and retry
       const defaultTimeout = parseInt(process.env.SUBAGENT_TIMEOUT_MS || '180000', 10);
-      const timeout = modifiedConfig.timeout || defaultTimeout;
+      const timeout = Math.min(
+        modifiedConfig.timeout || defaultTimeout,
+        profile.permissions.maxRuntimeMs,
+      );
       const MAX_RETRIES = 2;
 
       let output: string | undefined;
@@ -369,28 +496,36 @@ export class SubagentRuntime {
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           // Build race competitors
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          let abortCleanup: (() => void) | undefined;
           const competitors: Promise<any>[] = [
-            agent.chat(config.task),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`Subagent timeout after ${timeout}ms`)), timeout)
-            ),
+            agent.chat(modifiedConfig.task),
+            new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error(`Subagent timeout after ${timeout}ms`)), timeout);
+            }),
           ];
 
           // Add abort signal as a race competitor
-          if (config.signal) {
+          if (modifiedConfig.signal) {
             competitors.push(
               new Promise<never>((_, reject) => {
-                if (config.signal!.aborted) {
+                if (modifiedConfig.signal!.aborted) {
                   reject(new Error('Aborted'));
                   return;
                 }
                 const onAbort = () => reject(new Error('Aborted'));
-                config.signal!.addEventListener('abort', onAbort, { once: true });
+                modifiedConfig.signal!.addEventListener('abort', onAbort, { once: true });
+                abortCleanup = () => modifiedConfig.signal!.removeEventListener('abort', onAbort);
               })
             );
           }
 
-          output = await Promise.race(competitors);
+          try {
+            output = await Promise.race(competitors);
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+            abortCleanup?.();
+          }
 
           if (attempt > 0) {
             logger.debug(`[Subagent] ${subagentId} succeeded after ${attempt + 1} attempts`);
@@ -445,6 +580,7 @@ export class SubagentRuntime {
       }
 
       const duration = Date.now() - startTime;
+      const endedAt = new Date().toISOString();
 
       // ---------------------------------------------------------------
       // Token tracking: extract from agent if available
@@ -462,12 +598,26 @@ export class SubagentRuntime {
 
       logger.debug(`[Subagent] ${subagentId} completed in ${duration}ms (tokens: ${tokensUsed})`);
 
+      const parsedOutput = parseSubagentOutput(output);
+
       let result: SubagentResult = {
         success: true,
+        status: parsedOutput.status || 'success',
         output,
+        summary: parsedOutput.summary,
+        findings: parsedOutput.findings,
+        verified: parsedOutput.verified,
+        notVerified: parsedOutput.notVerified,
+        nextAction: parsedOutput.nextAction,
         tokensUsed,
         duration,
         id: subagentId,
+        type: modifiedConfig.type,
+        role,
+        toolNames,
+        permissions,
+        startedAt,
+        endedAt,
       };
 
       // --- Registry: complete (success) ---
@@ -476,6 +626,7 @@ export class SubagentRuntime {
         await registry.complete(subagentId, 'ok', {
           output,
           tokensUsed: result.tokensUsed,
+          toolCallsCount,
         });
       } catch {
         // Registry not initialized
@@ -487,8 +638,11 @@ export class SubagentRuntime {
           const deliveryEvent = {
             subagentId,
             type: modifiedConfig.type,
+            role,
             output,
             result,
+            toolNames,
+            permissions,
             timestamp: new Date().toISOString(),
           };
 
@@ -512,10 +666,13 @@ export class SubagentRuntime {
           await hookRunner.runSubagentEnded({
             subagentId,
             type: modifiedConfig.type,
+            role,
             success: true,
             duration,
             output,
             tokensUsed,
+            toolNames,
+            permissions,
             timestamp: new Date().toISOString(),
           });
         } catch {
@@ -527,6 +684,7 @@ export class SubagentRuntime {
 
     } catch (error) {
       const duration = Date.now() - startTime;
+      const endedAt = new Date().toISOString();
 
       let errorMessage: string;
       if (error instanceof Error) {
@@ -547,6 +705,7 @@ export class SubagentRuntime {
         const registry = getSubagentRegistry();
         await registry.complete(subagentId, 'error', {
           error: errorMessage,
+          toolCallsCount,
         });
       } catch {
         // Registry not initialized
@@ -558,9 +717,12 @@ export class SubagentRuntime {
           await hookRunner.runSubagentEnded({
             subagentId,
             type: modifiedConfig.type,
+            role,
             success: false,
             duration,
             error: errorMessage,
+            toolNames,
+            permissions,
             timestamp: new Date().toISOString(),
           });
         } catch {
@@ -570,11 +732,22 @@ export class SubagentRuntime {
 
       return {
         success: false,
+        status: 'failed',
         output: '',
+        summary: `Subagent failed: ${errorMessage}`,
+        verified: [],
+        notVerified: ['Task did not complete successfully.'],
+        nextAction: 'Main agent should inspect the failure and decide whether to retry, narrow scope, or run locally.',
         tokensUsed: 0,
         duration,
         error: errorMessage,
         id: subagentId,
+        type: modifiedConfig.type,
+        role,
+        toolNames,
+        permissions,
+        startedAt,
+        endedAt,
       };
     }
   }
@@ -586,8 +759,9 @@ export class SubagentRuntime {
     configs: SubagentConfig[],
     maxConcurrency?: number
   ): Promise<SubagentResult[]> {
-    const concurrency = maxConcurrency
-      ?? (parseInt(process.env.SUBAGENT_MAX_CONCURRENCY || '0', 10) || DEFAULT_MAX_CONCURRENT_SUBAGENTS);
+    const requestedConcurrency =
+      maxConcurrency ?? (parseInt(process.env.SUBAGENT_MAX_CONCURRENCY || '0', 10) || DEFAULT_MAX_CONCURRENT_SUBAGENTS);
+    const concurrency = Math.min(MAX_CONCURRENT_SUBAGENTS, Math.max(1, requestedConcurrency));
 
     logger.debug(
       `[Subagent] Spawning ${configs.length} subagents in parallel (max concurrency: ${concurrency})`
@@ -669,7 +843,10 @@ export async function spawnSubagent(config: SubagentConfig): Promise<SubagentRes
 /**
  * Spawn multiple subagents in parallel (convenience function)
  */
-export async function spawnParallelSubagents(configs: SubagentConfig[]): Promise<SubagentResult[]> {
+export async function spawnParallelSubagents(
+  configs: SubagentConfig[],
+  maxConcurrency?: number,
+): Promise<SubagentResult[]> {
   const runtime = getSubagentRuntime();
-  return runtime.spawnParallel(configs);
+  return runtime.spawnParallel(configs, maxConcurrency);
 }

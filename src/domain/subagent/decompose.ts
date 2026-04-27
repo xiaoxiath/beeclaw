@@ -7,30 +7,48 @@
 import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
 import type { TaskDecomposition, SubTask } from './orchestration-types';
+import { SUBAGENT_TYPE_VALUES } from './types';
 
 /**
  * Decomposition prompt template
  */
-const DECOMPOSITION_PROMPT = `You are a task decomposition specialist. Break down the given task into smaller, manageable subtasks.
+const DECOMPOSITION_PROMPT = `You are a task decomposition specialist. Decide whether and how to use constrained Beeclaw subagents.
 
 ## Rules
 
-1. **Subtask Types**: Classify each subtask:
-   - research: Information gathering, web search, reading
-   - memory: Memory operations, knowledge management
-   - skill: Skill creation, execution, evaluation
-   - code: Code generation, file operations, shell commands
-   - general: General-purpose or multi-category tasks
+1. **Use subagents only for clear value**:
+   - context isolation
+   - independent parallel exploration/review/research
+   - permission or tool isolation
+   - bounded implementation with explicit ownership
+   - independent verification
+   If the task is simple or tightly coupled, return a single focused subtask.
 
-2. **Parallelism**:
+2. **Subtask roles**:
+   - explorer: read-only codebase/data/document exploration
+   - reviewer: read-only review with concrete findings and evidence
+   - researcher: official docs/external source research
+   - triager: logs/tests/incidents/root-cause analysis
+   - worker: bounded implementation with explicit file/module ownership
+   - verifier: test/build/lint/behavior verification
+   - memory: memory operations and knowledge management
+   - skill: skill creation, execution, evaluation
+   Legacy aliases are accepted but avoid them: research -> researcher, code -> worker, general -> explorer.
+
+3. **Parallelism**:
    - \`parallel: true\` — no dependency on other tasks
    - \`parallel: false\` — must wait for dependent tasks
+   Only mark tasks parallel when they are independent and do not edit the same files.
 
-3. **Dependencies**: Use task IDs (0-based). Must form a valid DAG — no cycles, no self-references.
+4. **Dependencies**: Use task IDs (0-based). Must form a valid DAG — no cycles, no self-references.
 
-4. **Limits**: Maximum 10 subtasks. Keep each subtask atomic and focused.
+5. **Limits**: Maximum 6 subtasks. Keep each subtask atomic and focused.
 
-5. **Simple Tasks**: If the task needs only 1-2 steps, return just those steps. Do NOT over-decompose.
+6. **Worker ownership**: Any worker subtask must include \`ownership\` and \`successCriteria\`.
+
+7. **Output contract**: Each subtask must define \`expectedOutput\` so the main agent can aggregate and verify it.
+
+8. **Simple Tasks**: If the task needs only 1-2 steps, return just those steps. Do NOT over-decompose.
 
 ## Task to Decompose
 
@@ -45,31 +63,36 @@ Return ONLY valid JSON (no markdown code blocks):
   "subtasks": [
     {{
       "id": 0,
-      "type": "research",
-      "description": "Search for current best practices on X",
+      "type": "researcher",
+      "description": "Search official documentation for current behavior of X",
       "parallel": true,
       "dependsOn": [],
-      "estimatedComplexity": 3
+      "estimatedComplexity": 3,
+      "expectedOutput": "Source-backed findings with links, version/date, verified/not_verified, next_action"
     }},
     {{
       "id": 1,
-      "type": "memory",
-      "description": "Read existing knowledge about X from user memory",
+      "type": "explorer",
+      "description": "Map local implementation of X and collect file/function evidence",
       "parallel": true,
       "dependsOn": [],
-      "estimatedComplexity": 2
+      "estimatedComplexity": 3,
+      "expectedOutput": "Paths, call chains, and risks with evidence"
     }},
     {{
       "id": 2,
-      "type": "code",
-      "description": "Generate implementation based on research and existing knowledge",
+      "type": "worker",
+      "description": "Implement the selected fix within the owned files only",
       "parallel": false,
       "dependsOn": [0, 1],
-      "estimatedComplexity": 6
+      "estimatedComplexity": 6,
+      "ownership": ["src/example/*", "tests/example/*"],
+      "successCriteria": ["Relevant tests pass", "No unrelated files changed"],
+      "expectedOutput": "Files changed, rationale, verification, not_verified, next_action"
     }}
   ],
   "strategy": "mixed",
-  "reasoning": "Research and memory lookup are independent; code generation needs both."
+  "reasoning": "Research and exploration are independent; implementation depends on both."
 }}`;
 
 /**
@@ -160,6 +183,7 @@ export function createSequentialDecomposition(task: string, steps: string[]): Ta
     parallel: false,
     dependsOn: idx > 0 ? [idx - 1] : [],
     estimatedComplexity: 5,
+    expectedOutput: 'Structured result with summary, verified, not_verified, and next_action',
   }));
 
   return {
@@ -186,6 +210,7 @@ export function createParallelDecomposition(
     parallel: true,
     dependsOn: [],
     estimatedComplexity: 5,
+    expectedOutput: 'Structured result with summary, verified, not_verified, and next_action',
   }));
 
   return {
@@ -242,9 +267,12 @@ export async function decomposeTask(options: {
       }
 
       // Validate subtasks
-      const subtasks: SubTask[] = output.subtasks.map((st: any, idx: number) => {
+      const subtasks: SubTask[] = output.subtasks.slice(0, 6).map((st: any, idx: number) => {
         if (!st.type || !st.description) {
           throw new Error(`Invalid subtask at index ${idx}: missing type or description`);
+        }
+        if (!SUBAGENT_TYPE_VALUES.includes(st.type)) {
+          throw new Error(`Invalid subtask at index ${idx}: unsupported type ${String(st.type)}`);
         }
 
         return {
@@ -257,6 +285,9 @@ export async function decomposeTask(options: {
           priority: st.priority,
           expectedOutput: st.expectedOutput,
           context: st.context,
+          successCriteria: st.successCriteria,
+          ownership: st.ownership,
+          constraints: st.constraints,
         };
       });
 

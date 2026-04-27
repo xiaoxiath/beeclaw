@@ -8,6 +8,7 @@
 import { logger } from '../../infra/observability/logger';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
+import type { SubagentPermissionProfile, SubagentRole } from './types';
 
 // ============================================================================
 // 类型定义
@@ -28,6 +29,7 @@ export interface SubagentRunRecord {
   task: string;
   label?: string;
   type: string;
+  role?: SubagentRole;
 
   // 模型配置
   model?: string;
@@ -51,6 +53,8 @@ export interface SubagentRunRecord {
   spawnMode: SubagentSpawnMode;
   cleanup: SubagentCleanupPolicy;
   expectsCompletionMessage: boolean;
+  toolNames?: string[];
+  permissions?: SubagentPermissionProfile;
 
   // 清理状态
   cleanupHandled: boolean;
@@ -84,11 +88,14 @@ export interface SubagentSpawnOptions {
   task: string;
   label?: string;
   type?: string;
+  role?: SubagentRole;
   model?: string;
   provider?: string;
   spawnMode?: SubagentSpawnMode;
   cleanup?: SubagentCleanupPolicy;
   expectsCompletionMessage?: boolean;
+  toolNames?: string[];
+  permissions?: SubagentPermissionProfile;
   requesterOrigin?: SubagentRunRecord['requesterOrigin'];
 }
 
@@ -120,7 +127,7 @@ export class SubagentRegistry {
   constructor(config: Partial<SubagentRegistryConfig> = {}, hookRunner?: RegistryHookRunner) {
     this.config = {
       persistPath: './data/subagent-runs.json',
-      maxDepth: 3,
+      maxDepth: 1,
       archiveAfterMinutes: 60,
       cleanupIntervalMinutes: 5,
       maxRecords: 1000,
@@ -148,11 +155,14 @@ export class SubagentRegistry {
       task: options.task,
       label: options.label,
       type: options.type || 'general',
+      role: options.role,
       model: options.model,
       provider: options.provider,
       spawnMode: options.spawnMode || 'run',
       cleanup: options.cleanup || 'delete',
       expectsCompletionMessage: options.expectsCompletionMessage ?? true,
+      toolNames: options.toolNames,
+      permissions: options.permissions,
       requesterOrigin: options.requesterOrigin,
       createdAt: Date.now(),
       cleanupHandled: false,
