@@ -264,4 +264,83 @@ describe('Agent', () => {
 
     expect(chunks).toEqual(['Hello', ' world']);
   });
+
+  it('should execute streamed tool calls and continue streaming final answer', async () => {
+    const toolCalls: ToolCall[] = [{
+      id: 'tc_stream',
+      type: 'function',
+      function: { name: 'get_weather', arguments: '{"city":"Tokyo"}' },
+    }];
+    const marker = `<!--tool_calls:${JSON.stringify(toolCalls)}-->`;
+    let streamCall = 0;
+    const aiClient = {
+      callAI: vi.fn(),
+      streamAI: vi.fn(async function* () {
+        streamCall++;
+        if (streamCall === 1) {
+          yield 'Let me check';
+          yield `\n${marker}`;
+        } else {
+          yield 'It is sunny in Tokyo.';
+        }
+      }),
+    };
+    const toolExecutor = vi.fn(async (_name: string, params: Record<string, unknown>) => ({
+      success: true,
+      data: { city: params.city, condition: 'sunny' },
+    }));
+
+    const agent = new Agent({
+      aiClient: aiClient as any,
+      provider: { type: 'openai', apiKey: 'key' },
+      model: 'gpt-4o',
+      toolExecutor,
+    });
+
+    const events = [];
+    for await (const event of agent.chatStream('Weather?')) {
+      events.push(event);
+    }
+
+    expect(aiClient.streamAI).toHaveBeenCalledTimes(2);
+    expect(toolExecutor).toHaveBeenCalledWith('get_weather', { city: 'Tokyo' });
+    expect(events).toContainEqual({ type: 'content', content: 'Let me check' });
+    expect(events).toContainEqual({ type: 'tool_call', name: 'get_weather', params: { city: 'Tokyo' } });
+    expect(events).toContainEqual({
+      type: 'tool_result',
+      name: 'get_weather',
+      result: { success: true, data: { city: 'Tokyo', condition: 'sunny' } },
+    });
+    expect(events).toContainEqual({ type: 'content', content: 'It is sunny in Tokyo.' });
+    expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('should route chat tool calls through blocked tool policy', async () => {
+    const toolCalls: ToolCall[] = [{
+      id: 'tc_blocked',
+      type: 'function',
+      function: { name: 'danger_tool', arguments: '{}' },
+    }];
+    const aiClient = createMockAIClient([
+      createMockResponse('', toolCalls),
+      createMockResponse('Done.'),
+    ]);
+    const toolExecutor = vi.fn(async () => ({ success: true }));
+
+    const agent = new Agent({
+      aiClient: aiClient as any,
+      provider: { type: 'openai', apiKey: 'key' },
+      model: 'gpt-4o',
+      toolExecutor,
+      blockedTools: ['danger_tool'],
+    });
+
+    const response = await agent.chat('Run it');
+    const toolMessage = response.messages.find((message) => message.role === 'tool');
+    const toolResult = JSON.parse(toolMessage?.content || '{}');
+
+    expect(response.content).toBe('Done.');
+    expect(toolExecutor).not.toHaveBeenCalled();
+    expect(toolResult.error).toBe('Tool "danger_tool" is blocked');
+  });
 });

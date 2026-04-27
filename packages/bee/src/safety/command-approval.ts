@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { readFileSync } from 'fs';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +35,8 @@ export const COMMAND_TOOLS: Set<string> = new Set([
   'execute_command',
   'bash',
   'shell',
+  'terminal',
+  'claude_code',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -457,10 +460,7 @@ export class CommandApproval {
 
   private loadAllowlist(filePath: string): void {
     try {
-      // Dynamic require — keeps the module synchronous at construction time.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const fs = require('fs');
-      const raw = fs.readFileSync(filePath, 'utf-8');
+      const raw = readFileSync(filePath, 'utf-8');
       const entries: string[] = JSON.parse(raw);
       for (const entry of entries) {
         this.allowlist.add(entry);

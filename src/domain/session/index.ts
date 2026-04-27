@@ -59,6 +59,7 @@ import {
   clearOldSessions as _clearOldSessions,
   saveAllSessions as _saveAllSessions,
   archiveSessionMessages as _archiveSessionMessages,
+  appendArchivedSegment as _appendArchivedSegment,
   loadArchivedSessionSegment as _loadArchivedSessionSegment,
 } from './storage';
 import {
@@ -266,15 +267,7 @@ function archiveSessionMessages(
   const path = _archiveSessionMessages(sessionConfig.storagePath, session, reason, messages);
   if (!path) return;
 
-  session.archivedSegments = session.archivedSegments || [];
-  session.archivedSegments.push({
-    path,
-    reason,
-    startedAt: messages[0]?.timestamp || session.updatedAt,
-    endedAt: messages[messages.length - 1]?.timestamp || session.updatedAt,
-    messageCount: messages.length,
-  });
-  saveSession(session);
+  _appendArchivedSegment(session, path, reason, messages);
 }
 
 /**

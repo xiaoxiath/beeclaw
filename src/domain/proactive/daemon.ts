@@ -313,7 +313,12 @@ export class Daemon {
         break;
 
       case 'self_evolution':
-        await handleSelfEvolutionJob(job);
+        {
+          const result = await handleSelfEvolutionJob(job);
+          if (!result.success) {
+            throw new Error(result.error || 'self_evolution failed');
+          }
+        }
         break;
 
       case 'custom':

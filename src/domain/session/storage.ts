@@ -74,6 +74,24 @@ export function archiveSessionMessages(
   }
 }
 
+export function appendArchivedSegment(
+  session: Session,
+  archivePath: string,
+  reason: 'idle' | 'day-cut',
+  messages: SessionMessage[],
+): void {
+  session.archivedSegments = session.archivedSegments || [];
+  if (session.archivedSegments.some(segment => segment.path === archivePath)) return;
+
+  session.archivedSegments.push({
+    path: archivePath,
+    reason,
+    startedAt: messages[0]?.timestamp || session.updatedAt,
+    endedAt: messages[messages.length - 1]?.timestamp || session.updatedAt,
+    messageCount: messages.length,
+  });
+}
+
 export interface ArchivedSessionSegment {
   sessionId: string;
   archivedAt: string;
@@ -156,7 +174,10 @@ export function saveSession(session: Session, storagePath: string): void {
 
     const dayBoundaryMessages = splitMessagesForDayBoundary(session.messages);
     if (dayBoundaryMessages.length > 0) {
-      archiveSessionMessages(storagePath, session, 'day-cut', dayBoundaryMessages);
+      const archivePath = archiveSessionMessages(storagePath, session, 'day-cut', dayBoundaryMessages);
+      if (archivePath) {
+        appendArchivedSegment(session, archivePath, 'day-cut', dayBoundaryMessages);
+      }
       session.messages = session.messages.slice(dayBoundaryMessages.length);
     }
 
@@ -357,7 +378,10 @@ export function loadAllSessions(
 
       // Rotate stale sessions at load time so old messages don't pollute context
       if (session.messages?.length > 0 && isSessionIdle(session.updatedAt)) {
-        archiveSessionMessages(storagePath, session, 'idle', session.messages);
+        const archivePath = archiveSessionMessages(storagePath, session, 'idle', session.messages);
+        if (archivePath) {
+          appendArchivedSegment(session, archivePath, 'idle', session.messages);
+        }
         session.messages = [];
         session.updatedAt = new Date().toISOString();
         // Save rotated state to disk immediately

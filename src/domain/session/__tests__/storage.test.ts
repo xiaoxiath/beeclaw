@@ -69,6 +69,7 @@ import {
   getSessionFilePath,
   isValidSession,
   saveSession,
+  appendArchivedSegment,
   loadSession,
   loadArchivedSessionSegment,
   loadSessionFromSQLite,
@@ -97,6 +98,10 @@ describe('storage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDb.all.mockReturnValue([]);
+    mockWriteFileAtomic.mockImplementation(() => {});
+    vi.mocked(existsSync).mockReturnValue(false);
+    vi.mocked(readFileSync).mockReturnValue('{}');
+    vi.mocked(readdirSync).mockReturnValue([]);
   });
 
   // ─── getSessionFilePath ───────────────────────────────────────────────
@@ -235,6 +240,7 @@ describe('storage', () => {
     });
 
     it('archives previous-day messages and keeps current-day active messages', () => {
+      vi.mocked(existsSync).mockReturnValue(true);
       const session = makeSession({
         messages: [
           { role: 'user', content: 'old topic', timestamp: '2026-04-07T01:00:00.000Z' },
@@ -249,6 +255,39 @@ describe('storage', () => {
       expect(mockWriteFileAtomic.mock.calls.length).toBeGreaterThanOrEqual(1);
       expect(session.messages).toHaveLength(1);
       expect(session.messages[0].content).toBe('today news');
+    });
+
+    it('records archived segment metadata for day-boundary archives', () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      const session = makeSession({
+        messages: [
+          { role: 'user', content: 'old topic', timestamp: '2026-04-07T01:00:00.000Z' },
+          { role: 'assistant', content: 'old reply', timestamp: '2026-04-07T01:05:00.000Z' },
+          { role: 'user', content: 'today news', timestamp: '2026-04-08T01:00:00.000Z' },
+        ],
+      });
+
+      saveSession(session, '/data');
+
+      expect(session.archivedSegments).toHaveLength(1);
+      expect(session.archivedSegments?.[0]).toEqual(expect.objectContaining({
+        reason: 'day-cut',
+        messageCount: 2,
+        startedAt: '2026-04-07T01:00:00.000Z',
+        endedAt: '2026-04-07T01:05:00.000Z',
+      }));
+    });
+
+    it('does not duplicate archive metadata for the same path', () => {
+      const session = makeSession();
+      const messages = [
+        { role: 'user' as const, content: 'old topic', timestamp: '2026-04-07T01:00:00.000Z' },
+      ];
+
+      appendArchivedSegment(session, '/data/test.archive/segment.json', 'idle', messages);
+      appendArchivedSegment(session, '/data/test.archive/segment.json', 'idle', messages);
+
+      expect(session.archivedSegments).toHaveLength(1);
     });
   });
 
@@ -413,6 +452,33 @@ describe('storage', () => {
       const result = loadAllSessions('/data', map);
       expect(result).toBe(1);
       expect(map.has('good')).toBe(true);
+    });
+
+    it('records archived segment metadata for idle rotation at startup', () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValueOnce(['s1.json'] as any);
+      vi.mocked(readFileSync).mockReturnValueOnce(JSON.stringify({
+        id: 's1',
+        userId: 'user1',
+        channel: 'feishu',
+        messages: [
+          { role: 'user', content: 'stale', timestamp: '2026-01-01T00:00:00.000Z' },
+        ],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }));
+
+      const map = new Map<string, Session>();
+      const result = loadAllSessions('/data', map);
+      const loaded = map.get('s1');
+
+      expect(result).toBe(1);
+      expect(loaded?.messages).toHaveLength(0);
+      expect(loaded?.archivedSegments).toHaveLength(1);
+      expect(loaded?.archivedSegments?.[0]).toEqual(expect.objectContaining({
+        reason: 'idle',
+        messageCount: 1,
+      }));
     });
   });
 

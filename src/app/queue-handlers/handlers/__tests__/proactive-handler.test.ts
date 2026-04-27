@@ -10,8 +10,10 @@ const {
   mockGoalStore,
   mockNotificationManager,
   mockPushNotification,
+  mockHandleSelfEvolutionJob,
   mockGetFeishuWSClient,
   mockSendProactiveMessage,
+  mockInjectProactiveResult,
   mockGetSessionSummary,
   mockGetMemoryStore,
   mockRenderMessageCard,
@@ -27,10 +29,12 @@ const {
   mockPushNotification: vi.fn(() =>
     Promise.resolve({ success: true, notificationId: 'notif-push-1', delivered: ['cli'] })
   ),
+  mockHandleSelfEvolutionJob: vi.fn(() => Promise.resolve({ success: true, response: 'evolved' })),
   mockGetFeishuWSClient: vi.fn(() => null),
   mockSendProactiveMessage: vi.fn(() =>
     Promise.resolve({ success: true, response: 'Hello!', sessionId: 'sess-1' })
   ),
+  mockInjectProactiveResult: vi.fn(() => true),
   mockGetSessionSummary: vi.fn(() => 'recent conversation summary'),
   mockGetMemoryStore: vi.fn(() => ({
     getCoreContext: vi.fn(() => ({ user: 'Test User', facts: 'Some facts' })),
@@ -54,12 +58,17 @@ vi.mock('../../../../domain/proactive/pusher', () => ({
   pushNotification: mockPushNotification,
 }));
 
+vi.mock('../../../../domain/proactive/job-handlers', () => ({
+  handleSelfEvolutionJob: mockHandleSelfEvolutionJob,
+}));
+
 vi.mock('../../../../adapter/feishu', () => ({
   getFeishuWSClient: mockGetFeishuWSClient,
 }));
 
 vi.mock('../../../../domain/session', () => ({
   sendProactiveMessage: mockSendProactiveMessage,
+  injectProactiveResult: mockInjectProactiveResult,
   getSessionSummary: mockGetSessionSummary,
 }));
 
@@ -94,8 +103,11 @@ describe('handleProactiveJob', () => {
     mockGoalStore.list.mockClear();
     mockNotificationManager.create.mockClear();
     mockPushNotification.mockClear();
+    mockHandleSelfEvolutionJob.mockClear();
+    mockHandleSelfEvolutionJob.mockResolvedValue({ success: true, response: 'evolved' });
     mockGetFeishuWSClient.mockClear();
     mockSendProactiveMessage.mockClear();
+    mockInjectProactiveResult.mockClear();
     mockGetSessionSummary.mockClear();
     mockGetMemoryStore.mockClear();
     mockRenderMessageCard.mockClear();
@@ -321,5 +333,52 @@ describe('handleProactiveJob', () => {
     expect(result.success).toBe(true);
     expect(result.result.generated).toBe(true);
     expect(mockGetSessionSummary).toHaveBeenCalled();
+  });
+
+  it('should use top-level associatedSessionId for proactive chat context and write-back', async () => {
+    mockSendProactiveMessage.mockResolvedValue({
+      success: true,
+      response: 'Context-aware reply',
+      sessionId: 'session-top',
+    });
+
+    const job = fakeJob({
+      taskType: 'llm_proactive_chat',
+      params: { prompt: 'Test with context' },
+      associatedSessionId: 'session-top',
+    });
+    const result = await handleProactiveJob(job) as any;
+
+    expect(result.success).toBe(true);
+    expect(mockGetSessionSummary).toHaveBeenCalledWith('session-top', 5, 'proactive-user');
+    expect(mockSendProactiveMessage).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-top',
+      context: expect.objectContaining({ source: 'proactive' }),
+    }));
+    expect(mockInjectProactiveResult).toHaveBeenCalledWith('session-top', expect.objectContaining({
+      source: '定时主动沟通',
+      content: 'Context-aware reply',
+    }));
+  });
+
+  it('should handle queued self_evolution jobs', async () => {
+    const job = fakeJob({ taskType: 'self_evolution', params: {} });
+    const result = await handleProactiveJob(job) as any;
+
+    expect(result.success).toBe(true);
+    expect(result.result.success).toBe(true);
+    expect(mockHandleSelfEvolutionJob).toHaveBeenCalledWith(expect.objectContaining({
+      taskType: 'self_evolution',
+    }));
+  });
+
+  it('should fail queued self_evolution jobs when the domain handler fails', async () => {
+    mockHandleSelfEvolutionJob.mockResolvedValueOnce({ success: false, error: 'evolution failed' });
+
+    const job = fakeJob({ taskType: 'self_evolution', params: {} });
+    const result = await handleProactiveJob(job) as any;
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('evolution failed');
   });
 });

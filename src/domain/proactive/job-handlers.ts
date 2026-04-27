@@ -354,7 +354,7 @@ export async function handleLlmProactiveChatJob(
 /**
  * Handle self-evolution task
  */
-export async function handleSelfEvolutionJob(_job: ProactiveJobData): Promise<void> {
+export async function handleSelfEvolutionJob(_job: ProactiveJobData): Promise<{ success: boolean; response?: string; error?: string }> {
   logger.info('[Daemon] Self-evolution triggered...');
 
   try {
@@ -395,11 +395,15 @@ ${context}
 
     if (result.success && result.response) {
       logger.info(`[Daemon] Self-evolution completed: ${result.response.substring(0, 200)}...`);
+      return { success: true, response: result.response };
     } else {
       logger.error('[Daemon] Self-evolution failed:', { error: result.error });
+      return { success: false, error: result.error || 'Self-evolution returned no response' };
     }
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('[Daemon] Self-evolution failed:', { error });
+    return { success: false, error: errorMessage };
   }
 }
 

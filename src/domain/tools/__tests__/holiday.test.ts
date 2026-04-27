@@ -10,13 +10,55 @@ import {
 const TEST_DATE = new Date('2026-03-01'); // Monday
 const TEST_WEEKEND = new Date('2026-03-07'); // Saturday
 
+function holidayApiResponse(date: string) {
+  const fixtures: Record<string, { type: number; name: string; week: number; holidayName?: string }> = {
+    '2026-01-01': { type: 2, name: '元旦', week: 4, holidayName: '元旦' },
+    '2026-03-01': { type: 1, name: '周末', week: 0 },
+    '2026-03-04': { type: 0, name: '工作日', week: 3 },
+    '2026-03-07': { type: 1, name: '周末', week: 6 },
+  };
+
+  const fixture = fixtures[date] || { type: 0, name: '工作日', week: new Date(date).getDay() };
+  const holidayName = fixture.holidayName;
+
+  return {
+    code: 0,
+    type: {
+      type: fixture.type,
+      name: fixture.name,
+      week: fixture.week,
+      cnLunar: '',
+      extra_info: '',
+    },
+    holiday: holidayName
+      ? {
+          holiday: true,
+          name: holidayName,
+          wage: 3,
+          date,
+          after: null,
+          target: holidayName,
+          rest: 0,
+        }
+      : null,
+  };
+}
+
 describe('Holiday Utils', () => {
   beforeEach(() => {
     clearHolidayCache();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const date = String(input).split('/').pop() || '2026-03-04';
+      return new Response(JSON.stringify(holidayApiResponse(date)), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }));
   });
 
   afterEach(() => {
     clearHolidayCache();
+    vi.unstubAllGlobals();
   });
 
   describe('fetchHolidayInfo', () => {

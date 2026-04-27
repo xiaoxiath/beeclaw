@@ -478,7 +478,7 @@ function truncateWithContext(text: string, maxLen: number): string {
   const omittedLines = (omittedSection.match(/\n/g) || []).length + 1;
   const totalLines = (text.match(/\n/g) || []).length + 1;
 
-  const separator = `\n\n... [${omittedLines} of ${totalLines} lines omitted, ${text.length - headLen - tailLen} chars truncated] ...\n\n`;
+  const separator = `\n\n... [compressed] ${omittedLines} of ${totalLines} lines omitted, ${text.length - headLen - tailLen} chars truncated ...\n\n`;
 
   return head + separator + tail;
 }

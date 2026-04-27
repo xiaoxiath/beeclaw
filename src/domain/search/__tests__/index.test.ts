@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   webSearch,
   webFetch,
@@ -17,9 +17,50 @@ import {
 } from '../index';
 import { SearchRegion, type SearchResult, type SearchRequest } from '../types';
 
+const DUCKDUCKGO_HTML = `
+  <div class="result">
+    <a class="result__a" href="https://example.com/search-result">Example Search Result</a>
+    <a class="result__snippet">Example snippet for search tests</a>
+  </div>
+`;
+
+const WEB_FETCH_HTML = `
+  <html>
+    <body>
+      <main>
+        <h1>Example Domain</h1>
+        <p>Example content for fetch tests.</p>
+      </main>
+    </body>
+  </html>
+`;
+
+function mockFetch() {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      throw new TypeError('Invalid URL');
+    }
+
+    const body = url.includes('html.duckduckgo.com') ? DUCKDUCKGO_HTML : WEB_FETCH_HTML;
+    return new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    });
+  }));
+}
 
 
 describe('Search Index Exports', () => {
+  beforeEach(() => {
+    mockFetch();
+    getSearchOrchestrator({ providers: { duckduckgo: { enabled: true } } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   describe('Provider Exports', () => {
     test('exports DuckDuckGoProvider', () => {
       expect(DuckDuckGoProvider).toBeDefined();

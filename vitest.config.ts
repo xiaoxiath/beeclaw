@@ -17,7 +17,7 @@ export default defineConfig({
     environment: 'node',
     isolate: true,
     testTimeout: 60000,
-    include: ['src/**/__tests__/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: ['src/**/__tests__/**/*.test.ts', 'tests/**/*.test.ts', 'packages/bee/src/**/*.test.ts'],
     exclude: ['node_modules', 'dist', 'src/web/**'],
     restoreMocks: true,
     mockReset: true,

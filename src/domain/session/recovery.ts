@@ -320,7 +320,7 @@ export async function recoverUnansweredSessions(
               // [FIX] Send the actual AI response using Card V2 if available, fallback to post
               if (client.sendCard) {
                 try {
-                  // eslint-disable-next-line no-restricted-syntax — dynamic import to avoid domain→adapter layer violation
+                  // eslint-disable-next-line no-restricted-syntax -- dynamic import to avoid domain-to-adapter layer violation
                   const { renderMessageCard } = await import('../../adapter/feishu/card-v2/message-renderer');
                   const textBlock = { type: 'text' as const, text: responseToSend };
                   const card = renderMessageCard([textBlock], { streaming: false });

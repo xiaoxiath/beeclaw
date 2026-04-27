@@ -14,6 +14,7 @@ import { estimateMessageTokens } from './context';
 import { logger } from '../../infra/observability/logger';
 import type { ChatMessage } from './types';
 import type { IHookRunner } from '../ports';
+import { fenceMemoryContent } from '@bee';
 
 /**
  * Lightweight djb2 hash for dirty-checking prompt stability (KV-Cache).
@@ -50,14 +51,9 @@ export class MemoryManager {
       // getCoreContext() always returns { user: string; soul: string; facts: string }.
       // We fence each string field to prevent recalled memory from acting as instructions.
       const fencedContext: { user: string; soul: string; facts: string } = { ...coreContext };
-      try {
-        const { fenceMemoryContent } = require('../../../packages/bee/src/safety/memory-fence');
-        fencedContext.user = fenceMemoryContent(coreContext.user);
-        fencedContext.soul = fenceMemoryContent(coreContext.soul);
-        fencedContext.facts = fenceMemoryContent(coreContext.facts);
-      } catch {
-        // Memory fence module not available — fencedContext stays as-is (unmodified copy)
-      }
+      fencedContext.user = fenceMemoryContent(normalizeMemoryField(coreContext.user));
+      fencedContext.soul = fenceMemoryContent(normalizeMemoryField(coreContext.soul));
+      fencedContext.facts = fenceMemoryContent(normalizeMemoryField(coreContext.facts));
 
       let skillsPrompt = '';
       try {
@@ -157,4 +153,8 @@ export class MemoryManager {
       logger.debug('Memory might not be initialized:', error);
     }
   }
+}
+
+function normalizeMemoryField(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }

@@ -39,7 +39,7 @@ const {
   },
   mockHandleMemoryCompressJob: vi.fn(async () => {}),
   mockHandleLlmProactiveChatJob: vi.fn(async () => {}),
-  mockHandleSelfEvolutionJob: vi.fn(async () => {}),
+  mockHandleSelfEvolutionJob: vi.fn(async () => ({ success: true, response: 'evolved' })),
   mockHandleRunSkillJob: vi.fn(async () => {}),
   mockHandleGoalProgressCheckJob: vi.fn(async () => {}),
   mockHandleCustomJob: vi.fn(async () => {}),
@@ -87,6 +87,7 @@ describe('registerDefaultHandlers', () => {
     mockGetTaskDispatcher.mockReturnValue({
       registerHandler: mockRegisterHandler,
     });
+    mockHandleSelfEvolutionJob.mockResolvedValue({ success: true, response: 'evolved' });
   });
 
   async function importAndRegister() {

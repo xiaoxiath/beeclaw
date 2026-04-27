@@ -40,7 +40,7 @@ import { resolveConfig } from '../infra/config/resilience-config';
 
 // Adapter layer
 import { initializeMCP, getMCPManager } from '../adapter/mcp';
-import { getHookRunner } from '../adapter/plugins/hooks';
+import { getHookRunner, type HookHandler } from '../adapter/plugins/hooks';
 import { registerPorts } from '../domain/ports';
 import { loadPlugins, getPluginRegistry, createHookRunner } from '../adapter/plugins';
 import { getFeishuWSClient } from '../adapter/feishu';
@@ -430,7 +430,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
   // so that hooks registered via registerHook() are also visible to createHookRunner(registry)
   try {
     const registry = getPluginRegistry();
-    _hookRunner.setBridge((hookName: string, handler: Function, priority: number) => {
+    _hookRunner.setBridge((hookName: string, handler: HookHandler, priority: number) => {
       if (!registry.typedHooks.has(hookName as any)) {
         registry.typedHooks.set(hookName as any, []);
       }
@@ -444,7 +444,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
       list.sort((a: any, b: any) => (b.priority ?? 0) - (a.priority ?? 0));
     });
     logger.debug('   🔗 Hook bridge: legacy -> new system connected');
-  } catch (e) {
+  } catch (_e) {
     logger.debug('   ⚠️  Hook bridge setup skipped (registry not ready)');
   }
   // 9.9.1.5. Register observability hooks (D-P0-01)

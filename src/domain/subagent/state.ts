@@ -389,12 +389,7 @@ export class SharedState {
         );
       });
 
-      try {
-        await Promise.race([existingLock.promise, timeoutPromise]);
-      } catch (error) {
-        // Timeout — propagate directly
-        throw error;
-      }
+      await Promise.race([existingLock.promise, timeoutPromise]);
       // Loop back and re-check — another waiter may have grabbed the lock first.
     }
 

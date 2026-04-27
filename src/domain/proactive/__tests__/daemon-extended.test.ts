@@ -125,7 +125,7 @@ describe('Daemon (extended)', () => {
     mockClearExpired.mockImplementation(() => 0);
 
     mockHandleLlmProactiveChat.mockImplementation(() => Promise.resolve());
-    mockHandleSelfEvolution.mockImplementation(() => Promise.resolve());
+    mockHandleSelfEvolution.mockImplementation(() => Promise.resolve({ success: true, response: 'evolved' }));
     mockHandleMemoryCompress.mockImplementation(() => Promise.resolve());
     mockHandleGoalProgressCheck.mockImplementation(() => Promise.resolve());
     mockHandleCustom.mockImplementation(() => Promise.resolve());

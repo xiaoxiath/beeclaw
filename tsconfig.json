@@ -23,6 +23,7 @@
       "@domain/*": ["./src/domain/*"],
       "@adapter/*": ["./src/adapter/*"],
       "@app/*": ["./src/app/*"],
+      "@bee": ["./packages/bee/src/index.ts"],
       "@bee/*": ["./packages/bee/src/*"]
     }
   },

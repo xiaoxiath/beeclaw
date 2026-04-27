@@ -1,8 +1,26 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi, afterEach } from 'vitest';
 import { SearchOrchestrator, getSearchOrchestrator } from '../orchestrator';
 import { SearchRegion, type SearchConfig, type SearchResult } from '../types';
 
+const DUCKDUCKGO_HTML = `
+  <div class="result">
+    <a class="result__a" href="https://example.com/default-region">Default Region Result</a>
+    <a class="result__snippet">Default region snippet</a>
+  </div>
+`;
+
+function mockDuckDuckGoFetch() {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(DUCKDUCKGO_HTML, {
+    status: 200,
+    headers: { 'content-type': 'text/html' },
+  })));
+}
+
 describe('SearchOrchestrator', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   describe('constructor', () => {
     test('creates orchestrator with no providers', () => {
       const orchestrator = new SearchOrchestrator();
@@ -79,13 +97,17 @@ describe('SearchOrchestrator', () => {
     });
 
     test('uses default region when not specified', async () => {
-      const orchestrator = new SearchOrchestrator({ providers: {} });
+      mockDuckDuckGoFetch();
+      const orchestrator = new SearchOrchestrator({
+        providers: {
+          duckduckgo: { enabled: true },
+        },
+      });
 
-      try {
-        await orchestrator.search({ query: 'test query' });
-      } catch (error) {
-        expect((error as Error).message).toBe('No search providers configured');
-      }
+      const results = await orchestrator.search({ query: 'test query' });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].source).toBe('duckduckgo');
     });
   });
 });

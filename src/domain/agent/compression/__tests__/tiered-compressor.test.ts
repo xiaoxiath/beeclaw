@@ -42,8 +42,13 @@ const mockL3Compress = vi.fn(async (text: string, _target: number) => ({
   method: 'L3:abstractive',
 }));
 const mockL3SetLLMClient = vi.fn(() => {});
+const mockL3SetPreviousSummary = vi.fn(() => {});
 vi.mock('@bee/context/compression/l3-abstractive-compressor', () => ({
-  L3AbstractiveCompressor: class { compress = mockL3Compress; setLLMClient = mockL3SetLLMClient; },
+  L3AbstractiveCompressor: class {
+    compress = mockL3Compress;
+    setLLMClient = mockL3SetLLMClient;
+    setPreviousSummary = mockL3SetPreviousSummary;
+  },
 }));
 
 import { TieredCompressor, getTieredCompressor, resetTieredCompressor } from '../tiered-compressor';

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import { scanForInjection, sanitizeText } from './injection-scanner';
 
 describe('InjectionScanner', () => {

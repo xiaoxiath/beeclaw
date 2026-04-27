@@ -245,7 +245,7 @@ export class TieredLLMRouter {
 
       try {
         return await executor(fallbackModel, fallbackConfig);
-      } catch (fallbackError) {
+      } catch (_fallbackError) {
         logger.warn(`[TieredLLMRouter] Fallback to ${fallbackTier} also failed, trying next...`);
         continue;
       }

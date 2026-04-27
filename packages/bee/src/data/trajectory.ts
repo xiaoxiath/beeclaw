@@ -6,6 +6,7 @@
  */
 
 import type { ChatMessage, MultimodalContent, ToolCall } from '../core/types';
+import { appendFile } from 'fs/promises';
 
 function isTextContent(part: MultimodalContent): part is Extract<MultimodalContent, { type: 'text' }> {
   return part.type === 'text';
@@ -173,9 +174,6 @@ export async function saveTrajectory(
 
   // Node.js fallback
   try {
-    const fs = await import('fs');
-    const { promisify } = await import('util');
-    const appendFile = promisify(fs.appendFile);
     await appendFile(path, line, 'utf-8');
   } catch (err) {
     // If fs module not available (e.g., edge runtime), throw informative error

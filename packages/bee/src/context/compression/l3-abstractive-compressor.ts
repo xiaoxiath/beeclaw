@@ -99,7 +99,7 @@ export class L3AbstractiveCompressor {
           : 'L3-Abstractive[llm-summary]',
         latencyMs,
       };
-    } catch (error) {
+    } catch (_error) {
       // Fallback: simple truncation
       const truncated = this.simpleTruncate(text, target);
       const compressedTokens = estimateTokens(truncated);

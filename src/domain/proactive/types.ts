@@ -169,7 +169,7 @@ export const ProactiveJobDataSchema = z.object({
   taskType: z.enum(['check_goal_progress', 'run_skill', 'send_reminder', 'memory_compress', 'llm_proactive_chat', 'self_evolution', 'custom']),
   params: z.record(z.unknown()).optional().default({}),
   triggeredAt: z.string(),
-  triggeredBy: z.enum(['cron', 'pattern', 'manual']),
+  triggeredBy: z.enum(['cron', 'pattern', 'manual', 'delay']),
   /**
    * [AUDIT FIX M-02/M-11] Associated user session ID for bidirectional context flow.
    * When set, the job handler will:

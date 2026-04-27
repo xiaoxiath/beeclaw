@@ -24,7 +24,7 @@ export function deepMerge<T extends Record<string, unknown>>(
   target: T,
   ...sources: Partial<T>[]
 ): T {
-  let result = { ...target } as Record<string, unknown>;
+  const result = { ...target } as Record<string, unknown>;
 
   for (const source of sources) {
     if (!source) continue;

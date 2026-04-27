@@ -22,6 +22,7 @@
  */
 
 import { z } from 'zod';
+import { getSearchConfig } from '../../infra/config';
 import { logger } from '../../infra/observability/logger';
 import type { MemoryToolResult } from '../memory/types';
 import {
@@ -686,9 +687,6 @@ export const SUBAGENT_STATE_TOOL_NAMES = Object.keys(conditionalSubagentStateToo
  */
 export function isSearchProviderConfigured(): boolean {
   try {
-    // Use dynamic require to avoid circular dependency
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getSearchConfig } = require('../../infra/config');
     const searchConfig = getSearchConfig();
     return !!(
       searchConfig.bochaApiKey ||

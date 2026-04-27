@@ -13,7 +13,7 @@ function safeJsonParse<T>(jsonString: string, fallback: T): T {
 // ---------------------------------------------------------------------------
 // CommandApprovalPort — local port interface for command safety assessment.
 //
-// Mirrors the public API of packages/bee/src/safety/command-approval.ts
+// Mirrors the public command-approval API exported by @bee.
 // WITHOUT creating a static import dependency on the bee layer.
 // ---------------------------------------------------------------------------
 
@@ -37,7 +37,7 @@ export interface ApprovalAssessmentResult {
  * Port interface consumed by ToolDispatcher for command approval.
  *
  * Every method signature matches the concrete CommandApproval class
- * in packages/bee/src/safety/command-approval.ts exactly:
+ * in @bee exactly:
  *  - assess() is async and returns Promise<ApprovalAssessmentResult>
  *  - recordApproval(command, permanent) — records user approval
  *  - fingerprint(command) — stable SHA-256 based fingerprint

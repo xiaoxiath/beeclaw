@@ -160,3 +160,39 @@ export type {
   MCPServerStatus,
   IMCPManager,
 } from './mcp/types';
+
+// Safety: prompt injection, memory fencing, command approval
+export {
+  scanForInjection,
+  sanitizeText,
+} from './safety/injection-scanner';
+export type { ScanResult } from './safety/injection-scanner';
+
+export {
+  fenceMemoryContent,
+  sanitizeMemoryContent,
+} from './safety/memory-fence';
+
+export {
+  CommandApproval,
+  COMMAND_TOOLS,
+  DANGER_PATTERNS,
+} from './safety/command-approval';
+export type {
+  DangerLevel,
+  DangerPattern,
+  ApprovalAssessment,
+  CommandApprovalOptions,
+} from './safety/command-approval';
+
+// Data: trajectory generation
+export {
+  convertToShareGPT,
+  saveTrajectory,
+  generateAndSaveTrajectory,
+} from './data/trajectory';
+export type {
+  ShareGPTTurn,
+  TrajectoryRecord,
+  TrajectoryConfig,
+} from './data/trajectory';

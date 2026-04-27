@@ -37,6 +37,7 @@ import { getTieredCompressor } from './compression/tiered-compressor';
 import { getSimHasher } from './context/simhash';
 import { getContextHealthDashboard } from './context/health-dashboard';
 import { logger } from '../../infra/observability/logger';
+import { scanForInjection, sanitizeText } from '@bee';
 
 // Re-export legacy type for backward compatibility
 export type { LegacyCompressionResult as CompressionResult } from './compression';
@@ -195,16 +196,10 @@ export async function compressContextWithLLM(
       return `[${role}] ${content}`;
     }).join('\n\n');
 
-    // [Upgrade] Scan for injection before compression
-    try {
-      const { scanForInjection, sanitizeText } = require('../../../packages/bee/src/safety/injection-scanner');
-      const scanResult = scanForInjection(textBlob);
-      if (!scanResult.safe) {
-        logger.warn(`[ContextBudgetController] Injection detected in context: ${scanResult.threats.map((t: any) => `[${t.category}] ${t.pattern}`).join(', ')}`);
-        textBlob = sanitizeText(textBlob);
-      }
-    } catch {
-      // Injection scanner not available
+    const scanResult = scanForInjection(textBlob);
+    if (!scanResult.safe) {
+      logger.warn(`[ContextBudgetController] Injection detected in context: ${scanResult.threats.map((t) => `[${t.category}] ${t.pattern}`).join(', ')}`);
+      textBlob = sanitizeText(textBlob);
     }
 
     const compressor = getTieredCompressor();

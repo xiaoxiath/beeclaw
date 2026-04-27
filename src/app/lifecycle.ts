@@ -38,7 +38,7 @@ export function switchModel(modelName?: string, providerName?: string): {
   }
 
   // Get model - prefer string, fall back to first model definition key
-  let modelValue = modelName || newProvider?.models[0] || appState.model;
+  const modelValue = modelName || newProvider?.models[0] || appState.model;
   const newModel = typeof modelValue === 'string' ? modelValue : Object.keys(modelValue as Record<string, unknown>)[0] || appState.model;
 
   // Recreate agent

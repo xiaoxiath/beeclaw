@@ -14,8 +14,24 @@ import {
   extractContent,
   AIClient,
 } from './call-ai';
-import { UnifiedRetryEngine, RETRY_STRATEGIES } from '../resilience/retry';
+import { UnifiedRetryEngine } from '../resilience/retry';
 import { ConcurrencyLimiter } from './concurrency';
+
+function createNoRetryEngine() {
+  return {
+    execute: async <T>(_operationName: string, fn: () => Promise<T>) => {
+      try {
+        return { success: true, value: await fn(), context: {} as any };
+      } catch (error) {
+        return {
+          success: false,
+          error: { originalError: error instanceof Error ? error : new Error(String(error)) } as any,
+          context: {} as any,
+        };
+      }
+    },
+  };
+}
 
 // ============================================================================
 // Utility Functions
@@ -253,13 +269,65 @@ describe('callAI', () => {
     expect(result.choices[0].message.content).toBe('Bonjour!');
 
     // Check Anthropic-specific headers
-    const [url, init] = mockFetch.mock.calls[0];
+    const [_url, init] = mockFetch.mock.calls[0];
     expect(init.headers['x-api-key']).toBe('ant-key');
     expect(init.headers['anthropic-version']).toBe('2023-06-01');
 
     const body = JSON.parse(init.body);
-    expect(body.system).toBe('You are French.');
+    expect(body.system[0].text).toBe('You are French.');
     expect(body.messages[0].role).toBe('user');
+  });
+
+  it('should merge provider headers and attach an abort signal', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: '1',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      }),
+    });
+
+    await client.callAI({
+      provider: {
+        type: 'openai',
+        apiKey: 'key',
+        headers: {
+          Authorization: 'Bearer gateway-token',
+          'X-Gateway-Metadata': 'team-a',
+        },
+      },
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    const init = mockFetch.mock.calls[0][1];
+    expect(init.headers.Authorization).toBe('Bearer gateway-token');
+    expect(init.headers['X-Gateway-Metadata']).toBe('team-a');
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('should keep request timeout active while reading response JSON', async () => {
+    const noRetryClient = new AIClient({
+      retryEngine: createNoRetryEngine() as any,
+      concurrencyLimiter: new ConcurrencyLimiter({ maxConcurrent: 10 }),
+      fetchFn: mockFetch as any,
+    });
+
+    mockFetch.mockImplementationOnce(async (_url: string, init: RequestInit) => ({
+      ok: true,
+      json: () => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      }),
+    }));
+
+    await expect(noRetryClient.callAI({
+      provider: { type: 'openai', apiKey: 'key' },
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'Hi' }],
+      requestTimeoutMs: 5,
+    })).rejects.toThrow('AI API call timeout after 5ms');
   });
 
   it('should include tools in request body', async () => {
@@ -438,6 +506,36 @@ describe('streamAI', () => {
     }
 
     expect(collected).toEqual(['Hello', ' world']);
+  });
+
+  it('should keep request timeout active while reading streaming body', async () => {
+    const noRetryClient = new AIClient({
+      retryEngine: createNoRetryEngine() as any,
+      concurrencyLimiter: new ConcurrencyLimiter({ maxConcurrent: 10 }),
+      fetchFn: mockFetch as any,
+    });
+
+    mockFetch.mockImplementationOnce(async (_url: string, init: RequestInit) => ({
+      ok: true,
+      body: new ReadableStream({
+        start(controller) {
+          init.signal?.addEventListener('abort', () => {
+            controller.error(new DOMException('Aborted', 'AbortError'));
+          });
+        },
+      }),
+    }));
+
+    await expect((async () => {
+      for await (const _chunk of noRetryClient.streamAI({
+        provider: { type: 'openai', apiKey: 'key' },
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Hi' }],
+        requestTimeoutMs: 5,
+      })) {
+        // no-op
+      }
+    })()).rejects.toThrow('AI API stream call timeout after 5ms');
   });
 
   it('should collect tool_calls from stream deltas', async () => {

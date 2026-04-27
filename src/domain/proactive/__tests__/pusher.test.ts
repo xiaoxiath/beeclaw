@@ -91,6 +91,40 @@ describe('Pusher', () => {
 
       expect(result.success).toBe(true);
     });
+
+    test('routes websocket storage notifications through the original pusher channel', async () => {
+      const feishuHandler = vi.fn(async () => true);
+      const webhookHandler = vi.fn(async () => true);
+      registerDeliveryHandler('feishu', feishuHandler);
+      registerDeliveryHandler('webhook', webhookHandler);
+
+      const result = await pushNotification({
+        message: 'Webhook notification',
+        channels: ['webhook'],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.delivered).toBe(true);
+      expect(webhookHandler).toHaveBeenCalledTimes(1);
+      expect(feishuHandler).not.toHaveBeenCalled();
+    });
+
+    test('falls back to a generic websocket handler after the original channel fails', async () => {
+      const webhookHandler = vi.fn(async () => false);
+      const websocketHandler = vi.fn(async () => true);
+      registerDeliveryHandler('webhook', webhookHandler);
+      registerDeliveryHandler('websocket', websocketHandler);
+
+      const result = await pushNotification({
+        message: 'Webhook notification',
+        channels: ['webhook'],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.delivered).toBe(true);
+      expect(webhookHandler).toHaveBeenCalledTimes(1);
+      expect(websocketHandler).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('pushUrgent', () => {

@@ -71,7 +71,7 @@ export class HookRunner {
    * Set via `setBridge()` during app initialization after the new HookRunner
    * (createHookRunner) is created.
    */
-  private bridgeToNew: ((hookName: string, handler: Function, priority: number) => void) | null = null;
+  private bridgeToNew: ((hookName: string, handler: HookHandler, priority: number) => void) | null = null;
 
   constructor(options: HookRunnerOptions = {}) {
     this.logger = options.logger || {
@@ -87,7 +87,7 @@ export class HookRunner {
    *
    * @param bridge - callback that registers a handler in the new system
    */
-  setBridge(bridge: (hookName: string, handler: Function, priority: number) => void): void {
+  setBridge(bridge: (hookName: string, handler: HookHandler, priority: number) => void): void {
     this.bridgeToNew = bridge;
   }
 

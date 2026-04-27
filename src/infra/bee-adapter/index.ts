@@ -8,6 +8,8 @@ import type { ProviderConfig } from '@bee/core/types';
 import { AIClient } from '@bee/provider/call-ai';
 import { ToolRegistry } from '@bee/tool/registry';
 import { logger } from '../observability/logger';
+import { getRetryEngine } from '../resilience/unified-retry';
+import { getLLMConcurrencyLimiter } from '../ai/concurrency-limiter';
 
 // Re-export bee's ProviderConfig for convenience
 export type { ProviderConfig } from '@bee/core/types';
@@ -55,14 +57,6 @@ let _aiClient: AIClient | null = null;
  */
 export function getBeeAIClient(): AIClient {
   if (!_aiClient) {
-    // Lazy-import to avoid circular deps at module load.
-    // beeclaw's singletons are structurally compatible with bee's interfaces
-    // (bee was extracted from beeclaw, same method signatures).
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getRetryEngine } = require('../../infra/resilience/unified-retry') as typeof import('../../infra/resilience/unified-retry');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getLLMConcurrencyLimiter } = require('../../infra/ai/concurrency-limiter') as typeof import('../../infra/ai/concurrency-limiter');
-
     _aiClient = new AIClient({
       retryEngine: getRetryEngine() as any, // structurally compatible
       concurrencyLimiter: getLLMConcurrencyLimiter() as any,

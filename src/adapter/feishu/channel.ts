@@ -44,7 +44,7 @@ export class FeishuChannel implements MessageChannel {
       // [FIX] Use Card V2 for unified message format when content contains markdown
       let messageId = `feishu-${Date.now()}`;
       try {
-        // eslint-disable-next-line no-restricted-syntax — dynamic import to avoid circular dependency with card-v2
+        // eslint-disable-next-line no-restricted-syntax -- dynamic import to avoid circular dependency with card-v2
         const { renderMessageCard } = await import('./card-v2/message-renderer');
         const textBlock = { type: 'text' as const, text };
         const card = renderMessageCard([textBlock], { streaming: false });

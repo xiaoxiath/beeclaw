@@ -14,6 +14,7 @@
 
 import type { ChatMessage, OpenAITool, AIResponse, ToolCall, ToolResult, ToolExecutor, ProviderConfig } from '../core/types';
 import { convertToAnthropicFormat, convertFromAnthropicFormat } from './format/anthropic';
+import { applyAnthropicCacheControl } from './prompt-cache';
 import type { UnifiedRetryEngine } from '../resilience/retry';
 import { RETRY_STRATEGIES } from '../resilience/retry';
 import type { ConcurrencyLimiter } from './concurrency';
@@ -42,6 +43,19 @@ const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBod
     extraBody: { reasoning_split: true },
   },
 };
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+
+interface RequestTimeoutScope {
+  signal?: AbortSignal;
+  clear(): void;
+  translateError(error: unknown): unknown;
+}
+
+interface TimedResponse {
+  response: Response;
+  timeout: RequestTimeoutScope;
+}
 
 function getProviderConfig(provider: ProviderConfig): { baseUrl: string; path: string; extraBody?: Record<string, unknown> } {
   if (provider.baseUrl) {
@@ -85,6 +99,8 @@ export interface CallAIOptions {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  /** HTTP request timeout after the concurrency permit is acquired */
+  requestTimeoutMs?: number;
   /** Concurrency control options */
   concurrency?: AcquireOptions;
 }
@@ -97,6 +113,8 @@ export interface StreamAIOptions {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  /** HTTP request timeout after the concurrency permit is acquired */
+  requestTimeoutMs?: number;
   /** Concurrency control options */
   concurrency?: AcquireOptions;
 }
@@ -151,20 +169,15 @@ export class AIClient {
   // --- Internal ---
 
   private async _callAIRaw(options: Omit<CallAIOptions, 'concurrency'>): Promise<AIResponse> {
-    const { provider, model, messages, tools, temperature, topP, maxTokens } = options;
+    const { provider, model, messages, tools, temperature, topP, maxTokens, requestTimeoutMs } = options;
 
     const { baseUrl, path, extraBody } = getProviderConfig(provider);
+    const timeoutMs = getRequestTimeoutMs(provider, requestTimeoutMs);
 
     // Anthropic format
     if (isAnthropicProvider(provider)) {
       const anthropicPayload = convertToAnthropicFormat(messages, tools);
-      // [Upgrade] Apply Anthropic prompt caching
-      try {
-        const { applyAnthropicCacheControl } = require('./prompt-cache');
-        applyAnthropicCacheControl(anthropicPayload);
-      } catch {
-        // Prompt cache module not available
-      }
+      applyAnthropicCacheControl(anthropicPayload);
       const body: Record<string, unknown> = {
         model,
         ...anthropicPayload,
@@ -173,31 +186,41 @@ export class AIClient {
       if (temperature !== undefined) body.temperature = temperature;
       if (topP !== undefined) body.top_p = topP;
 
-      const retryResult = await this.retryEngine.execute<Response>(
+      const retryResult = await this.retryEngine.execute<AIResponse>(
         'ai_api_call',
         async () => {
-          const res = await this.fetchFn(`${baseUrl}${path}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': provider.apiKey,
-              'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify(body),
-          });
-          if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`Anthropic API error: ${res.status} - ${errorText}`);
+          const timeout = createRequestTimeoutScope(timeoutMs, 'Anthropic API call');
+          try {
+            const res = await this.fetchFn(
+              `${baseUrl}${path}`,
+              withTimeoutSignal({
+                method: 'POST',
+                headers: mergeHeaders({
+                  'Content-Type': 'application/json',
+                  'x-api-key': provider.apiKey,
+                  'anthropic-version': '2023-06-01',
+                }, provider.headers),
+                body: JSON.stringify(body),
+              }, timeout),
+            );
+            if (!res.ok) {
+              const errorText = await res.text();
+              throw new Error(`Anthropic API error: ${res.status} - ${errorText}`);
+            }
+            const jsonResponse = (await res.json()) as Record<string, unknown>;
+            return convertFromAnthropicFormat(jsonResponse);
+          } catch (error) {
+            throw timeout.translateError(error);
+          } finally {
+            timeout.clear();
           }
-          return res;
         },
         RETRY_STRATEGIES.agent,
       );
       if (!retryResult.success) {
         throw retryResult.error?.originalError ?? new Error('Anthropic API call failed');
       }
-      const jsonResponse = (await retryResult.value!.json()) as Record<string, unknown>;
-      return convertFromAnthropicFormat(jsonResponse);
+      return retryResult.value!;
     }
 
     // OpenAI-compatible format
@@ -216,22 +239,32 @@ export class AIClient {
       Object.assign(body, extraBody);
     }
 
-    const retryResult = await this.retryEngine.execute<Response>(
+    const retryResult = await this.retryEngine.execute<AIResponse>(
       'ai_api_call',
       async () => {
-        const res = await this.fetchFn(`${baseUrl}${path}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${provider.apiKey}`,
-          },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`AI API error: ${res.status} - ${errorText}`);
+        const timeout = createRequestTimeoutScope(timeoutMs, 'AI API call');
+        try {
+          const res = await this.fetchFn(
+            `${baseUrl}${path}`,
+            withTimeoutSignal({
+              method: 'POST',
+              headers: mergeHeaders({
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${provider.apiKey}`,
+              }, provider.headers),
+              body: JSON.stringify(body),
+            }, timeout),
+          );
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`AI API error: ${res.status} - ${errorText}`);
+          }
+          return (await res.json()) as AIResponse;
+        } catch (error) {
+          throw timeout.translateError(error);
+        } finally {
+          timeout.clear();
         }
-        return res;
       },
       RETRY_STRATEGIES.agent,
     );
@@ -240,8 +273,7 @@ export class AIClient {
       throw retryResult.error?.originalError ?? new Error('AI API call failed');
     }
 
-    const response = retryResult.value!;
-    const jsonResponse = (await response.json()) as any;
+    const jsonResponse = retryResult.value! as any;
 
     // Handle reasoning content from various providers
     if (provider.type === 'minimax' || provider.options?.includeReasoning) {
@@ -269,19 +301,16 @@ export class AIClient {
   }
 
   private async *_streamAIRaw(options: Omit<StreamAIOptions, 'concurrency'>): AsyncGenerator<string, void, unknown> {
-    const { provider, model, messages, tools, temperature, topP, maxTokens } = options;
+    const { provider, model, messages, tools, temperature, topP, maxTokens, requestTimeoutMs } = options;
 
     const { baseUrl, path } = getProviderConfig(provider);
     const isAnthropic = isAnthropicProvider(provider);
+    const timeoutMs = getRequestTimeoutMs(provider, requestTimeoutMs);
 
     let anthropicStreamPayload: any = undefined;
     if (isAnthropic) {
       anthropicStreamPayload = convertToAnthropicFormat(messages, tools);
-      // [Upgrade] Apply Anthropic prompt caching
-      try {
-        const { applyAnthropicCacheControl } = require('./prompt-cache');
-        applyAnthropicCacheControl(anthropicStreamPayload);
-      } catch { /* prompt cache not available */ }
+      applyAnthropicCacheControl(anthropicStreamPayload);
     }
 
     const body: Record<string, unknown> = isAnthropic
@@ -311,29 +340,38 @@ export class AIClient {
     }
 
     const headers: Record<string, string> = isAnthropic
-      ? {
+      ? mergeHeaders({
           'Content-Type': 'application/json',
           'x-api-key': provider.apiKey,
           'anthropic-version': '2023-06-01',
-        }
-      : {
+        }, provider.headers)
+      : mergeHeaders({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${provider.apiKey}`,
-        };
+        }, provider.headers);
 
-    const retryResult = await this.retryEngine.execute<Response>(
+    const retryResult = await this.retryEngine.execute<TimedResponse>(
       'ai_api_stream',
       async () => {
-        const res = await this.fetchFn(`${baseUrl}${path}`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`AI API error: ${res.status} - ${errorText}`);
+        const timeout = createRequestTimeoutScope(timeoutMs, 'AI API stream call');
+        try {
+          const res = await this.fetchFn(
+            `${baseUrl}${path}`,
+            withTimeoutSignal({
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body),
+            }, timeout),
+          );
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`AI API error: ${res.status} - ${errorText}`);
+          }
+          return { response: res, timeout };
+        } catch (error) {
+          timeout.clear();
+          throw timeout.translateError(error);
         }
-        return res;
       },
       RETRY_STRATEGIES.agent,
     );
@@ -342,9 +380,12 @@ export class AIClient {
       throw retryResult.error?.originalError ?? new Error('AI API stream call failed');
     }
 
-    const response = retryResult.value!;
+    const { response, timeout } = retryResult.value!;
     const reader = response.body?.getReader();
-    if (!reader) return;
+    if (!reader) {
+      timeout.clear();
+      return;
+    }
 
     const decoder = new TextDecoder();
     const toolCallChunks = new Map<number, { id: string; type: string; function: { name: string; arguments: string } }>();
@@ -500,10 +541,56 @@ export class AIClient {
       if (toolCallChunks.size > 0) {
         yield `\n<!--tool_calls:${JSON.stringify(Array.from(toolCallChunks.values()))}-->`;
       }
+    } catch (error) {
+      throw timeout.translateError(error);
     } finally {
       reader.releaseLock();
+      timeout.clear();
     }
   }
+}
+
+function createRequestTimeoutScope(timeoutMs: number, label: string): RequestTimeoutScope {
+  if (timeoutMs <= 0) {
+    return {
+      clear: () => {},
+      translateError: (error: unknown) => error,
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeoutId),
+    translateError: (error: unknown) => {
+      if (controller.signal.aborted) {
+        return new Error(`${label} timeout after ${timeoutMs}ms`);
+      }
+      return error;
+    },
+  };
+}
+
+function withTimeoutSignal(init: RequestInit, timeout: RequestTimeoutScope): RequestInit {
+  return timeout.signal ? { ...init, signal: timeout.signal } : init;
+}
+
+function mergeHeaders(
+  defaults: Record<string, string>,
+  overrides?: Record<string, string>,
+): Record<string, string> {
+  return { ...defaults, ...(overrides ?? {}) };
+}
+
+function getRequestTimeoutMs(provider: ProviderConfig, override?: number): number {
+  if (typeof override === 'number') return override;
+
+  const providerTimeout = provider.options?.requestTimeoutMs ?? provider.options?.timeoutMs;
+  if (typeof providerTimeout === 'number') return providerTimeout;
+
+  return DEFAULT_REQUEST_TIMEOUT_MS;
 }
 
 // ============================================================================

@@ -10,15 +10,16 @@ import type { ProactiveJobData } from '../../../infra/queue/types';
 import { getGoalStore } from '../../../domain/agent/goal/store';
 import { getNotificationManager } from '../../../domain/proactive/notifications';
 import { pushNotification } from '../../../domain/proactive/pusher';
+import { handleSelfEvolutionJob } from '../../../domain/proactive/job-handlers';
 import { getFeishuWSClient } from '../../../adapter/feishu';
-import { sendProactiveMessage } from '../../../domain/session';
+import { injectProactiveResult, sendProactiveMessage } from '../../../domain/session';
 import { getMemoryStore } from '../../../domain/memory';
 import { getSessionSummary } from '../../../domain/session';
 import { renderMessageCard } from '../../../adapter/feishu/card-v2/message-renderer';
 import type { ContentBlock } from '../../../types/content-block';
 
 export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<unknown> {
-  const { scheduleId, taskType, params, triggeredAt, triggeredBy } = job.data;
+  const { scheduleId, taskType, params, triggeredAt, triggeredBy, associatedSessionId } = job.data;
 
   logger.debug(`[Worker:proactive] Processing job for schedule ${scheduleId}`);
   logger.debug(`  Task: ${taskType}, Triggered: ${triggeredBy} at ${triggeredAt}`);
@@ -50,7 +51,21 @@ export async function handleProactiveJob(job: Job<ProactiveJobData>): Promise<un
       }
 
       case 'llm_proactive_chat': {
-        result = await handleLlmProactiveChat(params);
+        result = await handleLlmProactiveChat(params, associatedSessionId);
+        break;
+      }
+
+      case 'self_evolution': {
+        const selfEvolutionResult = await handleSelfEvolutionJob({
+          ...job.data,
+          taskType: 'self_evolution',
+          params: params ?? {},
+          source: 'proactive',
+        });
+        if (!selfEvolutionResult.success) {
+          throw new Error(selfEvolutionResult.error || 'self_evolution failed');
+        }
+        result = selfEvolutionResult;
         break;
       }
 
@@ -248,9 +263,14 @@ async function handleCustomTask(params?: Record<string, unknown>): Promise<unkno
   };
 }
 
-async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise<unknown> {
+async function handleLlmProactiveChat(
+  params?: Record<string, unknown>,
+  associatedSessionId?: string,
+): Promise<unknown> {
   const prompt = (params?.prompt as string) || '发起一个简短的问候';
   const userId = (params?.userId as string) || 'proactive-user';
+  const resolvedAssociatedSessionId =
+    associatedSessionId || (params?.associatedSessionId as string | undefined);
 
   // Try to get chatId from params, or fallback to last active chat
   let chatId = params?.chatId as string | undefined;
@@ -303,17 +323,16 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
 
     // [AUDIT FIX P-3] Inject associated session context if available (with permission check)
     let sessionContext = '';
-    const associatedSessionId = params?.associatedSessionId as string | undefined;
-    if (associatedSessionId) {
+    if (resolvedAssociatedSessionId) {
       try {
         // Pass userId for permission check - only allow access to user's own sessions
-        const summary = getSessionSummary(associatedSessionId, 5, userId);
+        const summary = getSessionSummary(resolvedAssociatedSessionId, 5, userId);
         if (summary) {
           sessionContext = `\n\n<session-context>\n用户最近的对话记录:\n${summary}\n</session-context>\n`;
-          logger.debug(`[Worker:proactive] Injected session context from ${associatedSessionId} (${summary.length} chars)`);
+          logger.debug(`[Worker:proactive] Injected session context from ${resolvedAssociatedSessionId} (${summary.length} chars)`);
         }
       } catch (error) {
-        logger.warn(`[Worker:proactive] Failed to load session context for ${associatedSessionId}:`, error);
+        logger.warn(`[Worker:proactive] Failed to load session context for ${resolvedAssociatedSessionId}:`, error);
       }
     }
 
@@ -324,12 +343,20 @@ async function handleLlmProactiveChat(params?: Record<string, unknown>): Promise
       message: finalPrompt,
       userId,
       channel: 'feishu',
-      sessionId: chatId ? `feishu-${chatId}-${userId}` : undefined,
+      sessionId: resolvedAssociatedSessionId || (chatId ? `feishu-${chatId}-${userId}` : undefined),
+      context: { source: 'proactive', jobType: 'llm_proactive_chat', chatId },
     });
 
     logger.info(`[Worker:proactive] LLM result: success=${result.success}, response length=${result.response?.length || 0}`);
 
     if (result.success && result.response) {
+      if (resolvedAssociatedSessionId) {
+        injectProactiveResult(resolvedAssociatedSessionId, {
+          source: '定时主动沟通',
+          content: result.response.substring(0, 1000),
+        });
+      }
+
       // Push to Feishu if chatId available
       if (chatId) {
         try {

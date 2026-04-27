@@ -9,6 +9,7 @@ import { getNotificationsLazy } from './notifications';
 
 export type PusherChannel = 'cli' | 'feishu' | 'webhook';
 type StorageChannel = 'cli' | 'websocket' | 'email';
+const PUSHER_CHANNELS_METADATA_KEY = '__pusherChannels';
 
 function mapToStorageChannels(channels: PusherChannel[]): StorageChannel[] {
   const mapping: Record<PusherChannel, StorageChannel> = {
@@ -67,6 +68,7 @@ export function registerDeliveryHandler(channel: string, handler: DeliveryHandle
 export async function pushNotification(options: PushOptions): Promise<PushResult> {
   try {
     const manager = getNotificationsLazy();
+    const pusherChannels = options.channels || ['cli'];
 
     // Create the notification
     // Merge feishuChatId / feishuUserId into metadata so delivery handlers can access them
@@ -74,6 +76,7 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
       ...options.metadata,
       ...(options.feishuChatId ? { feishuChatId: options.feishuChatId } : {}),
       ...(options.feishuUserId ? { feishuUserId: options.feishuUserId } : {}),
+      [PUSHER_CHANNELS_METADATA_KEY]: pusherChannels,
     };
 
     const result = manager.create({
@@ -83,7 +86,7 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
       category: options.category,
       scheduledFor: options.scheduledFor,
       expiresAt: options.expiresAt,
-      channels: mapToStorageChannels(options.channels || ['cli']),
+      channels: mapToStorageChannels(pusherChannels),
       metadata,
     });
 
@@ -94,16 +97,16 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
     const notification = result.data as PendingNotification;
 
     // Try immediate delivery
-    const delivered = await deliverNotification(notification);
+    const deliveredChannel = await deliverNotification(notification);
 
-    if (delivered) {
-      manager.markDelivered(notification.id, 'cli');
+    if (deliveredChannel) {
+      manager.markDelivered(notification.id, deliveredChannel);
     }
 
     return {
       success: true,
       notificationId: notification.id,
-      delivered,
+      delivered: Boolean(deliveredChannel),
     };
   } catch (error) {
     return {
@@ -116,20 +119,11 @@ export async function pushNotification(options: PushOptions): Promise<PushResult
 /**
  * Deliver a notification through configured channels
  */
-async function deliverNotification(notification: PendingNotification): Promise<boolean> {
+async function deliverNotification(notification: PendingNotification): Promise<StorageChannel | null> {
   const channels = notification.delivery.channels;
 
-  // [FIX] Reverse mapping: storage channel names → pusher channel names
-  // mapToStorageChannels converts 'feishu' → 'websocket', but delivery handlers
-  // are registered under original pusher channel names (e.g., 'feishu').
-  // We need to check both the stored name and possible original names.
-  const STORAGE_TO_PUSHER: Record<string, string[]> = {
-    websocket: ['feishu', 'webhook'],
-  };
-
   for (const channel of channels) {
-    // Try the stored channel name first, then any reverse-mapped aliases
-    const channelsToTry = [channel, ...(STORAGE_TO_PUSHER[channel] || [])];
+    const channelsToTry = getDeliveryHandlerChannels(notification, channel);
 
     for (const ch of channelsToTry) {
       const handler = deliveryHandlers.get(ch);
@@ -138,7 +132,7 @@ async function deliverNotification(notification: PendingNotification): Promise<b
         try {
           const delivered = await handler(notification);
           if (delivered) {
-            return true;
+            return channel;
           }
         } catch (error) {
           console.error(`[Pusher] Delivery failed for channel ${ch}:`, error);
@@ -150,14 +144,53 @@ async function deliverNotification(notification: PendingNotification): Promise<b
     if (channel === 'cli' && cliDeliveryHandler) {
       try {
         cliDeliveryHandler(notification.message, notification.priority);
-        return true;
+        return channel;
       } catch (error) {
         console.error('[Pusher] CLI delivery failed:', error);
       }
     }
   }
 
-  return false;
+  return null;
+}
+
+function getDeliveryHandlerChannels(notification: PendingNotification, channel: StorageChannel): string[] {
+  if (channel !== 'websocket') {
+    return [channel];
+  }
+
+  const originalChannels = getOriginalPusherChannels(notification);
+  const websocketAliases = originalChannels.filter((ch) => ch === 'feishu' || ch === 'webhook');
+
+  // New notifications preserve their original pusher channel, so use that
+  // exact handler first, then fall back to a generic websocket handler.
+  if (websocketAliases.length > 0) {
+    return [...websocketAliases, 'websocket'];
+  }
+
+  return ['websocket'];
+}
+
+function getOriginalPusherChannels(notification: PendingNotification): PusherChannel[] {
+  const rawChannels = notification.metadata?.[PUSHER_CHANNELS_METADATA_KEY];
+  if (Array.isArray(rawChannels)) {
+    const channels = rawChannels.filter(isPusherChannel);
+    if (channels.length > 0) return channels;
+  }
+
+  // Backward-compatible inference for pending notifications created before
+  // original pusher channels were persisted.
+  if (notification.metadata?.feishuChatId || notification.metadata?.feishuUserId) {
+    return ['feishu'];
+  }
+  if (notification.metadata?.webhookUrl || notification.metadata?.webhookEndpoint) {
+    return ['webhook'];
+  }
+  return [];
+}
+
+function isPusherChannel(value: unknown): value is PusherChannel {
+  return value === 'cli' || value === 'feishu' || value === 'webhook';
 }
 
 /**
@@ -176,10 +209,10 @@ export async function pushPendingNotifications(): Promise<{
   const deliveredNotifications: PendingNotification[] = [];
 
   for (const notification of notifications) {
-    const delivered = await deliverNotification(notification);
+    const deliveredChannel = await deliverNotification(notification);
 
-    if (delivered) {
-      manager.markDelivered(notification.id, 'cli');
+    if (deliveredChannel) {
+      manager.markDelivered(notification.id, deliveredChannel);
       deliveredNotifications.push(notification);
       pushed++;
     } else {

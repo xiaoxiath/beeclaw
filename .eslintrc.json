@@ -72,6 +72,8 @@
     "scripts/**",
     "skills/**",
     "tmp/**",
+    "vitest.config.ts",
+    "packages/bee/vitest.config.ts",
     "tailwind.config.js"
   ]
 }

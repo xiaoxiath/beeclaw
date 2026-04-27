@@ -96,7 +96,12 @@ export function registerDefaultHandlers(): void {
           break;
 
         case 'self_evolution':
-          await handleSelfEvolutionJob(jobData);
+          {
+            const result = await handleSelfEvolutionJob(jobData);
+            if (!result.success) {
+              throw new Error(result.error || 'self_evolution failed');
+            }
+          }
           break;
 
         case 'run_skill':

@@ -661,7 +661,7 @@ export class FeishuWSClient {
       'im.message.receive_v1': async (data: unknown) => {
         logger.debug('[FeishuWS] Message received event triggered');
         logger.debug('[FeishuWS] Event data type:', typeof data);
-        logger.debug('[FeishuWS] Event data keys:', data ? Object.keys(data as object) : 'null');;
+        logger.debug('[FeishuWS] Event data keys:', data ? Object.keys(data as object) : 'null');
         await this.handleMessage(data as MessageEventData);
       },
       'im.message.message_read_v1': async (data: unknown) => {

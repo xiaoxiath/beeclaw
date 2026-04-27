@@ -60,6 +60,7 @@ import {
   type ContextManagerState,
 } from './context-manager';
 import { chatStream as chatStreamImpl, type StreamHandlerDeps } from './stream-handler';
+import { CommandApproval, generateAndSaveTrajectory } from '@bee';
 
 /**
  * Safely parse JSON with fallback
@@ -232,16 +233,7 @@ export class Agent {
 
     // Phase 4: Initialize extracted modules
     // [Upgrade] Initialize command approval if available
-    let commandApproval: CommandApprovalPort | undefined;
-    try {
-      // Lazy-load: concrete implementation lives in bee layer; domain only sees the port interface
-      const mod = require('../../../packages/bee/src/safety/command-approval');
-      if (mod?.CommandApproval) {
-        commandApproval = new mod.CommandApproval();
-      }
-    } catch {
-      // Module not available — command approval disabled
-    }
+    const commandApproval: CommandApprovalPort = new CommandApproval();
 
     this.toolDispatcher = new ToolDispatcher(
       this.toolExecutor,
@@ -1043,15 +1035,15 @@ export class Agent {
     await this.memoryManager.recordConversation(userMessageStr, finalContent);
 
     // [Upgrade] Generate trajectory for RL training (fire-and-forget)
-    try {
-      const { generateAndSaveTrajectory } = require('../../../packages/bee/src/data/trajectory');
+    if (!isTestRuntime()) {
       const sessionId = this.currentUserContext?.sessionId || 'unknown';
       generateAndSaveTrajectory(sessionId, this.messages, {
         model: this.options.model,
+        timestamp: new Date().toISOString(),
         totalTokens: this.estimatedTokens,
+        toolsUsed: [],
+        outcome: 'success',
       }).catch(() => { /* non-critical */ });
-    } catch {
-      // Trajectory module not available
     }
 
     const metadata: string[] = [];
@@ -1179,4 +1171,8 @@ export class Agent {
     this.currentUserContext = deps.currentUserContext;
     this.compressedSummary = deps.compressedSummary;
   }
+}
+
+function isTestRuntime(): boolean {
+  return process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
 }
