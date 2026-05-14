@@ -16,6 +16,7 @@ const {
   mockWriteFileSync,
   mockRmSync,
   mockWatch,
+  mockStatSync,
 } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(() => false),
   mockMkdirSync: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockWriteFileSync: vi.fn(),
   mockRmSync: vi.fn(),
   mockWatch: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })),
+  mockStatSync: vi.fn(() => ({ isDirectory: () => true, isFile: () => true })),
 }));
 
 vi.mock('fs', () => ({
@@ -34,6 +36,7 @@ vi.mock('fs', () => ({
   writeFileSync: mockWriteFileSync,
   rmSync: mockRmSync,
   watch: mockWatch,
+  statSync: mockStatSync,
 }));
 
 vi.mock('yaml', () => ({
@@ -78,6 +81,19 @@ vi.mock('../recommender', () => ({
 
 vi.mock('../llm-matcher', () => ({ LLMSkillMatcher: vi.fn() }));
 vi.mock('../parser', () => ({ SkillParser: vi.fn(), getSkillParser: vi.fn() }));
+
+const { mockPackSkill, mockUnpackSkill, mockValidateSkillPackage } = vi.hoisted(() => ({
+  mockPackSkill: vi.fn(),
+  mockUnpackSkill: vi.fn(),
+  mockValidateSkillPackage: vi.fn((p: unknown) => p),
+}));
+
+vi.mock('../packager', () => ({
+  packSkill: mockPackSkill,
+  unpackSkill: mockUnpackSkill,
+  validateSkillPackage: mockValidateSkillPackage,
+  SKILL_PACKAGE_FORMAT_VERSION: 1,
+}));
 vi.mock('../cache', () => ({ SkillCache: vi.fn() }));
 vi.mock('../watcher', () => ({ SkillWatcher: vi.fn() }));
 
@@ -1236,12 +1252,95 @@ describe('SkillStore', () => {
   /* ---- exportSkill / importSkill ---- */
 
   describe('exportSkill / importSkill', () => {
-    it('exportSkill throws NotImplementedError', () => {
-      expect(() => store.exportSkill('s')).toThrow('NotImplementedError');
+    beforeEach(() => {
+      mockPackSkill.mockReset();
+      mockUnpackSkill.mockReset();
+      mockValidateSkillPackage.mockReset().mockImplementation((p: unknown) => p);
     });
 
-    it('importSkill throws NotImplementedError', () => {
-      expect(() => store.importSkill('/tmp/pkg.tar.gz')).toThrow('NotImplementedError');
+    it('exportSkill writes a JSON envelope and returns its checksum + path', () => {
+      mockExistsSync.mockReturnValue(true);
+      mockStatSync.mockReturnValue({ isDirectory: () => true, isFile: () => true } as any);
+      mockPackSkill.mockReturnValue({
+        manifest: {
+          format: 1, name: 'foo', version: '1.0.0',
+          exportedAt: '2026-05-14T10:00:00.000Z', fileCount: 1, totalBytes: 5,
+        },
+        files: [{ path: 'SKILL.md', encoding: 'utf-8', content: 'hello', sha256: 'abc', size: 5 }],
+        checksum: 'deadbeef',
+      });
+
+      const result = store.exportSkill('foo');
+
+      expect(mockPackSkill).toHaveBeenCalledOnce();
+      expect(mockWriteFileSync).toHaveBeenCalled();
+      const written = mockWriteFileSync.mock.calls[mockWriteFileSync.mock.calls.length - 1];
+      expect(written[0]).toMatch(/foo\.skill\.json$/);
+      // The written body should be valid JSON containing the checksum.
+      expect(JSON.parse(written[1] as string).checksum).toBe('deadbeef');
+
+      expect(result.skill_name).toBe('foo');
+      expect(result.checksum).toBe('deadbeef');
+      expect(result.files_included).toEqual(['SKILL.md']);
+      expect(result.export_path).toMatch(/foo\.skill\.json$/);
+      expect(result.timestamp).toBe('2026-05-14T10:00:00.000Z');
+    });
+
+    it('exportSkill throws when the named skill does not exist', () => {
+      mockExistsSync.mockReturnValue(false);
+      expect(() => store.exportSkill('missing-skill')).toThrow(/skill not found/);
+      expect(mockPackSkill).not.toHaveBeenCalled();
+    });
+
+    it('importSkill validates, unpacks, and reports filesWritten', () => {
+      const fakePkg = {
+        manifest: { format: 1, name: 'imported-skill', version: '2.0.0', exportedAt: 't', fileCount: 1, totalBytes: 5 },
+        files: [{ path: 'SKILL.md', encoding: 'utf-8', content: 'x', sha256: 'a', size: 1 }],
+        checksum: 'cafe',
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockStatSync.mockReturnValue({ isDirectory: () => false, isFile: () => true } as any);
+      mockReadFileSync.mockReturnValue(JSON.stringify(fakePkg));
+      mockReaddirSync.mockReturnValue([] as any); // dest dir empty → no overwrite needed
+      mockUnpackSkill.mockReturnValue({
+        filesWritten: ['SKILL.md'],
+        conflictsResolved: [],
+        totalBytes: 5,
+      });
+
+      const result = store.importSkill('/tmp/foo.skill.json');
+
+      expect(mockValidateSkillPackage).toHaveBeenCalledWith(fakePkg);
+      expect(mockUnpackSkill).toHaveBeenCalled();
+      expect(result.skill_name).toBe('imported-skill');
+      expect(result.imported_version).toBe('2.0.0');
+      expect(result.files_imported).toEqual(['SKILL.md']);
+      expect(result.success).toBe(true);
+    });
+
+    it('importSkill rejects manifests with unsafe skill names', () => {
+      const evil = {
+        manifest: { format: 1, name: '../../etc', version: '1', exportedAt: 't', fileCount: 1, totalBytes: 1 },
+        files: [{ path: 'SKILL.md', encoding: 'utf-8', content: 'x', sha256: 'a', size: 1 }],
+        checksum: 'x',
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockStatSync.mockReturnValue({ isDirectory: () => false, isFile: () => true } as any);
+      mockReadFileSync.mockReturnValue(JSON.stringify(evil));
+      expect(() => store.importSkill('/tmp/evil.json')).toThrow(/invalid skill name/);
+      expect(mockUnpackSkill).not.toHaveBeenCalled();
+    });
+
+    it('importSkill rejects malformed JSON', () => {
+      mockExistsSync.mockReturnValue(true);
+      mockStatSync.mockReturnValue({ isDirectory: () => false, isFile: () => true } as any);
+      mockReadFileSync.mockReturnValue('not json {{{');
+      expect(() => store.importSkill('/tmp/bad.json')).toThrow(/invalid JSON/);
+    });
+
+    it('importSkill throws when file is missing', () => {
+      mockExistsSync.mockReturnValue(false);
+      expect(() => store.importSkill('/tmp/missing.json')).toThrow(/file not found/);
     });
   });
 

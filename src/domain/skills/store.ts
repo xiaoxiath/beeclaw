@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, watch, type FSWatcher } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync, watch, type FSWatcher } from 'fs';
+import { join, basename, resolve } from 'path';
+import { packSkill, unpackSkill, validateSkillPackage, type SkillPackage } from './packager';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type {
   Skill,
@@ -1312,19 +1313,99 @@ export class SkillStore {
   // ============================================================================
 
   /**
-   * Export a skill to a shareable package
+   * Export a skill to a shareable JSON package envelope.
+   *
+   * The output file is a single JSON document with a sha256 checksum over
+   * a canonicalised file list. See packager.ts for the format. Use a `.skill.json`
+   * extension by convention.
+   *
+   * If outputPath is omitted, writes to <basePath>/_exports/<name>.skill.json.
    */
-  // TODO: Implement actual tar.gz export with checksum calculation
-  exportSkill(_name: string, _outputPath?: string): import('./types').SkillExportResult {
-    throw new Error('NotImplementedError: exportSkill is not yet implemented');
+  exportSkill(name: string, outputPath?: string): import('./types').SkillExportResult {
+    const skillDir = this.locateSkillDir(name);
+    if (!skillDir) {
+      throw new Error(`exportSkill: skill not found: ${name}`);
+    }
+
+    const pkg = packSkill(skillDir);
+
+    const targetPath = outputPath
+      ? resolve(outputPath)
+      : join(this.basePath, '_exports', `${name}.skill.json`);
+    mkdirSync(join(targetPath, '..'), { recursive: true });
+    const json = JSON.stringify(pkg, null, 2);
+    writeFileSync(targetPath, json);
+
+    return {
+      skill_name: name,
+      export_path: targetPath,
+      size_bytes: Buffer.byteLength(json, 'utf-8'),
+      files_included: pkg.files.map(f => f.path),
+      checksum: pkg.checksum,
+      timestamp: pkg.manifest.exportedAt,
+    };
   }
 
   /**
-   * Import a skill from a package file
+   * Import a skill from a JSON package envelope produced by exportSkill().
+   *
+   * If the target skill already exists in basePath, the import refuses to
+   * proceed unless the manifest's name matches and the caller acknowledges
+   * the overwrite is intentional (controlled here by the existence flag in
+   * the report; see SkillImportResult.conflicts_resolved).
    */
-  // TODO: Implement actual tar.gz extraction, validation, and conflict resolution
-  importSkill(_filePath: string): import('./types').SkillImportResult {
-    throw new Error('NotImplementedError: importSkill is not yet implemented');
+  importSkill(filePath: string): import('./types').SkillImportResult {
+    const absPath = resolve(filePath);
+    if (!existsSync(absPath)) {
+      throw new Error(`importSkill: file not found: ${absPath}`);
+    }
+    if (!statSync(absPath).isFile()) {
+      throw new Error(`importSkill: not a regular file: ${absPath}`);
+    }
+
+    const raw = readFileSync(absPath, 'utf-8');
+    let pkg: SkillPackage;
+    try {
+      pkg = JSON.parse(raw) as SkillPackage;
+    } catch (e) {
+      throw new Error(`importSkill: invalid JSON in ${absPath}: ${(e as Error).message}`);
+    }
+    validateSkillPackage(pkg);
+
+    const skillName = pkg.manifest.name;
+    if (!skillName || skillName.includes('/') || skillName.includes('..')) {
+      throw new Error(`importSkill: invalid skill name in manifest: ${skillName}`);
+    }
+
+    const targetDir = join(this.basePath, skillName);
+    const existedBefore = existsSync(targetDir) && readdirSync(targetDir).length > 0;
+    const result = unpackSkill(pkg, targetDir, { overwrite: existedBefore });
+
+    return {
+      skill_name: skillName,
+      imported_version: pkg.manifest.version,
+      files_imported: result.filesWritten,
+      conflicts_resolved: result.conflictsResolved,
+      success: true,
+      message: existedBefore
+        ? `Overwrote existing skill ${skillName} (${result.conflictsResolved.length} conflicts)`
+        : `Imported new skill ${skillName} (${result.filesWritten.length} files)`,
+    };
+  }
+
+  /**
+   * Locate a skill directory by name. Searches user basePath first, then the
+   * built-in path if configured. Returns the absolute path or null if not found.
+   */
+  private locateSkillDir(name: string): string | null {
+    const safe = basename(name); // strip any path components for safety
+    const userDir = join(this.basePath, safe);
+    if (existsSync(userDir) && statSync(userDir).isDirectory()) return userDir;
+    if (this.builtinPath) {
+      const builtinDir = join(this.builtinPath, safe);
+      if (existsSync(builtinDir) && statSync(builtinDir).isDirectory()) return builtinDir;
+    }
+    return null;
   }
 }
 
