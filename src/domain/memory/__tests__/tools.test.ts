@@ -70,8 +70,8 @@ describe('memory/tools', () => {
   });
 
   describe('tool definitions', () => {
-    it('should define 11 tools', () => {
-      expect(MEMORY_TOOL_NAMES).toHaveLength(11);
+    it('should define 12 tools', () => {
+      expect(MEMORY_TOOL_NAMES).toHaveLength(12);
     });
 
     it('should include expected tool names', () => {
@@ -79,6 +79,7 @@ describe('memory/tools', () => {
         'memory_ls', 'memory_grep', 'memory_read', 'memory_write',
         'memory_record', 'memory_compress', 'memory_score', 'memory_dedupe',
         'memory_knowledge_create', 'memory_index', 'memory_search',
+        'memory_semantic_search',
       ];
       for (const name of expected) {
         expect(MEMORY_TOOL_NAMES).toContain(name);
@@ -87,7 +88,7 @@ describe('memory/tools', () => {
 
     it('getMemoryToolsForAI should return all tools', () => {
       const tools = getMemoryToolsForAI();
-      expect(tools).toHaveLength(11);
+      expect(tools).toHaveLength(12);
     });
 
     it('getAllMemoryTools should be an alias', () => {

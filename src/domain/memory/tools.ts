@@ -3,6 +3,7 @@ import type { MemoryToolResult } from './types';
 import { getMemoryStore } from './store';
 import { getCompressionEngine } from './compression';
 import { scoreImportance } from './scoring';
+import { getVectorStore, getEmbeddingProvider } from './vector-store';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
@@ -314,6 +315,33 @@ export const memoryTools = {
       required: ['query'],
     },
   },
+
+  memory_semantic_search: {
+    name: 'memory_semantic_search',
+    description:
+      'Semantic memory recall via embeddings — finds passages similar in meaning even when wording differs. ' +
+      'Use this when the user asks something abstractly ("when did I worry about my finances?") and a literal grep ' +
+      'would miss it. Returns up to topK passages with a similarity score in [0, 1]; higher = more similar.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Natural-language query' },
+        topK: {
+          type: 'number',
+          description: 'Maximum number of passages to return (default 5, max 20)',
+        },
+        minScore: {
+          type: 'number',
+          description: 'Cosine-similarity floor in [0, 1]. Lower = more recall, higher = more precision (default 0).',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional category filter (e.g. "preferences")',
+        },
+      },
+      required: ['query'],
+    },
+  },
 };
 
 // Tool executor
@@ -507,6 +535,64 @@ export async function executeMemoryTool(name: string, params: Record<string, unk
       return store.searchByKeyword(parsed.data.query, parsed.data.scope);
     }
 
+    case 'memory_semantic_search': {
+      const parsed = z.object({
+        query: z.string().min(1),
+        topK: z.number().int().min(1).max(20).optional().default(5),
+        minScore: z.number().min(0).max(1).optional().default(0),
+        category: z.string().optional(),
+      }).safeParse(params);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.message };
+      }
+
+      // Graceful degradation: when no embedding provider is wired (CLI mode,
+      // missing API key, etc.) fall back with a clear hint rather than
+      // crashing the tool call.
+      const provider = getEmbeddingProvider();
+      if (!provider) {
+        return {
+          success: false,
+          error: 'Semantic search unavailable: no embedding provider configured. ' +
+                 'Set memory.embedding in beeclaw.json or use memory_search / memory_grep instead.',
+        };
+      }
+
+      try {
+        const vectorStore = getVectorStore();
+        const results = await vectorStore.search(parsed.data.query, parsed.data.topK, {
+          minScore: parsed.data.minScore,
+          category: parsed.data.category,
+        });
+
+        if (results.length === 0) {
+          return { success: true, data: '(no semantic matches found)' };
+        }
+
+        const formatted = results.map(r => {
+          const source = r.metadata?.source ? `📄 ${r.metadata.source}` : `📌 ${r.id}`;
+          const score = r.score.toFixed(3);
+          // Trim text to a sensible preview length to keep responses bounded.
+          const preview = r.text.length > 240 ? r.text.slice(0, 240) + '…' : r.text;
+          return `${source}  (score=${score})\n${preview}`;
+        }).join('\n\n---\n\n');
+
+        return {
+          success: true,
+          data: formatted,
+          metadata: {
+            count: results.length,
+            topScore: results[0].score,
+          },
+        } as MemoryToolResult;
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error during semantic search',
+        };
+      }
+    }
+
     default:
       return { success: false, error: `Unknown tool: ${name}` };
   }
@@ -533,6 +619,7 @@ const ADVANCED_MEMORY_TOOL_NAMES = [
   'memory_knowledge_create',
   'memory_index',
   'memory_search',
+  'memory_semantic_search',
 ] as const;
 
 /**
