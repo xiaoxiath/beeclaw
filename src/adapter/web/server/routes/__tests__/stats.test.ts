@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resetTokenUsageTracker, getTokenUsageTracker } from '@/infra/observability/token-usage';
+import { getCircuitBreakerRegistry } from '@/infra/resilience/circuit-breaker';
 
 vi.mock('../../../../../infra/observability/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -18,10 +19,16 @@ vi.mock('@/domain/skills/store', () => ({
 
 import statsRoutes from '../stats';
 
+/** Drop every breaker so each test sees a clean registry. */
+function resetCircuitBreakerRegistry(): void {
+  getCircuitBreakerRegistry().clear();
+}
+
 describe('GET /stats', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetTokenUsageTracker();
+    resetCircuitBreakerRegistry();
     mockListSessions.mockReturnValue([]);
     mockSkillList.mockReturnValue([]);
   });
@@ -49,6 +56,67 @@ describe('GET /stats', () => {
       lastRecordedAt: null,
       byModel: {},
     });
+
+    // Cold registry: no breakers, nothing open, healthy.
+    expect(json.circuits).toEqual({
+      total: 0, closed: 0, open: 0, halfOpen: 0,
+      healthy: true, openCircuits: [], breakers: {},
+    });
+  });
+
+  it('reports closed breakers as healthy and includes per-breaker stats', async () => {
+    const reg = getCircuitBreakerRegistry();
+    // Just instantiating a breaker registers it in 'closed' state.
+    reg.getBreaker('tool-a');
+    reg.getBreaker('tool-b');
+
+    const res = await statsRoutes.request('/');
+    const json = await res.json();
+
+    expect(json.circuits.total).toBe(2);
+    expect(json.circuits.closed).toBe(2);
+    expect(json.circuits.open).toBe(0);
+    expect(json.circuits.healthy).toBe(true);
+    expect(json.circuits.openCircuits).toEqual([]);
+    expect(json.circuits.breakers['tool-a']).toMatchObject({
+      state: 'closed', totalCalls: 0, totalFailures: 0,
+    });
+    expect(json.circuits.breakers['tool-b']).toBeDefined();
+  });
+
+  it('surfaces open breakers in openCircuits[] and flags healthy=false', async () => {
+    // Pre-register a tight threshold for this tool so we can trip it in 2
+    // failures rather than the default 5+. registerToolConfig must be called
+    // BEFORE getBreaker() since getBreaker freezes config at creation time.
+    const reg = getCircuitBreakerRegistry();
+    reg.registerToolConfig('flaky-tool', {
+      failureThreshold: 2,
+      windowSizeSeconds: 60,
+      cooldownMs: 60_000,
+    });
+    const breaker = reg.getBreaker('flaky-tool');
+    breaker.recordFailure('boom');
+    breaker.recordFailure('boom');
+    expect(breaker.getState()).toBe('open');
+
+    const res = await statsRoutes.request('/');
+    const json = await res.json();
+
+    expect(json.circuits.open).toBeGreaterThanOrEqual(1);
+    expect(json.circuits.healthy).toBe(false);
+    expect(json.circuits.openCircuits).toContain('flaky-tool');
+    expect(json.circuits.breakers['flaky-tool']).toMatchObject({
+      state: 'open', totalFailures: 2,
+    });
+  });
+
+  it('keeps responding 200 even when the registry has never been touched', async () => {
+    // Don't instantiate any breakers — the registry is initialised lazily.
+    const res = await statsRoutes.request('/');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.circuits.healthy).toBe(true);
+    expect(json.circuits.total).toBe(0);
   });
 
   it('reflects recorded token usage in the response', async () => {

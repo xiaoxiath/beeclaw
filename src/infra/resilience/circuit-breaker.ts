@@ -498,6 +498,17 @@ export class CircuitBreakerRegistry {
   }
 
   /**
+   * Drop every registered breaker.
+   *
+   * Mainly useful in tests where a fresh registry state is needed between
+   * cases. Production code should not call this — losing a breaker mid-flight
+   * means losing its failure history, which can hide a recurring issue.
+   */
+  clear(): void {
+    this.breakers.clear();
+  }
+
+  /**
    * 获取健康摘要
    */
   getHealthSummary(): {
