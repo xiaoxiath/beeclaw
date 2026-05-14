@@ -225,6 +225,19 @@ export interface AgentOptions {
   blockedTools?: string[];
   compressionConfig?: Partial<CompressionConfig>;  // Context compression config
   /**
+   * Per-turn token budget cap, expressed as a *fraction* of the model's
+   * context window (e.g. 0.6 = 60%). When a single turn's tool loop
+   * consumes more than this, the agent forces completion with a fallback
+   * message rather than running away. Default 0.6.
+   */
+  tokenBudgetPctPerTurn?: number;
+  /**
+   * Per-turn absolute token budget. Takes precedence over
+   * tokenBudgetPctPerTurn if both are set. For ops who want a hard
+   * dollar-cost ceiling regardless of context window size.
+   */
+  maxTokensPerTurn?: number;
+  /**
    * User-visible fallback messages emitted when the agent has to bail
    * mid-turn (token budget exceeded, max iterations reached). Defaults
    * are Chinese to match historical behavior; operators on other
@@ -235,6 +248,15 @@ export interface AgentOptions {
     maxIterationsReached?: string;
   };
 }
+
+/**
+ * Per-turn defaults. Inlined at call sites in orchestrator and
+ * stream-handler too (so tests that mock '@domain/agent/types' don't
+ * need to re-list every export); these named constants are the
+ * canonical contract for downstream consumers and config-builders.
+ */
+export const DEFAULT_MAX_TOOL_ITERATIONS = 5;
+export const DEFAULT_TOKEN_BUDGET_PCT_PER_TURN = 0.6;
 
 /**
  * Default user-visible fallback messages. Exported so callers (CLI,

@@ -633,9 +633,11 @@ export class Agent {
       }
     }
 
-    // [P2 FIX 4.2] Global token budget guard for tool loop
-    const maxTokensPerTurn = (this.options as any).maxTokensPerTurn
-      ?? Math.floor(this.contextConfig.maxTokens * 0.6); // Default: 60% of context window
+    // [P2 FIX 4.2] Global token budget guard for tool loop.
+    // Resolution order: explicit absolute > percent of context > 60% default.
+    const tokenBudgetPct = this.options.tokenBudgetPctPerTurn ?? 0.6;
+    const maxTokensPerTurn = this.options.maxTokensPerTurn
+      ?? Math.floor(this.contextConfig.maxTokens * tokenBudgetPct);
     const turnStartTokens = this.estimatedTokens;
 
     while (iterations < (this.options.maxToolIterations || 5)) {

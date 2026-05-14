@@ -61,6 +61,8 @@ export interface StreamHandlerDeps {
     maxToolIterations?: number;
     blockedTools?: string[];
     compressionConfig?: any;
+    tokenBudgetPctPerTurn?: number;
+    maxTokensPerTurn?: number;
     fallbackMessages?: { tokenBudgetExceeded?: string; maxIterationsReached?: string };
   };
   messages: ChatMessage[];
@@ -216,8 +218,9 @@ export async function* chatStream(
   let finalContent = '';
 
   // [P2 FIX 4.2] Global token budget guard for streaming tool loop
-  const maxTokensPerTurnStream = (deps.options as any).maxTokensPerTurn
-    ?? Math.floor(deps.contextConfig.maxTokens * 0.6);
+  const tokenBudgetPctStream = deps.options.tokenBudgetPctPerTurn ?? 0.6;
+  const maxTokensPerTurnStream = deps.options.maxTokensPerTurn
+    ?? Math.floor(deps.contextConfig.maxTokens * tokenBudgetPctStream);
   const turnStartTokensStream = deps.estimatedTokens;
 
   while (iterations < (deps.options.maxToolIterations || 5)) {
