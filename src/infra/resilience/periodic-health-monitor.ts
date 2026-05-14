@@ -88,13 +88,15 @@ export class PeriodicHealthMonitor {
     }
 
     this.isRunning = true;
-    this.intervalId = setInterval(
-      () => this.tick(),
-      this.config.intervalMs,
-    );
+    const runTick = () => {
+      this.tick().catch((err) => {
+        this.logger?.error?.('[PeriodicHealthMonitor] Tick failed', err);
+      });
+    };
+    this.intervalId = setInterval(runTick, this.config.intervalMs);
 
-    // Run an initial check
-    this.tick();
+    // Run an initial check (fire-and-forget; tick() has its own try/catch)
+    runTick();
 
     this.logger?.info?.(
       `[PeriodicHealthMonitor] Started with interval ${this.config.intervalMs}ms`,

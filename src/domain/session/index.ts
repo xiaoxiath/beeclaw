@@ -763,14 +763,14 @@ export function getOrCreateSession(options: SessionOptions): Session {
   try {
     const hookRunner = getHookRunnerPort();
     if (hookRunner) {
-      Promise.resolve().then(() => {
-        hookRunner.runSessionStart({
-          sessionId: session.id,
-          userId: session.userId,
-          channel: session.channel,
-          metadata: session.metadata,
-          timestamp: session.createdAt,
-        });
+      void hookRunner.runSessionStart({
+        sessionId: session.id,
+        userId: session.userId,
+        channel: session.channel,
+        metadata: session.metadata,
+        timestamp: session.createdAt,
+      }).catch((err: unknown) => {
+        logger.warn('[Session] runSessionStart hook failed:', err);
       });
     }
   } catch {
@@ -813,16 +813,16 @@ export function deleteSession(sessionId: string): boolean {
     try {
       const hookRunner = getHookRunnerPort();
       if (hookRunner) {
-        Promise.resolve().then(() => {
-          hookRunner.runSessionEnd({
-            sessionId: session.id,
-            userId: session.userId,
-            channel: session.channel,
-            messageCount: session.messages.length,
-            createdAt: session.createdAt,
-            endedAt: new Date().toISOString(),
-            timestamp: new Date().toISOString(),
-          });
+        void hookRunner.runSessionEnd({
+          sessionId: session.id,
+          userId: session.userId,
+          channel: session.channel,
+          messageCount: session.messages.length,
+          createdAt: session.createdAt,
+          endedAt: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
+        }).catch((err: unknown) => {
+          logger.warn('[Session] runSessionEnd hook failed:', err);
         });
       }
     } catch (error) {
@@ -1388,7 +1388,9 @@ async function _sendProactiveMessageInternal(options: ProactiveMessageOptions): 
     saveSession(session);
 
     // Trigger knowledge extraction (background)
-    runExtractionInBackground(session);
+    void runExtractionInBackground(session).catch((err: unknown) => {
+      logger.warn('[Session] runExtractionInBackground failed:', err);
+    });
 
     // Notify channel handler
     const handler = channelHandlers.get(channel);

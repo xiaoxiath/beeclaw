@@ -82,7 +82,10 @@ export class SessionMessageQueue {
       this.queues.get(sessionId)!.push(entry as QueueEntry);
 
       if (!this.processing.has(sessionId)) {
-        this.processQueue(sessionId);
+        // Fire-and-forget: processQueue has its own try/catch and rejects
+        // each entry through entry.reject. The .catch here only fires for
+        // a defect in processQueue itself (would otherwise be UnhandledRejection).
+        void this.processQueue(sessionId).catch(() => {});
       }
     });
   }
