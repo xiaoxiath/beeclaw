@@ -2,8 +2,16 @@
  * Shared State Management
  *
  * Provides a state store for subagent collaboration.
- * **Note:** Not inherently thread-safe — callers must use `acquireLock()`
- * for concurrent access to shared keys.
+ *
+ * Concurrency model:
+ *   - Internal `_writeMutex` serializes all mutations (set/delete/update/clear/cleanup)
+ *     so single-process write races are impossible.
+ *   - Read methods (get/getEntry/exists/keys/entries) are non-blocking — JS Map ops
+ *     are atomic in a single event-loop turn.
+ *   - For *application-level* read-modify-write atomicity across multiple awaits,
+ *     callers should use `guardedUpdate()` or `acquireLock()` — `update()` itself
+ *     is mutation-atomic but its updater closure cannot await between read and write.
+ *
  * Supports locking, expiration, and change notifications.
  */
 
@@ -94,10 +102,13 @@ export interface SharedStateOptions {
 /**
  * Shared State Store
  *
- * **NOT thread-safe.** While this class provides an async locking mechanism
- * (`acquireLock`), the core `set`/`get`/`delete`/`update` methods do NOT
- * automatically acquire locks. Callers must explicitly use `acquireLock`
- * when concurrent access to the same key is possible.
+ * All mutations (set/delete/update/clear/cleanup/import) are serialized by
+ * an internal AsyncMutex, so concurrent writes from different async callers
+ * cannot interleave or lose updates.
+ *
+ * For application-level read-modify-write atomicity (e.g., when the updater
+ * needs to await between read and write, or when multiple keys must move
+ * together), use `guardedUpdate()` or `acquireLock()`.
  *
  * Supports locking, expiration, and change notifications.
  */
@@ -326,12 +337,17 @@ export class SharedState {
    * Clear all entries
    */
   async clear(): Promise<void> {
-    // Notify all subscribers
-    for (const [key, entry] of this.store.entries()) {
-      this.notifySubscribers(key, undefined, entry.value);
+    const release = await this._writeMutex.acquire();
+    try {
+      // Snapshot before mutation so subscribers see consistent old/new pairs.
+      const snapshot = Array.from(this.store.entries());
+      this.store.clear();
+      for (const [key, entry] of snapshot) {
+        this.notifySubscribers(key, undefined, entry.value);
+      }
+    } finally {
+      release();
     }
-
-    this.store.clear();
   }
 
   /**
@@ -552,18 +568,25 @@ export class SharedState {
    * @returns Number of entries removed
    */
   async cleanup(): Promise<number> {
-    const now = new Date();
-    let removed = 0;
-
-    for (const [key, entry] of this.store.entries()) {
-      if (entry.expiresAt && entry.expiresAt < now) {
+    const release = await this._writeMutex.acquire();
+    try {
+      const now = new Date();
+      let removed = 0;
+      const expired: Array<[string, StateEntry]> = [];
+      for (const [key, entry] of this.store.entries()) {
+        if (entry.expiresAt && entry.expiresAt < now) {
+          expired.push([key, entry]);
+        }
+      }
+      for (const [key, entry] of expired) {
         this.store.delete(key);
         this.notifySubscribers(key, undefined, entry.value);
         removed++;
       }
+      return removed;
+    } finally {
+      release();
     }
-
-    return removed;
   }
 
   /**
