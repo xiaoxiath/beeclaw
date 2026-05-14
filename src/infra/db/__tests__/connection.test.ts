@@ -111,5 +111,35 @@ describe('db/connection', () => {
       closeDataConnection();
       expect(() => initDataConnection({ path: '/tmp/test2.db' })).not.toThrow();
     });
+
+    it('runs WAL checkpoint(TRUNCATE) and optimize before close', () => {
+      initDataConnection({ path: '/tmp/test.db' });
+      const sqlite = getSQLite() as any;
+      sqlite.run.mockClear();
+
+      closeDataConnection();
+
+      const runCalls = sqlite.run.mock.calls.map((c: any[]) => c[0]);
+      expect(runCalls).toContain('PRAGMA wal_checkpoint(TRUNCATE)');
+      expect(runCalls).toContain('PRAGMA optimize');
+      // Order matters: checkpoint must precede optimize, both before close.
+      const cpIdx = runCalls.indexOf('PRAGMA wal_checkpoint(TRUNCATE)');
+      const optIdx = runCalls.indexOf('PRAGMA optimize');
+      expect(cpIdx).toBeLessThan(optIdx);
+      expect(sqlite.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('still closes if checkpoint throws (logs and proceeds)', () => {
+      initDataConnection({ path: '/tmp/test.db' });
+      const sqlite = getSQLite() as any;
+      sqlite.run.mockImplementation((sql: string) => {
+        if (sql === 'PRAGMA wal_checkpoint(TRUNCATE)') {
+          throw new Error('database is locked');
+        }
+      });
+
+      expect(() => closeDataConnection()).not.toThrow();
+      expect(sqlite.close).toHaveBeenCalledTimes(1);
+    });
   });
 });

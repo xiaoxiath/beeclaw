@@ -76,10 +76,24 @@ export function getSQLite(): Database {
 }
 
 /**
- * Close the database connection
+ * Close the database connection.
+ *
+ * Before closing we fold the WAL back into the main database file via
+ * `wal_checkpoint(TRUNCATE)` and run `optimize`. Without this, a
+ * crashed/killed daemon leaves a `-wal` and `-shm` sidecar that next
+ * startup must replay — usually fine, but we'd rather not depend on
+ * "usually" for the only persistent store.
  */
 export function closeDataConnection(): void {
   if (_sqlite) {
+    try {
+      // TRUNCATE mode resets the WAL file to zero bytes after checkpointing,
+      // so the next start finds a single self-contained .db file.
+      _sqlite.run('PRAGMA wal_checkpoint(TRUNCATE)');
+      _sqlite.run('PRAGMA optimize');
+    } catch (err) {
+      logger.warn('[DataConnection] checkpoint/optimize failed during close', err);
+    }
     _sqlite.close();
     _sqlite = null;
     _db = null;
