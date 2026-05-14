@@ -31,7 +31,7 @@ vi.mock('../../../proactive', () => ({
   getScheduler: vi.fn(() => mockScheduler),
 }));
 
-import { initSelfEvolution, getSelfEvolutionStatus, triggerSelfEvolution } from '../self-evolution';
+import { initSelfEvolution, getSelfEvolutionStatus } from '../self-evolution';
 
 describe('self-evolution', () => {
   beforeEach(() => {
@@ -121,11 +121,4 @@ describe('self-evolution', () => {
     });
   });
 
-  describe('triggerSelfEvolution', () => {
-    it('should return success with instruction message', async () => {
-      const result = await triggerSelfEvolution();
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('beeclaw-self-evolution');
-    });
-  });
 });

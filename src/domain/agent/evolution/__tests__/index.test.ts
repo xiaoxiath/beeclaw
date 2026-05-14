@@ -49,6 +49,7 @@ describe('domain/agent/evolution/index exports', () => {
     // Self evolution
     expect(typeof mod.initSelfEvolution).toBe('function');
     expect(typeof mod.getSelfEvolutionStatus).toBe('function');
-    expect(typeof mod.triggerSelfEvolution).toBe('function');
+    // triggerSelfEvolution removed in W5-PR1 — was a stub.
+    expect(mod.triggerSelfEvolution).toBeUndefined();
   });
 });

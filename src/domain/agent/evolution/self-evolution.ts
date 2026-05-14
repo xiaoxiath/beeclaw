@@ -11,10 +11,9 @@
  *   designers themselves were cautious about auto-modification
  *
  * What remains:
- * - triggerSelfEvolution() — returns a recommendation message (no auto-apply)
- * - getSelfEvolutionStatus() — status query
- * - initSelfEvolution() — simplified init (schedule still exists but only
- *   generates reports, never modifies SOUL.md directly)
+ * - initSelfEvolution() — registers the daily cron that runs the
+ *   external `beeclaw-self-evolution` skill (never modifies SOUL.md)
+ * - getSelfEvolutionStatus() — status query for the schedule
  *
  * What was removed:
  * - autoApprove config (always false now)
@@ -110,19 +109,9 @@ export function getSelfEvolutionStatus(basePath: string): {
   };
 }
 
-/**
- * Trigger immediate self-evolution report generation.
- *
- * Returns a recommendation — the caller (or user) decides whether to apply it.
- * SOUL.md is never modified automatically.
- */
-export async function triggerSelfEvolution(): Promise<{
-  success: boolean;
-  message: string;
-}> {
-  return {
-    success: true,
-    message: 'Use the beeclaw-self-evolution skill to generate suggestions. ' +
-      'Review the output in facts/evolution-suggestions.md before applying to SOUL.md.',
-  };
-}
+// triggerSelfEvolution() removed — was a stub that returned a hardcoded
+// "use the beeclaw-self-evolution skill" message and had no callers in
+// production code. The actual evolution logic lives in the external
+// `beeclaw-self-evolution` skill that the cron schedule above already
+// points to (via taskParams.skill). If callers need to kick off an
+// out-of-band evolution run, they should invoke that skill directly.

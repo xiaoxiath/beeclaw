@@ -34,7 +34,6 @@ export {
 export {
   initSelfEvolution,
   getSelfEvolutionStatus,
-  triggerSelfEvolution,
   type SelfEvolutionConfig,
 } from './self-evolution';
 
