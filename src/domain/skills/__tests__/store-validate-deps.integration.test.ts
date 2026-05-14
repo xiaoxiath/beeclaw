@@ -105,3 +105,63 @@ describe('SkillStore.validateAllDependencies — real fs', () => {
     expect(result.totalSkills).toBe(0);
   });
 });
+
+describe('SkillStore.validateNewSkillDependencies — pre-create check', () => {
+  let userBase: string;
+  beforeEach(() => { userBase = mkTmp(); });
+  afterEach(() => { fs.rmSync(userBase, { recursive: true, force: true }); });
+
+  it('returns valid when all declared deps exist on disk', () => {
+    writeSkill(userBase, 'foundation');
+    writeSkill(userBase, 'middle');
+    const store = new SkillStore(userBase, '/nonexistent/builtin');
+    const result = store.validateNewSkillDependencies('newcomer', ['foundation', 'middle']);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.missing).toEqual([]);
+  });
+
+  it('flags missing deps that do not exist on disk', () => {
+    writeSkill(userBase, 'real-dep');
+    const store = new SkillStore(userBase, '/nonexistent/builtin');
+    const result = store.validateNewSkillDependencies('newcomer', ['real-dep', 'ghost']);
+    expect(result.valid).toBe(false);
+    expect(result.missing).toEqual(['ghost']);
+    expect(result.errors.some(e => e.includes('"ghost" not found'))).toBe(true);
+  });
+
+  it('detects a cycle introduced by the new skill (missed by the old API)', () => {
+    // Existing skill A depends on the to-be-created skill B.
+    // Creating B with depends_on=[A] would close the loop A → B → A.
+    // The old validateDependencies() saw A exists and waved it through;
+    // the new graph-aware check rejects.
+    writeSkill(userBase, 'a', ['b']);  // declares dep on B which doesn't exist yet
+    const store = new SkillStore(userBase, '/nonexistent/builtin');
+    const result = store.validateNewSkillDependencies('b', ['a']);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('Circular'))).toBe(true);
+  });
+
+  it('detects a self-loop (new skill that depends on itself)', () => {
+    const store = new SkillStore(userBase, '/nonexistent/builtin');
+    // Self-loop means dep "narcissist" doesn't exist on disk yet — both
+    // the missing-dep check AND the cycle check fire.
+    const result = store.validateNewSkillDependencies('narcissist', ['narcissist']);
+    expect(result.valid).toBe(false);
+  });
+
+  it('does not falsely flag a diamond as a cycle', () => {
+    writeSkill(userBase, 'leaf');
+    writeSkill(userBase, 'mid-a', ['leaf']);
+    writeSkill(userBase, 'mid-b', ['leaf']);
+    const store = new SkillStore(userBase, '/nonexistent/builtin');
+    const result = store.validateNewSkillDependencies('top', ['mid-a', 'mid-b']);
+    expect(result.valid).toBe(true);
+  });
+
+  it('returns valid for empty dependsOn (no-op)', () => {
+    const store = new SkillStore(userBase, '/nonexistent/builtin');
+    const result = store.validateNewSkillDependencies('standalone', []);
+    expect(result.valid).toBe(true);
+  });
+});

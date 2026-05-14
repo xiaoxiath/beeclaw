@@ -305,20 +305,17 @@ export async function executeSkillTool(name: string, params: Record<string, unkn
           logger.warn('DependsOn should be a separate parameter, not in triggers');
         }
 
-        // Check dependencies before creating
-        const store_any = store as any;
-        if (store_any.validateDependencies && parsed.data.tags) {
-          // Check if dependsOn is in tags (common mistake)
-          const dependsOn = (parsed.data as any).dependsOn || [];
-          if (dependsOn.length > 0) {
-            const validation = store_any.validateDependencies(dependsOn);
-            if (!validation.valid) {
-              return {
-                success: false,
-                error: `Cannot create skill: ${validation.errors.join(', ')}`,
-                data: { missing_dependencies: validation.missing }
-              };
-            }
+        // Check dependencies before creating — uses the canonical graph
+        // validator so missing deps AND cycles are both caught.
+        const dependsOn = ((parsed.data as any).dependsOn ?? []) as string[];
+        if (dependsOn.length > 0) {
+          const validation = store.validateNewSkillDependencies(parsed.data.name, dependsOn);
+          if (!validation.valid) {
+            return {
+              success: false,
+              error: `Cannot create skill: ${validation.errors.join(', ')}`,
+              data: { missing_dependencies: validation.missing }
+            };
           }
         }
 

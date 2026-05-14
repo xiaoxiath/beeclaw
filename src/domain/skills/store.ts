@@ -278,9 +278,10 @@ export class SkillStore {
       return { success: false, error: `Skill already exists: ${options.name}` };
     }
 
-    // Validate dependencies if provided
+    // Validate dependencies if provided — catches missing deps AND cycles
+    // introduced by adding this skill.
     if (options.dependsOn && options.dependsOn.length > 0) {
-      const validationResult = this.validateDependencies(options.dependsOn);
+      const validationResult = this.validateNewSkillDependencies(options.name, options.dependsOn);
       if (!validationResult.valid) {
         return {
           success: false,
@@ -1077,28 +1078,59 @@ export class SkillStore {
   // ============================================================================
 
   /**
-   * Validate that all dependencies exist
+   * Validate the dependencies a *prospective* new skill would declare.
+   *
+   * Builds the existing dependency graph from loaded skills, splices in the
+   * proposed { name, dependsOn } as one more node, then runs the full
+   * graph validator. This catches both:
+   *   - missing deps (the named dep doesn't exist on disk)
+   *   - cycles introduced by adding the new skill
+   *     (e.g. new skill A depends on B which already depends on A)
+   *
+   * The old single-purpose validateDependencies() only checked dir
+   * existence, so a created skill could silently complete the loop.
+   *
+   * Returns the same shape callers were already consuming
+   * ({ valid, errors, missing }) so call sites need no rewrite.
    */
-  private validateDependencies(dependsOn: string[]): {
+  validateNewSkillDependencies(name: string, dependsOn: string[]): {
     valid: boolean;
     errors: string[];
     missing: string[];
   } {
-    const missing: string[] = [];
     const errors: string[] = [];
+    const missing: string[] = [];
 
+    // Cheap missing-dep check via existsSync — covers the case where the
+    // dep isn't yet a *loaded* skill (e.g. just dropped on disk and we
+    // haven't refreshed the cache).
     for (const depName of dependsOn) {
       const depPath = join(this.basePath, depName);
       const builtinDepPath = join(this.builtinPath, depName);
-
       if (!existsSync(depPath) && !existsSync(builtinDepPath)) {
         missing.push(depName);
         errors.push(`Dependency "${depName}" not found`);
       }
     }
 
+    // Cycle check via the graph validator: build a graph that includes
+    // the proposed skill, run validateSkillGraph, surface any cycle that
+    // the new skill participates in.
+    const skills = this.list();
+    const graph = new Map<string, string[]>();
+    for (const s of skills) {
+      graph.set(s.name, s.dependsOn ?? []);
+    }
+    graph.set(name, dependsOn);
+    const result = validateSkillGraph(graph);
+    for (const cycle of result.cycles) {
+      if (cycle.path.includes(name)) {
+        errors.push(`Circular dependency: ${cycle.path.join(' → ')}`);
+      }
+    }
+
     return {
-      valid: missing.length === 0,
+      valid: errors.length === 0,
       errors,
       missing,
     };
