@@ -1,7 +1,9 @@
 /**
  * Task Queue Manager
  *
- * Manages job queues using Bunqueue in embedded mode
+ * Manages job queues using Bunqueue in embedded mode, with optional
+ * write-through persistence to a SQLite tasks table so jobs survive
+ * process restarts.
  */
 
 import { logger } from '../../infra/observability/logger';
@@ -13,6 +15,7 @@ import type {
   QueueStats,
   QueueConfig,
 } from './types';
+import { TaskRepo, type SqlDatabase } from './task-repo';
 
 // Queue name to config mapping
 const QUEUE_CONFIGS: Record<QueueName, { priority: number }> = {
@@ -23,8 +26,27 @@ class TaskManager {
   private queues: Map<string, Queue> = new Map();
   private workers: Map<string, Worker> = new Map();
   private initialized = false;
+  /** Optional durable task repository. When set, every addJob writes a row
+   *  and worker handlers update its status. Null means in-memory-only mode. */
+  private repo: TaskRepo | null = null;
+  /** Identifier used in the task's locked_by column. */
+  private workerInstanceId: string = `worker-${process.pid}-${Date.now()}`;
 
   constructor(_config?: QueueConfig) {
+  }
+
+  /** Attach a TaskRepo so jobs are persisted with write-through semantics. */
+  setRepo(repo: TaskRepo | null): void {
+    this.repo = repo;
+  }
+
+  /** Convenience: build a repo from a SQLite handle and attach it. */
+  setPersistence(db: SqlDatabase): void {
+    this.repo = new TaskRepo(db);
+  }
+
+  hasPersistence(): boolean {
+    return this.repo !== null;
   }
 
   /**
@@ -78,6 +100,20 @@ class TaskManager {
     }
 
     const job = await q.add(name, data, jobOptions);
+
+    // Write-through persistence: only for one-time jobs (cron/repeat jobs
+    // regenerate themselves and shouldn't be replayed from the DB).
+    if (this.repo && !options?.repeat) {
+      const scheduledAt = new Date(Date.now() + (options?.delay ?? 0));
+      this.repo.insert({
+        id: job.id,
+        sessionId: `queue:${queue}`,
+        type: name,
+        payload: (data ?? {}) as Record<string, unknown>,
+        scheduledAt,
+        maxAttempts: options?.attempts,
+      });
+    }
 
     return { jobId: job.id };
   }
@@ -226,20 +262,107 @@ class TaskManager {
   }
 
   /**
-   * Register a worker for a queue
+   * Register a worker for a queue.
+   *
+   * If a TaskRepo is attached, the handler is wrapped so that:
+   *  - on entry: the row flips to 'running' and attempts increments
+   *  - on success: the row flips to 'completed' with the return value
+   *  - on failure: the row flips to 'failed' with the error message
+   * This means a successful run is durably acknowledged before the next
+   * call begins, so a crash mid-handler will leave the row 'running' (and
+   * recovery will reclaim it after the staleness window).
    */
   registerWorker(
     queue: QueueName,
     handler: (job: Job) => Promise<unknown>,
     options?: { concurrency?: number }
   ): void {
-    const worker = new Worker(queue, handler, {
+    const wrapped = this.repo
+      ? this.wrapHandlerWithPersistence(handler)
+      : handler;
+
+    const worker = new Worker(queue, wrapped, {
       embedded: true,
       concurrency: options?.concurrency ?? 3,
     });
 
     this.workers.set(queue, worker);
-    logger.debug(`[Queue] Worker registered for ${queue}`);
+    logger.debug(`[Queue] Worker registered for ${queue}${this.repo ? ' (persistent)' : ''}`);
+  }
+
+  private wrapHandlerWithPersistence(
+    handler: (job: Job) => Promise<unknown>,
+  ): (job: Job) => Promise<unknown> {
+    const repo = this.repo!;
+    const workerId = this.workerInstanceId;
+    return async (job: Job) => {
+      repo.markRunning(job.id, workerId);
+      try {
+        const result = await handler(job);
+        const persistResult: Record<string, unknown> = result && typeof result === 'object'
+          ? (result as Record<string, unknown>)
+          : { value: result ?? null };
+        repo.markCompleted(job.id, persistResult);
+        return result;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        repo.markFailed(job.id, message);
+        throw err;
+      }
+    };
+  }
+
+  /**
+   * Replay durable jobs that didn't reach a terminal state before the
+   * previous shutdown / crash. Should be called once after queues and
+   * workers are initialised. Safe to call multiple times: jobs already
+   * present in Bunqueue are skipped.
+   *
+   * Returns the number of jobs re-enqueued.
+   */
+  async recoverPersistedJobs(queue: QueueName = 'proactive-jobs'): Promise<number> {
+    if (!this.repo) return 0;
+    await this.ensureInitialized();
+    const q = this.queues.get(queue);
+    if (!q) return 0;
+
+    // Reclaim rows whose worker died mid-flight before scanning, so they
+    // surface as pending again.
+    const reclaimed = this.repo.reclaimStaleRunning();
+    if (reclaimed > 0) {
+      logger.info(`[Queue] Reclaimed ${reclaimed} stale running tasks for recovery`);
+    }
+
+    const active = this.repo.loadActive();
+    let replayed = 0;
+    const now = Date.now();
+
+    for (const task of active) {
+      // Idempotency: if Bunqueue still remembers the job, skip.
+      try {
+        const existing = await q.getJob(task.id);
+        if (existing) continue;
+      } catch {
+        // getJob throws on missing in some bunqueue versions — treat as absent.
+      }
+
+      const delay = Math.max(0, task.scheduledAt.getTime() - now);
+      try {
+        await q.add(task.type, task.payload, {
+          jobId: task.id,
+          delay,
+          attempts: task.maxAttempts - task.attempts,
+        });
+        replayed += 1;
+      } catch (err) {
+        logger.warn(`[Queue] Failed to re-enqueue persisted task ${task.id}`, { error: String(err) });
+      }
+    }
+
+    if (replayed > 0) {
+      logger.info(`[Queue] Recovered ${replayed} persisted jobs`);
+    }
+    return replayed;
   }
 
   /**
