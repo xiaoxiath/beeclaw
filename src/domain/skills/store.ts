@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync, watch, type FSWatcher } from 'fs';
 import { join, basename, resolve } from 'path';
 import { packSkill, unpackSkill, validateSkillPackage, type SkillPackage } from './packager';
+import { validateSkillGraph, type DependencyValidation } from './dependency-graph';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type {
   Skill,
@@ -1178,6 +1179,25 @@ export class SkillStore {
     }
 
     return [];
+  }
+
+  /**
+   * Validate the entire loaded skill set as a dependency graph.
+   *
+   * Surfaces every missing dependency and every cycle in one pass — useful
+   * for a /health endpoint, a startup smoke check, or a CI invariant test.
+   * Pure function over the loaded skill set; does not throw.
+   *
+   * Returns the validation summary; the caller decides whether to log,
+   * return-error, or block startup.
+   */
+  validateAllDependencies(): DependencyValidation {
+    const skills = this.list();
+    const graph = new Map<string, string[]>();
+    for (const skill of skills) {
+      graph.set(skill.name, skill.dependsOn ?? []);
+    }
+    return validateSkillGraph(graph);
   }
 
   // ============================================================================
