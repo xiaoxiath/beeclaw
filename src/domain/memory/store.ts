@@ -200,6 +200,20 @@ export class MemoryStore {
     }
   }
 
+  // ─── grep defensive caps ────────────────────────────────────────────────
+  // grep is LLM-callable and runs over the whole memory directory. Without
+  // caps a malformed (or malicious) workspace can wedge the event loop:
+  //   - 100k files → unbounded traversal
+  //   - 100MB single file → multi-second blocking read
+  //   - deep symlink loop → stack overflow
+  //   - file with 10k matching lines → response that never returns
+  // The constants below stop early in each dimension and append a clear
+  // truncation marker so the caller knows to refine the query.
+  private static readonly GREP_MAX_FILES = 50;
+  private static readonly GREP_MAX_MATCHES_PER_FILE = 20;
+  private static readonly GREP_MAX_FILE_SIZE = 1_000_000; // 1 MB
+  private static readonly GREP_MAX_DEPTH = 8;
+
   // Search content using grep-like functionality
   grep(query: string, path?: string): MemoryToolResult {
     try {
@@ -212,40 +226,66 @@ export class MemoryStore {
       }
 
       const results: string[] = [];
+      const state = { truncated: false };
       const stats = statSync(searchPath);
 
       if (stats.isFile()) {
-        this.grepFile(searchPath, query, results);
+        this.grepFile(searchPath, query, results, state);
       } else {
-        this.grepRecursive(searchPath, query, results);
+        this.grepRecursive(searchPath, query, results, state, 0);
       }
 
       if (results.length === 0) {
         return { success: true, data: '(no matches found)' };
       }
 
-      return { success: true, data: results.join('\n\n---\n\n') };
+      let body = results.join('\n\n---\n\n');
+      if (state.truncated) {
+        body += `\n\n---\n\n_⚠️ Results truncated at ${MemoryStore.GREP_MAX_FILES} files / ` +
+          `${MemoryStore.GREP_MAX_MATCHES_PER_FILE} matches per file / depth ${MemoryStore.GREP_MAX_DEPTH}. ` +
+          `Refine your query for more specific results._`;
+      }
+      return { success: true, data: body };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
-  private grepFile(filePath: string, query: string, results: string[]): void {
+  private grepFile(
+    filePath: string,
+    query: string,
+    results: string[],
+    state: { truncated: boolean },
+  ): void {
     const fileName = filePath.split('/').pop() || '';
     if (!fileName.endsWith('.md') && !fileName.endsWith('.json')) {
       return;
     }
 
     try {
+      const fileStat = statSync(filePath);
+      if (fileStat.size > MemoryStore.GREP_MAX_FILE_SIZE) {
+        // Skip oversized files and flag truncation so the caller knows
+        // some content was excluded — better than silently dropping it.
+        state.truncated = true;
+        return;
+      }
+
       const content = readFileSync(filePath, 'utf-8');
       const lines = content.split('\n');
 
+      const lowerQuery = query.toLowerCase();
       const matches: string[] = [];
-      lines.forEach((line, index) => {
-        if (line.toLowerCase().includes(query.toLowerCase())) {
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        if (line.toLowerCase().includes(lowerQuery)) {
+          if (matches.length >= MemoryStore.GREP_MAX_MATCHES_PER_FILE) {
+            state.truncated = true;
+            break;
+          }
           matches.push(`L${index + 1}: ${line.trim()}`);
         }
-      });
+      }
 
       if (matches.length > 0) {
         const relativePath = filePath.replace(this.basePath, '').replace(/^\//, '');
@@ -256,33 +296,41 @@ export class MemoryStore {
     }
   }
 
-  private grepRecursive(dirPath: string, query: string, results: string[]): void {
-    const entries = readdirSync(dirPath, { withFileTypes: true });
+  private grepRecursive(
+    dirPath: string,
+    query: string,
+    results: string[],
+    state: { truncated: boolean },
+    depth: number,
+  ): void {
+    if (depth > MemoryStore.GREP_MAX_DEPTH) {
+      state.truncated = true;
+      return;
+    }
+    if (results.length >= MemoryStore.GREP_MAX_FILES) {
+      state.truncated = true;
+      return;
+    }
+
+    let entries: import('fs').Dirent[];
+    try {
+      entries = readdirSync(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
 
     for (const entry of entries) {
+      if (results.length >= MemoryStore.GREP_MAX_FILES) {
+        state.truncated = true;
+        return;
+      }
+
       const fullPath = join(dirPath, entry.name);
 
       if (entry.isDirectory()) {
-        this.grepRecursive(fullPath, query, results);
+        this.grepRecursive(fullPath, query, results, state, depth + 1);
       } else if (entry.name.endsWith('.md') || entry.name.endsWith('.json')) {
-        try {
-          const content = readFileSync(fullPath, 'utf-8');
-          const lines = content.split('\n');
-
-          const matches: string[] = [];
-          lines.forEach((line, index) => {
-            if (line.toLowerCase().includes(query.toLowerCase())) {
-              matches.push(`L${index + 1}: ${line.trim()}`);
-            }
-          });
-
-          if (matches.length > 0) {
-            const relativePath = fullPath.replace(this.basePath, '').replace(/^\//, '');
-            results.push(`📄 ${relativePath}\n${matches.join('\n')}`);
-          }
-        } catch {
-          // Skip files that can't be read
-        }
+        this.grepFile(fullPath, query, results, state);
       }
     }
   }
