@@ -16,9 +16,10 @@ import type {
   Checkpoint,
 } from './types';
 
-// SECURITY: [CR-Sec] Methods that accept user-provided IDs (get, update, delete, addCheckpoint, etc.)
-// use them in path.join() without validation. Add path traversal checks before any fs operation.
-// e.g., verify id matches /^goal-[a-z0-9]+-[a-z0-9]+$/ pattern.
+// Whitelist for goal / checkpoint IDs. Anything outside this set is rejected
+// before touching the filesystem. generateId() output always matches this.
+const ID_WHITELIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+
 export class GoalStore {
   private basePath: string;
   private initialized: boolean = false;
@@ -97,7 +98,6 @@ export class GoalStore {
 
   // Get a specific goal
   get(id: string): Goal | null {
-    // SECURITY: [CR-Sec] Validate id to prevent directory traversal (e.g., id="../../etc/passwd")
     this.init();
     const safeId = this.sanitizeId(id);
 
@@ -340,7 +340,7 @@ export class GoalStore {
         progress: 0,
         checkpoints: [],
         subGoals: [],
-        parentGoal: parentId,
+        parentGoal: safeParentId,
         tags: parentGoal.tags,
         createdAt: now,
         updatedAt: now,
@@ -390,13 +390,17 @@ export class GoalStore {
 
   // Private helper methods
 
+  /**
+   * Whitelist-validates the id and returns it unchanged. Throws on any
+   * non-conforming input — preferred over silent mangling because a
+   * caller passing "../etc/passwd" likely has a bug worth surfacing,
+   * not a typo to paper over.
+   */
   private sanitizeId(id: string): string {
-    // Remove path traversal characters
-    const sanitized = id.replace(/[\/\\\.]+/g, '_').replace(/^_+|_+$/g, '');
-    if (!sanitized || sanitized.length > 255) {
-      throw new Error(`Invalid goal ID: "${id}"`);
+    if (typeof id !== 'string' || !ID_WHITELIST.test(id)) {
+      throw new Error(`Invalid goal ID: "${id}" (must match ${ID_WHITELIST})`);
     }
-    return sanitized;
+    return id;
   }
 
   private loadGoal(path: string): Goal | null {
