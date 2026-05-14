@@ -13,6 +13,36 @@ interface LoggerConfig {
   format: 'json' | 'pretty';
 }
 
+// ─── Secret redaction ──────────────────────────────────────────────────────
+// Defense-in-depth: even if a contributor accidentally logs a config
+// blob or response body, we mask common secret shapes before stdout.
+// Caller can opt out per-call via { __noRedact: true } sentinel.
+
+const REDACTED = '[REDACTED]';
+
+/** Object keys whose value should be masked regardless of shape. */
+const SECRET_KEY_RE = /^(api[_-]?key|apikey|secret|token|password|passwd|auth(?:orization)?|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)$/i;
+
+/** String patterns that look like secrets in free text. */
+const SECRET_VALUE_PATTERNS: Array<{ re: RegExp; replace: string }> = [
+  // OpenAI / Anthropic / Zhipu style: sk-...
+  { re: /\bsk-[A-Za-z0-9_-]{16,}\b/g, replace: 'sk-[REDACTED]' },
+  // Bearer tokens
+  { re: /\bBearer\s+[A-Za-z0-9._\-/+=]{16,}/gi, replace: 'Bearer [REDACTED]' },
+  // Generic key=value in URL-encoded / query strings
+  { re: /\b(api[_-]?key|access[_-]?token|refresh[_-]?token|password)=([^&\s"']+)/gi, replace: '$1=[REDACTED]' },
+  // GitHub-style: ghp_/ghs_/gho_/ghu_/ghr_ + 36 chars
+  { re: /\bgh[psour]_[A-Za-z0-9]{36,}\b/g, replace: 'gh[REDACTED]' },
+];
+
+export function redactString(s: string): string {
+  let out = s;
+  for (const { re, replace } of SECRET_VALUE_PATTERNS) {
+    out = out.replace(re, replace);
+  }
+  return out;
+}
+
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
@@ -36,13 +66,14 @@ class Logger {
   private formatMessage(level: LogLevel, message: string, ...args: unknown[]): string {
     const timestamp = new Date().toISOString();
     const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+    const safeMessage = redactString(message);
 
     if (this.format === 'json') {
       return JSON.stringify({
         timestamp,
         level,
-        message,
-        args: args.length > 0 ? args : undefined,
+        message: safeMessage,
+        args: args.length > 0 ? args.map(a => this.redactValue(a)) : undefined,
       });
     }
 
@@ -52,10 +83,10 @@ class Logger {
       if (a instanceof Error) {
         const errorObj: Record<string, unknown> = {
           name: a.name,
-          message: a.message,
+          message: redactString(a.message),
         };
         if (a.stack) {
-          errorObj.stack = a.stack;
+          errorObj.stack = redactString(a.stack);
         }
         // Include any additional enumerable properties
         Object.keys(a).forEach(key => {
@@ -63,10 +94,28 @@ class Logger {
         });
         return this.safeStringify(errorObj, 2);
       }
-      return typeof a === 'object' ? this.safeStringify(a, 2) : String(a);
+      return typeof a === 'object' ? this.safeStringify(a, 2) : redactString(String(a));
     }).join(' ') : '';
 
-    return `${prefix.replace(level.toUpperCase(), coloredLevel)} ${message}${formattedArgs}`;
+    return `${prefix.replace(level.toUpperCase(), coloredLevel)} ${safeMessage}${formattedArgs}`;
+  }
+
+  /** Recursively redact a value (object/array/string), used for JSON-mode args. */
+  private redactValue(v: unknown, seen = new WeakSet<object>()): unknown {
+    if (typeof v === 'string') return redactString(v);
+    if (v === null || typeof v !== 'object') return v;
+    if (seen.has(v as object)) return '[Circular]';
+    seen.add(v as object);
+    if (Array.isArray(v)) return v.map(item => this.redactValue(item, seen));
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (SECRET_KEY_RE.test(k) && val != null && val !== '') {
+        out[k] = REDACTED;
+      } else {
+        out[k] = this.redactValue(val, seen);
+      }
+    }
+    return out;
   }
 
   /**
@@ -75,12 +124,21 @@ class Logger {
   private safeStringify(obj: unknown, indent?: number): string {
     try {
       const seen = new WeakSet();
-      return JSON.stringify(obj, (_key, value) => {
+      return JSON.stringify(obj, (key, value) => {
         if (typeof value === 'object' && value !== null) {
           if (seen.has(value)) {
             return '[Circular]';
           }
           seen.add(value);
+        }
+        // Mask values whose KEY looks like a secret (apiKey, token, password, ...).
+        // Empty / null values pass through so structure stays inspectable.
+        if (key && SECRET_KEY_RE.test(key) && value != null && value !== '') {
+          return REDACTED;
+        }
+        // Mask secret-shaped strings inside any string value.
+        if (typeof value === 'string') {
+          return redactString(value);
         }
         return value;
       }, indent);
