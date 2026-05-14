@@ -209,6 +209,21 @@ export async function compressContextWithLLM(
       state.contextConfig.maxTokens,
     );
 
+    // Per-call compression telemetry — was previously a black box.
+    // Routes through the structured logger so ops can grep / aggregate
+    // without needing to crack open @bee internals. The bee
+    // CompressionResult exposes the level via `method` (e.g. "L1+L2"),
+    // ratio, info retention, and wall-clock latency directly.
+    logger.info('[Compression] tier complete', {
+      method: result.method,
+      originalTokens: result.originalTokens,
+      compressedTokens: result.compressedTokens,
+      ratio: Math.round(result.ratio * 100) / 100,
+      infoRetention: Math.round(result.infoRetention * 100) / 100,
+      latencyMs: result.latencyMs,
+      messagesCompressed: oldMessages.length,
+    });
+
     const summary = result.compressed;
 
     if (summary && summary.length < textBlob.length * 0.95) {

@@ -3,6 +3,7 @@ import { listSessions } from '@/app';
 import { getSkillStore } from '@/domain/skills/store';
 import { getTokenUsageTracker } from '@/infra/observability/token-usage';
 import { getCircuitBreakerRegistry } from '@/infra/resilience/circuit-breaker';
+import { getTieredCompressor } from '@/domain/agent/compression/tiered-compressor';
 
 // Track app start time
 const appStartTime = Date.now();
@@ -58,6 +59,17 @@ export default new Hono()
         skillDeps = { healthy: true, totalSkills: 0, missing: [], cycles: [] };
       }
 
+      // Compression aggregate — bee's TieredCompressor tracks per-level
+      // counts, ratios, and latencies. Best-effort: if the compressor
+      // hasn't been used yet (cold start), getStats() returns the zero
+      // baseline which is a perfectly valid "no compressions yet" state.
+      let compressionStats: unknown;
+      try {
+        compressionStats = getTieredCompressor().getStats();
+      } catch {
+        compressionStats = { totalCompressions: 0 };
+      }
+
       return c.json({
         sessions: sessions.length,
         skills: skills.length,
@@ -79,6 +91,7 @@ export default new Hono()
           breakers: circuitDetails,
         },
         skillDeps,
+        compression: compressionStats,
         status: 'ok',
       });
     } catch (error) {

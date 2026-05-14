@@ -216,4 +216,22 @@ describe('GET /stats', () => {
     expect(json.error).toBe('Failed to get stats');
     expect(json.message).toBe('boom');
   });
+
+  it('exposes compression aggregate from the tiered compressor', async () => {
+    const res = await statsRoutes.request('/');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+
+    // Cold compressor (never used): zero baseline is a valid state.
+    // We assert the field exists and is shaped right rather than
+    // pinning specific counts (the singleton survives across tests).
+    expect(json.compression).toBeDefined();
+    expect(json.compression).toHaveProperty('totalCompressions');
+    expect(typeof json.compression.totalCompressions).toBe('number');
+    if (json.compression.totalCompressions > 0) {
+      expect(json.compression).toHaveProperty('avgRatio');
+      expect(json.compression).toHaveProperty('avgLatencyMs');
+      expect(json.compression).toHaveProperty('byLevel');
+    }
+  });
 });
