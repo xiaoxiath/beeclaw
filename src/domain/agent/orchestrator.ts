@@ -15,6 +15,7 @@
 
 import { LoopDetector, createLoopDetector } from '../../infra/resilience/loop-detector';
 import { TimeoutEnforcer } from '../../infra/resilience/timeout-enforcer';
+import { getTokenUsageTracker } from '../../infra/observability/token-usage';
 
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent, UserContext } from './types';
 import { stripMessageMetadata } from './types';
@@ -683,6 +684,15 @@ export class Agent {
       if (response.usage?.completion_tokens) {
         totalCompletionTokens += response.usage.completion_tokens;
       }
+      // Process-level cost tracking (read by /stats and dashboards).
+      // Records every successful LLM response, even when usage is missing —
+      // callCount still bumps so we can detect "calls happened but provider
+      // omitted usage" vs "no calls at all".
+      getTokenUsageTracker().record({
+        model: this.options.model,
+        promptTokens: response.usage?.prompt_tokens ?? 0,
+        completionTokens: response.usage?.completion_tokens ?? 0,
+      });
 
       let cleanedContent = cleanTokenStats(assistantMessage.content || '');
 

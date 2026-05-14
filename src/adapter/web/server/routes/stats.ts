@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
-import { listSessions, getAgent } from '@/app';
+import { listSessions } from '@/app';
 import { getSkillStore } from '@/domain/skills/store';
+import { getTokenUsageTracker } from '@/infra/observability/token-usage';
 
 // Track app start time
 const appStartTime = Date.now();
@@ -8,34 +9,27 @@ const appStartTime = Date.now();
 export default new Hono()
   .get('/', (c) => {
     try {
-      // Get session count
       const sessions = listSessions();
-      const sessionCount = sessions.length;
-
-      // Get skill count
       const skillStore = getSkillStore();
       const skills = skillStore.list();
-      const skillCount = skills.length;
-
-      // Calculate uptime
-      const uptime = Math.floor((Date.now() - appStartTime) / 1000); // in seconds
-
-      // Get agent stats if available
-      const tokenUsage: number | null = null; // TODO: Wire to actual token tracking
-      try {
-        getAgent();
-        // Agent might have token stats in the future
-        // For now, we'll return 0
-        // TODO: Wire to actual token tracking
-      } catch {
-        // Agent not initialized yet
-      }
+      const uptime = Math.floor((Date.now() - appStartTime) / 1000); // seconds
+      const usage = getTokenUsageTracker().snapshot();
 
       return c.json({
-        sessions: sessionCount,
-        skills: skillCount,
+        sessions: sessions.length,
+        skills: skills.length,
         uptime,
-        tokenUsage,
+        // Back-compat: scalar total for existing UI consumers.
+        tokenUsage: usage.totalTokens,
+        // Detailed breakdown for dashboards.
+        tokens: {
+          prompt: usage.promptTokens,
+          completion: usage.completionTokens,
+          total: usage.totalTokens,
+          callCount: usage.callCount,
+          lastRecordedAt: usage.lastRecordedAt,
+          byModel: usage.byModel,
+        },
         status: 'ok',
       });
     } catch (error) {
