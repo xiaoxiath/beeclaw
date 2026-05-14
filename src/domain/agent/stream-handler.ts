@@ -154,8 +154,8 @@ export async function* chatStream(
 
   // Get all available tools, then optionally filter via HybridToolSelector
   let tools = options?.tools || deps.options.tools || getAllToolsForAI();
+  const selector = getHybridToolSelector();
   try {
-    const selector = getHybridToolSelector();
     const messageText = typeof userMessage === 'string'
       ? userMessage
       : Array.isArray(userMessage)
@@ -165,7 +165,11 @@ export async function* chatStream(
       tools = await selector.select(tools, messageText);
     }
   } catch (error) {
-    logger.debug('[Agent.chatStream] HybridToolSelector failed, using all tools', error);
+    // Same treatment as chat() path — see orchestrator.ts for rationale.
+    selector.recordFailure(error);
+    logger.warn('[Agent.chatStream] HybridToolSelector failed, falling back to all tools', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   // [AUDIT FIX M-01] Skill enforcement matching (same as chat())

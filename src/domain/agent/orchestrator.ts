@@ -565,8 +565,8 @@ export class Agent {
 
     // Get all available tools, then optionally filter via HybridToolSelector
     let tools = options?.tools || this.options.tools || getAllToolsForAI();
+    const selector = getHybridToolSelector();
     try {
-      const selector = getHybridToolSelector();
       const messageText = typeof enrichedMessage === 'string'
         ? enrichedMessage
         : Array.isArray(enrichedMessage)
@@ -576,7 +576,13 @@ export class Agent {
         tools = await selector.select(tools, messageText);
       }
     } catch (error) {
-      logger.debug('[Agent] HybridToolSelector failed, using all tools', error);
+      // Bumped from debug → warn so silent fallback doesn't hide
+      // a regression in the selector. Stats counter is updated so
+      // /stats reflects the failure rate without grep'ing logs.
+      selector.recordFailure(error);
+      logger.warn('[Agent] HybridToolSelector failed, falling back to all tools', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // [P1+P2 优化] 智能选择控制模式

@@ -51,6 +51,23 @@ const CORE_TOOL_NAMES = new Set([
 // HybridToolSelector
 // ---------------------------------------------------------------------------
 
+export interface HybridToolSelectorStats {
+  /** Total times select() was invoked. */
+  calls: number;
+  /** Times select() returned successfully. */
+  successes: number;
+  /** Times select() threw — caller should fall back to all-tools. */
+  failures: number;
+  /** Sum of input tool counts across successful calls (for averaging). */
+  totalInputTools: number;
+  /** Sum of output tool counts across successful calls (for averaging). */
+  totalOutputTools: number;
+  /** Most recent failure error message (for triage). */
+  lastError: string | null;
+  /** ISO timestamp of the most recent call. */
+  lastCallAt: string | null;
+}
+
 export class HybridToolSelector {
   private config: HybridToolSelectorConfig;
 
@@ -60,8 +77,44 @@ export class HybridToolSelector {
    */
   private lastTurnTools: Set<string> = new Set();
 
+  private stats: HybridToolSelectorStats = {
+    calls: 0,
+    successes: 0,
+    failures: 0,
+    totalInputTools: 0,
+    totalOutputTools: 0,
+    lastError: null,
+    lastCallAt: null,
+  };
+
   constructor(config: Partial<HybridToolSelectorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /** Snapshot of selector statistics — for /stats and triage. */
+  getStats(): HybridToolSelectorStats & { avgInputTools: number; avgOutputTools: number } {
+    const successes = this.stats.successes;
+    return {
+      ...this.stats,
+      avgInputTools: successes > 0 ? this.stats.totalInputTools / successes : 0,
+      avgOutputTools: successes > 0 ? this.stats.totalOutputTools / successes : 0,
+    };
+  }
+
+  /** @internal — for tests + manual reset. */
+  resetStats(): void {
+    this.stats = {
+      calls: 0, successes: 0, failures: 0,
+      totalInputTools: 0, totalOutputTools: 0,
+      lastError: null, lastCallAt: null,
+    };
+  }
+
+  /** @internal — call sites use this on catch to record + warn. */
+  recordFailure(error: unknown): void {
+    this.stats.failures++;
+    this.stats.lastError = error instanceof Error ? error.message : String(error);
+    this.stats.lastCallAt = new Date().toISOString();
   }
 
   /**
@@ -85,13 +138,23 @@ export class HybridToolSelector {
    * @returns Filtered array of tools
    */
   async select(allTools: OpenAITool[], _userMessage: string): Promise<OpenAITool[]> {
+    this.stats.calls++;
+    this.stats.lastCallAt = new Date().toISOString();
+    const inputCount = allTools.length;
+
     // Strategy: 'all' — bypass filtering
     if (this.config.strategy === 'all') {
+      this.stats.successes++;
+      this.stats.totalInputTools += inputCount;
+      this.stats.totalOutputTools += inputCount;
       return allTools;
     }
 
     // If total tools within budget, return all — no filtering needed
     if (allTools.length <= this.config.maxTools) {
+      this.stats.successes++;
+      this.stats.totalInputTools += inputCount;
+      this.stats.totalOutputTools += inputCount;
       return allTools;
     }
 
@@ -112,6 +175,9 @@ export class HybridToolSelector {
       ` (core: ${core.length}, lastTurn: ${lastTurn.length}, rest: ${Math.max(0, remaining)})`,
     );
 
+    this.stats.successes++;
+    this.stats.totalInputTools += inputCount;
+    this.stats.totalOutputTools += filtered.length;
     return filtered;
   }
 

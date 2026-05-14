@@ -4,6 +4,7 @@ import { getSkillStore } from '@/domain/skills/store';
 import { getTokenUsageTracker } from '@/infra/observability/token-usage';
 import { getCircuitBreakerRegistry } from '@/infra/resilience/circuit-breaker';
 import { getTieredCompressor } from '@/domain/agent/compression/tiered-compressor';
+import { getHybridToolSelector } from '@/domain/agent/hybrid-tool-selector';
 
 // Track app start time
 const appStartTime = Date.now();
@@ -70,6 +71,16 @@ export default new Hono()
         compressionStats = { totalCompressions: 0 };
       }
 
+      // Tool selector telemetry — surfaces silent fallbacks (e.g. selector
+      // throwing on weird input, getting masked by the catch block in the
+      // chat loop). `failures > 0` is the trigger to investigate.
+      let toolSelectorStats: unknown;
+      try {
+        toolSelectorStats = getHybridToolSelector().getStats();
+      } catch {
+        toolSelectorStats = { calls: 0, successes: 0, failures: 0 };
+      }
+
       return c.json({
         sessions: sessions.length,
         skills: skills.length,
@@ -92,6 +103,7 @@ export default new Hono()
         },
         skillDeps,
         compression: compressionStats,
+        toolSelector: toolSelectorStats,
         status: 'ok',
       });
     } catch (error) {

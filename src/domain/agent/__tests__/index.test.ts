@@ -248,6 +248,9 @@ vi.mock('@domain/agent/memory-manager', () => ({
 // --- Hybrid tool selector ---
 const mockHybridSelector = {
   select: vi.fn(async (tools: any[]) => tools),
+  recordFailure: vi.fn(),
+  getStats: vi.fn(() => ({ calls: 0, successes: 0, failures: 0, totalInputTools: 0, totalOutputTools: 0, lastError: null, lastCallAt: null, avgInputTools: 0, avgOutputTools: 0 })),
+  resetStats: vi.fn(),
 };
 vi.mock('@domain/agent/hybrid-tool-selector', () => ({
   getHybridToolSelector: vi.fn(() => mockHybridSelector),

@@ -217,6 +217,17 @@ describe('GET /stats', () => {
     expect(json.message).toBe('boom');
   });
 
+  it('exposes hybrid tool selector stats', async () => {
+    const res = await statsRoutes.request('/');
+    const json = await res.json();
+    expect(json.toolSelector).toBeDefined();
+    expect(json.toolSelector).toHaveProperty('calls');
+    expect(json.toolSelector).toHaveProperty('successes');
+    expect(json.toolSelector).toHaveProperty('failures');
+    expect(typeof json.toolSelector.calls).toBe('number');
+    expect(typeof json.toolSelector.failures).toBe('number');
+  });
+
   it('exposes compression aggregate from the tiered compressor', async () => {
     const res = await statsRoutes.request('/');
     expect(res.status).toBe(200);
