@@ -47,6 +47,19 @@ export class TokenUsageTracker {
   private lastRecordedAt: string | null = null;
   private byModel: Map<string, PerModelStats> = new Map();
 
+  /**
+   * Optional persistence hook. When set (typically by bootstrap with a
+   * SqliteUsageRepo), gets called on every record() with the sanitized
+   * delta. Throws are swallowed and logged elsewhere — never let
+   * persistence breakage stall the chat loop. When unset, the tracker
+   * runs purely in-memory (test mode, partial init).
+   */
+  private onRecord: ((delta: TokenUsageDelta) => void) | null = null;
+
+  setPersistence(onRecord: (delta: TokenUsageDelta) => void): void {
+    this.onRecord = onRecord;
+  }
+
   /** Record a completed LLM call. Negative or non-finite numbers are clamped to 0. */
   record(delta: TokenUsageDelta): void {
     const prompt = sanitize(delta.promptTokens);
@@ -74,6 +87,38 @@ export class TokenUsageTracker {
         totalTokens: prompt + completion,
         callCount: 1,
       });
+    }
+
+    if (this.onRecord) {
+      try {
+        this.onRecord({ model: key, promptTokens: prompt, completionTokens: completion });
+      } catch {
+        // Persistence is best-effort — swallow so chat loop never stalls.
+        // The repo path itself logs failures.
+      }
+    }
+  }
+
+  /**
+   * Hydrate in-memory counters from a persistence aggregate. Useful at
+   * startup so /stats reflects "last N days" rather than "since this
+   * process booted 30 seconds ago". Adds to existing counters; safe to
+   * call multiple times if you accept double-counting.
+   */
+  hydrateFrom(aggregate: { promptTokens: number; completionTokens: number; callCount: number; byModel: Record<string, { promptTokens: number; completionTokens: number; totalTokens: number; callCount: number }> }): void {
+    this.promptTokens += aggregate.promptTokens;
+    this.completionTokens += aggregate.completionTokens;
+    this.callCount += aggregate.callCount;
+    for (const [model, stats] of Object.entries(aggregate.byModel)) {
+      const existing = this.byModel.get(model);
+      if (existing) {
+        existing.promptTokens += stats.promptTokens;
+        existing.completionTokens += stats.completionTokens;
+        existing.totalTokens += stats.totalTokens;
+        existing.callCount += stats.callCount;
+      } else {
+        this.byModel.set(model, { ...stats });
+      }
     }
   }
 

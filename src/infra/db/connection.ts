@@ -168,6 +168,21 @@ function runMigrations(db: Database): void {
         CREATE INDEX IF NOT EXISTS tasks_type_idx ON tasks(type);
       `,
     },
+    {
+      name: '0003_create_usage_events',
+      sql: `
+        CREATE TABLE IF NOT EXISTS usage_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          model TEXT NOT NULL,
+          prompt_tokens INTEGER NOT NULL DEFAULT 0,
+          completion_tokens INTEGER NOT NULL DEFAULT 0,
+          recorded_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS usage_events_recorded_at_idx ON usage_events(recorded_at);
+        CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
+      `,
+    },
   ];
 
   // Run pending migrations

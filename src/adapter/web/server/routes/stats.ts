@@ -5,6 +5,8 @@ import { getTokenUsageTracker } from '@/infra/observability/token-usage';
 import { getCircuitBreakerRegistry } from '@/infra/resilience/circuit-breaker';
 import { getTieredCompressor } from '@/domain/agent/compression/tiered-compressor';
 import { getHybridToolSelector } from '@/domain/agent/hybrid-tool-selector';
+import { getSQLite } from '@/infra/db/connection';
+import { UsageRepo } from '@/infra/observability/usage-repo';
 
 // Track app start time
 const appStartTime = Date.now();
@@ -81,6 +83,20 @@ export default new Hono()
         toolSelectorStats = { calls: 0, successes: 0, failures: 0 };
       }
 
+      // Persisted token-usage rolling windows. The in-memory tracker
+      // hydrates from "last 7d" at boot, so `tokens` above already
+      // includes that history; these fields expose narrower windows
+      // for cost dashboards.
+      let tokensLast24h: unknown = null;
+      let tokensLast7d: unknown = null;
+      try {
+        const usageRepo = new UsageRepo(getSQLite() as never);
+        tokensLast24h = usageRepo.getAggregateSince(86400);
+        tokensLast7d = usageRepo.getAggregateSince(7 * 86400);
+      } catch {
+        // SQLite not initialized (test mode, partial init) — leave null.
+      }
+
       return c.json({
         sessions: sessions.length,
         skills: skills.length,
@@ -104,6 +120,8 @@ export default new Hono()
         skillDeps,
         compression: compressionStats,
         toolSelector: toolSelectorStats,
+        tokensLast24h,
+        tokensLast7d,
         status: 'ok',
       });
     } catch (error) {

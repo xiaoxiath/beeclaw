@@ -6,6 +6,14 @@ vi.mock('../../../../../infra/observability/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+// Mock SQLite connection so stats route can import getSQLite without
+// pulling in the bun:sqlite native module (vitest can't load it).
+// The route's UsageRepo constructor will throw, the catch block sets
+// tokensLast24h/7d to null — which is the right contract here.
+vi.mock('@/infra/db/connection', () => ({
+  getSQLite: () => { throw new Error('SQLite not available in tests'); },
+}));
+
 const mockListSessions = vi.fn();
 vi.mock('@/app', () => ({
   listSessions: () => mockListSessions(),
@@ -215,6 +223,16 @@ describe('GET /stats', () => {
     const json = await res.json();
     expect(json.error).toBe('Failed to get stats');
     expect(json.message).toBe('boom');
+  });
+
+  it('exposes tokensLast24h / tokensLast7d (null when SQLite unavailable in tests)', async () => {
+    const res = await statsRoutes.request('/');
+    const json = await res.json();
+    // SQLite is mocked to throw; route should gracefully set both fields to null.
+    expect(json).toHaveProperty('tokensLast24h');
+    expect(json).toHaveProperty('tokensLast7d');
+    expect(json.tokensLast24h).toBeNull();
+    expect(json.tokensLast7d).toBeNull();
   });
 
   it('exposes hybrid tool selector stats', async () => {

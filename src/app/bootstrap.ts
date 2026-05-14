@@ -11,7 +11,9 @@ import { join } from 'path';
 import { loadConfig } from '../infra/config';
 import { setHookNotifier } from '../infra/config/hot-reload';
 import { bootstrapStores } from './bootstrap-stores';
-import { initDataConnection } from '../infra/db/connection';
+import { initDataConnection, getSQLite } from '../infra/db/connection';
+import { getTokenUsageTracker } from '../infra/observability/token-usage';
+import { UsageRepo } from '../infra/observability/usage-repo';
 import { logger } from '../infra/observability/logger';
 import { Observability, createObservabilityHooks } from '../infra/observability/metrics';
 
@@ -228,6 +230,22 @@ export async function initApp(options: InitOptions = {}): Promise<{
   const dbPath = join(memoryPath, 'beeclaw.db');
   initDataConnection({ path: dbPath, migrate: true });
   logger.debug(`   🗄️  Database: ${dbPath}`);
+
+  // 4.6.1. Wire token usage persistence: per-record() insert into
+  // usage_events, plus hydrate in-memory counters from the last 7
+  // days so /stats reflects rolling history rather than restarting
+  // at 0 on every process boot. Best-effort — if SQLite isn't ready
+  // (test mode, partial init) the tracker silently stays in-memory.
+  try {
+    const usageRepo = new UsageRepo(getSQLite() as never);
+    const tracker = getTokenUsageTracker();
+    tracker.setPersistence(delta => usageRepo.insert(delta));
+    const recent = usageRepo.getAggregateSince(7 * 86400);
+    tracker.hydrateFrom(recent);
+    logger.debug(`   💰 Token usage: persistence wired, hydrated ${recent.callCount} calls / ${recent.totalTokens} tokens (last 7d)`);
+  } catch (err) {
+    logger.warn('[App] Failed to wire token usage persistence', err);
+  }
 
   // 4.7. Initialize MessageGateway (RFC-01: MessageChannel/Gateway)
   const gateway = getMessageGateway();
