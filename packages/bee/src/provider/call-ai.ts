@@ -19,6 +19,12 @@ import type { UnifiedRetryEngine } from '../resilience/retry';
 import { RETRY_STRATEGIES } from '../resilience/retry';
 import type { ConcurrencyLimiter } from './concurrency';
 import type { AcquireOptions } from './concurrency';
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  createRequestTimeoutScope,
+  withTimeoutSignal,
+  type RequestTimeoutScope,
+} from './timeout';
 
 // ============================================================================
 // Provider-specific configurations
@@ -43,14 +49,6 @@ const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBod
     extraBody: { reasoning_split: true },
   },
 };
-
-const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
-
-interface RequestTimeoutScope {
-  signal?: AbortSignal;
-  clear(): void;
-  translateError(error: unknown): unknown;
-}
 
 interface TimedResponse {
   response: Response;
@@ -548,33 +546,6 @@ export class AIClient {
       timeout.clear();
     }
   }
-}
-
-function createRequestTimeoutScope(timeoutMs: number, label: string): RequestTimeoutScope {
-  if (timeoutMs <= 0) {
-    return {
-      clear: () => {},
-      translateError: (error: unknown) => error,
-    };
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  return {
-    signal: controller.signal,
-    clear: () => clearTimeout(timeoutId),
-    translateError: (error: unknown) => {
-      if (controller.signal.aborted) {
-        return new Error(`${label} timeout after ${timeoutMs}ms`);
-      }
-      return error;
-    },
-  };
-}
-
-function withTimeoutSignal(init: RequestInit, timeout: RequestTimeoutScope): RequestInit {
-  return timeout.signal ? { ...init, signal: timeout.signal } : init;
 }
 
 function mergeHeaders(

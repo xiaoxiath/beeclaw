@@ -7,8 +7,21 @@ import { getLLMConcurrencyLimiter, type AcquireOptions } from '../../infra/ai/co
 // Re-use bee's Anthropic format conversion (extracted from beeclaw)
 import { convertToAnthropicFormat, convertFromAnthropicFormat } from '@bee/provider/format/anthropic';
 
+// Per-request fetch timeout (prevents hung server from pinning a concurrency slot forever)
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  createRequestTimeoutScope,
+  withTimeoutSignal,
+} from '@bee/provider/timeout';
+
 // Re-use bee's utility functions (extracted from beeclaw)
 export { hasToolCalls, extractToolCalls } from '@bee/provider/call-ai';
+
+function getRequestTimeoutMs(provider: AIProvider): number {
+  const opt = provider.options as Record<string, unknown> | undefined;
+  const candidate = opt?.requestTimeoutMs ?? opt?.timeoutMs;
+  return typeof candidate === 'number' ? candidate : DEFAULT_REQUEST_TIMEOUT_MS;
+}
 
 // Provider-specific configurations
 const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBody?: Record<string, unknown> }> = {
@@ -121,23 +134,34 @@ async function _callAIRaw(options: {
     if (topP !== undefined) body.top_p = topP;
 
     const engine = getRetryEngine();
+    const timeoutMs = getRequestTimeoutMs(provider);
     const retryResult = await engine.execute<Response>(
       'ai_api_call',
       async () => {
-        const res = await fetch(`${baseUrl}${path}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': provider.apiKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`Anthropic API error: ${res.status} - ${errorText}`);
+        const timeout = createRequestTimeoutScope(timeoutMs, 'Anthropic API call');
+        try {
+          const res = await fetch(
+            `${baseUrl}${path}`,
+            withTimeoutSignal({
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': provider.apiKey,
+                'anthropic-version': '2023-06-01',
+              },
+              body: JSON.stringify(body),
+            }, timeout),
+          );
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Anthropic API error: ${res.status} - ${errorText}`);
+          }
+          return res;
+        } catch (error) {
+          throw timeout.translateError(error);
+        } finally {
+          timeout.clear();
         }
-        return res;
       },
       RETRY_STRATEGIES.agent,
     );
@@ -180,24 +204,35 @@ async function _callAIRaw(options: {
   }
 
   const engine = getRetryEngine();
+  const timeoutMs = getRequestTimeoutMs(provider);
   const retryResult = await engine.execute<Response>(
     'ai_api_call',
     async () => {
-      const res = await fetch(`${baseUrl}${path}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${provider.apiKey}`,
-        },
-        body: JSON.stringify(body),
-      });
+      const timeout = createRequestTimeoutScope(timeoutMs, 'AI API call');
+      try {
+        const res = await fetch(
+          `${baseUrl}${path}`,
+          withTimeoutSignal({
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${provider.apiKey}`,
+            },
+            body: JSON.stringify(body),
+          }, timeout),
+        );
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`AI API error: ${res.status} - ${errorText}`);
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`AI API error: ${res.status} - ${errorText}`);
+        }
+
+        return res;
+      } catch (error) {
+        throw timeout.translateError(error);
+      } finally {
+        timeout.clear();
       }
-
-      return res;
     },
     RETRY_STRATEGIES.agent
   );
@@ -371,21 +406,32 @@ async function* _streamAIRaw(options: {
       };
 
   const engine = getRetryEngine();
-  const retryResult = await engine.execute<Response>(
+  const timeoutMs = getRequestTimeoutMs(provider);
+  type TimedResponse = { response: Response; timeout: ReturnType<typeof createRequestTimeoutScope> };
+  const retryResult = await engine.execute<TimedResponse>(
     'ai_api_stream',
     async () => {
-      const res = await fetch(`${baseUrl}${path}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
+      const timeout = createRequestTimeoutScope(timeoutMs, 'AI API stream call');
+      try {
+        const res = await fetch(
+          `${baseUrl}${path}`,
+          withTimeoutSignal({
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+          }, timeout),
+        );
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`AI API error: ${res.status} - ${errorText}`);
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`AI API error: ${res.status} - ${errorText}`);
+        }
+
+        return { response: res, timeout };
+      } catch (error) {
+        timeout.clear();
+        throw timeout.translateError(error);
       }
-
-      return res;
     },
     RETRY_STRATEGIES.agent
   );
@@ -394,9 +440,12 @@ async function* _streamAIRaw(options: {
     throw retryResult.error?.originalError ?? new Error('AI API stream call failed');
   }
 
-  const response = retryResult.value!;
+  const { response, timeout } = retryResult.value!;
   const reader = response.body?.getReader();
-  if (!reader) return;
+  if (!reader) {
+    timeout.clear();
+    return;
+  }
 
   const decoder = new TextDecoder();
 
@@ -503,8 +552,14 @@ async function* _streamAIRaw(options: {
       const collectedToolCalls = Array.from(toolCallChunks.values());
       yield `\n<!--tool_calls:${JSON.stringify(collectedToolCalls)}-->`;
     }
+  } catch (error) {
+    throw timeout.translateError(error);
   } finally {
+    // Cancel the reader so consumer break/abort tears down the underlying
+    // HTTP connection (releaseLock alone leaves the body draining in the bg).
+    try { await reader.cancel(); } catch { /* noop */ }
     reader.releaseLock();
+    timeout.clear();
   }
 }
 
