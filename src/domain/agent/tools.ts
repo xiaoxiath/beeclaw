@@ -673,8 +673,107 @@ export function buildSystemPrompt(
 }
 
 // ---------------------------------------------------------------------------
-// Skill Formatting (unchanged)
+// Skill Formatting + injection-defence sanitisation
+//
+// base.md classifies skill content as UNTRUSTED (it lives on disk and may
+// be authored by anyone), but skill `name`/`description`/`triggers` are
+// injected verbatim into the system prompt. A poisoned skill could try to
+// fake role boundaries ("system: …"), insert section separators ("---"),
+// drop new-prompt blocks via newlines, or smuggle "ignore previous
+// instructions" phrasing. The sanitiser below scrubs these patterns
+// before the text crosses the prompt boundary.
+//
+// The defence is conservative — it scrubs the syntactic markers that an
+// attacker would need to *look like* a new prompt section. CJK content
+// and ordinary descriptive language pass through unchanged.
 // ---------------------------------------------------------------------------
+
+/** Phrases an attacker uses to try to override the system prompt. */
+const INJECTION_PHRASES: RegExp[] = [
+  // The {previous|prior|above} word is the load-bearing signal; the suffix
+  // (instructions/rules/prompts) is optional so a bare "ignore previous"
+  // appearing in a trigger is also caught.
+  /ignore\s+(?:all\s+)?(?:previous|prior|above)(?:\s+(?:instructions?|rules?|prompts?))?/gi,
+  /disregard\s+(?:the\s+)?(?:previous|prior|above|system)\s*(?:instructions?|rules?|prompts?)?/gi,
+  /forget\s+(?:all\s+)?(?:previous|prior|above)\s*(?:instructions?|rules?|prompts?|context)?/gi,
+  /you\s+are\s+now\s+(?:a|an|the)?/gi,
+  /new\s+(?:system\s+)?(?:instructions?|prompts?|rules?)\s*[:：]/gi,
+  /override\s+(?:the\s+)?(?:system\s+)?(?:prompt|instructions?|rules?)/gi,
+];
+
+/** Strip role headers, XML chat tags, and section separators. */
+const STRUCTURAL_PATTERNS: RegExp[] = [
+  /\b(?:system|user|assistant|human|ai)\s*[:：]/gi,
+  /<\/?(?:system|user|assistant|human|ai)\b[^>]*>/gi,
+  /-{3,}/g,                  // any run of 3+ hyphens (section break)
+  /={3,}/g,                  // ditto for "===" headers
+];
+
+/** Allowed name pattern: kebab-case-ish identifiers only. */
+const NAME_ALLOWED = /[^a-zA-Z0-9_-]/g;
+
+/**
+ * Scrub a free-text skill field (description or trigger) before it crosses
+ * the prompt boundary.
+ *
+ * Steps (order matters):
+ *  1. Coerce to string and flatten whitespace (kills multiline injection)
+ *  2. Drop control characters and zero-width joiners
+ *  3. Drop backticks (would break the markdown bullet's inline-code grammar)
+ *  4. Strip role markers, XML chat tags, section separators
+ *  5. Replace explicit injection phrases with a placeholder so the
+ *     LLM still sees that *something* was filtered
+ *  6. Truncate to maxLen with an ellipsis suffix
+ *
+ * @param raw    User-controlled string from skill metadata
+ * @param maxLen Hard cap on output length
+ */
+function sanitizeSkillField(raw: string | undefined, maxLen: number): string {
+  if (!raw) return '';
+  let s = String(raw);
+
+  // 1. Flatten whitespace runs (newlines, tabs → single space).
+  s = s.replace(/[\s]+/g, ' ');
+
+  // 2. Drop ASCII control chars and common zero-width joiners.
+  // eslint-disable-next-line no-control-regex
+  s = s.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '');
+
+  // 3. Drop backticks (markdown code fences inside a bullet are ambiguous).
+  s = s.replace(/`/g, '');
+
+  // 4. Strip structural markers that mimic prompt sections.
+  for (const pat of STRUCTURAL_PATTERNS) {
+    s = s.replace(pat, ' ');
+  }
+
+  // 5. Redact explicit override phrases.
+  for (const pat of INJECTION_PHRASES) {
+    s = s.replace(pat, '[redacted]');
+  }
+
+  // 6. Collapse any whitespace runs the substitutions introduced.
+  s = s.replace(/\s+/g, ' ').trim();
+
+  // 7. Truncate.
+  if (s.length > maxLen) s = s.slice(0, maxLen - 2) + '..';
+  return s;
+}
+
+/**
+ * Scrub a skill name. Names anchor identity in the prompt and feed
+ * skill_get() lookups, so we enforce a strict allowlist.
+ */
+function sanitizeSkillName(raw: string | undefined): string {
+  if (!raw) return '';
+  // Drop the structural patterns first (so "system: foo" → " foo" → "foo"),
+  // then apply the allowlist, then cap length.
+  let s = String(raw);
+  for (const pat of STRUCTURAL_PATTERNS) s = s.replace(pat, '');
+  s = s.replace(NAME_ALLOWED, '');
+  if (s.length > 60) s = s.slice(0, 60);
+  return s || 'unnamed-skill';
+}
 
 export function formatSkillsForPrompt(
   skills: Array<{ name: string; description: string; triggers?: string[] }>
@@ -682,23 +781,26 @@ export function formatSkillsForPrompt(
   if (!skills || skills.length === 0) return '';
 
   // Compressed format: skill name + short desc + key triggers
-  // Balances token efficiency (~1100 for 30 skills) with matching accuracy
+  // Balances token efficiency (~1100 tokens for 30 skills) with matching accuracy.
   const maxDescLen = 45;
+  const maxTriggerLen = 30;
   const maxTriggers = 3;
 
   const skillList = skills.map(skill => {
-    // Truncate description
-    const shortDesc = skill.description.length > maxDescLen
-      ? skill.description.substring(0, maxDescLen - 2) + '..'
-      : skill.description;
+    const safeName = sanitizeSkillName(skill.name);
+    const safeDesc = sanitizeSkillField(skill.description, maxDescLen);
 
-    // Extract key triggers (first N)
-    const keyTriggers = skill.triggers?.slice(0, maxTriggers) || [];
+    const triggerArr = skill.triggers ?? [];
+    const keyTriggers = triggerArr
+      .slice(0, maxTriggers)
+      .map(t => sanitizeSkillField(t, maxTriggerLen))
+      .filter(t => t.length > 0);
+    const hasMore = triggerArr.length > maxTriggers;
     const triggerStr = keyTriggers.length > 0
-      ? ` [${keyTriggers.join(', ')}${skill.triggers && skill.triggers.length > maxTriggers ? ', ...' : ''}]`
+      ? ` [${keyTriggers.join(', ')}${hasMore ? ', ...' : ''}]`
       : '';
 
-    return `- **${skill.name}**: ${shortDesc}${triggerStr}`;
+    return `- **${safeName}**: ${safeDesc}${triggerStr}`;
   }).join('\n');
 
   return `## Available Skills (${skills.length})
