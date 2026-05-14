@@ -1,11 +1,19 @@
 /**
  * Memory Indexer
  *
- * Generates and maintains keyword index for facts/ and knowledge/ directories
+ * Generates and maintains keyword index for facts/ and knowledge/ directories.
+ * Keyword patterns are loaded via keyword-config.ts so operators on a
+ * different locale (or different personal domain) can override without
+ * forking the code.
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import {
+  compilePatterns,
+  getDefaultKeywordConfig,
+  type KeywordPatternConfig,
+} from './keyword-config';
 
 // Index structure
 export interface MemoryIndex {
@@ -20,54 +28,27 @@ export interface MemoryIndex {
   lastFullIndex: string;
 }
 
-// ---------------------------------------------------------------------------
-// Keyword extraction configuration
-//
-// TODO(i18n): The Chinese keyword patterns below are hardcoded for the
-// original author's personal-assistant use case.  To support other languages
-// or deployable instances, extract these into a user-facing config file
-// (e.g. `data/memory/keyword-patterns.json`) that is loaded at startup.
-// The config schema could look like:
-//
-//   interface KeywordPatternConfig {
-//     locale: string;                  // e.g. "zh-CN", "en-US"
-//     patterns: { label: string; regex: string; flags: string }[];
-//     stopWords: string[];
-//   }
-//
-// For now the patterns are inlined to avoid a breaking change.
-// ---------------------------------------------------------------------------
+/**
+ * Pre-compiled extraction context. Compiling regexes once per call avoided
+ * re-compilation cost when indexing thousands of files; this struct keeps
+ * the same hot path while letting the config be injected.
+ */
+interface CompiledKeywordContext {
+  patterns: RegExp[];
+  stopWords: Set<string>;
+}
 
-/** Default Chinese keyword patterns (personal-assistant domain). */
-const DEFAULT_CHINESE_PATTERNS: RegExp[] = [
-  // Names (2-4 Chinese characters preceded by common surname chars)
-  /([汤吴纪修][\u4e00-\u9fa5]{1,3})/g,
-  // Companies / organisations
-  /(A司|百度|腾讯|阿里|美团|快手|小红书|百奥赛图|特斯拉|Tesla)/g,
-  // Financial terms
-  /(期权|股票|基金|港股|A股|美股|存款|资产|收入|年薪|月薪|赔偿|FIRE)/g,
-  // Family terms
-  /(媳妇|闺女|父亲|母亲|岳母|父母|家人|带娃)/g,
-  // Locations
-  /(北京|新疆|石河子|海淀|永丰|海南|云南|南京|沈阳)/g,
-  // Life events
-  /(裁员|绩效|开学|幼儿园|面试|求职)/g,
-  // Technical terms
-  /(前端|全栈|React|Vue|Angular|AI|编程)/g,
-];
-
-/** Common English stop words filtered during extraction. */
-const DEFAULT_ENGLISH_STOP_WORDS: string[] = [
-  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all',
-  'can', 'had', 'her', 'was', 'one', 'our', 'out',
-];
+function compileContext(config: KeywordPatternConfig): CompiledKeywordContext {
+  return {
+    patterns: compilePatterns(config.patterns),
+    stopWords: new Set(config.stopWords.map(w => w.toLowerCase())),
+  };
+}
 
 // Chinese word segmentation (simple approach - extract meaningful terms)
-function extractChineseKeywords(text: string, patterns?: RegExp[]): string[] {
+function extractChineseKeywords(text: string, patterns: RegExp[]): string[] {
   const keywords: string[] = [];
-  const activePatterns = patterns ?? DEFAULT_CHINESE_PATTERNS;
-
-  for (const pattern of activePatterns) {
+  for (const pattern of patterns) {
     // Reset lastIndex for global regexps that may have been reused
     pattern.lastIndex = 0;
     let match;
@@ -77,40 +58,46 @@ function extractChineseKeywords(text: string, patterns?: RegExp[]): string[] {
       }
     }
   }
-
   return keywords;
 }
 
 // Extract English keywords
-function extractEnglishKeywords(text: string, stopWords?: string[]): string[] {
+function extractEnglishKeywords(text: string, stopWords: Set<string>): string[] {
   const keywords: string[] = [];
-  const activeStopWords = stopWords ?? DEFAULT_ENGLISH_STOP_WORDS;
-
-  // Match English words (3+ chars)
   const englishPattern = /\b([A-Za-z]{3,})\b/g;
   let match;
   while ((match = englishPattern.exec(text)) !== null) {
     const word = match[1].toLowerCase();
-    if (!activeStopWords.includes(word) && !keywords.includes(word)) {
+    if (!stopWords.has(word) && !keywords.includes(word)) {
       keywords.push(word);
     }
   }
-
   return keywords;
 }
 
-// Extract all keywords from content
-function extractKeywords(content: string): string[] {
-  const chinese = extractChineseKeywords(content);
-  const english = extractEnglishKeywords(content);
+/**
+ * Extract all keywords from content using the supplied config (defaults
+ * to the built-in zh-CN personal-assistant patterns).
+ */
+export function extractKeywords(
+  content: string,
+  config: KeywordPatternConfig = getDefaultKeywordConfig(),
+): string[] {
+  const ctx = compileContext(config);
+  const chinese = extractChineseKeywords(content, ctx.patterns);
+  const english = extractEnglishKeywords(content, ctx.stopWords);
   return [...new Set([...chinese, ...english])];
 }
 
 // Index a single file
-function indexFile(filePath: string, basePath: string): { path: string; keywords: string[] } {
+function indexFile(
+  filePath: string,
+  basePath: string,
+  config: KeywordPatternConfig,
+): { path: string; keywords: string[] } {
   try {
     const content = readFileSync(filePath, 'utf-8');
-    const keywords = extractKeywords(content);
+    const keywords = extractKeywords(content, config);
     const relativePath = filePath.replace(basePath, '').replace(/^\//, '');
     return { path: relativePath, keywords };
   } catch {
@@ -119,7 +106,11 @@ function indexFile(filePath: string, basePath: string): { path: string; keywords
 }
 
 // Build index for a directory
-function buildDirectoryIndex(dirPath: string, basePath: string): Record<string, string[]> {
+function buildDirectoryIndex(
+  dirPath: string,
+  basePath: string,
+  config: KeywordPatternConfig,
+): Record<string, string[]> {
   const keywordIndex: Record<string, string[]> = {};
 
   if (!existsSync(dirPath)) {
@@ -135,7 +126,7 @@ function buildDirectoryIndex(dirPath: string, basePath: string): Record<string, 
       if (entry.isDirectory()) {
         processDir(fullPath);
       } else if (entry.name.endsWith('.md')) {
-        const { path: relativePath, keywords } = indexFile(fullPath, basePath);
+        const { path: relativePath, keywords } = indexFile(fullPath, basePath, config);
 
         for (const keyword of keywords) {
           if (!keywordIndex[keyword]) {
@@ -153,8 +144,16 @@ function buildDirectoryIndex(dirPath: string, basePath: string): Record<string, 
   return keywordIndex;
 }
 
-// Full index rebuild
-export function buildFullIndex(basePath: string): MemoryIndex {
+/**
+ * Full index rebuild.
+ *
+ * Accepts an optional KeywordPatternConfig; when omitted, falls back to
+ * the built-in defaults (preserves prior behaviour for existing callers).
+ */
+export function buildFullIndex(
+  basePath: string,
+  config: KeywordPatternConfig = getDefaultKeywordConfig(),
+): MemoryIndex {
   const now = new Date().toISOString();
 
   const factsPath = join(basePath, 'facts');
@@ -162,11 +161,11 @@ export function buildFullIndex(basePath: string): MemoryIndex {
 
   return {
     facts: {
-      keywords: buildDirectoryIndex(factsPath, basePath),
+      keywords: buildDirectoryIndex(factsPath, basePath, config),
       lastUpdated: now,
     },
     knowledge: {
-      keywords: buildDirectoryIndex(knowledgePath, basePath),
+      keywords: buildDirectoryIndex(knowledgePath, basePath, config),
       lastUpdated: now,
     },
     lastFullIndex: now,
@@ -191,14 +190,18 @@ export function saveIndex(indexPath: string, index: MemoryIndex): void {
   writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
 }
 
-// Search index for keywords
+/**
+ * Search index for keywords. Uses the same config as indexing if supplied —
+ * critical when patterns are user-customised, otherwise the query won't
+ * extract the same keyword set the index stored.
+ */
 export function searchIndex(
   index: MemoryIndex,
   query: string,
-  options?: { scope?: 'facts' | 'knowledge' | 'all' }
+  options?: { scope?: 'facts' | 'knowledge' | 'all'; config?: KeywordPatternConfig },
 ): { path: string; matchedKeywords: string[] }[] {
   const results: Map<string, string[]> = new Map();
-  const queryKeywords = extractKeywords(query);
+  const queryKeywords = extractKeywords(query, options?.config);
   const scope = options?.scope || 'all';
 
   const searchScope = (keywords: Record<string, string[]>) => {
@@ -242,14 +245,19 @@ export function searchIndex(
   }));
 }
 
-// Update index for a specific file
+/**
+ * Incrementally update the index for a single file (re-index that file in
+ * place). Removes any prior entries for the file's relative path and
+ * re-extracts keywords with the supplied config (defaults to built-in).
+ */
 export function updateFileIndex(
   index: MemoryIndex,
   filePath: string,
   basePath: string,
-  category: 'facts' | 'knowledge'
+  category: 'facts' | 'knowledge',
+  config: KeywordPatternConfig = getDefaultKeywordConfig(),
 ): MemoryIndex {
-  const { path: relativePath, keywords: newKeywords } = indexFile(filePath, basePath);
+  const { path: relativePath, keywords: newKeywords } = indexFile(filePath, basePath, config);
   const keywordIndex = category === 'facts' ? index.facts.keywords : index.knowledge.keywords;
 
   // Remove old entries for this file
