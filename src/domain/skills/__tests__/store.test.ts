@@ -363,20 +363,10 @@ describe('SkillStore', () => {
       expect(skill!.isBuiltin).toBe(true);
     });
 
-    it('adds missing-dependency warnings', () => {
-      // Skill with a dep that doesn't exist at all
-      mockExistsSync.mockImplementation((p: string) => {
-        if (p.endsWith('/dep-skill/SKILL.md')) return true;
-        // missing-dep doesn't exist anywhere
-        return false;
-      });
-      const md = `---\n${JSON.stringify({ name: 'dep-skill', description: 'x', depends_on: ['missing-dep'] })}\n---\n\nbody\n`;
-      mockReadFileSync.mockReturnValue(md);
-      const skill = store.get('dep-skill');
-      expect(skill).not.toBeNull();
-      const warnings = (skill as any).dependencyWarnings || [];
-      expect(warnings.some((w: string) => w.includes('Missing'))).toBe(true);
-    });
+    // Per-skill dependencyWarnings field was dropped along with the buggy
+    // private detectCircularDependencies — see dependency-graph.test.ts
+    // and store-validate-deps.integration.test.ts for the canonical
+    // graph-level validator that replaced it.
   });
 
   /* ---- create ---- */

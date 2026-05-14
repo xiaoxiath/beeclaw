@@ -261,25 +261,11 @@ export class SkillStore {
     // First check user skills
     const userPath = join(this.basePath, name);
     const userSkill = this.load(userPath, false);
-    if (userSkill) {
-      // Add dependency warnings
-      const warnings = this.checkDependencyWarnings(userSkill);
-      if (warnings.length > 0) {
-        (userSkill as any).dependencyWarnings = warnings;
-      }
-      return userSkill;
-    }
+    if (userSkill) return userSkill;
 
     // Then check builtin skills
     const builtinPath = join(this.builtinPath, name);
-    const builtinSkill = this.load(builtinPath, true);
-    if (builtinSkill) {
-      const warnings = this.checkDependencyWarnings(builtinSkill);
-      if (warnings.length > 0) {
-        (builtinSkill as any).dependencyWarnings = warnings;
-      }
-    }
-    return builtinSkill;
+    return this.load(builtinPath, true);
   }
 
   // Create a new skill
@@ -1116,69 +1102,6 @@ export class SkillStore {
       errors,
       missing,
     };
-  }
-
-  /**
-   * Check for dependency warnings (missing or circular dependencies)
-   */
-  private checkDependencyWarnings(skill: Skill): string[] {
-    const warnings: string[] = [];
-
-    if (skill.dependsOn && skill.dependsOn.length > 0) {
-      for (const depName of skill.dependsOn) {
-        const depPath = join(this.basePath, depName);
-        const builtinDepPath = join(this.builtinPath, depName);
-
-        if (!existsSync(depPath) && !existsSync(builtinDepPath)) {
-          warnings.push(`⚠️ Missing dependency: "${depName}"`);
-        }
-      }
-
-      const circularDeps = this.detectCircularDependencies(skill.name, skill.dependsOn, new Set());
-      if (circularDeps.length > 0) {
-        warnings.push(`🔄 Circular dependency detected: ${circularDeps.join(' → ')}`);
-      }
-    }
-
-    return warnings;
-  }
-
-  /**
-   * Detect circular dependencies using DFS
-   */
-  private detectCircularDependencies(
-    skillName: string,
-    dependsOn: string[],
-    visited: Set<string>,
-    path: string[] = []
-  ): string[] {
-    if (visited.has(skillName)) {
-      const cycleStart = path.indexOf(skillName);
-      if (cycleStart >= 0) {
-        return [...path.slice(cycleStart), skillName];
-      }
-      return [];
-    }
-
-    visited.add(skillName);
-    path.push(skillName);
-
-    for (const depName of dependsOn) {
-      const depSkill = this.get(depName);
-      if (depSkill && depSkill.dependsOn) {
-        const cycle = this.detectCircularDependencies(
-          depName,
-          depSkill.dependsOn,
-          new Set(visited),
-          [...path]
-        );
-        if (cycle.length > 0) {
-          return cycle;
-        }
-      }
-    }
-
-    return [];
   }
 
   /**

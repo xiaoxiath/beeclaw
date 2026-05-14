@@ -538,7 +538,7 @@ describe('Skill Dependency Validation', () => {
     expect((result.data as any)?.missing_dependencies).toContain('non-existent-skill');
   });
 
-  test('skill_get includes dependency warnings for missing deps', async () => {
+  test('validateAllDependencies surfaces missing deps from a loaded skill', async () => {
     // Create skill with missing dependency using raw file operations
     store.create({
       name: 'skill-with-dep',
@@ -556,11 +556,12 @@ describe('Skill Dependency Validation', () => {
     );
     require('fs').writeFileSync(skillMdPath, updatedContent, 'utf-8');
 
-    // Get skill should return warning
-    const skill = store.get('skill-with-dep');
-    expect(skill).not.toBeNull();
-    expect((skill as any).dependencyWarnings).toBeDefined();
-    expect((skill as any).dependencyWarnings.some((w: string) => w.includes('missing-skill'))).toBe(true);
+    // The graph-level validator (canonical API since 7ac240b) is the one
+    // that surfaces missing deps; per-skill warning fields were dropped
+    // because nothing in the codebase ever read them.
+    const result = store.validateAllDependencies();
+    expect(result.healthy).toBe(false);
+    expect(result.missing.some(m => m.source === 'skill-with-dep' && m.missing === 'missing-skill')).toBe(true);
   });
 
   test('skill_create validates multiple dependencies', async () => {
