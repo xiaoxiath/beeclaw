@@ -14,6 +14,9 @@ import {
   withTimeoutSignal,
 } from '@bee/provider/timeout';
 
+// Single source of truth for provider endpoint table (shared with bee's AIClient)
+import { resolveProviderEndpoint, type ProviderEndpoint } from '@bee/provider/provider-configs';
+
 // Re-use bee's utility functions (extracted from beeclaw)
 export { hasToolCalls, extractToolCalls } from '@bee/provider/call-ai';
 
@@ -23,45 +26,8 @@ function getRequestTimeoutMs(provider: AIProvider): number {
   return typeof candidate === 'number' ? candidate : DEFAULT_REQUEST_TIMEOUT_MS;
 }
 
-// Provider-specific configurations
-const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBody?: Record<string, unknown> }> = {
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    path: '/chat/completions',
-  },
-  zhipu: {
-    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
-    path: '/chat/completions',
-  },
-  anthropic: {
-    baseUrl: 'https://api.anthropic.com/v1',
-    path: '/messages',
-  },
-  minimax: {
-    baseUrl: 'https://api.minimaxi.com/v1',
-    path: '/chat/completions',
-    extraBody: { reasoning_split: true }, // Enable reasoning separation
-  },
-};
-
-// Get provider-specific base URL
-function getProviderConfig(provider: AIProvider): { baseUrl: string; path: string; extraBody?: Record<string, unknown> } {
-  if (provider.baseUrl) {
-    const url = new URL(provider.baseUrl);
-    const hasPathSegment = url.pathname !== '/' && url.pathname !== '';
-    return {
-      baseUrl: provider.baseUrl,
-      path: hasPathSegment ? '' : '/chat/completions',
-      extraBody: provider.options?.extraBody as Record<string, unknown> | undefined,
-    };
-  }
-
-  const config = PROVIDER_CONFIGS[provider.type];
-  if (!config) {
-    throw new Error(`Unknown provider type: ${provider.type}`);
-  }
-
-  return config;
+function getProviderConfig(provider: AIProvider): ProviderEndpoint {
+  return resolveProviderEndpoint(provider);
 }
 
 // ============================================================================

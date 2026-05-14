@@ -47,3 +47,11 @@ export {
   withTimeoutSignal,
   type RequestTimeoutScope,
 } from './timeout';
+
+// Built-in provider endpoint table
+export {
+  PROVIDER_CONFIGS,
+  resolveProviderEndpoint,
+  type ProviderEndpoint,
+  type ProviderEndpointInput,
+} from './provider-configs';

@@ -25,30 +25,7 @@ import {
   withTimeoutSignal,
   type RequestTimeoutScope,
 } from './timeout';
-
-// ============================================================================
-// Provider-specific configurations
-// ============================================================================
-
-const PROVIDER_CONFIGS: Record<string, { baseUrl: string; path: string; extraBody?: Record<string, unknown> }> = {
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    path: '/chat/completions',
-  },
-  zhipu: {
-    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
-    path: '/chat/completions',
-  },
-  anthropic: {
-    baseUrl: 'https://api.anthropic.com/v1',
-    path: '/messages',
-  },
-  minimax: {
-    baseUrl: 'https://api.minimaxi.com/v1',
-    path: '/chat/completions',
-    extraBody: { reasoning_split: true },
-  },
-};
+import { resolveProviderEndpoint } from './provider-configs';
 
 interface TimedResponse {
   response: Response;
@@ -56,22 +33,7 @@ interface TimedResponse {
 }
 
 function getProviderConfig(provider: ProviderConfig): { baseUrl: string; path: string; extraBody?: Record<string, unknown> } {
-  if (provider.baseUrl) {
-    const url = new URL(provider.baseUrl);
-    const hasPathSegment = url.pathname !== '/' && url.pathname !== '';
-    return {
-      baseUrl: provider.baseUrl,
-      path: hasPathSegment ? '' : '/chat/completions',
-      extraBody: provider.options?.extraBody as Record<string, unknown> | undefined,
-    };
-  }
-
-  const config = PROVIDER_CONFIGS[provider.type];
-  if (!config) {
-    throw new Error(`Unknown provider type: ${provider.type}`);
-  }
-
-  return config;
+  return resolveProviderEndpoint(provider);
 }
 
 function isAnthropicProvider(provider: ProviderConfig): boolean {
