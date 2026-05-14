@@ -53,6 +53,10 @@ module.exports = {
       },
 
       // Log configuration
+      // NOTE: PM2 doesn't rotate logs from this config alone — that's the
+      // pm2-logrotate module. Run scripts/setup-pm2-logrotate.sh once on
+      // each box (10MB per file, retain 7, gzip old) before going live,
+      // otherwise these files grow unbounded.
       error_file: './logs/beeclaw-error.log',
       out_file: './logs/beeclaw-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',

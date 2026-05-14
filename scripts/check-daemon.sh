@@ -29,7 +29,7 @@ HEARTBEAT_FILE="$DAEMON_DIR/heartbeat.json"
 STATE_FILE="$DAEMON_DIR/state.json"
 SCHEDULES_FILE="$PROACTIVE_DIR/schedules.json"
 LOG_DIR="logs"                              # PM2 log directory (created by PM2)
-MAX_HEARTBEAT_AGE=120  # Max heartbeat age in seconds
+MAX_HEARTBEAT_AGE=180  # Max heartbeat age in seconds (was 120 — too tight for cold start)
 
 # ─── Counters ─────────────────────────────────────────────────────────
 CHECKS_PASSED=0

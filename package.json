@@ -43,6 +43,7 @@
     "pm2:reset": "pm2 reset beeclaw",
     "check:daemon": "./scripts/check-daemon.sh",
     "check:daemon:fix": "./scripts/check-daemon.sh --fix",
+    "setup:pm2-logrotate": "./scripts/setup-pm2-logrotate.sh",
     "typecheck": "bunx tsc --noEmit",
     "test:coverage": "vitest run --coverage",
     "test:ci": "vitest run --bail 5",
