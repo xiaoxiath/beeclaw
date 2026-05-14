@@ -1,6 +1,13 @@
 # Dependencies
 node_modules/
 
+# Lockfiles — bun.lock is the single source of truth.
+# These are ignored so an accidental `npm install` / `pnpm install`
+# can't recommit a competing lockfile.
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
 # Build output
 dist/
 
