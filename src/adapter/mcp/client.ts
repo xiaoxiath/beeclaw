@@ -79,6 +79,28 @@ export interface MCPServerStatus {
 export class MCPClientManager {
   private connections: Map<string, MCPConnection> = new Map();
   private defaultTimeout: number = 30000;
+  /** Soft timeout for listTools/Resources/Prompts during connect(). */
+  private static readonly LIST_TIMEOUT_MS = 10000;
+
+  /**
+   * Outer host-side timeout guard. The MCP SDK accepts its own timeout
+   * via callTool's RequestOptions, but a hung transport (e.g. HTTP
+   * keep-alive that never returns) can leave the SDK promise pending
+   * forever. This Promise.race tripwire ensures the host always gets
+   * a rejection in bounded time.
+   */
+  private withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms,
+      );
+    });
+    return Promise.race([p, timeoutPromise]).finally(() => {
+      if (timer) clearTimeout(timer);
+    }) as Promise<T>;
+  }
 
   // B-P2-07: Reconnection state
   private reconnectAttempts = new Map<string, number>();
@@ -156,21 +178,33 @@ export class MCPClientManager {
     let prompts: Prompt[] = [];
 
     try {
-      const toolsResult = await client.listTools();
+      const toolsResult = await this.withTimeout(
+        client.listTools(),
+        MCPClientManager.LIST_TIMEOUT_MS,
+        `MCP listTools ${config.id}`,
+      );
       tools = toolsResult.tools || [];
     } catch (error) {
       logger.warn(`[MCP] Failed to list tools from ${config.name}:`, error);
     }
 
     try {
-      const resourcesResult = await client.listResources();
+      const resourcesResult = await this.withTimeout(
+        client.listResources(),
+        MCPClientManager.LIST_TIMEOUT_MS,
+        `MCP listResources ${config.id}`,
+      );
       resources = resourcesResult.resources || [];
     } catch (error) {
       logger.warn(`[MCP] Failed to list resources from ${config.name}:`, error);
     }
 
     try {
-      const promptsResult = await client.listPrompts();
+      const promptsResult = await this.withTimeout(
+        client.listPrompts(),
+        MCPClientManager.LIST_TIMEOUT_MS,
+        `MCP listPrompts ${config.id}`,
+      );
       prompts = promptsResult.prompts || [];
     } catch (error) {
       logger.warn(`[MCP] Failed to list prompts from ${config.name}:`, error);
@@ -380,16 +414,20 @@ export class MCPClientManager {
       };
     }
 
+    const effectiveTimeout = timeout || connection.config.timeout || this.defaultTimeout;
+
     try {
-      const result = await connection.client.callTool(
-        {
-          name: toolName,
-          arguments: params,
-        },
-        undefined,
-        {
-          timeout: timeout || connection.config.timeout || this.defaultTimeout,
-        },
+      const result = await this.withTimeout(
+        connection.client.callTool(
+          {
+            name: toolName,
+            arguments: params,
+          },
+          undefined,
+          { timeout: effectiveTimeout },
+        ),
+        effectiveTimeout,
+        `MCP callTool ${serverId}/${toolName}`,
       );
 
       // 提取文本内容
@@ -419,10 +457,14 @@ export class MCPClientManager {
         if (reconnected) {
           // Retry the tool call once after successful reconnection
           try {
-            const retryResult = await connection.client.callTool(
-              { name: toolName, arguments: params },
-              undefined,
-              { timeout: timeout || connection.config.timeout || this.defaultTimeout },
+            const retryResult = await this.withTimeout(
+              connection.client.callTool(
+                { name: toolName, arguments: params },
+                undefined,
+                { timeout: effectiveTimeout },
+              ),
+              effectiveTimeout,
+              `MCP callTool ${serverId}/${toolName} (retry)`,
             );
             const retryContent = retryResult.content as Array<{ type: string; text?: string }>;
             const retryText = retryContent
