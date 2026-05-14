@@ -21,6 +21,56 @@ import type {
 } from '../types';
 import { logger } from '../../../infra/observability/logger';
 
+// ─── Input validation helpers ─────────────────────────────────────────────
+// Note: Bun.spawn is invoked with argv form (`['docker', ...args]`), so
+// shell metacharacters in env values cannot escape into a host shell.
+// These checks defend against two narrower issues:
+//
+//   1. cwd: `--workdir /workspace/${cwd}` is built via string concat
+//      below. A `..` segment lets a command chdir outside the mounted
+//      /workspace and read the container's base image filesystem.
+//      Limited blast radius (host fs is only mounted at /workspace),
+//      but worth blocking.
+//
+//   2. env: docker accepts arbitrary bytes per --env, but newlines or
+//      `=` in keys break downstream parsing in some images and produce
+//      confusing failures. Validate at the boundary so callers get a
+//      clear error instead of mysterious container behavior.
+
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
+
+function validateCwd(cwd: string): void {
+  if (typeof cwd !== 'string' || cwd.length === 0) {
+    throw new Error(`Invalid cwd: must be a non-empty string`);
+  }
+  if (cwd.startsWith('/')) {
+    throw new Error(`Invalid cwd "${cwd}": absolute paths are not allowed (workspace-relative only)`);
+  }
+  // Reject any segment that is exactly ".." — `a/../b` would still escape.
+  const segments = cwd.split(/[\\/]+/);
+  if (segments.some(s => s === '..')) {
+    throw new Error(`Invalid cwd "${cwd}": ".." path segments are not allowed`);
+  }
+  if (cwd.includes('\0')) {
+    throw new Error(`Invalid cwd: NUL byte is not allowed`);
+  }
+}
+
+function validateEnv(env: Record<string, string> | undefined): void {
+  if (!env) return;
+  for (const [key, value] of Object.entries(env)) {
+    if (!ENV_KEY_RE.test(key)) {
+      throw new Error(`Invalid env key "${key}": must match ${ENV_KEY_RE}`);
+    }
+    if (typeof value !== 'string') {
+      throw new Error(`Invalid env value for "${key}": must be a string`);
+    }
+    if (/[\n\r\0]/.test(value)) {
+      throw new Error(`Invalid env value for "${key}": newline or NUL byte not allowed`);
+    }
+  }
+}
+
 /**
  * Docker Container Sandbox
  */
@@ -124,6 +174,7 @@ class DockerSandbox implements Sandbox {
 
     // Environment variables
     if (options?.env) {
+      validateEnv(options.env);
       for (const [key, value] of Object.entries(options.env)) {
         args.push('--env', `${key}=${value}`);
       }
@@ -162,11 +213,13 @@ class DockerSandbox implements Sandbox {
 
       // Set working directory if specified
       if (options?.cwd) {
+        validateCwd(options.cwd);
         execArgs.push('--workdir', `/workspace/${options.cwd}`);
       }
 
       // Set environment variables
       if (options?.env) {
+        validateEnv(options.env);
         for (const [key, value] of Object.entries(options.env)) {
           execArgs.push('--env', `${key}=${value}`);
         }
