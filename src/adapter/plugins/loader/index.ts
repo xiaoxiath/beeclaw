@@ -17,6 +17,7 @@ import { loadPluginManifest, validatePluginConfig } from "../manifest";
 import { getOrCreatePluginRegistry } from "../registry";
 import { createPluginRuntimeShim } from "../runtime-shim";
 import { createHookRunner } from "../hook-runner";
+import { wrapRuntimeForCapabilities } from "../capabilities/wrap-runtime";
 
 export interface LoadPluginsOptions {
   discovery?: {
@@ -123,17 +124,22 @@ export async function loadPlugins(options: LoadPluginsOptions = {}): Promise<Loa
       const mod = (await jiti.import(entryPath)) as any;
       const pluginDef = mod.default ?? mod;
 
-      // 3e. 注册插件根目录并创建 API
+      // 3e. 注册插件根目录并创建 capability-aware API + runtime
       registry.pluginRootDirs.set(manifest.id, candidate.rootDir);
-      const api = createApi(manifest.id);
+      const api = createApi(manifest.id, manifest.capabilities);
+      const wrappedRuntime = wrapRuntimeForCapabilities(
+        runtime,
+        manifest.id,
+        manifest.capabilities,
+      );
 
       if (typeof pluginDef === "function") {
         // 模式 B：函数导出
-        await pluginDef(api, runtime);
+        await pluginDef(api, wrappedRuntime);
       } else if (pluginDef && typeof pluginDef.register === "function") {
         // 模式 A：对象导出
         registry.plugins.set(manifest.id, pluginDef);
-        await pluginDef.register(api, runtime);
+        await pluginDef.register(api, wrappedRuntime);
       } else {
         throw new Error("No valid export (expected default object with register() or function)");
       }

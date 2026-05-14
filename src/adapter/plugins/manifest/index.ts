@@ -10,6 +10,7 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import Ajv from "ajv";
+import { KNOWN_CAPABILITIES } from "../capabilities";
 
 export type PluginKind = "tool" | "channel" | "memory" | "provider" | "general";
 
@@ -23,6 +24,7 @@ export interface PluginManifest {
   channels?: string[];                 // 声明支持的频道 ID
   providers?: string[];                // 声明提供的 Provider ID
   skills?: string[];                   // 声明提供的 Skill 名称
+  capabilities?: string[];             // 声明所需能力（见 KNOWN_CAPABILITIES）
   uiHints?: {
     category?: string;
     icon?: string;
@@ -71,6 +73,11 @@ const manifestSchema = {
     channels: { type: "array", items: { type: "string" } },
     providers: { type: "array", items: { type: "string" } },
     skills: { type: "array", items: { type: "string" } },
+    capabilities: {
+      type: "array",
+      items: { type: "string", enum: [...KNOWN_CAPABILITIES] },
+      uniqueItems: true,
+    },
     uiHints: {
       type: "object",
       properties: {

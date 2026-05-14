@@ -10,6 +10,7 @@
 import { logger } from '../../../infra/observability/logger';
 import { resolve, relative, isAbsolute } from "path";
 import type { PluginHookName, PluginHookHandlerMap } from "../types";
+import { requireCapability, type Capability } from "../capabilities";
 
 // ============================================================================
 // Typed global singleton — safer than Symbol.for + (globalThis as any)
@@ -58,7 +59,13 @@ export interface PluginRegistry {
 
 export interface RegistryFactory {
   registry: PluginRegistry;
-  createApi: (pluginId: string) => any;  // OpenClawPluginApi
+  /**
+   * Build the per-plugin API.
+   * `declaredCapabilities` comes from the plugin's manifest.capabilities.
+   * Pass `undefined` (omitted field) to enable legacy mode (warn, allow);
+   * pass an array (even empty) to enable strict mode.
+   */
+  createApi: (pluginId: string, declaredCapabilities?: readonly string[]) => any;
 }
 
 /**
@@ -88,7 +95,8 @@ export function getOrCreatePluginRegistry(): RegistryFactory {
   };
 
   // 创建 API Factory
-  const createApi = (pluginId: string) => createPluginApi(pluginId, registry);
+  const createApi = (pluginId: string, declaredCapabilities?: readonly string[]) =>
+    createPluginApi(pluginId, registry, declaredCapabilities);
 
   const factory: RegistryFactory = { registry, createApi };
 
@@ -121,8 +129,12 @@ export function resetPluginRegistry(): void {
  */
 function createPluginApi(
   pluginId: string,
-  registry: PluginRegistry
+  registry: PluginRegistry,
+  declaredCapabilities?: readonly string[],
 ): any {
+  // Inline helper — keeps each gated method one line of intent at the call site.
+  const need = (cap: Capability) => requireCapability(pluginId, declaredCapabilities, cap);
+
   return {
     // 基础信息
     id: pluginId,
@@ -134,10 +146,11 @@ function createPluginApi(
     logger: createPluginLogger(pluginId),
 
     // ═══════════════════════════════════════════
-    //  10 种扩展注册方法
+    //  10 种扩展注册方法 — capability-gated
     // ═══════════════════════════════════════════
 
     registerTool(tool: any) {
+      need('tool.register');
       if (registry.tools.has(tool.name)) {
         logger.warn(
           `[Registry] Tool "${tool.name}" already registered, overwriting (plugin: ${pluginId})`
@@ -147,11 +160,13 @@ function createPluginApi(
     },
 
     registerHook(hook: any) {
+      need('hook.register');
       const key = `${pluginId}:${hook.name}`;
       registry.hooks.set(key, { ...hook, pluginId });
     },
 
     registerChannel(channel: any) {
+      need('channel.register');
       if (registry.channels.has(channel.id)) {
         logger.warn(
           `[Registry] Channel "${channel.id}" already registered, overwriting (plugin: ${pluginId})`
@@ -161,6 +176,7 @@ function createPluginApi(
     },
 
     registerCommand(command: any) {
+      need('tool.register');
       if (registry.commands.has(command.name)) {
         logger.warn(
           `[Registry] Command "${command.name}" already registered, overwriting (plugin: ${pluginId})`
@@ -170,6 +186,7 @@ function createPluginApi(
     },
 
     registerHttpRoute(route: any) {
+      need('http.serve');
       const key = `${route.method.toUpperCase()}:${route.path}`;
       if (registry.httpRoutes.has(key)) {
         logger.warn(`[Registry] HTTP route "${key}" replaced by plugin: ${pluginId}`);
@@ -178,6 +195,7 @@ function createPluginApi(
     },
 
     registerProvider(provider: any) {
+      need('provider.register');
       if (registry.providers.has(provider.id)) {
         logger.warn(
           `[Registry] Provider "${provider.id}" already registered, overwriting (plugin: ${pluginId})`
@@ -187,10 +205,12 @@ function createPluginApi(
     },
 
     registerCli(registrar: any) {
+      need('cli.register');
       registry.cliRegistrars.push(registrar);
     },
 
     registerService(service: any) {
+      need('tool.register');
       if (registry.services.has(service.id)) {
         logger.warn(
           `[Registry] Service "${service.id}" already registered, overwriting (plugin: ${pluginId})`
@@ -200,6 +220,7 @@ function createPluginApi(
     },
 
     registerGatewayMethod(method: any) {
+      need('tool.register');
       registry.gatewayHandlers.set(method.name, { ...method, pluginId });
     },
 
@@ -212,6 +233,7 @@ function createPluginApi(
       handler: PluginHookHandlerMap[K],
       options?: { priority?: number }
     ): void {
+      need('hook.register');
       if (!registry.typedHooks.has(hookName)) {
         registry.typedHooks.set(hookName, []);
       }
