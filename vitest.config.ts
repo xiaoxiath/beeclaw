@@ -34,6 +34,16 @@ export default defineConfig({
         'src/test-setup.ts',
         'src/**/*.d.ts',
       ],
+      // Coverage floors — set ~5pt below the current actual baseline
+      // (90.2% lines / 82.1% branches / 89.8% functions / 90.9% stmts).
+      // Catches real regressions but tolerates legitimate refactors that
+      // drop a percentage point. Tighten over time as the suite grows.
+      thresholds: {
+        lines: 85,
+        statements: 85,
+        functions: 85,
+        branches: 75,
+      },
     },
   },
 });

@@ -32,6 +32,14 @@ jobs:
       - name: Test
         run: bun run test:ci
 
+      # Coverage gate. Thresholds live in vitest.config.ts under
+      # `test.coverage.thresholds` — vitest exits non-zero if any
+      # bucket falls below its floor. Floors are deliberately set
+      # ~5pt below current actual (90% lines / 82% branches) to
+      # catch regressions without false-failing on refactor noise.
+      - name: Coverage Gate
+        run: bun run test:coverage
+
   build:
     name: Build Check
     runs-on: ubuntu-latest
