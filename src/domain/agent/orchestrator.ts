@@ -19,6 +19,16 @@ import { getTokenUsageTracker } from '../../infra/observability/token-usage';
 
 import type { AgentOptions, ChatMessage, OpenAITool, ToolExecutor, MultimodalContent, UserContext } from './types';
 import { stripMessageMetadata } from './types';
+
+// Defaults inlined (rather than imported from types.ts) so tests that
+// mock the entire types module don't need to re-list every constant.
+// The exported DEFAULT_FALLBACK_MESSAGES in types.ts is for downstream
+// consumers (CLI, web) to compose against; both copies are intentionally
+// the same text — change them together.
+const FALLBACK_TOKEN_BUDGET_DEFAULT =
+  '处理过程中消耗了过多 Token，已提前终止。请尝试简化问题或拆分为多个步骤。';
+const FALLBACK_MAX_ITERATIONS_DEFAULT =
+  '抱歉，处理您的请求时达到了工具调用次数限制。请尝试简化您的问题。';
 import { callAI, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, buildVolatileContext } from './tools';
 import { logger } from '../../infra/observability/logger';
@@ -637,7 +647,8 @@ export class Agent {
         if (lastAssistant?.content && typeof lastAssistant.content === 'string') {
           finalContent = lastAssistant.content;
         } else {
-          finalContent = '处理过程中消耗了过多 Token，已提前终止。请尝试简化问题或拆分为多个步骤。';
+          finalContent = this.options.fallbackMessages?.tokenBudgetExceeded
+            ?? FALLBACK_TOKEN_BUDGET_DEFAULT;
         }
         break;
       }
@@ -953,7 +964,8 @@ export class Agent {
           text: finalContent,
         });
       } else {
-        finalContent = '抱歉，处理您的请求时达到了工具调用次数限制。请尝试简化您的问题。';
+        finalContent = this.options.fallbackMessages?.maxIterationsReached
+          ?? FALLBACK_MAX_ITERATIONS_DEFAULT;
         logger.warn(`[Agent] Reached max iterations with no assistant message to fall back to`);
 
         // Generate ContentBlock for error message

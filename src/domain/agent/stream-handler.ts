@@ -11,6 +11,11 @@
 
 import type { ChatMessage, OpenAITool, MultimodalContent, UserContext } from './types';
 import { callAI, hasToolCalls, extractToolCalls } from './api';
+
+// Inlined for the same reason as orchestrator.ts — keep tests that mock
+// './types' from needing to re-list every named export.
+const FALLBACK_TOKEN_BUDGET_DEFAULT =
+  '处理过程中消耗了过多 Token，已提前终止。请尝试简化问题或拆分为多个步骤。';
 import { getAllToolsForAI } from './tools';
 import {
   estimateMessageTokens,
@@ -56,6 +61,7 @@ export interface StreamHandlerDeps {
     maxToolIterations?: number;
     blockedTools?: string[];
     compressionConfig?: any;
+    fallbackMessages?: { tokenBudgetExceeded?: string; maxIterationsReached?: string };
   };
   messages: ChatMessage[];
   estimatedTokens: number;
@@ -219,7 +225,9 @@ export async function* chatStream(
       logger.warn(
         `[Agent.chatStream] Token budget guard triggered: ${streamTurnUsed}/${maxTokensPerTurnStream}`
       );
-      yield { type: 'content' as const, content: '\n\n⚠️ 处理过程中消耗了过多 Token，已提前终止。' };
+      const msg = deps.options.fallbackMessages?.tokenBudgetExceeded
+        ?? FALLBACK_TOKEN_BUDGET_DEFAULT;
+      yield { type: 'content' as const, content: `\n\n⚠️ ${msg}` };
       break;
     }
 

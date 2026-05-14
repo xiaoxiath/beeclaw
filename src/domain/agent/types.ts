@@ -224,7 +224,27 @@ export interface AgentOptions {
   /** Tools that should be blocked from execution (e.g., scheduling tools in proactive context) */
   blockedTools?: string[];
   compressionConfig?: Partial<CompressionConfig>;  // Context compression config
+  /**
+   * User-visible fallback messages emitted when the agent has to bail
+   * mid-turn (token budget exceeded, max iterations reached). Defaults
+   * are Chinese to match historical behavior; operators on other
+   * locales should override via AgentConfig in beeclaw.json.
+   */
+  fallbackMessages?: {
+    tokenBudgetExceeded?: string;
+    maxIterationsReached?: string;
+  };
 }
+
+/**
+ * Default user-visible fallback messages. Exported so callers (CLI,
+ * web, tests) can compose their own messages on top of the same
+ * defaults, and so the value is documentable in one place.
+ */
+export const DEFAULT_FALLBACK_MESSAGES = {
+  tokenBudgetExceeded: '处理过程中消耗了过多 Token，已提前终止。请尝试简化问题或拆分为多个步骤。',
+  maxIterationsReached: '抱歉，处理您的请求时达到了工具调用次数限制。请尝试简化您的问题。',
+} as const;
 
 // Conversation context
 export interface ConversationContext {
