@@ -13,8 +13,12 @@ vi.mock('@/app', () => ({
 }));
 
 const mockSkillList = vi.fn();
+const mockValidateAllDependencies = vi.fn();
 vi.mock('@/domain/skills/store', () => ({
-  getSkillStore: () => ({ list: mockSkillList }),
+  getSkillStore: () => ({
+    list: mockSkillList,
+    validateAllDependencies: mockValidateAllDependencies,
+  }),
 }));
 
 import statsRoutes from '../stats';
@@ -31,6 +35,10 @@ describe('GET /stats', () => {
     resetCircuitBreakerRegistry();
     mockListSessions.mockReturnValue([]);
     mockSkillList.mockReturnValue([]);
+    // Default: no skills loaded → graph is healthy and empty.
+    mockValidateAllDependencies.mockReturnValue({
+      healthy: true, totalSkills: 0, missing: [], cycles: [],
+    });
   });
 
   it('returns sessions, skills, uptime, and zero token usage on a cold tracker', async () => {
@@ -62,6 +70,59 @@ describe('GET /stats', () => {
       total: 0, closed: 0, open: 0, halfOpen: 0,
       healthy: true, openCircuits: [], breakers: {},
     });
+
+    // Cold skill graph: no skills, no missing, no cycles.
+    expect(json.skillDeps).toEqual({
+      healthy: true, totalSkills: 0, missing: [], cycles: [],
+    });
+  });
+
+  it('reports unhealthy when a skill has a missing dependency', async () => {
+    mockSkillList.mockReturnValue([{ name: 'orphan-parent' }, { name: 'foundation' }]);
+    mockValidateAllDependencies.mockReturnValue({
+      healthy: false,
+      totalSkills: 2,
+      missing: [{ source: 'orphan-parent', missing: 'ghost-skill' }],
+      cycles: [],
+    });
+
+    const res = await statsRoutes.request('/');
+    const json = await res.json();
+
+    expect(json.skillDeps.healthy).toBe(false);
+    expect(json.skillDeps.totalSkills).toBe(2);
+    expect(json.skillDeps.missing).toEqual([
+      { source: 'orphan-parent', missing: 'ghost-skill' },
+    ]);
+    expect(json.skillDeps.cycles).toEqual([]);
+  });
+
+  it('reports unhealthy when there is a dependency cycle', async () => {
+    mockValidateAllDependencies.mockReturnValue({
+      healthy: false,
+      totalSkills: 2,
+      missing: [],
+      cycles: [{ path: ['a', 'b', 'a'] }],
+    });
+
+    const res = await statsRoutes.request('/');
+    const json = await res.json();
+
+    expect(json.skillDeps.healthy).toBe(false);
+    expect(json.skillDeps.cycles).toHaveLength(1);
+    expect(json.skillDeps.cycles[0].path).toEqual(['a', 'b', 'a']);
+  });
+
+  it('still responds 200 when the dep validator throws (best-effort fallback)', async () => {
+    mockValidateAllDependencies.mockImplementation(() => {
+      throw new Error('skill index race');
+    });
+    const res = await statsRoutes.request('/');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // Fallback shape — operator sees "no known issues" rather than a broken endpoint.
+    expect(json.skillDeps.healthy).toBe(true);
+    expect(json.skillDeps.totalSkills).toBe(0);
   });
 
   it('reports closed breakers as healthy and includes per-breaker stats', async () => {

@@ -36,6 +36,28 @@ export default new Hono()
         circuitHealth = { total: 0, closed: 0, open: 0, halfOpen: 0, healthy: true, openCircuits: [] };
       }
 
+      // Skill dependency-graph health — surfaces missing-dep / cycle issues
+      // that would otherwise only show up when the LLM tries to use a skill.
+      // Best-effort: if the validator throws (e.g., file-system race during
+      // skill reload), we report unknown rather than 500ing the route.
+      let skillDeps: {
+        healthy: boolean;
+        totalSkills: number;
+        missing: Array<{ source: string; missing: string }>;
+        cycles: Array<{ path: string[] }>;
+      };
+      try {
+        const dep = skillStore.validateAllDependencies();
+        skillDeps = {
+          healthy: dep.healthy,
+          totalSkills: dep.totalSkills,
+          missing: dep.missing,
+          cycles: dep.cycles,
+        };
+      } catch {
+        skillDeps = { healthy: true, totalSkills: 0, missing: [], cycles: [] };
+      }
+
       return c.json({
         sessions: sessions.length,
         skills: skills.length,
@@ -56,6 +78,7 @@ export default new Hono()
           // Detailed per-breaker stats — useful for triage when openCircuits != [].
           breakers: circuitDetails,
         },
+        skillDeps,
         status: 'ok',
       });
     } catch (error) {
