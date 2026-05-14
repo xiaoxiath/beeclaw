@@ -5,6 +5,7 @@
  */
 
 import { getSharedState } from './state';
+import { logger } from '../../infra/observability/logger';
 import type {
   StateSetParams,
   StateGetParams,
@@ -39,7 +40,7 @@ export async function executeStateSet(params: StateSetParams): Promise<ToolResul
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_set:', errorMsg);
+    logger.error('[StateTool] Error in state_set:', errorMsg);
 
     return {
       success: false,
@@ -73,7 +74,7 @@ export async function executeStateGet(params: StateGetParams): Promise<ToolResul
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_get:', errorMsg);
+    logger.error('[StateTool] Error in state_get:', errorMsg);
 
     return {
       success: false,
@@ -101,7 +102,7 @@ export async function executeStateDelete(params: StateDeleteParams): Promise<Too
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_delete:', errorMsg);
+    logger.error('[StateTool] Error in state_delete:', errorMsg);
 
     return {
       success: false,
@@ -160,7 +161,7 @@ export async function executeStateUpdate(params: StateUpdateParams): Promise<Too
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_update:', errorMsg);
+    logger.error('[StateTool] Error in state_update:', errorMsg);
 
     return {
       success: false,
@@ -188,7 +189,7 @@ export async function executeStateExists(params: StateExistsParams): Promise<Too
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_exists:', errorMsg);
+    logger.error('[StateTool] Error in state_exists:', errorMsg);
 
     return {
       success: false,
@@ -239,7 +240,7 @@ export async function executeStateList(params: StateListParams): Promise<ToolRes
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_list:', errorMsg);
+    logger.error('[StateTool] Error in state_list:', errorMsg);
 
     return {
       success: false,
@@ -265,7 +266,7 @@ export async function executeStateStats(): Promise<ToolResult> {
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_stats:', errorMsg);
+    logger.error('[StateTool] Error in state_stats:', errorMsg);
 
     return {
       success: false,
@@ -299,7 +300,7 @@ export async function executeStateLock(params: StateLockParams): Promise<ToolRes
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_lock:', errorMsg);
+    logger.error('[StateTool] Error in state_lock:', errorMsg);
 
     return {
       success: false,
@@ -334,7 +335,7 @@ export async function executeStateUnlock(params: StateUnlockParams): Promise<Too
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[StateTool] Error in state_unlock:', errorMsg);
+    logger.error('[StateTool] Error in state_unlock:', errorMsg);
 
     return {
       success: false,

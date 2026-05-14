@@ -6,6 +6,7 @@
  */
 
 import { FinanceDataProvider } from '../base';
+import { logger } from '../../../../../infra/observability/logger';
 import type {
   FinanceDataSource,
   StockQuote,
@@ -53,7 +54,7 @@ export class EastmoneyProvider extends FinanceDataProvider {
           quotes.push(quote);
         }
       } catch (error) {
-        console.warn(`[Eastmoney] Failed to fetch quote for ${symbol}:`, error);
+        logger.warn(`[Eastmoney] Failed to fetch quote for ${symbol}:`, error);
       }
     }
 

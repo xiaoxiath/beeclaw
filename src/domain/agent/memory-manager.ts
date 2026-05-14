@@ -93,7 +93,7 @@ export class MemoryManager {
           context: contextWithSkills,
           timestamp: new Date().toISOString(),
         }).catch((err: unknown) => {
-          console.warn('[MemoryManager] before_prompt_build hook error:', err);
+          logger.warn('[MemoryManager] before_prompt_build hook error:', err);
         });
       }
 
@@ -124,7 +124,7 @@ export class MemoryManager {
       logger.info('[MemoryManager] Memory refreshed — stable system prompt updated');
       return tokenDelta;
     } catch (error) {
-      console.warn('[MemoryManager] Failed to refresh memory:', error);
+      logger.warn('[MemoryManager] Failed to refresh memory:', error);
       return 0;
     }
   }

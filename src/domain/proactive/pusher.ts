@@ -6,6 +6,7 @@
 
 import type { PendingNotification, NotificationPriority } from '../proactive/types';
 import { getNotificationsLazy } from './notifications';
+import { logger } from '../../infra/observability/logger';
 
 export type PusherChannel = 'cli' | 'feishu' | 'webhook';
 type StorageChannel = 'cli' | 'websocket' | 'email';
@@ -135,7 +136,7 @@ async function deliverNotification(notification: PendingNotification): Promise<S
             return channel;
           }
         } catch (error) {
-          console.error(`[Pusher] Delivery failed for channel ${ch}:`, error);
+          logger.error(`[Pusher] Delivery failed for channel ${ch}:`, error);
         }
       }
     }
@@ -146,7 +147,7 @@ async function deliverNotification(notification: PendingNotification): Promise<S
         cliDeliveryHandler(notification.message, notification.priority);
         return channel;
       } catch (error) {
-        console.error('[Pusher] CLI delivery failed:', error);
+        logger.error('[Pusher] CLI delivery failed:', error);
       }
     }
   }
@@ -330,14 +331,14 @@ export function registerFeishuHandler(
   registerDeliveryHandler('feishu', async (notification) => {
     const chatId = notification.metadata?.feishuChatId as string;
     if (!chatId) {
-      console.error('[Pusher] No feishuChatId in notification metadata');
+      logger.error('[Pusher] No feishuChatId in notification metadata');
       return false;
     }
 
     try {
       return await sendFunc(chatId, notification.message);
     } catch (error) {
-      console.error('[Pusher] Feishu delivery failed:', error);
+      logger.error('[Pusher] Feishu delivery failed:', error);
       return false;
     }
   });

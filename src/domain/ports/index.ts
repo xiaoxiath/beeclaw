@@ -7,6 +7,8 @@
  * This eliminates direct domain→adapter imports, enforcing clean architecture.
  */
 
+import { logger } from '../../infra/observability/logger';
+
 // ============================================================================
 // Hook Event Types (P1-4: type-safe IHookRunner)
 // ============================================================================
@@ -207,7 +209,7 @@ export function getMCPManagerPort(): IMCPManager | null {
   const instance = _ports.mcpManager?.() ?? null;
   if (!instance && !_warnedPorts.has('mcpManager')) {
     _warnedPorts.add('mcpManager');
-    console.warn('[Ports] mcpManager port not registered. Call registerPorts() during app init.');
+    logger.warn('[Ports] mcpManager port not registered. Call registerPorts() during app init.');
   }
   return instance;
 }
@@ -217,7 +219,7 @@ export function getPluginRegistryPort(): IPluginRegistry | null {
   const instance = _ports.pluginRegistry?.() ?? null;
   if (!instance && !_warnedPorts.has('pluginRegistry')) {
     _warnedPorts.add('pluginRegistry');
-    console.warn('[Ports] pluginRegistry port not registered. Call registerPorts() during app init.');
+    logger.warn('[Ports] pluginRegistry port not registered. Call registerPorts() during app init.');
   }
   return instance;
 }
@@ -238,7 +240,7 @@ export function getChannelClientPort(): IChannelClient | null {
   const instance = _ports.channelClient?.() ?? null;
   if (!instance && !_warnedPorts.has('channelClient')) {
     _warnedPorts.add('channelClient');
-    console.warn('[Ports] channelClient port not registered. Call registerPorts() during app init.');
+    logger.warn('[Ports] channelClient port not registered. Call registerPorts() during app init.');
   }
   return instance;
 }

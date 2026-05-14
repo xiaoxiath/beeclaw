@@ -8,6 +8,7 @@ import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
 import type { TaskDecomposition, SubTask } from './orchestration-types';
 import { SUBAGENT_TYPE_VALUES } from './types';
+import { logger } from '../../infra/observability/logger';
 
 /**
  * Decomposition prompt template
@@ -295,7 +296,7 @@ export async function decomposeTask(options: {
       try {
         validateDependencies(subtasks);
       } catch (error) {
-        console.warn('[Decompose] Dependency validation failed:', error);
+        logger.warn('[Decompose] Dependency validation failed:', error);
         return null;
       }
 
@@ -318,7 +319,7 @@ export async function decomposeTask(options: {
   });
 
   if (result.failed) {
-    console.warn('[Decompose] LLM decomposition failed, using fallback:', result.error);
+    logger.warn('[Decompose] LLM decomposition failed, using fallback:', result.error);
   }
 
   return result.result;

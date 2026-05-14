@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { SkillToolResult, SkillEvals } from './types';
 import { getSkillStore } from './store';
+import { logger } from '../../infra/observability/logger';
 
 // Tool parameter schemas
 export const SkillListSchema = z.object({});
@@ -301,7 +302,7 @@ export async function executeSkillTool(name: string, params: Record<string, unkn
         // Creating new skill - validate dependencies first
         if (parsed.data.triggers && (parsed.data.triggers as any).dependsOn) {
           // If dependsOn is accidentally in triggers, move it
-          console.warn('DependsOn should be a separate parameter, not in triggers');
+          logger.warn('DependsOn should be a separate parameter, not in triggers');
         }
 
         // Check dependencies before creating

@@ -10,6 +10,7 @@
  */
 
 import type { ExtractionItem, KnowledgeCategory } from './types';
+import { logger } from '../../infra/observability/logger';
 
 // Shared output format specification — used by multiple prompts
 const OUTPUT_FORMAT_SPEC = `以 JSON 格式输出，结构如下：
@@ -300,7 +301,7 @@ export function parseExtractionResult(response: string): ExtractionItem[] {
       reason: item.reason || '',
     }));
   } catch {
-    console.debug('[Extraction] Failed to parse result, returning empty array');
+    logger.debug('[Extraction] Failed to parse result, returning empty array');
     return [];
   }
 }

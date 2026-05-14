@@ -15,6 +15,7 @@ import type { AIProvider, CompressionConfig } from '../../../infra/config/schema
 import type { ChatMessage } from '../types';
 import { estimateTokens, estimateTotalTokens } from '../context';
 import { getBeeAIClient, toProviderConfig } from '../../../infra/bee-adapter';
+import { logger } from '../../../infra/observability/logger';
 
 // ---- Legacy types ----
 
@@ -104,7 +105,7 @@ async function compressWithLLM(
 
     return { summary, originalTokens, compressedTokens, compressionRatio: compressedTokens / originalTokens };
   } catch (error) {
-    console.error('[LLMCompressor] Compression failed:', error);
+    logger.error('[LLMCompressor] Compression failed:', error);
     throw error;
   }
 }
@@ -226,7 +227,7 @@ export async function hybridCompress(
       const result = await compressWithLLM(oldMessages, provider, config);
       return { summary: result.summary, keptMessages: recentMessages, compressionRatio: result.compressionRatio, method: 'llm' };
     } catch (_error) {
-      console.warn('[HybridCompressor] LLM compression failed, falling back to rule-based');
+      logger.warn('[HybridCompressor] LLM compression failed, falling back to rule-based');
     }
   }
 

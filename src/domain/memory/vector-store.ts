@@ -32,6 +32,7 @@ export { cosineSimilarity } from '../../infra/utils';
 import { cosineSimilarity } from '../../infra/utils';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, dirname, basename, relative } from 'path';
+import { logger } from '../../infra/observability/logger';
 
 // ─── 类型定义 ─────────────────────────────────────────────
 
@@ -279,7 +280,7 @@ export class VectorMemoryStore {
       // 检查维度兼容性
       const provider = this.getProvider();
       if (provider && persisted.dimensions !== provider.dimensions) {
-        console.warn(
+        logger.warn(
           `[VectorStore] Dimension mismatch: index has ${persisted.dimensions}, ` +
           `provider has ${provider.dimensions}. Rebuilding required.`
         );
@@ -297,7 +298,7 @@ export class VectorMemoryStore {
 
       return true;
     } catch (error) {
-      console.warn('[VectorStore] Failed to load index:', error);
+      logger.warn('[VectorStore] Failed to load index:', error);
       return false;
     }
   }
@@ -532,7 +533,7 @@ export class VectorMemoryStore {
           indexed++;
           totalChunks += chunks;
         } catch (error) {
-          console.warn(`[VectorStore] Failed to index ${relativePath}:`, error);
+          logger.warn(`[VectorStore] Failed to index ${relativePath}:`, error);
           errors++;
         }
       }

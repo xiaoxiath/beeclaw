@@ -39,6 +39,17 @@ vi.mock('../../agent/fast-llm-judge', () => ({
   })),
 }));
 
+const loggerMocks = vi.hoisted(() => ({
+  warn: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  debug: vi.fn(),
+}));
+vi.mock('../../../infra/observability/logger', () => ({
+  logger: loggerMocks,
+  getLogger: () => loggerMocks,
+}));
+
 import { decomposeTask, createSequentialDecomposition } from '../decompose';
 import { getFastLLMJudge } from '../../agent/fast-llm-judge';
 
@@ -432,7 +443,7 @@ describe('decomposeTask coverage', () => {
 
   describe('result.failed fallback', () => {
     it('logs warning and returns fallback when LLM fails', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      loggerMocks.warn.mockClear();
 
       mocks.judgeFn.mockImplementation(async (opts: any) => ({
         result: opts.defaultValue,
@@ -447,12 +458,10 @@ describe('decomposeTask coverage', () => {
       });
 
       expect(result.strategy).toBe('sequential');
-      expect(warnSpy).toHaveBeenCalledWith(
+      expect(loggerMocks.warn).toHaveBeenCalledWith(
         expect.stringContaining('LLM decomposition failed'),
         'LLM timeout',
       );
-
-      warnSpy.mockRestore();
     });
 
     it('returns result when LLM succeeds (failed=false)', async () => {

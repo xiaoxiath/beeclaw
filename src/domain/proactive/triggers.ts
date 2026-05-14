@@ -8,6 +8,7 @@ import type { Pattern } from './types';
 import { getSchedulerLazy } from './scheduler';
 import { pushNotification } from './pusher';
 import { getGoalStore } from '../agent/goal/store';
+import { logger } from '../../infra/observability/logger';
 
 export interface TriggerContext {
   now: Date;
@@ -64,7 +65,7 @@ export function evaluateCondition(condition: string, context: TriggerContext): b
     // Default: check if condition is "true" or non-empty string
     return trimmedCondition === 'true' || (trimmedCondition !== 'false' && trimmedCondition.length > 0);
   } catch (error) {
-    console.error(`[PatternTrigger] Error evaluating condition "${condition}":`, error);
+    logger.error(`[PatternTrigger] Error evaluating condition "${condition}":`, error);
     return false;
   }
 }

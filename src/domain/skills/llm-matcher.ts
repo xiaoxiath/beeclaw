@@ -7,6 +7,7 @@
 import type { Skill } from './types';
 import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
+import { logger } from '../../infra/observability/logger';
 
 export interface LLMMatchConfig {
   /** 是否启用 LLM 匹配 */
@@ -159,7 +160,7 @@ export class LLMSkillMatcher {
 
     if (result.failed) {
       this.stats.errors++;
-      console.warn('[LLMSkillMatcher] Judgment failed:', result.error);
+      logger.warn('[LLMSkillMatcher] Judgment failed:', result.error);
     } else {
       this.stats.llmCalls++;
     }

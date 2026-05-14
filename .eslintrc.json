@@ -60,6 +60,14 @@
       }
     ]
   },
+  "overrides": [
+    {
+      "files": ["src/domain/**/*.ts"],
+      "rules": {
+        "no-console": "error"
+      }
+    }
+  ],
   "ignorePatterns": [
     "dist",
     "node_modules",
