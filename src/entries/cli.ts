@@ -12,8 +12,10 @@
 import { logger } from '../infra/observability/logger';
 import { CLIAdapter } from '../adapter/cli/adapter';
 import { adapterRegistry } from '../infra/entry';
-import { initApp } from '../app';
+import { initApp, getAgent } from '../app';
 import { GracefulShutdown } from '../infra/utils/graceful-shutdown';
+import { InputHandler } from '../adapter/cli/input';
+import { runRepl } from '../adapter/cli/repl';
 
 function showHelp(): void {
   logger.debug(`
@@ -74,10 +76,20 @@ async function main() {
 
     shutdown.installSignalHandlers();
 
-    // 启动 CLI REPL 循环（导入现有的 cli 逻辑）
-    // 注意：实际的 REPL 循环在 src/cli.ts 中
-    // eslint-disable-next-line no-restricted-syntax
-    await import('../adapter/cli');
+    // Run the REPL loop. Previously this `await import('../adapter/cli')`d
+    // a re-exports-only module and the process just sat idle until SIGINT
+    // — the CLI was non-functional. runRepl() is the actual readline loop
+    // calling agent.chatStream() per turn.
+    const inputHandler = new InputHandler();
+    const agent = getAgent();
+    await runRepl({
+      agent,
+      input: inputHandler,
+      onExit: async () => {
+        await adapterRegistry.stopAll();
+        process.exit(0);
+      },
+    });
   } catch (error) {
     logger.error('❌ Failed to start Beeclaw CLI:', error);
     process.exit(1);
