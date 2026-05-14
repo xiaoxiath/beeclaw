@@ -42,92 +42,108 @@ export default new Hono()
       try {
         logger.debug('[Chat API] Starting SSE stream');
 
-        // Get or create session
         const session = await getOrCreateSession({
           sessionId: sessionId || `web-${Date.now()}`,
           channel,
           userId: 'web-user',
         });
 
-        logger.debug('[Chat API] Session ready:', session.id);
-
-        // Add user message to session
         session.messages.push({
           role: 'user',
           content: message,
           timestamp: new Date().toISOString(),
         });
-        logger.debug('[Chat API] User message added to session');
-
-        // Save session to disk
         saveSession(session);
-        logger.debug('[Chat API] Session saved after user message');
 
-        // Send session ID
         await stream.writeSSE({
           event: 'session',
           data: JSON.stringify({ sessionId: session.id }),
         });
 
-        logger.debug('[Chat API] Getting agent');
         const agent = getAgent();
 
-        logger.debug('[Chat API] Calling agent.chat()');
-        const fullResponse = await agent.chat(message, {
-          onToolCall: (name, _params) => {
-            logger.debug('[Chat API] Tool call:', name);
-          },
-          onToolResult: (name, _result) => {
-            logger.debug('[Chat API] Tool result:', name);
-          },
-        });
+        // Stream the response token-by-token via the chatStream() async
+        // generator. The previous implementation called the synchronous
+        // `agent.chat()` and emitted the entire response in one final
+        // 'chunk' event — visually identical to a non-streaming POST,
+        // even though the SSE plumbing was already in place.
+        //
+        // Each yielded `content` event accumulates into `cumulative`;
+        // we send the cumulative text per yield so the existing client
+        // (which does `lastMsg.content = parsed.chunk`) renders the
+        // partial response without any client changes.
+        let cumulative = '';
+        const toolCalls: Array<{ name: string; params: Record<string, unknown>; result?: unknown }> = [];
 
-        logger.debug('[Chat API] Agent response received, length:', fullResponse.length);
+        for await (const ev of agent.chatStream(message)) {
+          if (ev.type === 'content') {
+            cumulative += ev.content;
+            await stream.writeSSE({
+              event: 'chunk',
+              data: JSON.stringify({ chunk: cumulative }),
+            });
+          } else if (ev.type === 'tool_call') {
+            toolCalls.push({ name: ev.name, params: ev.params });
+            await stream.writeSSE({
+              event: 'tool_call',
+              data: JSON.stringify({ name: ev.name, params: ev.params }),
+            });
+          } else if (ev.type === 'tool_result') {
+            // Pair with the most recent unresolved call of the same name.
+            const pending = [...toolCalls].reverse().find(t => t.name === ev.name && t.result === undefined);
+            if (pending) pending.result = ev.result;
+            // Truncate large results before serializing — SSE frames over
+            // ~8KB are a common cause of client decoder lag.
+            const resultStr = typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result);
+            const preview = resultStr.length > 1000 ? resultStr.slice(0, 1000) + '… [truncated]' : resultStr;
+            await stream.writeSSE({
+              event: 'tool_result',
+              data: JSON.stringify({ name: ev.name, result: preview }),
+            });
+          }
+        }
 
-        // Get tool calls from agent and save to session
-        const toolCalls = agent.getLastToolCalls();
-        logger.debug('[Chat API] Tool calls from agent:', toolCalls?.length || 0);
+        logger.debug('[Chat API] Agent stream complete, length:', cumulative.length);
 
-        // Save assistant response to session
+        // Convert internal stream-event tool shape into the OpenAI
+        // ChatCompletionMessageToolCall format the session schema expects.
+        const sessionToolCalls = toolCalls.length > 0
+          ? toolCalls.map((t, i) => ({
+              id: `web-${session.id}-${i}`,
+              type: 'function' as const,
+              function: {
+                name: t.name,
+                arguments: JSON.stringify(t.params),
+              },
+            }))
+          : undefined;
+
         session.messages.push({
           role: 'assistant',
-          content: fullResponse,
+          content: cumulative,
           timestamp: new Date().toISOString(),
-          toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+          toolCalls: sessionToolCalls,
         });
         session.updatedAt = new Date().toISOString();
-
-        // Save session to disk
         saveSession(session);
-        logger.debug('[Chat API] Assistant response saved to session');
 
-        // Send tool calls if any
-        if (toolCalls && toolCalls.length > 0) {
+        // Backward-compat: existing client also listens for `tool_calls`
+        // aggregated event at the end. Keep emitting it so prior client
+        // builds still get the toolCalls field on the saved message.
+        if (toolCalls.length > 0) {
           await stream.writeSSE({
             event: 'tool_calls',
             data: JSON.stringify({ toolCalls }),
           });
-          logger.debug('[Chat API] Tool calls sent');
         }
 
-        // Send the full response
-        await stream.writeSSE({
-          event: 'chunk',
-          data: JSON.stringify({ chunk: fullResponse, index: 0 }),
-        });
-
-        logger.debug('[Chat API] Chunk sent');
-
-        // Send completion event
         await stream.writeSSE({
           event: 'done',
-          data: JSON.stringify({ response: fullResponse }),
+          data: JSON.stringify({ response: cumulative }),
         });
 
-        logger.debug('[Chat API] SSE stream complete');
-
       } catch (error) {
-        console.error('[Chat API] Error in SSE stream:', error);
+        logger.error('[Chat API] Error in SSE stream:', error);
         await stream.writeSSE({
           event: 'error',
           data: JSON.stringify({

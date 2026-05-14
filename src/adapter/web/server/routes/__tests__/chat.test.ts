@@ -34,9 +34,23 @@ vi.mock('@/domain/session', () => ({
   deleteSession: (...args: any[]) => mockDeleteSession(...args),
 }));
 
-// Mock agent
+// Mock agent. The route now uses chatStream() (an async generator);
+// we provide a default stream that yields a single content chunk so
+// the legacy tests still pass without changes. Per-test overrides can
+// supply richer event sequences (multiple content yields, tool calls).
+type StreamEvent =
+  | { type: 'content'; content: string }
+  | { type: 'tool_call'; name: string; params: Record<string, unknown> }
+  | { type: 'tool_result'; name: string; result: unknown };
+
+let mockStreamEvents: StreamEvent[] = [{ type: 'content', content: 'Hello! How can I help you?' }];
+let mockStreamShouldThrow: Error | string | null = null;
+
 const mockAgent = {
-  chat: vi.fn().mockResolvedValue('Hello! How can I help you?'),
+  chatStream: vi.fn(async function* (): AsyncGenerator<StreamEvent> {
+    if (mockStreamShouldThrow) throw mockStreamShouldThrow;
+    for (const ev of mockStreamEvents) yield ev;
+  }),
   getLastToolCalls: vi.fn().mockReturnValue([]),
 };
 
@@ -44,16 +58,17 @@ vi.mock('@/app', () => ({
   getAgent: () => mockAgent,
 }));
 
-// Mock streamSSE - need to handle it properly
+// Mock streamSSE — captures every writeSSE() call so tests can assert
+// on the event sequence.
+let lastStreamEvents: any[] = [];
 vi.mock('hono/streaming', () => ({
   streamSSE: vi.fn(async (_c: any, callback: any) => {
-    const events: any[] = [];
+    lastStreamEvents = [];
     const stream = {
-      writeSSE: vi.fn(async (event: any) => { events.push(event); }),
+      writeSSE: vi.fn(async (event: any) => { lastStreamEvents.push(event); }),
     };
     await callback(stream);
-    // Return a response with the events
-    return new Response(JSON.stringify(events), {
+    return new Response(JSON.stringify(lastStreamEvents), {
       headers: { 'Content-Type': 'text/event-stream' },
     });
   }),
@@ -64,10 +79,10 @@ import chatRoutes from '../chat';
 describe('Chat Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset the mock session messages each time
     mockSession.messages = [];
     mockGetOrCreateSession.mockResolvedValue(mockSession);
-    mockAgent.chat.mockResolvedValue('Hello! How can I help you?');
+    mockStreamEvents = [{ type: 'content', content: 'Hello! How can I help you?' }];
+    mockStreamShouldThrow = null;
     mockAgent.getLastToolCalls.mockReturnValue([]);
   });
 
@@ -86,10 +101,7 @@ describe('Chat Routes', () => {
 
       expect(res.status).toBe(200);
       expect(mockGetOrCreateSession).toHaveBeenCalled();
-      expect(mockAgent.chat).toHaveBeenCalledWith('Hello', expect.objectContaining({
-        onToolCall: expect.any(Function),
-        onToolResult: expect.any(Function),
-      }));
+      expect(mockAgent.chatStream).toHaveBeenCalledWith('Hello');
       expect(mockSaveSession).toHaveBeenCalled();
     });
 
@@ -110,10 +122,13 @@ describe('Chat Routes', () => {
       }));
     });
 
-    it('sends tool_calls event when agent returns tool calls', async () => {
-      mockAgent.getLastToolCalls.mockReturnValue([
-        { function: { name: 'search', arguments: '{}' } },
-      ]);
+    it('sends tool_calls aggregate event when agent yields tool events', async () => {
+      mockStreamEvents = [
+        { type: 'content', content: 'Looking it up' },
+        { type: 'tool_call', name: 'search', params: { query: 'foo' } },
+        { type: 'tool_result', name: 'search', result: 'found' },
+        { type: 'content', content: ' — done.' },
+      ];
 
       const res = await chatRoutes.request('/', {
         method: 'POST',
@@ -125,11 +140,14 @@ describe('Chat Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAgent.getLastToolCalls).toHaveBeenCalled();
+      const events = lastStreamEvents.map(e => e.event);
+      expect(events).toContain('tool_call');
+      expect(events).toContain('tool_result');
+      expect(events).toContain('tool_calls'); // backward-compat aggregate
     });
 
-    it('handles agent.chat error in SSE stream', async () => {
-      mockAgent.chat.mockRejectedValue(new Error('AI service down'));
+    it('handles agent.chatStream error in SSE stream', async () => {
+      mockStreamShouldThrow = new Error('AI service down');
 
       const res = await chatRoutes.request('/', {
         method: 'POST',
@@ -140,12 +158,14 @@ describe('Chat Routes', () => {
         }),
       });
 
-      // The SSE handler catches errors and writes an error event
       expect(res.status).toBe(200);
+      const errorEvent = lastStreamEvents.find(e => e.event === 'error');
+      expect(errorEvent).toBeDefined();
+      expect(JSON.parse(errorEvent.data).message).toBe('AI service down');
     });
 
     it('handles non-Error thrown in SSE stream', async () => {
-      mockAgent.chat.mockRejectedValue('string error');
+      mockStreamShouldThrow = 'string error';
 
       const res = await chatRoutes.request('/', {
         method: 'POST',
@@ -185,9 +205,12 @@ describe('Chat Routes', () => {
       }));
     });
 
-    it('saves tool calls to session when present', async () => {
-      const toolCalls = [{ function: { name: 'read_file', arguments: '{"path":"test"}' } }];
-      mockAgent.getLastToolCalls.mockReturnValue(toolCalls);
+    it('saves tool calls to session message when present', async () => {
+      mockStreamEvents = [
+        { type: 'tool_call', name: 'read_file', params: { path: 'test' } },
+        { type: 'tool_result', name: 'read_file', result: 'file contents' },
+        { type: 'content', content: 'Done.' },
+      ];
 
       const res = await chatRoutes.request('/', {
         method: 'POST',
@@ -200,6 +223,99 @@ describe('Chat Routes', () => {
 
       expect(res.status).toBe(200);
       expect(mockSaveSession).toHaveBeenCalled();
+      const savedAssistantMsg = mockSession.messages.find((m: any) => m.role === 'assistant');
+      expect(savedAssistantMsg?.toolCalls).toBeDefined();
+      expect(savedAssistantMsg!.toolCalls!.length).toBe(1);
+      // Stored in OpenAI tool-call format (what the session schema requires).
+      expect(savedAssistantMsg!.toolCalls![0].function.name).toBe('read_file');
+      expect(JSON.parse(savedAssistantMsg!.toolCalls![0].function.arguments)).toEqual({ path: 'test' });
+    });
+  });
+
+  // ─── Streaming-specific assertions ───
+  describe('SSE streaming behavior', () => {
+    it('emits one chunk event per content yield with cumulative text', async () => {
+      mockStreamEvents = [
+        { type: 'content', content: 'Hello' },
+        { type: 'content', content: ', ' },
+        { type: 'content', content: 'world!' },
+      ];
+
+      await chatRoutes.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'hi', sessionId: 's1' }),
+      });
+
+      const chunks = lastStreamEvents
+        .filter(e => e.event === 'chunk')
+        .map(e => JSON.parse(e.data).chunk);
+      expect(chunks).toEqual(['Hello', 'Hello, ', 'Hello, world!']);
+    });
+
+    it('emits done event with the full cumulative text', async () => {
+      mockStreamEvents = [
+        { type: 'content', content: 'foo' },
+        { type: 'content', content: 'bar' },
+      ];
+
+      await chatRoutes.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'm', sessionId: 's1' }),
+      });
+
+      const doneEvent = lastStreamEvents.find(e => e.event === 'done');
+      expect(doneEvent).toBeDefined();
+      expect(JSON.parse(doneEvent.data).response).toBe('foobar');
+    });
+
+    it('truncates large tool results in tool_result event', async () => {
+      const huge = 'x'.repeat(5000);
+      mockStreamEvents = [
+        { type: 'tool_call', name: 'big', params: {} },
+        { type: 'tool_result', name: 'big', result: huge },
+      ];
+
+      await chatRoutes.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'm', sessionId: 's1' }),
+      });
+
+      const trEvent = lastStreamEvents.find(e => e.event === 'tool_result');
+      const data = JSON.parse(trEvent.data);
+      expect(data.result.length).toBeLessThanOrEqual(1100);
+      expect(data.result).toMatch(/truncated/);
+    });
+
+    it('does NOT emit tool_calls aggregate when no tools were used', async () => {
+      mockStreamEvents = [{ type: 'content', content: 'plain answer' }];
+
+      await chatRoutes.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'm', sessionId: 's1' }),
+      });
+
+      expect(lastStreamEvents.find(e => e.event === 'tool_calls')).toBeUndefined();
+    });
+
+    it('saves the full cumulative response (not just last chunk) to session', async () => {
+      mockStreamEvents = [
+        { type: 'content', content: 'aa' },
+        { type: 'content', content: 'bb' },
+        { type: 'content', content: 'cc' },
+      ];
+
+      await chatRoutes.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'm', sessionId: 's1' }),
+      });
+
+      const savedAssistantMsg = mockSession.messages.find((m: any) => m.role === 'assistant');
+      expect(savedAssistantMsg?.content).toBe('aabbcc');
     });
   });
 
