@@ -16,6 +16,7 @@
     "eval:prompts": "bun scripts/run-prompt-evals.ts",
     "migrate:sessions": "bun scripts/migrate-sessions.ts",
     "backup:sqlite": "bun scripts/backup-sqlite.ts",
+    "gen:config-schema": "bun scripts/regen-config-schema.ts",
     "test": "vitest run",
     "test:tool-selector": "vitest run src/domain/agent/__tests__/hybrid-tool-selector.test.ts",
     "example:tool-selector": "bun run examples/hybrid-tool-selector.ts",
@@ -91,6 +92,7 @@
     "tailwind-merge": "3.5.0",
     "tailwindcss": "4.2.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "zod-to-json-schema": "^3.25.2"
   }
 }

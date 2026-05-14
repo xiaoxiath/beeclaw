@@ -2,10 +2,14 @@
  * Beeclaw Configuration Schema (Zod) — Single Source of Truth
  *
  * This file is the canonical definition for all configuration options.
- * - beeclaw.schema.json: generated/manual JSON Schema for editor autocompletion (may lag behind)
- * - beeclaw.example.json: example config referencing this schema
+ * - beeclaw.schema.json: GENERATED from this file via
+ *   `bun run gen:config-schema`. CI fails if it drifts.
+ * - beeclaw.example.json: example config referencing the JSON Schema.
  *
- * When adding new config fields, update this file FIRST, then sync beeclaw.schema.json.
+ * Workflow when adding/changing config fields:
+ *   1. Edit AppConfigSchema (or its sub-schemas) here.
+ *   2. Run `bun run gen:config-schema` to regenerate beeclaw.schema.json.
+ *   3. Commit BOTH files together. CI's drift guard rejects partial commits.
  */
 import { z } from 'zod';
 import { SandboxConfigSchema } from '../../types/sandbox-config';

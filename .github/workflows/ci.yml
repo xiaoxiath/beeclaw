@@ -29,6 +29,20 @@ jobs:
       - name: Type Check
         run: bun run typecheck
 
+      # Config schema drift guard. The Zod schema in
+      # src/infra/config/schema.ts is the single source of truth;
+      # beeclaw.schema.json is generated for editor autocompletion.
+      # Regen + diff catches PRs that change Zod without running
+      # `bun run gen:config-schema`.
+      - name: Config Schema Drift Guard
+        run: |
+          bun run gen:config-schema
+          git diff --exit-code beeclaw.schema.json || (
+            echo "❌ beeclaw.schema.json is out of sync with the Zod source."
+            echo "   Run \`bun run gen:config-schema\` locally and commit the result."
+            exit 1
+          )
+
       - name: Test
         run: bun run test:ci
 
