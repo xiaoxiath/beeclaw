@@ -16,6 +16,7 @@ import { sessions as sessionsTable } from '../../infra/db/schema';
 import { eq } from 'drizzle-orm';
 import { getPluginRegistryPort } from '../ports';
 import { getHookRunnerPort } from '../ports';
+import { packSessionExtras, unpackSessionFromRow } from './migration';
 
 // Feature flag for SQLite (dual-mode)
 const USE_SQLITE = process.env.USE_SQLITE_SESSIONS === 'true';
@@ -238,7 +239,10 @@ export function isValidSession(data: unknown): data is Session {
 }
 
 /**
- * Load session from SQLite database (RFC-03)
+ * Load session from SQLite database. Returns null when SQLite mode is off
+ * or no row exists. Uses unpackSessionFromRow so all extra Session fields
+ * (summary, archivedSegments, recoveryAttempts, etc.) are restored from
+ * metadata._sessionExtras — see migration.ts for the round-trip contract.
  */
 export function loadSessionFromSQLite(sessionId: string): Session | null {
   if (!USE_SQLITE) return null;
@@ -254,18 +258,16 @@ export function loadSessionFromSQLite(sessionId: string): Session | null {
     if (results.length === 0) return null;
 
     const row = results[0];
-    const session: Session = {
+    return unpackSessionFromRow({
       id: row.id,
       channel: row.channel,
       userId: row.userId,
-      messages: row.messages as SessionMessage[],
-      metadata: row.metadata || undefined,
-      pendingRecovery: row.needsRecovery || undefined,
-      createdAt: row.createdAt?.toISOString() || new Date().toISOString(),
-      updatedAt: row.updatedAt?.toISOString() || new Date().toISOString(),
-    };
-
-    return session;
+      messages: row.messages,
+      metadata: row.metadata,
+      needsRecovery: row.needsRecovery,
+      createdAt: row.createdAt ?? new Date(),
+      updatedAt: row.updatedAt ?? new Date(),
+    });
   } catch (error) {
     logger.error('[Session] Failed to load from SQLite:', error);
     return null;
@@ -273,7 +275,15 @@ export function loadSessionFromSQLite(sessionId: string): Session | null {
 }
 
 /**
- * Save session to SQLite database (RFC-03)
+ * Save session to SQLite database. Uses packSessionExtras so the 10+
+ * Session fields outside the base schema (summary, responseDelivered,
+ * pendingDelivery, recoveryAttempts, lastRecoveryAt, lastAiResponse,
+ * lastMessageSource, consecutiveRecoveryFailures, processedMessageIds,
+ * archivedSegments) survive the round-trip via metadata._sessionExtras.
+ *
+ * Previous implementation silently dropped all of those, which is why
+ * the dual-mode looked deceptively healthy in tests but lost data in
+ * production.
  */
 export function saveSessionToSQLite(session: Session): void {
   if (!USE_SQLITE) return;
@@ -281,6 +291,7 @@ export function saveSessionToSQLite(session: Session): void {
   try {
     const db = getDataConnection();
     const now = new Date();
+    const packedMeta = packSessionExtras(session);
 
     // Upsert session
     const existing = db.select()
@@ -290,26 +301,24 @@ export function saveSessionToSQLite(session: Session): void {
       .all();
 
     if (existing.length === 0) {
-      // Insert
       db.insert(sessionsTable).values({
         id: session.id,
         channel: session.channel,
         userId: session.userId,
         messages: session.messages,
-        metadata: session.metadata || null,
+        metadata: packedMeta,
         needsRecovery: session.pendingRecovery || false,
         recoveredAt: (session as any).recoveredAt ? new Date((session as any).recoveredAt) : null,
         createdAt: new Date(session.createdAt),
         updatedAt: now,
       }).run();
     } else {
-      // Update
       db.update(sessionsTable)
         .set({
           channel: session.channel,
           userId: session.userId,
           messages: session.messages,
-          metadata: session.metadata || null,
+          metadata: packedMeta,
           needsRecovery: session.pendingRecovery || false,
           recoveredAt: (session as any).recoveredAt ? new Date((session as any).recoveredAt) : null,
           updatedAt: now,
