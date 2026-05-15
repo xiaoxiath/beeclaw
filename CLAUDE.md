@@ -52,9 +52,9 @@ The `initApp()` function is the single entry point for both CLI and Bot modes:
 - Context management with token estimation and compression
 
 ### Memory System (`src/domain/memory/`)
-- **Storage**: Filesystem-based JSONL in `data/memory/`
-- **Categories**: conversations, facts, decisions, skills
-- **Tools**: `memory_ls`, `memory_grep`, `memory_read`, `memory_write`, `memory_record`
+- **Storage**: Markdown / JSONL in `data/memory/` + a SQLite vector index for semantic search
+- **Fact categories** (enforced by Zod): `user`, `preferences`, `events`, `investments`, `lessons`
+- **Tools**: `memory_ls`, `memory_grep`, `memory_read`, `memory_write`, `memory_record`, `memory_search` (keyword), `memory_semantic_search` (embedding), plus `memory_compress`, `memory_score`, `memory_dedupe`, `memory_knowledge_create`, `memory_index`
 
 ### Skills System (`src/domain/skills/`)
 - Markdown files with YAML frontmatter in `skills/` directory
@@ -62,8 +62,9 @@ The `initApp()` function is the single entry point for both CLI and Bot modes:
 - Tools: `skill_list`, `skill_get`, `skill_ensure`
 
 ### Session Management (`src/domain/session/`)
-- Sessions stored as JSONL in `data/sessions/`
+- Dual-backed: legacy JSONL in `data/memory/sessions/` + SQLite (`data/memory/beeclaw.db`, `sessions` table). The SQLite path is enabled via `USE_SQLITE_SESSIONS=true`; `bun run migrate:sessions` is the cutover tool. See `src/domain/session/MIGRATION.md`.
 - Use `getOrCreateSession()` to get or create sessions
+- The SQLite round-trip is lossless (10+ extras packed into `metadata._sessionExtras`)
 
 ### Subagent System (`src/domain/subagent/`)
 - Parallel task execution with DAG orchestration
@@ -72,13 +73,15 @@ The `initApp()` function is the single entry point for both CLI and Bot modes:
 
 ### MCP Integration (`src/adapter/mcp/`)
 - Configured in `beeclaw.json` under `mcp.servers`
-- Supports stdio transport
+- Transports: `stdio`, `http`, `sse` (HTTP falls back to SSE if streaming HTTP unavailable)
+- Per-call host-side timeout guard wraps `callTool` and connect-time `listTools/Resources/Prompts`
 - Tools exposed alongside built-in tools
 
 ### Plugin System (`src/adapter/plugins/`)
-- OpenClaw-compatible plugin architecture
+- OpenClaw-compatible plugin architecture (manifest filename: `openclaw.plugin.json`)
+- **Capability model**: plugins declare `capabilities: string[]` in their manifest. Without declaration → legacy mode (warn + allow); with declaration → strict mode, undeclared use throws. Known capabilities live in `src/adapter/plugins/capabilities/index.ts` (tool.register, hook.register, channel.register, provider.register, http.serve, cli.register, state.access, runtime.command, runtime.media, runtime.config.read, runtime.config.write).
 - Hook system for behavior interception
-- Load with `loadPlugins()` during initialization
+- Load with `loadPlugins()` during initialization. Note: the loader runs plugin code in the main process — capability gating is the boundary, not VM/Worker isolation (planned).
 
 ## File Organization
 ```
@@ -241,11 +244,20 @@ Supports environment variable interpolation: `${VAR_NAME}` and `${VAR:-default}`
 
 ## Performance Considerations
 
-- Memory compression runs daily at 3 AM
+- Memory compression runs daily at 3 AM (Reflection scheduled at 3:00, Compression at 3:30 — staggered)
 - Large tool results auto-compressed
 - Session recovery delayed 10s after startup
 - Plugin loading is non-blocking
 - MCP servers initialized asynchronously
+
+## Observability
+
+- **Logger**: structured + secret-redacting (sk-*, Bearer *, api_key=*, password/token field names) — see `src/infra/observability/logger.ts`
+- **Token usage**: persisted to SQLite `usage_events`; `/stats` exposes `tokens` (lifetime), `tokensLast24h`, `tokensLast7d`. Tracker hydrates "last 7d" on boot — counters survive restarts.
+- **Compression telemetry**: per-call `[Compression] tier complete` event with `method`, `ratio`, `latencyMs`, `infoRetention`. Aggregate in `/stats.compression`.
+- **Tool selector**: `/stats.toolSelector` shows `calls`, `successes`, `failures` for `HybridToolSelector`. Failures bump from `debug` → `warn` log so silent fallbacks are visible.
+- **Circuit breakers**: `/stats.circuits` shows breaker counts + open list + per-breaker stats.
+- **Skill DAG health**: `/stats.skillDeps` reports missing-dep + cycle issues across loaded skills.
 
 ## Common Development Tasks
 
@@ -287,10 +299,12 @@ Supports environment variable interpolation: `${VAR_NAME}` and `${VAR:-default}`
 
 ## Debugging
 
-- Check session files in `data/sessions/`
+- Check session files in `data/memory/sessions/` (JSONL fallback) and `data/memory/beeclaw.db` table `sessions` (SQLite primary)
 - Use `listSessions()` to see active sessions
 - Verify session ID consistency
 - Check logs with `logger.error()`
+- For ops triage hit `/stats` (web mode) — covers tokens, compression, circuits, tool selector, skill graph
+- DB backup: `bun run backup:sqlite` (uses `VACUUM INTO`, online-safe)
 
 ## Documentation
 
