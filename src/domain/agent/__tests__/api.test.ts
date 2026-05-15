@@ -202,76 +202,211 @@ describe('Agent API', () => {
       ).rejects.toThrow('Unknown provider type: foobar');
     });
 
-    test('codex provider posts to /v1/responses with bearer auth', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          id: 'resp_codex_1',
-          output: [{
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'output_text', text: 'codex says hi' }],
-          }],
-          usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
-        }),
+    // ─── Codex (OAuth via ~/.codex/auth.json) ────────────────────────────
+    //
+    // These tests use a real tmp auth.json file (vi.unmock'd fs) and a
+    // mocked global fetch — same pattern as src/domain/agent/__tests__/
+    // codex-auth.test.ts. We don't mock the codex-auth module so the
+    // real load/refresh/JWT logic gets exercised end-to-end through the
+    // api.ts dispatch.
+    describe('codex provider (OAuth)', () => {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+
+      let tmp: string;
+      let authPath: string;
+
+      beforeEach(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'beeclaw-codex-api-'));
+        authPath = path.join(tmp, 'auth.json');
       });
 
-      const result = await callAI({
-        provider: makeProvider('codex', { apiKey: 'sk-codex-test' }),
-        model: 'gpt-5.3-codex',
-        messages: [
-          { role: 'system', content: 'be concise' },
-          { role: 'user', content: 'hi' },
-        ],
+      // No afterEach cleanup needed — vitest-restoreMocks handles fetch reset,
+      // and tmpdir gets reaped by the OS. Skipping fs.rmSync keeps the test
+      // file lighter; we never collide because mkdtemp produces unique paths.
+
+      function writeAuth(access: string, refresh: string): void {
+        fs.writeFileSync(authPath, JSON.stringify({
+          tokens: { access_token: access, refresh_token: refresh },
+        }));
+      }
+
+      // A minimal valid JWT-shaped string so the JWT decoder doesn't reject it
+      // outright. The payload doesn't include the chatgpt_account_id claim, so
+      // the Account-ID header is omitted — exercising the tolerant path.
+      const FAKE_JWT_PLAIN = `${Buffer.from('{}').toString('base64url')}.${Buffer.from('{}').toString('base64url')}.sig`;
+
+      test('posts to chatgpt.com/backend-api/codex/responses with OAuth bearer', async () => {
+        writeAuth(FAKE_JWT_PLAIN, 'r-1');
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            id: 'resp_codex_1',
+            output: [{
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: 'codex says hi' }],
+            }],
+            usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+          }),
+        });
+
+        const result = await callAI({
+          provider: makeProvider('codex', {
+            apiKey: 'placeholder-ignored-by-codex',
+            options: { tokenFile: authPath },
+          }),
+          model: 'gpt-5.3-codex',
+          messages: [
+            { role: 'system', content: 'be concise' },
+            { role: 'user', content: 'hi' },
+          ],
+        });
+
+        const [url, init] = mockFetch.mock.calls[0];
+        expect(url).toBe('https://chatgpt.com/backend-api/codex/responses');
+        expect((init as RequestInit).method).toBe('POST');
+        // Bearer comes from the auth.json access_token, NOT provider.apiKey
+        expect((init as any).headers['Authorization']).toBe(`Bearer ${FAKE_JWT_PLAIN}`);
+        // Cloudflare-required headers
+        expect((init as any).headers['originator']).toBe('codex_cli_rs');
+        expect((init as any).headers['User-Agent']).toMatch(/codex_cli_rs/);
+
+        // Body shape comes from the request adapter.
+        const body = JSON.parse((init as any).body);
+        expect(body.model).toBe('gpt-5.3-codex');
+        expect(body.instructions).toBe('be concise');
+
+        expect(result.choices[0].message.content).toBe('codex says hi');
+        expect(result.usage?.prompt_tokens).toBe(5);
       });
 
-      // Default base URL + /v1/responses path.
-      const callArgs = mockFetch.mock.calls[0];
-      expect(callArgs[0]).toBe('https://api.openai.com/v1/responses');
-      const init = callArgs[1] as RequestInit;
-      expect(init.method).toBe('POST');
-      expect((init.headers as any)['Authorization']).toBe('Bearer sk-codex-test');
-      const body = JSON.parse(init.body as string);
-      expect(body.model).toBe('gpt-5.3-codex');
-      expect(body.instructions).toBe('be concise');
-      expect(body.input[0]).toMatchObject({ type: 'message', role: 'user' });
+      test('honors custom baseUrl + tokenFile override', async () => {
+        writeAuth(FAKE_JWT_PLAIN, 'r-1');
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ output: [] }),
+        });
 
-      // Response normalized into AIResponse.
-      expect(result.choices[0].message.content).toBe('codex says hi');
-      expect(result.usage).toEqual({ prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 });
-    });
-
-    test('codex provider honors custom baseUrl', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ output: [] }),
-      });
-
-      await callAI({
-        provider: makeProvider('codex', {
-          baseUrl: 'https://my-codex-proxy.example.com',
-        }),
-        model: 'gpt-5.3-codex',
-        messages: [{ role: 'user', content: 'hi' }],
-      });
-
-      expect(mockFetch.mock.calls[0][0]).toBe('https://my-codex-proxy.example.com/v1/responses');
-    });
-
-    test('codex provider surfaces API error responses', async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 429,
-        text: () => Promise.resolve('rate limit'),
-      });
-
-      await expect(
-        callAI({
-          provider: makeProvider('codex'),
+        await callAI({
+          provider: makeProvider('codex', {
+            baseUrl: 'https://my-codex-proxy.example.com/api',
+            options: { tokenFile: authPath },
+          }),
           model: 'gpt-5.3-codex',
           messages: [{ role: 'user', content: 'hi' }],
-        }),
-      ).rejects.toThrow(/Codex Responses API error: 429.*rate limit/);
+        });
+
+        expect(mockFetch.mock.calls[0][0]).toBe('https://my-codex-proxy.example.com/api/responses');
+      });
+
+      test('surfaces non-401 API errors verbatim', async () => {
+        writeAuth(FAKE_JWT_PLAIN, 'r-1');
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          text: () => Promise.resolve('rate limit'),
+        });
+
+        await expect(
+          callAI({
+            provider: makeProvider('codex', { options: { tokenFile: authPath } }),
+            model: 'gpt-5.3-codex',
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+        ).rejects.toThrow(/Codex Responses API error: 429.*rate limit/);
+      });
+
+      test('on 401: refresh tokens, retry, succeed (and persist new tokens)', async () => {
+        writeAuth('expired-access-token', 'good-refresh');
+        mockFetch
+          // First call: API returns 401 (token expired)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            text: () => Promise.resolve('unauthorized'),
+          })
+          // Second call: refresh endpoint returns new tokens
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({
+              access_token: FAKE_JWT_PLAIN,
+              refresh_token: 'new-refresh',
+            }),
+          })
+          // Third call: retry the API call with new bearer, succeeds
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({
+              output: [{
+                type: 'message',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: 'after refresh' }],
+              }],
+            }),
+          });
+
+        const result = await callAI({
+          provider: makeProvider('codex', { options: { tokenFile: authPath } }),
+          model: 'gpt-5.3-codex',
+          messages: [{ role: 'user', content: 'hi' }],
+        });
+
+        // Verify the retry happened
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+        // Refresh call was POST to auth.openai.com
+        expect(mockFetch.mock.calls[1][0]).toBe('https://auth.openai.com/oauth/token');
+        // Retry used the NEW access token
+        expect((mockFetch.mock.calls[2][1] as any).headers['Authorization'])
+          .toBe(`Bearer ${FAKE_JWT_PLAIN}`);
+
+        expect(result.choices[0].message.content).toBe('after refresh');
+
+        // Tokens persisted to disk
+        const onDisk = JSON.parse(fs.readFileSync(authPath, 'utf-8'));
+        expect(onDisk.tokens.access_token).toBe(FAKE_JWT_PLAIN);
+        expect(onDisk.tokens.refresh_token).toBe('new-refresh');
+      });
+
+      test('on 401 + refresh failure with reloginRequired → clear "run codex" hint', async () => {
+        writeAuth('expired', 'broken-refresh');
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            text: () => Promise.resolve('unauthorized'),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 400,
+            json: () => Promise.resolve({ error: 'invalid_grant' }),
+          });
+
+        await expect(
+          callAI({
+            provider: makeProvider('codex', { options: { tokenFile: authPath } }),
+            model: 'gpt-5.3-codex',
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+        ).rejects.toThrow(/Re-run `codex`/);
+      });
+
+      test('missing auth file → fail-fast with "run codex" hint, no fetch attempt', async () => {
+        // No writeAuth() call — file does not exist.
+        await expect(
+          callAI({
+            provider: makeProvider('codex', { options: { tokenFile: authPath } }),
+            model: 'gpt-5.3-codex',
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+        ).rejects.toThrow(/Run `codex`/);
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
     });
 
     test('custom baseUrl provider passes extraBody from options', async () => {

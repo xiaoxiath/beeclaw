@@ -27,6 +27,14 @@ import {
   type CodexProviderOptions,
   type CodexRawResponse,
 } from './codex-adapter';
+import {
+  loadCodexTokens,
+  refreshAndPersistCodexTokens,
+  buildCodexCloudflareHeaders,
+  CodexAuthError,
+  defaultCodexAuthPath,
+  type CodexTokens,
+} from './codex-auth';
 
 function getRequestTimeoutMs(provider: AIProvider): number {
   const opt = provider.options as Record<string, unknown> | undefined;
@@ -57,19 +65,25 @@ function isCodexProvider(provider: AIProvider): boolean {
   return provider.type === 'codex';
 }
 
-const DEFAULT_CODEX_BASE_URL = 'https://api.openai.com';
-const CODEX_RESPONSES_PATH = '/v1/responses';
+// Canonical Codex (ChatGPT-subscription) backend. Distinct from
+// api.openai.com — this endpoint is fronted by Cloudflare with a
+// strict originator allowlist; see codex-auth.buildCodexCloudflareHeaders.
+const DEFAULT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
+const CODEX_RESPONSES_PATH = '/responses';
 
 /**
- * Call the OpenAI Responses API (Codex). Builds the request via the
- * codex-adapter, runs through the same retry + timeout machinery as
- * other providers, then normalizes the response back into AIResponse.
+ * Call Codex's Responses API. Auth comes from `~/.codex/auth.json`
+ * (written by the upstream `codex` CLI; user logs in once). On a 401
+ * we try a single refresh + retry before surfacing the error — that
+ * covers the common "access_token expired but refresh_token still
+ * valid" case without requiring the operator to do anything.
  *
- * Authentication: standard `Authorization: Bearer <apiKey>` header.
- * Operators using OAuth-flow tokens (e.g. ChatGPT subscription
- * credentials hermes supports) need to fetch + refresh the bearer
- * out-of-band and inject via apiKey at config-load time. MVP doesn't
- * include the OAuth refresh dance.
+ * provider.options understood:
+ *   - tokenFile?: string  override path to the auth.json file
+ *   - all CodexProviderOptions fields (reasoning_effort, etc.)
+ *
+ * provider.apiKey is intentionally ignored — the bearer comes from
+ * the OAuth file. Documented in docs/configuration.md.
  */
 async function callCodexResponses(
   provider: AIProvider,
@@ -81,42 +95,87 @@ async function callCodexResponses(
   const baseUrl = provider.baseUrl ?? DEFAULT_CODEX_BASE_URL;
   const url = `${baseUrl}${CODEX_RESPONSES_PATH}`;
 
+  const opts = provider.options as (CodexProviderOptions & { tokenFile?: string }) | undefined;
+  const tokenFile = typeof opts?.tokenFile === 'string' && opts.tokenFile.length > 0
+    ? opts.tokenFile
+    : defaultCodexAuthPath();
+
   const body = buildCodexRequestBody({
     model,
     messages,
     tools,
-    options: provider.options as CodexProviderOptions | undefined,
+    options: opts,
     maxTokens,
   });
+  const serializedBody = JSON.stringify(body);
+
+  // Load the access_token. If the file is missing or malformed we
+  // fail fast with a clear "run codex login" message rather than
+  // attempting a refresh against a non-existent refresh_token.
+  let tokens: CodexTokens;
+  try {
+    tokens = loadCodexTokens(tokenFile);
+  } catch (e) {
+    if (e instanceof CodexAuthError) {
+      throw new Error(`[Codex] ${e.message}`);
+    }
+    throw e;
+  }
+
+  const performCall = async (accessToken: string): Promise<Response> => {
+    const timeout = createRequestTimeoutScope(getRequestTimeoutMs(provider), 'Codex Responses API call');
+    try {
+      const res = await fetch(
+        url,
+        withTimeoutSignal({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            ...buildCodexCloudflareHeaders(accessToken),
+          },
+          body: serializedBody,
+        }, timeout),
+      );
+      return res;
+    } catch (error) {
+      throw timeout.translateError(error);
+    } finally {
+      timeout.clear();
+    }
+  };
 
   const engine = getRetryEngine();
-  const timeoutMs = getRequestTimeoutMs(provider);
   const retryResult = await engine.execute<Response>(
     'ai_api_call',
     async () => {
-      const timeout = createRequestTimeoutScope(timeoutMs, 'Codex Responses API call');
-      try {
-        const res = await fetch(
-          url,
-          withTimeoutSignal({
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${provider.apiKey}`,
-            },
-            body: JSON.stringify(body),
-          }, timeout),
-        );
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`Codex Responses API error: ${res.status} - ${errorText}`);
+      let res = await performCall(tokens.access_token);
+
+      // 401 → try refresh once, then retry. We deliberately do NOT
+      // treat 403 as refreshable: 403 from this endpoint usually means
+      // the Cloudflare layer rejected us (missing/wrong header), not
+      // that the token expired.
+      if (res.status === 401) {
+        try {
+          tokens = await refreshAndPersistCodexTokens({ authFilePath: tokenFile });
+          logger.info('[Codex] access_token refreshed via OAuth, retrying request');
+        } catch (refreshErr) {
+          if (refreshErr instanceof CodexAuthError) {
+            const hint = refreshErr.opts.reloginRequired
+              ? ' Re-run `codex` (the Codex CLI) to mint fresh tokens.'
+              : '';
+            throw new Error(`[Codex] Token refresh failed: ${refreshErr.message}.${hint}`);
+          }
+          throw refreshErr;
         }
-        return res;
-      } catch (error) {
-        throw timeout.translateError(error);
-      } finally {
-        timeout.clear();
+        res = await performCall(tokens.access_token);
       }
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Codex Responses API error: ${res.status} - ${errorText}`);
+      }
+      return res;
     },
     RETRY_STRATEGIES.agent,
   );
