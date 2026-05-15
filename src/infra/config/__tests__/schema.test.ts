@@ -123,6 +123,36 @@ describe('AIProviderSchema', () => {
     expect(result.default).toBe(false);
   });
 
+  test('accepts codex provider type with reasoning options', () => {
+    const result = AIProviderSchema.parse({
+      name: 'openai-codex',
+      type: 'codex',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai.com',
+      models: {
+        'gpt-5.3-codex': { contextWindow: 200000, maxTokens: 100000 },
+      },
+      options: {
+        reasoning_effort: 'high',
+        reasoning_enabled: true,
+      },
+    });
+    expect(result.type).toBe('codex');
+    expect(result.options?.reasoning_effort).toBe('high');
+    expect(result.models).toHaveProperty('gpt-5.3-codex');
+  });
+
+  test('rejects unknown provider type', () => {
+    expect(() =>
+      AIProviderSchema.parse({
+        name: 'fake',
+        type: 'totally-fake' as any,
+        apiKey: 'k',
+        models: {},
+      }),
+    ).toThrow();
+  });
+
   test('accepts custom provider type', () => {
     const result = AIProviderSchema.parse({
       name: 'custom-ai',

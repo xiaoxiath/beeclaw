@@ -41,6 +41,14 @@ function isAnthropicProvider(provider: AIProvider): boolean {
   return provider.type === 'anthropic';
 }
 
+/**
+ * Check if a provider speaks the OpenAI Responses API (Codex / GPT-5+ codex
+ * variants). Format conversion lives in codex-adapter.ts.
+ */
+function isCodexProvider(provider: AIProvider): boolean {
+  return provider.type === 'codex';
+}
+
 // ============================================================================
 // Concurrency-controlled call options
 // ============================================================================
@@ -85,6 +93,19 @@ async function _callAIRaw(options: {
   stream?: boolean;
 }): Promise<AIResponse> {
   const { provider, model, messages, tools, temperature, topP, maxTokens, stream } = options;
+
+  // Codex (OpenAI Responses API) — wired in A-PR4.
+  // Check BEFORE getProviderConfig so the unknown-type error from the
+  // shared endpoint table doesn't pre-empt our explicit "not yet wired"
+  // diagnostic. PR1 just ships the type + clear error; PR4 will route
+  // through codex-adapter.
+  if (isCodexProvider(provider)) {
+    throw new Error(
+      `Codex provider "${provider.name}" is registered but the Responses API ` +
+      `adapter is not yet wired (A-PR4). Until then, point your role at a ` +
+      `non-codex provider.`
+    );
+  }
 
   const { baseUrl, path, extraBody } = getProviderConfig(provider);
 
@@ -320,6 +341,14 @@ async function* _streamAIRaw(options: {
   maxTokens?: number;
 }): AsyncGenerator<string, void, unknown> {
   const { provider, model, messages, tools, temperature, topP, maxTokens } = options;
+
+  // Codex Responses API streaming — wired in A-PR4. Check before
+  // getProviderConfig (same rationale as in _callAIRaw).
+  if (isCodexProvider(provider)) {
+    throw new Error(
+      `Codex provider "${provider.name}" streaming not yet wired (A-PR4).`
+    );
+  }
 
   const { baseUrl, path } = getProviderConfig(provider);
 

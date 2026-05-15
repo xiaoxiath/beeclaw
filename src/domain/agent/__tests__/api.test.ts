@@ -202,6 +202,16 @@ describe('Agent API', () => {
       ).rejects.toThrow('Unknown provider type: foobar');
     });
 
+    test('codex provider stub: returns clear "not yet wired" error (A-PR4 wires it)', async () => {
+      await expect(
+        callAI({
+          provider: makeProvider('codex' as any),
+          model: 'gpt-5.3-codex',
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+      ).rejects.toThrow(/Codex provider .* not yet wired/);
+    });
+
     test('custom baseUrl provider passes extraBody from options', async () => {
       const resp = makeOpenAIJsonResponse('hello');
       mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(resp) });

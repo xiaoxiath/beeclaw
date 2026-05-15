@@ -114,6 +114,7 @@
               "anthropic",
               "zhipu",
               "minimax",
+              "codex",
               "custom"
             ],
             "default": "openai"

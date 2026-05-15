@@ -81,7 +81,10 @@ export const RoleDefinitionSchema = z.object({
 // AI Provider schema (v6: roles moved to top level)
 export const AIProviderSchema = z.object({
   name: z.string(),
-  type: z.enum(['openai', 'anthropic', 'zhipu', 'minimax', 'custom']).default('openai'),
+  // 'codex' uses the OpenAI Responses API (compatible with codex / xAI / Copilot
+  // backends; beeclaw's MVP targets the canonical OpenAI Codex backend only).
+  // Format conversion lives in src/domain/agent/codex-adapter.ts.
+  type: z.enum(['openai', 'anthropic', 'zhipu', 'minimax', 'codex', 'custom']).default('openai'),
   apiKey: z.string(),
   baseUrl: z.string().optional(),
   default: z.boolean().default(false),
@@ -89,7 +92,11 @@ export const AIProviderSchema = z.object({
   // Model definitions
   models: z.record(z.string(), ModelDefinitionSchema),
 
-  // Provider-specific options
+  // Provider-specific options. For type='codex' we recognize:
+  //   reasoning_effort?: 'low' | 'medium' | 'high'   (default 'medium')
+  //   reasoning_enabled?: boolean                     (default true)
+  //   instructions?: string                           (system prompt override)
+  //   request_overrides?: Record<string, unknown>     (raw kwargs merged into request)
   options: z.record(z.unknown()).optional(),
 });
 
