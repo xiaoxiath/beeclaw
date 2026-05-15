@@ -1,19 +1,24 @@
 /**
  * Message data model for the TUI's chat history.
  *
- * Kept minimal on purpose — the agent layer already has rich types,
- * but the TUI only needs role + content for rendering. Tool events
- * are handled separately (PR3) since they have their own card layout.
+ * Discriminated union covers the three kinds of entries the TUI
+ * renders. Tool entries hold their params at call time and update
+ * with `result` when the matching tool_result event arrives.
  */
 
-/** A user-submitted line OR a fully-streamed assistant response. */
-export interface ChatMessage {
-  /** Stable id (used as React key — message index works for now). */
-  id: number;
-  role: 'user' | 'assistant';
-  /** Final text content. For assistant, this is the full streamed text. */
-  content: string;
-}
+export type ChatMessage =
+  | { id: number; kind: 'user'; content: string }
+  | { id: number; kind: 'assistant'; content: string }
+  | {
+      id: number;
+      kind: 'tool';
+      name: string;
+      params: Record<string, unknown>;
+      /** Set once the matching tool_result event arrives. */
+      result?: unknown;
+      /** True after a tool_result has been folded in (vs still pending). */
+      resolved?: boolean;
+    };
 
 /**
  * Generate the next message id given the current history. Pure helper

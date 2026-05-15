@@ -1,17 +1,15 @@
 /**
- * Single chat message renderer.
- *
- * User messages: cyan ❯ marker + the typed text (no markdown — user
- * input is shown verbatim so they can see exactly what they sent).
- *
- * Assistant messages: green ⏺ marker + content piped through
- * marked-terminal so code blocks, lists, bold, etc. render properly.
+ * Single chat-history entry renderer. Dispatches on `kind`:
+ *   user      → cyan ❯ marker + verbatim text (no markdown)
+ *   assistant → green ⏺ marker + markdown-rendered ANSI text
+ *   tool      → ToolCard (PR3)
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from './theme';
 import { renderMarkdown } from './markdown';
+import { ToolCard } from './ToolCard';
 import type { ChatMessage } from './messages';
 
 export interface MessageViewProps {
@@ -19,7 +17,7 @@ export interface MessageViewProps {
 }
 
 export function MessageView({ message }: MessageViewProps): React.ReactElement {
-  if (message.role === 'user') {
+  if (message.kind === 'user') {
     return (
       <Box flexDirection="row" marginBottom={1}>
         <Text color={theme.user} bold>{'❯ '}</Text>
@@ -30,8 +28,18 @@ export function MessageView({ message }: MessageViewProps): React.ReactElement {
     );
   }
 
-  // Assistant: render markdown to ANSI text and let Ink show as one
-  // <Text> block. ANSI escapes pass through Ink unchanged.
+  if (message.kind === 'tool') {
+    return (
+      <ToolCard
+        name={message.name}
+        params={message.params}
+        result={message.result}
+        resolved={message.resolved}
+      />
+    );
+  }
+
+  // assistant
   const rendered = renderMarkdown(message.content);
   return (
     <Box flexDirection="row" marginBottom={1}>
