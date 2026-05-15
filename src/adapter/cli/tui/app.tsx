@@ -34,6 +34,8 @@ import { getLogPath } from './logger-redirect';
 import { MessageView } from './MessageView';
 import { InputEditor } from './InputEditor';
 import { Footer } from './Footer';
+import { HitlPrompt, type HitlSignal } from './HitlPrompt';
+import { expandHitlAnswer } from './hitl-expand';
 import type { ChatMessage } from './messages';
 import { nextMessageId } from './messages';
 import {
@@ -97,6 +99,9 @@ export function App({
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [liveTurn, setLiveTurn] = useState<ChatMessage[]>([]);
   const liveTurnRef = useRef<ChatMessage[]>([]);
+  // PR7: HITL state. Set when a tool_result arrives with needsUserInput=true.
+  // The next user submission becomes the answer (auto-submitted via runChat).
+  const [pendingHitl, setPendingHitl] = useState<HitlSignal | null>(null);
 
   // Build the slash-command registry once per skills change.
   const registry: readonly Command[] = React.useMemo(
@@ -250,6 +255,20 @@ export function App({
             }
             return updated ? next : prev;
           });
+
+          // HITL signal detection. The ask_user_question tool returns
+          // { success: false, needsUserInput: true, question, options?, ... }
+          // — we extract that into pendingHitl so the HitlPrompt panel
+          // shows above the input editor on the next render.
+          const r = ev.result as Record<string, unknown> | undefined;
+          if (r && r.needsUserInput === true && typeof r.question === 'string') {
+            setPendingHitl({
+              question: r.question,
+              options: Array.isArray(r.options) ? (r.options as string[]) : undefined,
+              inputType: typeof r.inputType === 'string' ? r.inputType : undefined,
+              context: typeof r.context === 'string' ? r.context : undefined,
+            });
+          }
           continue;
         }
       }
@@ -270,11 +289,23 @@ export function App({
 
   const handleSubmit = useCallback(async (line: string) => {
     if (line.trim().startsWith('/')) {
+      // Slash commands work even mid-HITL — they cancel the prompt.
+      setPendingHitl(null);
       await dispatchCommand(line);
       return;
     }
+    // PR7: if a HITL prompt is pending, treat this submission as the
+    // answer. Digit-only answers expand to "Option N: <text>" so the
+    // model gets self-explanatory context. The pending prompt clears
+    // before runChat fires (so we don't loop on the same question).
+    if (pendingHitl) {
+      const expanded = expandHitlAnswer(line, pendingHitl.options);
+      setPendingHitl(null);
+      await runChat(expanded);
+      return;
+    }
     await runChat(line);
-  }, [dispatchCommand, runChat]);
+  }, [dispatchCommand, runChat, pendingHitl]);
 
   // Top-level useInput — handles Ctrl+C as graceful exit. The
   // InputEditor's own useInput coexists; Ink dispatches to both.
@@ -313,6 +344,8 @@ export function App({
           <Text color={theme.warn}>{hint}</Text>
         </Box>
       )}
+
+      {pendingHitl && <HitlPrompt signal={pendingHitl} />}
 
       <InputEditor
         onSubmit={handleSubmit}
