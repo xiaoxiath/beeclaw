@@ -105,9 +105,41 @@ async function main() {
         ? `${roleDef.provider} / ${roleDef.model}`
         : undefined;
 
+      // Discover skills for the slash-command picker. Best-effort:
+      // if the store isn't ready, we ship only built-in commands.
+      let skills: Array<{ name: string; description?: string }> = [];
+      try {
+        // Lazy import to avoid pulling skill init into the legacy path.
+        const { getSkillStore } = await import('../domain/skills/store');
+        const list = getSkillStore().list();
+        skills = list.map((s: { name: string; description?: string }) => ({
+          name: s.name,
+          description: s.description,
+        }));
+      } catch (e) {
+        logger.debug('[CLI] skill discovery failed (non-fatal)', e);
+      }
+
+      // /model and /sessions hint suppliers — fresh on each call.
+      const getInfo = () => {
+        let sessionsLine = '(unknown)';
+        try {
+          // Lazy import to keep TUI mode load-light.
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { listSessions } = require('../domain/session');
+          sessionsLine = `${listSessions().length} sessions`;
+        } catch { /* ignore */ }
+        return {
+          modelLine: modelLabel ? `model: ${modelLabel}` : '(no model configured)',
+          sessionsLine,
+        };
+      };
+
       await runTui({
         agent,
         modelLabel,
+        skills,
+        getInfo,
         onExit: async () => {
           await adapterRegistry.stopAll();
         },

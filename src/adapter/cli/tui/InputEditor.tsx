@@ -1,24 +1,30 @@
 /**
- * Multi-line input editor with cursor + history navigation.
+ * Multi-line input editor with cursor + history + slash-command picker.
  *
  * Bindings (Ink useInput key shape):
  *   printable           insert at cursor
  *   backspace / delete  delete adjacent char
  *   left / right        move cursor 1 char
  *   up / down           cursor row (multi-line) OR history (single-line/edge)
+ *                       OR picker selection (when picker is visible)
+ *   tab                 with picker visible: insert selected command name
+ *   enter               with picker visible: insert selected command name
+ *                       otherwise: submit
+ *   esc                 dismiss picker without clearing buffer
  *   ctrl+a / ctrl+e     line start / line end
  *   ctrl+w              delete word back
- *   meta+b / meta+f     word jump
+ *   meta+left/right     word jump
  *   meta+enter          newline (multi-line continuation)
  *   trailing backslash  also enables newline if user prefers ASCII
- *   enter               submit
  *   ctrl+c              caller handles (App treats as graceful exit)
  *
- * Cursor is rendered as an inverted character at its position. When
- * the cursor is past the end of buffer, an inverted space is shown.
+ * Picker visibility derives from buffer.startsWith('/') AND a non-empty
+ * `commands` registry being passed. Pressing Esc dismisses the picker
+ * without clearing the buffer; typing anything that mutates the buffer
+ * resets the dismissal state, so the picker reappears.
  */
 
-import React, { useReducer, useEffect, useCallback } from 'react';
+import React, { useReducer, useEffect, useCallback, useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { theme } from './theme';
 import {
@@ -28,6 +34,9 @@ import {
   type EditorAction,
 } from './input-editor-state';
 import { loadHistory, appendHistory } from './history';
+import { CommandPicker } from './CommandPicker';
+import { rankCommands } from './command-scorer';
+import type { Command } from './commands';
 
 export interface InputEditorProps {
   /** Called with the buffer contents when the user submits with Enter. */
@@ -36,46 +45,108 @@ export interface InputEditorProps {
   disabled?: boolean;
   /** Override path for testing — defaults to ~/.beeclaw_history. */
   historyPath?: string;
+  /** When set, enables slash-command picker. */
+  commands?: readonly Command[];
 }
 
-/**
- * Reducer wrapper so React's `useReducer` signature matches our
- * pure (state, action) → state shape.
- */
 function reducer(state: EditorState, action: EditorAction): EditorState {
   return applyAction(state, action);
 }
 
-export function InputEditor({ onSubmit, disabled, historyPath }: InputEditorProps): React.ReactElement {
+const PICKER_LIMIT = 5;
+
+export function InputEditor({ onSubmit, disabled, historyPath, commands }: InputEditorProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, initialEditorState);
-  // History loaded at mount; new entries are appended to disk + state.
-  const [history, setHistory] = React.useState<readonly string[]>([]);
+  const [history, setHistory] = useState<readonly string[]>([]);
+  const [pickerSelectedIdx, setPickerSelectedIdx] = useState(0);
+  const [pickerDismissed, setPickerDismissed] = useState(false);
 
   useEffect(() => {
     setHistory(loadHistory(historyPath));
   }, [historyPath]);
 
+  // Picker becomes visible only when buffer starts with '/' and we
+  // were given a registry to query. Esc latches it off until the
+  // buffer changes (handled below by clearing pickerDismissed).
+  const pickerActive = !!commands && state.buffer.startsWith('/') && !pickerDismissed;
+  const pickerMatches = useMemo(() => {
+    if (!pickerActive || !commands) return [];
+    return rankCommands(state.buffer.slice(1), commands, PICKER_LIMIT);
+  }, [pickerActive, commands, state.buffer]);
+
+  // Reset selection when the picker contents change shape.
+  useEffect(() => {
+    setPickerSelectedIdx(idx => {
+      if (pickerMatches.length === 0) return 0;
+      if (idx >= pickerMatches.length) return 0;
+      return idx;
+    });
+  }, [pickerMatches]);
+
   const submit = useCallback((line: string): void => {
     if (line.length === 0) return;
     appendHistory(line, historyPath);
     setHistory(prev => {
-      // Keep newest-first ordering, dedup vs head.
       if (prev[0] === line) return prev;
       return [line, ...prev];
     });
+    setPickerDismissed(false);
+    setPickerSelectedIdx(0);
     dispatch({ type: 'reset' });
     onSubmit(line);
   }, [historyPath, onSubmit]);
 
+  /**
+   * Replace the entire buffer with the picked command + trailing space,
+   * ready for arguments. Resets cursor to the end.
+   */
+  const insertSelectedCommand = useCallback(() => {
+    if (pickerMatches.length === 0) return;
+    const picked = pickerMatches[pickerSelectedIdx]?.command;
+    if (!picked) return;
+    dispatch({ type: 'reset' });
+    dispatch({ type: 'insert', text: `/${picked.name} ` });
+  }, [pickerMatches, pickerSelectedIdx]);
+
   useInput((char, key) => {
     if (disabled) return;
 
+    // Picker-aware navigation when visible.
+    if (pickerActive && pickerMatches.length > 0) {
+      if (key.upArrow) {
+        setPickerSelectedIdx(i => Math.max(0, i - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setPickerSelectedIdx(i => Math.min(pickerMatches.length - 1, i + 1));
+        return;
+      }
+      if (key.tab) {
+        insertSelectedCommand();
+        return;
+      }
+      if (key.escape) {
+        setPickerDismissed(true);
+        return;
+      }
+      // Enter: if picker is visible AND user hasn't typed anything past
+      // the slash query, treat Enter as "pick this command". Otherwise
+      // (user already added args), Enter submits the line as-is.
+      if (key.return && !key.meta) {
+        const picked = pickerMatches[pickerSelectedIdx];
+        // If buffer exactly equals "/<picked-name>" or shorter, expand.
+        const bufferQuery = state.buffer.slice(1);
+        if (picked && bufferQuery.length <= picked.command.name.length) {
+          insertSelectedCommand();
+          return;
+        }
+        // Otherwise fall through to normal submit.
+      }
+    }
+
     // Submit / newline.
     if (key.return) {
-      // Meta+Enter or trailing backslash → newline (multi-line continuation).
       if (key.meta || state.buffer.endsWith('\\')) {
-        // If trailing backslash, drop it before inserting the newline so
-        // the user doesn't have to manually delete it.
         if (state.buffer.endsWith('\\') && !key.meta) {
           dispatch({ type: 'backspace' });
         }
@@ -101,16 +172,25 @@ export function InputEditor({ onSubmit, disabled, historyPath }: InputEditorProp
     }
 
     // Editing.
-    if (key.backspace) { dispatch({ type: 'backspace' }); return; }
-    if (key.delete) { dispatch({ type: 'delete' }); return; }
+    if (key.backspace) {
+      // Re-arm picker on edit.
+      setPickerDismissed(false);
+      dispatch({ type: 'backspace' });
+      return;
+    }
+    if (key.delete) {
+      setPickerDismissed(false);
+      dispatch({ type: 'delete' });
+      return;
+    }
 
-    // Ctrl bindings.
     if (key.ctrl && char === 'a') { dispatch({ type: 'home' }); return; }
     if (key.ctrl && char === 'e') { dispatch({ type: 'end' }); return; }
     if (key.ctrl && char === 'w') { dispatch({ type: 'deleteWord' }); return; }
 
-    // Plain character insert. Ignore other ctrl/meta combos.
     if (char && !key.ctrl && !key.meta) {
+      // Re-arm picker on typed char.
+      setPickerDismissed(false);
       dispatch({ type: 'insert', text: char });
     }
   }, { isActive: !disabled });
@@ -132,6 +212,11 @@ export function InputEditor({ onSubmit, disabled, historyPath }: InputEditorProp
 
   return (
     <Box flexDirection="column">
+      {/* Picker (above the input row, only when visible). */}
+      {pickerActive && pickerMatches.length > 0 && (
+        <CommandPicker matches={pickerMatches} selectedIndex={pickerSelectedIdx} />
+      )}
+
       {lines.map((line, rowIdx) => {
         const isCursorRow = rowIdx === cursorRow && !disabled;
         const prefix = rowIdx === 0
@@ -147,8 +232,6 @@ export function InputEditor({ onSubmit, disabled, historyPath }: InputEditorProp
           );
         }
 
-        // Cursor is on this row — split around the cursor column and
-        // render an inverted character (or space if at end-of-line).
         const before = line.slice(0, cursorCol);
         const at = line.slice(cursorCol, cursorCol + 1);
         const after = line.slice(cursorCol + 1);

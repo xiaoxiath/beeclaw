@@ -1,9 +1,6 @@
 /**
  * TUI entry — activates logger redirect, renders the App, returns when
  * the user exits. This is the function entries/cli.ts calls in TUI mode.
- *
- * PR1: chat handler is a stub that just echoes back. PR2 wires the real
- * agent.chatStream consumer.
  */
 
 import React from 'react';
@@ -18,6 +15,16 @@ export interface RunTuiOptions {
   modelLabel?: string;
   /** Cleanup hook fired on graceful /exit. */
   onExit?: () => void | Promise<void>;
+  /**
+   * Skills available for the slash-command picker. Pass `undefined`
+   * to skip skill commands entirely (only built-ins exposed).
+   */
+  skills?: Array<{ name: string; description?: string }>;
+  /**
+   * Ops-info supplier for /model and /sessions hints. Called on
+   * demand so values stay fresh.
+   */
+  getInfo?: () => { modelLine: string; sessionsLine: string };
 }
 
 /**
@@ -41,10 +48,6 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
   // to the side log file instead of corrupting Ink's output grid.
   activateLoggerRedirect();
 
-  // Real wiring: each user line becomes an agent.chatStream() turn.
-  // The App expects an AsyncIterable of {type, content?} events; we
-  // adapt by yielding from the agent's generator directly. PR3 will
-  // also pass through tool_call / tool_result events for ToolCard.
   const handleSubmit = (line: string) => {
     return opts.agent.chatStream(line) as AsyncIterable<{ type: string; content?: string }>;
   };
@@ -59,6 +62,8 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
       onSubmit: handleSubmit,
       onExit: handleExit,
       modelLabel: opts.modelLabel,
+      skills: opts.skills,
+      getInfo: opts.getInfo,
     }),
   );
 

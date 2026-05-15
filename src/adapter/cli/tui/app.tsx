@@ -6,7 +6,12 @@
  *   <Static items={history}>     completed turns flushed to scrollback
  *   <MessageView active />        currently-streaming live region
  *   <Hint />                      transient banner (errors / unknown cmd)
- *   <InputEditor />               multi-line input with cursor + history
+ *   <InputEditor commands={...}/> multi-line input + slash command picker
+ *
+ * Slash commands route through the registry from PR5: built-ins like
+ * /clear /exit and dynamically discovered skills become first-class
+ * picker entries. The picker UI lives inside InputEditor; this file
+ * just wires the command list and dispatches Result handling.
  *
  * Per-turn lifecycle:
  *   1. user submits a non-slash line via InputEditor
@@ -30,6 +35,12 @@ import { MessageView } from './MessageView';
 import { InputEditor } from './InputEditor';
 import type { ChatMessage } from './messages';
 import { nextMessageId } from './messages';
+import {
+  composeRegistry,
+  parseCommandLine,
+  type Command,
+  type CommandResult,
+} from './commands';
 
 export interface AppProps {
   /**
@@ -50,17 +61,36 @@ export interface AppProps {
   onExit?: () => Promise<void> | void;
   /** Banner subtitle, e.g. the active model. PR6 wires this from config. */
   modelLabel?: string;
+  /**
+   * Skills discovered at App mount. Each entry becomes a /<name> slash
+   * command in the picker. Missing → empty list (only built-ins shown).
+   */
+  skills?: Array<{ name: string; description?: string }>;
+  /** Ops-info supplier for /model and /sessions hints. */
+  getInfo?: () => { modelLine: string; sessionsLine: string };
 }
 
 type Status = 'idle' | 'busy' | 'exiting';
 
-export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElement {
+export function App({
+  onSubmit,
+  onExit,
+  modelLabel,
+  skills,
+  getInfo,
+}: AppProps): React.ReactElement {
   const { exit } = useApp();
   const [status, setStatus] = useState<Status>('idle');
   const [hint, setHint] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [liveTurn, setLiveTurn] = useState<ChatMessage[]>([]);
   const liveTurnRef = useRef<ChatMessage[]>([]);
+
+  // Build the slash-command registry once per skills change.
+  const registry: readonly Command[] = React.useMemo(
+    () => composeRegistry(skills ?? []),
+    [skills],
+  );
 
   const allocateId = useCallback((): number => {
     const all = [...history, ...liveTurnRef.current];
@@ -73,35 +103,74 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
     setLiveTurn(next);
   }, []);
 
-  const handleSubmit = useCallback(async (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
+  /**
+   * Resolve a slash-command result from the registry. Returns true if
+   * the line was handled as a command (chat path should NOT fire).
+   */
+  const dispatchCommand = useCallback(async (line: string): Promise<boolean> => {
+    const parsed = parseCommandLine(line);
+    if (!parsed) return false;
 
-    // Slash commands (PR5 swaps in a richer registry).
-    if (trimmed === '/exit' || trimmed === '/quit') {
+    const command = registry.find(c => c.name === parsed.name);
+    if (!command) {
+      setHint(`Unknown command: /${parsed.name}. Type / and browse the picker.`);
+      return true;
+    }
+
+    // Skill commands: send as a chat turn that asks the agent to run
+    // the skill. The agent already knows skill_get / skill_run.
+    if (command.kind === 'skill') {
+      const text = parsed.args
+        ? `Use the ${command.name} skill: ${parsed.args}`
+        : `Use the ${command.name} skill.`;
+      // Fall through to chat path by returning false WITH the text
+      // injected. Easier: just call handleChat directly here.
+      void runChat(text);
+      return true;
+    }
+
+    // Built-in: invoke exec. /model and /sessions need ops info from
+    // App, so handle them here directly (their exec returns a stub
+    // 'continue' just so they appear in the picker).
+    if (parsed.name === 'model' || parsed.name === 'sessions') {
+      const info = getInfo?.() ?? { modelLine: '(unknown)', sessionsLine: '(unknown)' };
+      setHint(parsed.name === 'model' ? info.modelLine : info.sessionsLine);
+      return true;
+    }
+
+    if (!command.exec) {
+      setHint(`Command /${command.name} has no handler.`);
+      return true;
+    }
+
+    const result: CommandResult = await command.exec({
+      args: parsed.args,
+      clearHistory: () => setHistory([]),
+    });
+
+    if (result.kind === 'exit') {
       setStatus('exiting');
       if (onExit) await onExit();
       exit();
-      return;
+      return true;
     }
-    if (trimmed === '/help') {
-      setHint('Available: /help · /clear · /exit · /quit  (more in PR5)');
-      return;
+    if (result.kind === 'send') {
+      void runChat(result.text);
+      return true;
     }
-    if (trimmed === '/clear') {
-      setHistory([]);
-      setHint('history cleared');
-      return;
-    }
-    if (trimmed.startsWith('/')) {
-      setHint(`Unknown command: ${trimmed.split(/\s+/)[0]}. Try /help.`);
-      return;
-    }
+    if (result.hint) setHint(result.hint);
+    else setHint(null);
+    return true;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registry, getInfo, onExit, exit]);
+
+  const runChat = useCallback(async (line: string): Promise<void> => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
 
     setHint(null);
     setStatus('busy');
 
-    // Seed the turn with the user's message.
     const userMsg: ChatMessage = { id: allocateId(), kind: 'user', content: trimmed };
     updateLive(() => [userMsg]);
 
@@ -177,11 +246,18 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
       setLiveTurn([]);
       setStatus('idle');
     }
-  }, [allocateId, exit, onExit, onSubmit, updateLive]);
+  }, [allocateId, onSubmit, updateLive]);
+
+  const handleSubmit = useCallback(async (line: string) => {
+    if (line.trim().startsWith('/')) {
+      await dispatchCommand(line);
+      return;
+    }
+    await runChat(line);
+  }, [dispatchCommand, runChat]);
 
   // Top-level useInput — handles Ctrl+C as graceful exit. The
-  // InputEditor's own useInput coexists; Ink dispatches to both, but
-  // they handle disjoint keys (InputEditor filters out ctrl combos).
+  // InputEditor's own useInput coexists; Ink dispatches to both.
   useInput((char, key) => {
     if (key.ctrl && char === 'c' && status !== 'exiting') {
       setStatus('exiting');
@@ -200,7 +276,7 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
           {modelLabel ? `model: ${modelLabel}  ·  ` : ''}logs: {getLogPath()}
         </Text>
         <Text color={theme.dim}>
-          type /help for commands, /exit to quit  ·  meta+enter or trailing \ for newline
+          type / for commands, /exit to quit  ·  meta+enter or trailing \ for newline
         </Text>
       </Box>
 
@@ -218,9 +294,12 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
         </Box>
       )}
 
-      {/* Input + status indicator on the same row when busy. */}
       <Box flexDirection="column">
-        <InputEditor onSubmit={handleSubmit} disabled={status !== 'idle'} />
+        <InputEditor
+          onSubmit={handleSubmit}
+          disabled={status !== 'idle'}
+          commands={registry}
+        />
         {status === 'busy' && (
           <Text color={theme.dim}>(working…)</Text>
         )}
