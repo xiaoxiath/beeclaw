@@ -12,10 +12,11 @@
 import { logger } from '../infra/observability/logger';
 import { CLIAdapter } from '../adapter/cli/adapter';
 import { adapterRegistry } from '../infra/entry';
-import { initApp, getAgent } from '../app';
+import { initApp, getAgent, getConfig_ } from '../app';
 import { GracefulShutdown } from '../infra/utils/graceful-shutdown';
 import { InputHandler } from '../adapter/cli/input';
 import { runRepl } from '../adapter/cli/repl';
+import { runTui, canRunTui } from '../adapter/cli/tui';
 
 function showHelp(): void {
   logger.debug(`
@@ -76,20 +77,44 @@ async function main() {
 
     shutdown.installSignalHandlers();
 
-    // Run the REPL loop. Previously this `await import('../adapter/cli')`d
-    // a re-exports-only module and the process just sat idle until SIGINT
-    // — the CLI was non-functional. runRepl() is the actual readline loop
-    // calling agent.chatStream() per turn.
-    const inputHandler = new InputHandler();
     const agent = getAgent();
-    await runRepl({
-      agent,
-      input: inputHandler,
-      onExit: async () => {
-        await adapterRegistry.stopAll();
-        process.exit(0);
-      },
-    });
+    // Default to TUI; fall back to legacy when explicitly opted out OR
+    // when stdin is not a TTY (CI, pipe, docker without -it). Ink's raw
+    // mode requires a real TTY and will throw otherwise.
+    const useLegacy = process.env.BEECLAW_LEGACY_CLI === '1' || !canRunTui();
+
+    if (useLegacy) {
+      // Legacy readline REPL — kept as a fallback while the TUI lands
+      // (PRs 1-7). PR8 will delete this branch.
+      const inputHandler = new InputHandler();
+      await runRepl({
+        agent,
+        input: inputHandler,
+        onExit: async () => {
+          await adapterRegistry.stopAll();
+          process.exit(0);
+        },
+      });
+    } else {
+      // Default: Ink-based TUI. The runTui call activates a logger
+      // redirect to logs/cli-debug.log so chat output owns stdout.
+      const cfg = getConfig_();
+      const role = cfg?.agent?.role;
+      const roleDef = role ? cfg?.roles?.[role] : undefined;
+      const modelLabel = roleDef
+        ? `${roleDef.provider} / ${roleDef.model}`
+        : undefined;
+
+      await runTui({
+        agent,
+        modelLabel,
+        onExit: async () => {
+          await adapterRegistry.stopAll();
+        },
+      });
+      // runTui returns when Ink's render loop ends (user /exit).
+      process.exit(0);
+    }
   } catch (error) {
     logger.error('❌ Failed to start Beeclaw CLI:', error);
     process.exit(1);
