@@ -28,7 +28,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Box, Text, Static, useInput, useApp } from 'ink';
+import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from './theme';
 import { getLogPath } from './logger-redirect';
 import { MessageView } from './MessageView';
@@ -331,10 +331,18 @@ export function App({
         </Text>
       </Box>
 
-      <Static items={history}>
-        {message => <MessageView key={message.id} message={message} />}
-      </Static>
-
+      {/*
+        Render history + liveTurn inline (no Static). The earlier
+        Static-based scrollback flush had a timing race: the finally
+        block pushed liveTurn → history AND cleared liveTurn in one
+        tick, so Ink saw the live region empty BEFORE Static had
+        flushed the new items to scrollback. Result: assistant text
+        flashed and disappeared. Inline rendering is O(messages) per
+        re-render but for a typical interactive session that's fine.
+      */}
+      {history.map(m => (
+        <MessageView key={m.id} message={m} />
+      ))}
       {liveTurn.map(m => (
         <MessageView key={m.id} message={m} />
       ))}
