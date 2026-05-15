@@ -20,6 +20,14 @@ import { resolveProviderEndpoint, type ProviderEndpoint } from '@bee/provider/pr
 // Re-use bee's utility functions (extracted from beeclaw)
 export { hasToolCalls, extractToolCalls } from '@bee/provider/call-ai';
 
+// Codex (OpenAI Responses API) request/response converters
+import {
+  buildCodexRequestBody,
+  normalizeCodexResponse,
+  type CodexProviderOptions,
+  type CodexRawResponse,
+} from './codex-adapter';
+
 function getRequestTimeoutMs(provider: AIProvider): number {
   const opt = provider.options as Record<string, unknown> | undefined;
   const candidate = opt?.requestTimeoutMs ?? opt?.timeoutMs;
@@ -47,6 +55,76 @@ function isAnthropicProvider(provider: AIProvider): boolean {
  */
 function isCodexProvider(provider: AIProvider): boolean {
   return provider.type === 'codex';
+}
+
+const DEFAULT_CODEX_BASE_URL = 'https://api.openai.com';
+const CODEX_RESPONSES_PATH = '/v1/responses';
+
+/**
+ * Call the OpenAI Responses API (Codex). Builds the request via the
+ * codex-adapter, runs through the same retry + timeout machinery as
+ * other providers, then normalizes the response back into AIResponse.
+ *
+ * Authentication: standard `Authorization: Bearer <apiKey>` header.
+ * Operators using OAuth-flow tokens (e.g. ChatGPT subscription
+ * credentials hermes supports) need to fetch + refresh the bearer
+ * out-of-band and inject via apiKey at config-load time. MVP doesn't
+ * include the OAuth refresh dance.
+ */
+async function callCodexResponses(
+  provider: AIProvider,
+  model: string,
+  messages: ChatMessage[],
+  tools: OpenAITool[] | undefined,
+  maxTokens: number | undefined,
+): Promise<AIResponse> {
+  const baseUrl = provider.baseUrl ?? DEFAULT_CODEX_BASE_URL;
+  const url = `${baseUrl}${CODEX_RESPONSES_PATH}`;
+
+  const body = buildCodexRequestBody({
+    model,
+    messages,
+    tools,
+    options: provider.options as CodexProviderOptions | undefined,
+    maxTokens,
+  });
+
+  const engine = getRetryEngine();
+  const timeoutMs = getRequestTimeoutMs(provider);
+  const retryResult = await engine.execute<Response>(
+    'ai_api_call',
+    async () => {
+      const timeout = createRequestTimeoutScope(timeoutMs, 'Codex Responses API call');
+      try {
+        const res = await fetch(
+          url,
+          withTimeoutSignal({
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${provider.apiKey}`,
+            },
+            body: JSON.stringify(body),
+          }, timeout),
+        );
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Codex Responses API error: ${res.status} - ${errorText}`);
+        }
+        return res;
+      } catch (error) {
+        throw timeout.translateError(error);
+      } finally {
+        timeout.clear();
+      }
+    },
+    RETRY_STRATEGIES.agent,
+  );
+  if (!retryResult.success) {
+    throw retryResult.error?.originalError ?? new Error('Codex API call failed');
+  }
+  const raw = (await retryResult.value!.json()) as CodexRawResponse;
+  return normalizeCodexResponse(raw);
 }
 
 // ============================================================================
@@ -94,17 +172,11 @@ async function _callAIRaw(options: {
 }): Promise<AIResponse> {
   const { provider, model, messages, tools, temperature, topP, maxTokens, stream } = options;
 
-  // Codex (OpenAI Responses API) — wired in A-PR4.
-  // Check BEFORE getProviderConfig so the unknown-type error from the
-  // shared endpoint table doesn't pre-empt our explicit "not yet wired"
-  // diagnostic. PR1 just ships the type + clear error; PR4 will route
-  // through codex-adapter.
+  // Codex (OpenAI Responses API) — checked BEFORE getProviderConfig so
+  // the shared endpoint table doesn't try to resolve a chat-completions
+  // path. The Responses API has its own endpoint shape.
   if (isCodexProvider(provider)) {
-    throw new Error(
-      `Codex provider "${provider.name}" is registered but the Responses API ` +
-      `adapter is not yet wired (A-PR4). Until then, point your role at a ` +
-      `non-codex provider.`
-    );
+    return callCodexResponses(provider, model, messages, tools, maxTokens);
   }
 
   const { baseUrl, path, extraBody } = getProviderConfig(provider);
@@ -342,12 +414,18 @@ async function* _streamAIRaw(options: {
 }): AsyncGenerator<string, void, unknown> {
   const { provider, model, messages, tools, temperature, topP, maxTokens } = options;
 
-  // Codex Responses API streaming — wired in A-PR4. Check before
-  // getProviderConfig (same rationale as in _callAIRaw).
+  // Codex Responses API: MVP uses a non-streaming call and yields the
+  // full content as a single chunk. The Responses API does support
+  // streaming events (response.output_text.delta etc.) — wiring those
+  // through is a follow-up. For now web SSE consumers see one chunk
+  // per turn instead of token-by-token; chat correctness is unaffected.
   if (isCodexProvider(provider)) {
-    throw new Error(
-      `Codex provider "${provider.name}" streaming not yet wired (A-PR4).`
-    );
+    const fullResponse = await callCodexResponses(provider, model, messages, tools, maxTokens);
+    const content = fullResponse.choices[0]?.message?.content;
+    if (typeof content === 'string' && content.length > 0) {
+      yield content;
+    }
+    return;
   }
 
   const { baseUrl, path } = getProviderConfig(provider);

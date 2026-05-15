@@ -202,14 +202,76 @@ describe('Agent API', () => {
       ).rejects.toThrow('Unknown provider type: foobar');
     });
 
-    test('codex provider stub: returns clear "not yet wired" error (A-PR4 wires it)', async () => {
+    test('codex provider posts to /v1/responses with bearer auth', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          id: 'resp_codex_1',
+          output: [{
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'codex says hi' }],
+          }],
+          usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+        }),
+      });
+
+      const result = await callAI({
+        provider: makeProvider('codex', { apiKey: 'sk-codex-test' }),
+        model: 'gpt-5.3-codex',
+        messages: [
+          { role: 'system', content: 'be concise' },
+          { role: 'user', content: 'hi' },
+        ],
+      });
+
+      // Default base URL + /v1/responses path.
+      const callArgs = mockFetch.mock.calls[0];
+      expect(callArgs[0]).toBe('https://api.openai.com/v1/responses');
+      const init = callArgs[1] as RequestInit;
+      expect(init.method).toBe('POST');
+      expect((init.headers as any)['Authorization']).toBe('Bearer sk-codex-test');
+      const body = JSON.parse(init.body as string);
+      expect(body.model).toBe('gpt-5.3-codex');
+      expect(body.instructions).toBe('be concise');
+      expect(body.input[0]).toMatchObject({ type: 'message', role: 'user' });
+
+      // Response normalized into AIResponse.
+      expect(result.choices[0].message.content).toBe('codex says hi');
+      expect(result.usage).toEqual({ prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 });
+    });
+
+    test('codex provider honors custom baseUrl', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ output: [] }),
+      });
+
+      await callAI({
+        provider: makeProvider('codex', {
+          baseUrl: 'https://my-codex-proxy.example.com',
+        }),
+        model: 'gpt-5.3-codex',
+        messages: [{ role: 'user', content: 'hi' }],
+      });
+
+      expect(mockFetch.mock.calls[0][0]).toBe('https://my-codex-proxy.example.com/v1/responses');
+    });
+
+    test('codex provider surfaces API error responses', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 429,
+        text: () => Promise.resolve('rate limit'),
+      });
+
       await expect(
         callAI({
-          provider: makeProvider('codex' as any),
+          provider: makeProvider('codex'),
           model: 'gpt-5.3-codex',
           messages: [{ role: 'user', content: 'hi' }],
         }),
-      ).rejects.toThrow(/Codex provider .* not yet wired/);
+      ).rejects.toThrow(/Codex Responses API error: 429.*rate limit/);
     });
 
     test('custom baseUrl provider passes extraBody from options', async () => {

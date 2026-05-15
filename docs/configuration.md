@@ -351,6 +351,54 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
 }
 ```
 
+### Codex (OpenAI Responses API) Provider
+
+`type: "codex"` 用 OpenAI 的 Responses API 而不是 Chat Completions。Codex
+模型（如 `gpt-5.3-codex`）原生 reasoning，配合 `options.reasoning_effort`
+控制思考深度。
+
+```json
+{
+  "providers": [
+    {
+      "name": "openai-codex",
+      "type": "codex",
+      "apiKey": "${OPENAI_API_KEY}",
+      "baseUrl": "https://api.openai.com",
+      "models": {
+        "gpt-5.3-codex": { "contextWindow": 200000, "maxTokens": 100000 }
+      },
+      "options": {
+        "reasoning_effort": "medium",
+        "reasoning_enabled": true
+      }
+    }
+  ],
+  "roles": {
+    "code": {
+      "provider": "openai-codex",
+      "model": "gpt-5.3-codex",
+      "params": { "max_tokens": 8192 }
+    }
+  },
+  "agent": { "role": "code" }
+}
+```
+
+`options` 支持的字段（与 hermes 的语义一致）：
+
+| 字段 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `reasoning_effort` | `'low' \| 'medium' \| 'high'` | `'medium'` | 思考深度，影响延迟和质量 |
+| `reasoning_enabled` | `boolean` | `true` | 关闭后请求体不包含 `reasoning` 字段 |
+| `instructions` | `string` | （从 system message 提取）| 显式覆盖系统提示词 |
+| `request_overrides` | `Record<string, unknown>` | `{}` | 透传任意 Responses API 参数（temperature / parallel_tool_calls 等）|
+
+**MVP 限制**：
+- 流式调用走非流式路径，整段返回作为单 chunk（Web SSE 用户会看到一次性返回，不是 token-by-token）。Responses API 真正的流式事件支持是后续工作。
+- 仅支持 OpenAI 后端；GitHub Copilot / xAI / chatgpt.com 子流派暂不支持。
+- API key 必须是预先获取的 bearer token；OAuth 自动刷新流程未实现，操作员可在配置加载前自己取并以 `apiKey` 注入。
+
 ### 飞书 Bot
 
 ```json

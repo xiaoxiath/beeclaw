@@ -14,9 +14,25 @@
         "glm-4.7-flashx": { "contextWindow": 131072, "maxTokens": 131072 },
         "glm-4.6v": { "contextWindow": 32768, "maxTokens": 32768 },
         "embedding-3": {}
-      }
+      },
+      "$comment_codex_below": "下面是 Codex (OpenAI Responses API) provider 的示例。把 enabled 字段去掉之后会被 Zod 校验通过；本身会被 schema 接受但无 default。需要 OPENAI_API_KEY 环境变量。流式 MVP 走的是非流式调用 + 一次性返回全文。"
     }
   ],
+
+  "_codex_provider_example": {
+    "name": "openai-codex",
+    "type": "codex",
+    "apiKey": "${OPENAI_API_KEY}",
+    "baseUrl": "https://api.openai.com",
+    "models": {
+      "gpt-5.3-codex": { "contextWindow": 200000, "maxTokens": 100000 }
+    },
+    "options": {
+      "reasoning_effort": "medium",
+      "reasoning_enabled": true
+    }
+  },
+
 
   "roles": {
     "chat": {
