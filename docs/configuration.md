@@ -351,11 +351,36 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
 }
 ```
 
-### Codex (OpenAI Responses API) Provider
+### Codex (ChatGPT 订阅) Provider
 
-`type: "codex"` 用 OpenAI 的 Responses API 而不是 Chat Completions。Codex
-模型（如 `gpt-5.3-codex`）原生 reasoning，配合 `options.reasoning_effort`
-控制思考深度。
+`type: "codex"` 通过 ChatGPT 订阅访问 OpenAI 的 Codex 模型（如 `gpt-5.3-codex`），走 `https://chatgpt.com/backend-api/codex/responses` 端点。这条路径**不接受 sk-* API key**，认证完全靠 OAuth 流程。
+
+#### 前置条件：先用 Codex CLI 登录一次
+
+beeclaw 不实现 OAuth 浏览器流程 —— 上游 `codex` CLI 已经做了。安装 Codex CLI 然后跑：
+
+```bash
+codex          # 第一次启动会拉起浏览器登录
+```
+
+登录成功后 token 写入 `~/.codex/auth.json`：
+
+```json
+{
+  "auth_mode": "chatgpt",
+  "tokens": {
+    "id_token": "...",
+    "access_token": "<JWT, beeclaw 用作 Bearer>",
+    "refresh_token": "<beeclaw 在 401 时用来 mint 新 access_token>",
+    "account_id": "..."
+  },
+  "last_refresh": "..."
+}
+```
+
+beeclaw 启动时**读这个文件**，请求时发 `Authorization: Bearer <access_token>`，拿到 401 就用 `refresh_token` 自动续期一次（POST 到 `https://auth.openai.com/oauth/token`）然后写回原文件。`refresh_token` 失效（被 Codex CLI 或 VS Code 插件抢用过、或彻底过期）时会报错并提示重跑 `codex` 登录。
+
+#### 配置
 
 ```json
 {
@@ -363,8 +388,7 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
     {
       "name": "openai-codex",
       "type": "codex",
-      "apiKey": "${OPENAI_API_KEY}",
-      "baseUrl": "https://api.openai.com",
+      "apiKey": "oauth",
       "models": {
         "gpt-5.3-codex": { "contextWindow": 200000, "maxTokens": 100000 }
       },
@@ -385,7 +409,11 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
 }
 ```
 
-`options` 支持的字段（与 hermes 的语义一致）：
+`apiKey` 是占位符（Zod schema 要求 string，运行时忽略）。可写 `"oauth"` / `"unused"` / 任意非空字符串。
+
+`baseUrl` 通常省略（默认 `https://chatgpt.com/backend-api/codex`）。仅在你有自建代理时覆盖。
+
+#### `options` 支持字段
 
 | 字段 | 类型 | 默认 | 说明 |
 |---|---|---|---|
@@ -393,11 +421,26 @@ WEB_ADMIN_PASSWORD=admin_password    # Basic auth
 | `reasoning_enabled` | `boolean` | `true` | 关闭后请求体不包含 `reasoning` 字段 |
 | `instructions` | `string` | （从 system message 提取）| 显式覆盖系统提示词 |
 | `request_overrides` | `Record<string, unknown>` | `{}` | 透传任意 Responses API 参数（temperature / parallel_tool_calls 等）|
+| `tokenFile` | `string` | `~/.codex/auth.json` | 覆盖默认 token 文件路径（多租户 / 容器化部署用）|
 
-**MVP 限制**：
-- 流式调用走非流式路径，整段返回作为单 chunk（Web SSE 用户会看到一次性返回，不是 token-by-token）。Responses API 真正的流式事件支持是后续工作。
-- 仅支持 OpenAI 后端；GitHub Copilot / xAI / chatgpt.com 子流派暂不支持。
-- API key 必须是预先获取的 bearer token；OAuth 自动刷新流程未实现，操作员可在配置加载前自己取并以 `apiKey` 注入。
+#### 401 时的自动行为
+
+```
+beeclaw → Codex API → 401
+                       ↓
+beeclaw → POST auth.openai.com/oauth/token (用 refresh_token)
+                       ↓
+                    200 + 新 tokens   → 写回 ~/.codex/auth.json → 重试原请求 → 透明继续
+                       ↓
+                    invalid_grant 等  → 抛错："Re-run `codex` to mint fresh tokens"
+```
+
+#### MVP 限制
+
+- **流式 fallback**：流式调用走非流式路径，整段一次返回（Web SSE 看到的是单 chunk，不是 token-by-token）。Responses API 的真流式事件解析（`response.output_text.delta` 等）是后续工作。
+- **单后端**：仅 `chatgpt.com/backend-api/codex`。GitHub Copilot / xAI / Azure 等子流派的 endpoint + header 差异未支持。
+- **不实现登录流程**：`codex` CLI 必须可用并已登录过；beeclaw 不会自己拉浏览器。
+- **403 不 refresh**：403 通常是 Cloudflare 拒绝（缺 / 错 header），refresh `refresh_token` 救不了，反而可能浪费一次 rotation。直接报错让操作员排查。
 
 ### 飞书 Bot
 

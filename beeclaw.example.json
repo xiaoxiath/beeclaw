@@ -15,21 +15,22 @@
         "glm-4.6v": { "contextWindow": 32768, "maxTokens": 32768 },
         "embedding-3": {}
       },
-      "$comment_codex_below": "下面是 Codex (OpenAI Responses API) provider 的示例。把 enabled 字段去掉之后会被 Zod 校验通过；本身会被 schema 接受但无 default。需要 OPENAI_API_KEY 环境变量。流式 MVP 走的是非流式调用 + 一次性返回全文。"
+      "$comment_codex_below": "下面 _codex_provider_example 是 Codex (ChatGPT 订阅) provider 模板。前置条件：先用上游 codex CLI 跑一次 `codex` 完成 OAuth 登录，token 会写到 ~/.codex/auth.json，beeclaw 直接读+按需 refresh。apiKey 是占位符（Zod 要求 string，运行时忽略）。要启用，把 _codex_provider_example 整段拷到 providers[]，删除前缀下划线，然后在 roles 里建一条指过去。流式 MVP 走非流式 fallback。"
     }
   ],
 
   "_codex_provider_example": {
     "name": "openai-codex",
     "type": "codex",
-    "apiKey": "${OPENAI_API_KEY}",
-    "baseUrl": "https://api.openai.com",
+    "apiKey": "oauth",
     "models": {
       "gpt-5.3-codex": { "contextWindow": 200000, "maxTokens": 100000 }
     },
     "options": {
       "reasoning_effort": "medium",
-      "reasoning_enabled": true
+      "reasoning_enabled": true,
+      "$comment_tokenFile": "可选：覆盖默认的 ~/.codex/auth.json 路径，多租户/容器化部署可用。",
+      "tokenFile": "/path/to/custom/auth.json"
     }
   },
 
