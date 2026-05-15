@@ -1,7 +1,6 @@
 # Beeclaw 配置指南
 
-> **最新版本**: v6
-> 本文档涵盖 Beeclaw 的所有配置方式。
+> 配置 schema 的源头是 `src/infra/config/schema.ts`（Zod）。`beeclaw.schema.json` 由 `bun run gen:config-schema` 生成，CI 跑 drift guard 拒绝二者不同步。本文档解释结构 + 常用项；遇到分歧以 Zod 为准。
 
 本文档涵盖 Beeclaw 的所有配置方式，包括环境变量、配置文件和用户偏好设置。
 
@@ -24,15 +23,22 @@ bun run cli
 
 ---
 
-## v6 配置系统
+## 配置结构总览
 
-Beeclaw v6 采用简化的配置结构：
+Beeclaw 配置由几个独立的顶层段组成（详见 `AppConfigSchema`）：
 
 ```
-providers  → 提供 API 访问和模型信息
-roles      → 定义模型使用场景（可复用）
-llmRouter  → 自动路由优化（可选）
-agent      → 用户实体（单个）
+providers   → API 访问 + 模型信息（必需）
+roles       → 模型使用场景，可复用（必需）
+agent       → agent 实例配置（必需）
+llmRouter   → 路由优化（可选）
+toolSelector→ 工具筛选（可选）
+user        → 用户实体覆盖（可选）
+memory      → 记忆系统路径与开关（可选）
+search      → 搜索 provider（可选；启用后 deep_research 才可用）
+feishu      → 飞书集成（可选）
+mcp.servers → MCP 服务器列表（可选）
+sandbox     → 沙箱配置（实验性，see Zod schema）
 ```
 
 ### 最小配置
@@ -61,16 +67,16 @@ agent      → 用户实体（单个）
 }
 ```
 
-### 核心概念
+### 字段说明
 
-| 层级 | 概念 | 职责 | 必需？ |
-|------|------|------|--------|
-| **0** | providers | API 访问 | ✅ 必需 |
-| **1** | roles | 模型配置 | ✅ 必需 |
-| **2** | llmRouter | 路由优化 | ⚪ 可选 |
-| **3** | agent | 用户实体 | ✅ 必需 |
-| **4** | toolSelector | 工具选择 | ⚪ 可选 |
-| **5** | user | 用户配置 | ⚪ 可选 |
+| 字段 | 职责 | 必需？ |
+|------|------|--------|
+| `providers` | API 访问 | ✅ 必需 |
+| `roles` | 模型配置 | ✅ 必需 |
+| `agent` | agent 实例（绑定 role + tool flags + per-turn 预算）| ✅ 必需 |
+| `llmRouter` | 自动按场景挑模型（fast/main/long-context 分层）| ⚪ 可选 |
+| `toolSelector` | HybridToolSelector budget cap | ⚪ 可选 |
+| `user` | user identity / 偏好 | ⚪ 可选 |
 
 <!-- 详细配置说明已整合到本文档中 -->
 

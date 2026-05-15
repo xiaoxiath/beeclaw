@@ -3,8 +3,13 @@
 > Beeclaw 内置工具完整列表
 
 工具分为两类：
-- **始终加载** — 核心 builtin 工具，所有场景可用
-- **条件加载** — 仅在配置了相应功能时可用（如搜索 Provider、子代理状态等）
+- **始终加载** — 核心 builtin 工具，所有场景可用（见 `coreBuiltinTools` in `src/domain/tools/builtin.ts`）
+- **条件加载** — 取决于配置：
+  - `web_search`/`web_fetch` 需 `search.providers` 至少一项
+  - `deep_research`/`request_deep_analysis` 需 `search.enabled === true`
+  - 子代理状态工具仅在子代理编排激活时
+
+> **历史工具弃用**：`stock_quote` / `stock_history` / `stock_financial` / `stock_info` 等股票工具在 v0.5.0 已迁出 builtin，转入 `beeclaw-hedge-fund-research` skill。需要时通过 `skill_get` 加载。
 
 ---
 

@@ -70,8 +70,9 @@ Agent 是系统的核心，负责对话循环、工具调度和上下文管理�
 
 **注册方式**（`builtin.ts`）：
 - `coreBuiltinTools` — 始终加载的核心工具
-- `conditionalDeepResearchTools` — 搜索 Provider 配置后加载
+- `conditionalDeepResearchTools` — 仅当 `search.enabled` 时加载（含 `deep_research`、`request_deep_analysis`）
 - `conditionalSubagentStateTools` — 子代理编排激活后加载
+- 部分历史工具（如 stock_*）已在 v0.5.0 弃用，迁移至 `beeclaw-hedge-fund-research` skill
 
 **工具分类**（`categories/`）：search、shell、finance、sandbox、subagent、utility
 
@@ -134,7 +135,10 @@ CLI、Bot 和 Web 共享同一个 SessionManager：
 ├─────────────────────────────────────────────────┤
 │  CLI Channel · Feishu Channel · Web Channel     │
 │                    │                             │
-│         Session (持久化到 data/sessions/)        │
+│  Session 双源持久化:                              │
+│   • SQLite 主存（data/memory/beeclaw.db）          │
+│   • JSONL 兼容（data/memory/sessions/）—— 旧路径   │
+│  通过 USE_SQLITE_SESSIONS=true 切换               │
 │                    │                             │
 │         Memory System (共享记忆)                  │
 └─────────────────────────────────────────────────┘
@@ -232,9 +236,10 @@ OpenClaw 兼容插件架构（`src/adapter/plugins/`）：
 
 - **发现** — 自动扫描插件目录
 - **注册** — 插件注册表管理
-- **加载** — 动态加载和运行时
+- **加载** — 动态加载和运行时（manifest 文件名：`openclaw.plugin.json`）
 - **Hook** — 事件钩子系统（onToolCall, onAgentMessage 等）
 - **SDK Shim** — OpenClaw 兼容层
+- **能力声明（Capability Model）** — manifest 里 `capabilities: string[]` 声明所需能力（如 `tool.register`、`http.serve`、`runtime.config.write`），未声明 → 严格模式拒绝；缺字段 → 兼容 legacy 模式（warn + 放行）。能力清单见 `src/adapter/plugins/capabilities/index.ts`。当前在主进程内 gating，VM/Worker 隔离是后续工作。
 
 详见 [插件系统](./guide/plugin-system.md)。
 
@@ -244,12 +249,26 @@ OpenClaw 兼容插件架构（`src/adapter/plugins/`）：
 
 Model Context Protocol 客户端（`src/adapter/mcp/`）：
 
-- 支持 stdio 传输
+- 支持 `stdio`、`http`、`sse` 传输（HTTP 失败自动回退 SSE）
 - 自动发现 MCP 服务端工具
 - 转换为 OpenAI Function 格式
 - 与内置工具统一管理
+- 主机侧超时守卫包裹 `callTool` 与连接期 `listTools/Resources/Prompts`，防止 SDK 不超时时挂死
 
 配置在 `beeclaw.json` 的 `mcp.servers` 字段。
+
+---
+
+## 可观测性
+
+`/stats` 端点（`src/adapter/web/server/routes/stats.ts`）和结构化日志暴露：
+
+- **Token 使用**：SQLite `usage_events` 表持久化 + `tokensLast24h`/`tokensLast7d` rolling window；进程启动 hydrate 最近 7d 计数
+- **压缩 telemetry**：每次三层压缩（L1/L2/L3）emit `[Compression] tier complete` 事件（method/ratio/latency/infoRetention），聚合在 `/stats.compression`
+- **HybridToolSelector**：`/stats.toolSelector`（calls/successes/failures + 平均输入输出工具数）
+- **Circuit Breaker**：`/stats.circuits`（每 breaker 状态 + open 列表）
+- **Skill DAG 健康**：`/stats.skillDeps`（缺失依赖、循环依赖）
+- **Logger**：内置 secret redaction（sk-*、Bearer *、api_key=*、`apiKey/token/password` 等键名值全部 mask）
 
 ---
 
@@ -257,9 +276,10 @@ Model Context Protocol 客户端（`src/adapter/mcp/`）：
 
 Zod 验证的配置管理（`src/infra/config/`）：
 
-- **v6 结构**: providers → roles → llmRouter → agent
+- 源头：`src/infra/config/schema.ts`（Zod）
+- 编辑器自动补全：`beeclaw.schema.json`（由 `bun run gen:config-schema` 生成；CI drift guard 拒绝二者不同步）
 - 支持环境变量插值: `${VAR_NAME}` 和 `${VAR:-default}`
-- 配置文件: `beeclaw.json`（JSON Schema: `beeclaw.schema.json`）
+- 配置文件: `beeclaw.json`
 
 详见 [配置指南](./configuration.md)。
 
