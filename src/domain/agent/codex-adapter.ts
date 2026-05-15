@@ -35,6 +35,7 @@ import type {
   OpenAITool,
   MultimodalContent,
   ToolCall,
+  AIResponse,
 } from './types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -288,6 +289,151 @@ export function buildCodexRequestBody(args: BuildCodexRequestArgs): CodexRequest
   }
 
   return body;
+}
+
+// ─── Response normalization ───────────────────────────────────────────────
+
+/**
+ * Tool-call leak pattern (gpt-5.x Codex degeneration).
+ *
+ * The model occasionally emits what should be a structured `function_call`
+ * item as plain assistant text using Harmony/Codex serialization:
+ *   "to=functions.web_search"
+ *   "assistant to=functions.web_search"
+ *   "<|channel|>commentary to=functions.web_search"
+ *
+ * Detection lets us mark the response incomplete so the caller retries
+ * instead of surfacing a confident-looking summary with no tool trace.
+ * Lifted from hermes' _TOOL_CALL_LEAK_PATTERN.
+ */
+const TOOL_CALL_LEAK_PATTERN = /(?:^|[\s>|])to=functions\.[A-Za-z_][\w.]*/i;
+
+/** Raw Responses API output item — only the fields we read. */
+export interface ResponsesOutputItem {
+  type: string;
+  id?: string;
+  // message item
+  role?: 'assistant';
+  status?: string;
+  content?: Array<{ type?: string; text?: string }>;
+  // function_call item
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  // reasoning item (encrypted blob)
+  encrypted_content?: string;
+}
+
+/** Raw Responses API response — only the fields we read. */
+export interface CodexRawResponse {
+  id?: string;
+  output?: ResponsesOutputItem[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  };
+  // Some backends embed the bare assistant text on the top level for
+  // convenience; we tolerate it but prefer output[].
+  output_text?: string;
+}
+
+/**
+ * Convert a Responses API response into beeclaw's AIResponse shape.
+ *
+ * Walks `output[]` and:
+ *   - Concatenates text from `message` items into `choices[0].message.content`
+ *   - Promotes `function_call` items to `choices[0].message.tool_calls`
+ *   - Drops `reasoning` items (encrypted, not user-visible; preserved upstream
+ *     by hermes for prefix-cache continuity, out of MVP scope here)
+ *
+ * Finish reason resolution:
+ *   1. tool_calls present  → 'tool_calls'
+ *   2. leak pattern hit + no real tool_calls → 'incomplete' (caller retries)
+ *   3. only reasoning, no text and no calls → 'incomplete'
+ *   4. otherwise → 'stop'
+ */
+export function normalizeCodexResponse(raw: CodexRawResponse): AIResponse {
+  const output = Array.isArray(raw.output) ? raw.output : [];
+  const textParts: string[] = [];
+  const toolCalls: ToolCall[] = [];
+  let sawReasoning = false;
+
+  for (const item of output) {
+    const type = item.type;
+    if (type === 'message' && Array.isArray(item.content)) {
+      for (const part of item.content) {
+        if (typeof part?.text === 'string' && part.text.length > 0) {
+          textParts.push(part.text);
+        }
+      }
+    } else if (type === 'function_call') {
+      const callId = item.call_id;
+      const name = item.name;
+      if (typeof callId === 'string' && typeof name === 'string') {
+        toolCalls.push({
+          id: callId,
+          type: 'function',
+          function: {
+            name,
+            arguments: typeof item.arguments === 'string' ? item.arguments : '',
+          },
+        });
+      }
+    } else if (type === 'reasoning') {
+      sawReasoning = true;
+    }
+  }
+
+  let content: string | null = textParts.length > 0
+    ? textParts.join('')
+    : (typeof raw.output_text === 'string' && raw.output_text.length > 0
+        ? raw.output_text
+        : null);
+
+  // Leak recovery: model emitted tool-call serialization as plain text
+  // and produced no real function_call items. Caller must retry.
+  let leakedToolCall = false;
+  if (content && toolCalls.length === 0 && TOOL_CALL_LEAK_PATTERN.test(content)) {
+    leakedToolCall = true;
+    content = null; // Don't surface the garbage as a summary.
+  }
+
+  let finishReason: string;
+  if (toolCalls.length > 0) {
+    finishReason = 'tool_calls';
+  } else if (leakedToolCall) {
+    finishReason = 'incomplete';
+  } else if (sawReasoning && !content) {
+    // Response contained only reasoning (encrypted thinking state).
+    // Mark incomplete so callers continue rather than treating as success.
+    finishReason = 'incomplete';
+  } else {
+    finishReason = 'stop';
+  }
+
+  const usage = raw.usage
+    ? {
+        prompt_tokens: raw.usage.input_tokens ?? 0,
+        completion_tokens: raw.usage.output_tokens ?? 0,
+        total_tokens: raw.usage.total_tokens
+          ?? ((raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0)),
+      }
+    : undefined;
+
+  return {
+    id: raw.id ?? `codex-${Date.now()}`,
+    choices: [{
+      index: 0,
+      message: {
+        role: 'assistant',
+        content,
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      },
+      finish_reason: finishReason,
+    }],
+    ...(usage ? { usage } : {}),
+  };
 }
 
 // ─── Re-exports for tests ─────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import {
   chatMessagesToResponsesInput,
   extractInstructions,
   buildCodexRequestBody,
+  normalizeCodexResponse,
 } from '../codex-adapter';
 import type { ChatMessage, OpenAITool } from '../types';
 
@@ -343,6 +344,8 @@ describe('buildCodexRequestBody', () => {
     expect(body.tools![0]).toMatchObject({ type: 'function', name: 'foo', strict: false });
   });
 
+  // The normalizer tests live in their own describe further down; the
+  // builder tests (this block) just ship the request side.
   test('full conversation with tool calls round-trips correctly', () => {
     const body = buildCodexRequestBody({
       model: 'gpt-5.3-codex',
@@ -379,3 +382,232 @@ describe('buildCodexRequestBody', () => {
     expect(body.tools![0].name).toBe('web_search');
   });
 });
+
+// ─── Response normalizer ───────────────────────────────────────────────────
+
+describe('normalizeCodexResponse', () => {
+  test('text-only message → content + finish_reason "stop"', () => {
+    const out = normalizeCodexResponse({
+      id: 'resp_1',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          status: 'completed',
+          content: [{ type: 'output_text', text: 'Hello there.' }],
+        },
+      ],
+    });
+    expect(out.id).toBe('resp_1');
+    expect(out.choices).toHaveLength(1);
+    expect(out.choices[0].message.content).toBe('Hello there.');
+    expect(out.choices[0].message.tool_calls).toBeUndefined();
+    expect(out.choices[0].finish_reason).toBe('stop');
+  });
+
+  test('multi-part text content concatenates correctly', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            { type: 'output_text', text: 'Part one. ' },
+            { type: 'output_text', text: 'Part two.' },
+          ],
+        },
+      ],
+    });
+    expect(out.choices[0].message.content).toBe('Part one. Part two.');
+  });
+
+  test('function_call items → tool_calls + finish_reason "tool_calls"', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'Searching.' }],
+        },
+        { type: 'function_call', call_id: 'c1', name: 'web_search', arguments: '{"q":"foo"}' },
+        { type: 'function_call', call_id: 'c2', name: 'memory_read', arguments: '{}' },
+      ],
+    });
+    expect(out.choices[0].message.tool_calls).toEqual([
+      { id: 'c1', type: 'function', function: { name: 'web_search', arguments: '{"q":"foo"}' } },
+      { id: 'c2', type: 'function', function: { name: 'memory_read', arguments: '{}' } },
+    ]);
+    expect(out.choices[0].finish_reason).toBe('tool_calls');
+  });
+
+  test('function_call with missing arguments defaults to empty string', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        { type: 'function_call', call_id: 'c1', name: 'foo' },
+      ],
+    });
+    expect(out.choices[0].message.tool_calls![0].function.arguments).toBe('');
+  });
+
+  test('function_call with missing call_id or name is dropped', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        { type: 'function_call', name: 'no-id-here' } as any,
+        { type: 'function_call', call_id: 'c2' } as any,
+        { type: 'function_call', call_id: 'c3', name: 'good' },
+      ],
+    });
+    expect(out.choices[0].message.tool_calls).toHaveLength(1);
+    expect(out.choices[0].message.tool_calls![0].function.name).toBe('good');
+  });
+
+  test('reasoning-only response → finish_reason "incomplete"', () => {
+    // Model emitted only encrypted reasoning, no visible answer.
+    const out = normalizeCodexResponse({
+      output: [
+        { type: 'reasoning', id: 'rs_1', encrypted_content: '<encrypted>' },
+      ],
+    });
+    expect(out.choices[0].message.content).toBeNull();
+    expect(out.choices[0].finish_reason).toBe('incomplete');
+  });
+
+  test('reasoning + text → finish_reason "stop", reasoning silently dropped', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        { type: 'reasoning', id: 'rs_1', encrypted_content: '<encrypted>' },
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'visible answer' }],
+        },
+      ],
+    });
+    expect(out.choices[0].message.content).toBe('visible answer');
+    expect(out.choices[0].finish_reason).toBe('stop');
+  });
+
+  test('falls back to top-level output_text when output[] has no message item', () => {
+    const out = normalizeCodexResponse({
+      output_text: 'fallback text',
+    });
+    expect(out.choices[0].message.content).toBe('fallback text');
+    expect(out.choices[0].finish_reason).toBe('stop');
+  });
+
+  test('empty response → null content, finish_reason "stop"', () => {
+    const out = normalizeCodexResponse({});
+    expect(out.choices[0].message.content).toBeNull();
+    expect(out.choices[0].message.tool_calls).toBeUndefined();
+    expect(out.choices[0].finish_reason).toBe('stop');
+  });
+
+  test('usage maps input_tokens → prompt_tokens, output_tokens → completion_tokens', () => {
+    const out = normalizeCodexResponse({
+      output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'x' }] }],
+      usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+    });
+    expect(out.usage).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 50,
+      total_tokens: 150,
+    });
+  });
+
+  test('usage falls back to input+output sum when total missing', () => {
+    const out = normalizeCodexResponse({
+      output: [],
+      usage: { input_tokens: 30, output_tokens: 10 },
+    });
+    expect(out.usage?.total_tokens).toBe(40);
+  });
+
+  test('no usage in response → AIResponse omits usage field', () => {
+    const out = normalizeCodexResponse({ output: [] });
+    expect(out.usage).toBeUndefined();
+  });
+
+  test('generates a fallback id when response has none', () => {
+    const out = normalizeCodexResponse({ output: [] });
+    expect(out.id).toMatch(/^codex-\d+$/);
+  });
+});
+
+// ─── Tool-call leak recovery (gpt-5.x degeneration) ───────────────────────
+
+describe('normalizeCodexResponse — tool-call leak pattern', () => {
+  test('detects "to=functions.X" leak when no real tool_calls → incomplete', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'Let me look that up.\nto=functions.web_search {"q":"foo"}' }],
+        },
+      ],
+    });
+    expect(out.choices[0].finish_reason).toBe('incomplete');
+    // Garbage cleared so it doesn't surface as a summary.
+    expect(out.choices[0].message.content).toBeNull();
+    expect(out.choices[0].message.tool_calls).toBeUndefined();
+  });
+
+  test('detects Harmony-prefixed leak ("assistant to=functions.X")', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'assistant to=functions.search\n{"q":"x"}' }],
+        },
+      ],
+    });
+    expect(out.choices[0].finish_reason).toBe('incomplete');
+  });
+
+  test('detects channel-prefixed leak ("<|channel|>commentary to=functions.X")', () => {
+    const out = normalizeCodexResponse({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '<|channel|>commentary to=functions.foo' }],
+        },
+      ],
+    });
+    expect(out.choices[0].finish_reason).toBe('incomplete');
+  });
+
+  test('does NOT trigger on legitimate prose mentioning "to=functions"', () => {
+    // The pattern requires a name char after the dot.
+    const out = normalizeCodexResponse({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'Documentation refers to=functions blocks generally.' }],
+        },
+      ],
+    });
+    expect(out.choices[0].finish_reason).toBe('stop');
+    expect(out.choices[0].message.content).toContain('Documentation');
+  });
+
+  test('does NOT trigger when REAL tool_calls accompany the leaked text', () => {
+    // If the model also emitted a structured function_call, no need to retry.
+    const out = normalizeCodexResponse({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'note to=functions.search emitted properly' }],
+        },
+        { type: 'function_call', call_id: 'c1', name: 'search', arguments: '{}' },
+      ],
+    });
+    expect(out.choices[0].finish_reason).toBe('tool_calls');
+    expect(out.choices[0].message.tool_calls).toHaveLength(1);
+    expect(out.choices[0].message.content).toContain('note to=functions');
+  });
+});
+
