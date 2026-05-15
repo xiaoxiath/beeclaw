@@ -41,11 +41,12 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
   // to the side log file instead of corrupting Ink's output grid.
   activateLoggerRedirect();
 
-  // PR1 stub: chat handler echoes. PR2 swaps in agent.chatStream.
-  const handleSubmit = async (line: string): Promise<void> => {
-    // Use stderr so it doesn't fight Ink's stdout — PR2 replaces this.
-    process.stderr.write(`[stub] would chat: ${line}\n`);
-    void opts.agent; // mark referenced; PR2 actually uses it
+  // Real wiring: each user line becomes an agent.chatStream() turn.
+  // The App expects an AsyncIterable of {type, content?} events; we
+  // adapt by yielding from the agent's generator directly. PR3 will
+  // also pass through tool_call / tool_result events for ToolCard.
+  const handleSubmit = (line: string) => {
+    return opts.agent.chatStream(line) as AsyncIterable<{ type: string; content?: string }>;
   };
 
   const handleExit = async (): Promise<void> => {
