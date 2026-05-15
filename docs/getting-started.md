@@ -219,26 +219,26 @@ cp beeclaw.example.json beeclaw.json
 
 Beeclaw 支持多种运行模式，适应不同使用场景。
 
-### CLI 模式
+### CLI 模式（Ink TUI）
 
 **适用场景**：个人使用、开发调试
 
 ```bash
-# 基础模式
 bun run cli
-
-# 禁用工具调用（纯聊天）
-bun run cli --no-tools
-
-# 启用后台守护进程（定时任务）
-bun run cli --daemon
 ```
 
+CLI 是基于 Ink 的全屏 TUI，需要真实交互式 TTY（管道/CI 环境会直接报错并提示走 `bun run bot` 或 `bun run web`）。
+
 **特性**：
-- ✅ 交互式命令行界面
-- ✅ 斜杠命令支持
-- ✅ 多行输入自动检测
-- ✅ 彩色输出和进度显示
+- 渲染区独占 stdout；日志重定向到 `logs/cli-debug.log`
+- 多行输入：meta+enter 或行尾加 `\` 续行
+- 光标 + 历史：←/→ 移光标，meta+←/→ 跳词，↑/↓ 在多行内移动行 / 单行边缘进历史，ctrl+a/e/w 行首/行尾/删词
+- 持久输入历史：`~/.beeclaw_history`（dedupe + 最多 1000 条）
+- 斜杠命令 picker：键入 `/` 浮出可搜索菜单（fuzzy 匹配 + 按相关度排序），built-ins + 自动发现的 skills 同列
+- 工具调用卡片：⏺ 二行式（描述 + 关键参数缩写 → ✓ 结果摘要）
+- Markdown 渲染：assistant 内容走 marked-terminal
+- 状态栏：左 model/role · 中 spinner+phase（thinking…/writing…/calling X…）· 右 token 总量
+- HITL：当工具返回 `needsUserInput` 时浮起黄色问题面板，下次提交即作答；带 options 时输入数字自动展开为 "Option N: <text>"
 
 ### 飞书 Bot 模式
 

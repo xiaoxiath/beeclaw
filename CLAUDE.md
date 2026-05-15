@@ -10,13 +10,22 @@ Beeclaw is an AI assistant that supports both CLI and Feishu (Lark) bot interfac
 
 ### Running the Application
 ```bash
-bun run cli              # CLI mode (interactive chat)
+bun run cli              # Ink-based TUI (requires a real TTY)
 bun run bot              # Feishu bot mode
 bun run bot --daemon     # Bot with proactive scheduling
 bun run pm2:start        # Production with PM2
-bun run test              # Run all tests (vitest)
+bun run test             # Run all tests (vitest)
 bun lint                 # Lint code
 ```
+
+The CLI is the Ink TUI in `src/adapter/cli/tui/`. Stdout is owned by
+Ink; logger output is redirected to `logs/cli-debug.log` so chat
+content stays clean. Type `/` to open the slash-command picker
+(built-ins + auto-discovered skills). Multi-line input via meta+enter
+or trailing `\`. Persistent input history at `~/.beeclaw_history`.
+
+For piped / scripted use the CLI errors out — drive the agent through
+`bun run bot` (Feishu) or `bun run web` (HTTP) instead.
 
 ### Development Setup
 ```bash

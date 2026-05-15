@@ -41,7 +41,7 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
   if (!canRunTui()) {
     throw new Error(
       'TUI mode requires an interactive TTY. ' +
-      'Set BEECLAW_LEGACY_CLI=1 to use the line-based REPL (works under pipes / CI).'
+      'For piped / CI scripts, drive the agent through bun run bot or bun run web instead.'
     );
   }
 
