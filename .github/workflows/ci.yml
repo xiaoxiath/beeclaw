@@ -13,6 +13,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pin Node 24+ — vitest spawns Node for the test runner, and a
+      # handful of test files use the built-in `node:sqlite` module
+      # (added in Node 22.5+, stabilized in 24) for real-SQL coverage
+      # without mocks. Node 20, the setup-bun default, has no node:sqlite
+      # and would fail those tests with "No such built-in module".
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - uses: oven-sh/setup-bun@v2
 
       - name: Cache bun install
