@@ -33,6 +33,7 @@ import { theme } from './theme';
 import { getLogPath } from './logger-redirect';
 import { MessageView } from './MessageView';
 import { InputEditor } from './InputEditor';
+import { Footer } from './Footer';
 import type { ChatMessage } from './messages';
 import { nextMessageId } from './messages';
 import {
@@ -68,6 +69,12 @@ export interface AppProps {
   skills?: Array<{ name: string; description?: string }>;
   /** Ops-info supplier for /model and /sessions hints. */
   getInfo?: () => { modelLine: string; sessionsLine: string };
+  /**
+   * Total token count for the footer's right-hand stat. Polled at
+   * idle moments — App calls this on mount and after each turn-end.
+   * Wired in PR6 from getTokenUsageTracker().snapshot().totalTokens.
+   */
+  getTotalTokens?: () => number;
 }
 
 type Status = 'idle' | 'busy' | 'exiting';
@@ -78,9 +85,14 @@ export function App({
   modelLabel,
   skills,
   getInfo,
+  getTotalTokens,
 }: AppProps): React.ReactElement {
   const { exit } = useApp();
   const [status, setStatus] = useState<Status>('idle');
+  const [phase, setPhase] = useState<string | undefined>(undefined);
+  const [totalTokens, setTotalTokens] = useState<number | undefined>(
+    () => getTotalTokens?.() ?? undefined,
+  );
   const [hint, setHint] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [liveTurn, setLiveTurn] = useState<ChatMessage[]>([]);
@@ -170,6 +182,7 @@ export function App({
 
     setHint(null);
     setStatus('busy');
+    setPhase('thinking…');
 
     const userMsg: ChatMessage = { id: allocateId(), kind: 'user', content: trimmed };
     updateLive(() => [userMsg]);
@@ -189,6 +202,7 @@ export function App({
 
       for await (const ev of onSubmit(trimmed)) {
         if (ev.type === 'content' && typeof ev.content === 'string') {
+          setPhase('writing…');
           if (assistantId === null) {
             const seed: ChatMessage = {
               id: allocateId(),
@@ -208,6 +222,7 @@ export function App({
         }
 
         if (ev.type === 'tool_call' && typeof ev.name === 'string') {
+          setPhase(`calling ${ev.name}…`);
           assistantId = null;
           const tool: ChatMessage = {
             id: allocateId(),
@@ -221,6 +236,7 @@ export function App({
         }
 
         if (ev.type === 'tool_result' && typeof ev.name === 'string') {
+          setPhase('thinking…');
           updateLive(prev => {
             let updated = false;
             const next = [...prev];
@@ -245,8 +261,12 @@ export function App({
       liveTurnRef.current = [];
       setLiveTurn([]);
       setStatus('idle');
+      setPhase(undefined);
+      // Refresh the footer's token count snapshot now that the turn
+      // emitted at least one usage event.
+      if (getTotalTokens) setTotalTokens(getTotalTokens());
     }
-  }, [allocateId, onSubmit, updateLive]);
+  }, [allocateId, onSubmit, updateLive, getTotalTokens]);
 
   const handleSubmit = useCallback(async (line: string) => {
     if (line.trim().startsWith('/')) {
@@ -294,19 +314,18 @@ export function App({
         </Box>
       )}
 
-      <Box flexDirection="column">
-        <InputEditor
-          onSubmit={handleSubmit}
-          disabled={status !== 'idle'}
-          commands={registry}
-        />
-        {status === 'busy' && (
-          <Text color={theme.dim}>(working…)</Text>
-        )}
-        {status === 'exiting' && (
-          <Text color={theme.dim}>(exiting…)</Text>
-        )}
-      </Box>
+      <InputEditor
+        onSubmit={handleSubmit}
+        disabled={status !== 'idle'}
+        commands={registry}
+      />
+
+      <Footer
+        modelLabel={modelLabel}
+        totalTokens={totalTokens}
+        status={status}
+        phase={phase}
+      />
     </Box>
   );
 }

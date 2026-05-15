@@ -135,11 +135,26 @@ async function main() {
         };
       };
 
+      // Footer's right-hand stat — pulls from the in-memory token
+      // tracker. Polled by App at idle moments so we don't spam getters
+      // during streaming. Best-effort: wrapped so a missing tracker
+      // (early-init crash) doesn't break the TUI.
+      const getTotalTokens = (): number => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { getTokenUsageTracker } = require('../infra/observability/token-usage');
+          return getTokenUsageTracker().snapshot().totalTokens;
+        } catch {
+          return 0;
+        }
+      };
+
       await runTui({
         agent,
         modelLabel,
         skills,
         getInfo,
+        getTotalTokens,
         onExit: async () => {
           await adapterRegistry.stopAll();
         },

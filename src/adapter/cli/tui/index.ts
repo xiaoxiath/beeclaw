@@ -25,6 +25,8 @@ export interface RunTuiOptions {
    * demand so values stay fresh.
    */
   getInfo?: () => { modelLine: string; sessionsLine: string };
+  /** Footer's right-hand total-tokens stat. App polls at turn boundaries. */
+  getTotalTokens?: () => number;
 }
 
 /**
@@ -64,6 +66,7 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
       modelLabel: opts.modelLabel,
       skills: opts.skills,
       getInfo: opts.getInfo,
+      getTotalTokens: opts.getTotalTokens,
     }),
   );
 
