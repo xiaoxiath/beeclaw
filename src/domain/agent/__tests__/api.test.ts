@@ -237,21 +237,52 @@ describe('Agent API', () => {
       // the Account-ID header is omitted — exercising the tolerant path.
       const FAKE_JWT_PLAIN = `${Buffer.from('{}').toString('base64url')}.${Buffer.from('{}').toString('base64url')}.sig`;
 
+      /**
+       * Codex backend always responds with SSE (request body has stream:true).
+       * Build a Response whose body streams the events that consumeCodexStream
+       * needs to reconstruct the given text content + usage.
+       */
+      function makeCodexSseResponse(opts: {
+        id?: string;
+        text?: string;
+        usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+      }): Response {
+        const id = opts.id ?? 'resp_test';
+        const text = opts.text ?? '';
+        const events: Array<[string, any]> = [
+          ['response.created', { type: 'response.created', response: { id } }],
+        ];
+        if (text) {
+          events.push([
+            'response.output_item.added',
+            {
+              type: 'response.output_item.added',
+              item: { id: 'msg_1', type: 'message', role: 'assistant', content: [] },
+            },
+          ]);
+          events.push(['response.output_text.delta', { type: 'response.output_text.delta', item_id: 'msg_1', delta: text }]);
+        }
+        events.push(['response.completed', {
+          type: 'response.completed',
+          response: { id, output: [], ...(opts.usage ? { usage: opts.usage } : {}) },
+        }]);
+        const body = events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(body));
+            controller.close();
+          },
+        });
+        return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }) as any;
+      }
+
       test('posts to chatgpt.com/backend-api/codex/responses with OAuth bearer', async () => {
         writeAuth(FAKE_JWT_PLAIN, 'r-1');
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            id: 'resp_codex_1',
-            output: [{
-              type: 'message',
-              role: 'assistant',
-              content: [{ type: 'output_text', text: 'codex says hi' }],
-            }],
-            usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
-          }),
-        });
+        mockFetch.mockResolvedValueOnce(makeCodexSseResponse({
+          id: 'resp_codex_1',
+          text: 'codex says hi',
+          usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+        }));
 
         const result = await callAI({
           provider: makeProvider('codex', {
@@ -274,10 +305,12 @@ describe('Agent API', () => {
         expect((init as any).headers['originator']).toBe('codex_cli_rs');
         expect((init as any).headers['User-Agent']).toMatch(/codex_cli_rs/);
 
-        // Body shape comes from the request adapter.
+        // Body shape: chatgpt.com requires store:false + stream:true.
         const body = JSON.parse((init as any).body);
         expect(body.model).toBe('gpt-5.3-codex');
         expect(body.instructions).toBe('be concise');
+        expect(body.store).toBe(false);
+        expect(body.stream).toBe(true);
 
         expect(result.choices[0].message.content).toBe('codex says hi');
         expect(result.usage?.prompt_tokens).toBe(5);
@@ -285,11 +318,7 @@ describe('Agent API', () => {
 
       test('honors custom baseUrl + tokenFile override', async () => {
         writeAuth(FAKE_JWT_PLAIN, 'r-1');
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ output: [] }),
-        });
+        mockFetch.mockResolvedValueOnce(makeCodexSseResponse({ text: 'ok' }));
 
         await callAI({
           provider: makeProvider('codex', {
@@ -339,17 +368,7 @@ describe('Agent API', () => {
             }),
           })
           // Third call: retry the API call with new bearer, succeeds
-          .mockResolvedValueOnce({
-            ok: true,
-            status: 200,
-            json: () => Promise.resolve({
-              output: [{
-                type: 'message',
-                role: 'assistant',
-                content: [{ type: 'output_text', text: 'after refresh' }],
-              }],
-            }),
-          });
+          .mockResolvedValueOnce(makeCodexSseResponse({ text: 'after refresh' }));
 
         const result = await callAI({
           provider: makeProvider('codex', { options: { tokenFile: authPath } }),

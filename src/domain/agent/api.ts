@@ -24,8 +24,8 @@ export { hasToolCalls, extractToolCalls } from '@bee/provider/call-ai';
 import {
   buildCodexRequestBody,
   normalizeCodexResponse,
+  consumeCodexStream,
   type CodexProviderOptions,
-  type CodexRawResponse,
 } from './codex-adapter';
 import {
   loadCodexTokens,
@@ -182,7 +182,10 @@ async function callCodexResponses(
   if (!retryResult.success) {
     throw retryResult.error?.originalError ?? new Error('Codex API call failed');
   }
-  const raw = (await retryResult.value!.json()) as CodexRawResponse;
+  // chatgpt.com backend forces stream:true (request body), so the response
+  // is text/event-stream regardless. consumeCodexStream reduces SSE events
+  // back into a CodexRawResponse for normalizeCodexResponse to handle.
+  const raw = await consumeCodexStream(retryResult.value!);
   return normalizeCodexResponse(raw);
 }
 

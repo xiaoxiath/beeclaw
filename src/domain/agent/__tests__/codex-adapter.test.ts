@@ -15,6 +15,7 @@ import {
   extractInstructions,
   buildCodexRequestBody,
   normalizeCodexResponse,
+  consumeCodexStream,
 } from '../codex-adapter';
 import type { ChatMessage, OpenAITool } from '../types';
 
@@ -289,22 +290,33 @@ describe('buildCodexRequestBody', () => {
     expect(body.reasoning).toEqual({ effort: 'high' });
   });
 
-  test('maxTokens maps to max_output_tokens (Responses API field name)', () => {
+  test('always emits store:false (chatgpt.com backend rejects otherwise)', () => {
+    const body = buildCodexRequestBody({
+      model: 'm',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(body.store).toBe(false);
+  });
+
+  test('always emits stream:true (chatgpt.com backend rejects otherwise)', () => {
+    const body = buildCodexRequestBody({
+      model: 'm',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(body.stream).toBe(true);
+  });
+
+  test('does NOT emit max_output_tokens (chatgpt.com rejects the field)', () => {
+    // Live verification: chatgpt.com responds with
+    // 400 {"detail":"Unsupported parameter: max_output_tokens"} when
+    // the field is present. Builder drops it unconditionally; operators
+    // who need a ceiling can still use options.request_overrides.
     const body = buildCodexRequestBody({
       model: 'm',
       messages: [{ role: 'user', content: 'hi' }],
       maxTokens: 8192,
     });
-    expect(body.max_output_tokens).toBe(8192);
-  });
-
-  test('drops max_output_tokens when maxTokens is 0 or negative', () => {
-    expect(buildCodexRequestBody({
-      model: 'm', messages: [{ role: 'user', content: 'hi' }], maxTokens: 0,
-    }).max_output_tokens).toBeUndefined();
-    expect(buildCodexRequestBody({
-      model: 'm', messages: [{ role: 'user', content: 'hi' }], maxTokens: -1,
-    }).max_output_tokens).toBeUndefined();
+    expect(body.max_output_tokens).toBeUndefined();
   });
 
   test('request_overrides spread last (can patch ANY field including reasoning)', () => {
@@ -374,7 +386,7 @@ describe('buildCodexRequestBody', () => {
 
     expect(body.instructions).toBe('sys');
     expect(body.reasoning).toEqual({ effort: 'high' });
-    expect(body.max_output_tokens).toBe(4096);
+    expect(body.max_output_tokens).toBeUndefined(); // dropped — chatgpt.com rejects
     expect(body.input.map(i => i.type)).toEqual([
       'message', 'message', 'function_call', 'function_call_output', 'message',
     ]);
@@ -610,4 +622,166 @@ describe('normalizeCodexResponse — tool-call leak pattern', () => {
     expect(out.choices[0].message.content).toContain('note to=functions');
   });
 });
+
+// ─── SSE consumer (consumeCodexStream) ────────────────────────────────────
+
+/**
+ * Build a Response whose body streams the given SSE-formatted string.
+ * Each event block is `event: <type>\ndata: <json>\n\n`.
+ */
+function makeSseResponse(sseBody: string): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(sseBody));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/event-stream' },
+  });
+}
+
+/**
+ * Build the SSE bytes that the chatgpt.com/backend-api/codex endpoint
+ * emits for a typical text-only assistant turn (one message item, three
+ * text deltas, completed event with empty output[] — see notes in
+ * consumeCodexStream about why output is empty).
+ */
+function buildHelloSse(): string {
+  const events: Array<{ event: string; data: any }> = [
+    { event: 'response.created', data: { type: 'response.created', response: { id: 'resp_abc' } } },
+    {
+      event: 'response.output_item.added',
+      data: {
+        type: 'response.output_item.added',
+        item: { id: 'msg_1', type: 'message', role: 'assistant', content: [] },
+      },
+    },
+    { event: 'response.output_text.delta', data: { type: 'response.output_text.delta', item_id: 'msg_1', delta: 'Hel' } },
+    { event: 'response.output_text.delta', data: { type: 'response.output_text.delta', item_id: 'msg_1', delta: 'lo' } },
+    { event: 'response.output_text.delta', data: { type: 'response.output_text.delta', item_id: 'msg_1', delta: '!' } },
+    { event: 'response.output_text.done', data: { type: 'response.output_text.done', item_id: 'msg_1', text: 'Hello!' } },
+    {
+      event: 'response.completed',
+      data: {
+        type: 'response.completed',
+        // Note: chatgpt.com sends output: [] in the completed event;
+        // the actual output streamed via deltas. Test mirrors that
+        // contract because it's the path the live server walks.
+        response: {
+          id: 'resp_abc',
+          output: [],
+          usage: { input_tokens: 12, output_tokens: 3, total_tokens: 15 },
+        },
+      },
+    },
+  ];
+  return events.map(e => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('');
+}
+
+describe('consumeCodexStream — basic message flow', () => {
+  test('chatgpt.com pattern: deltas build content, completed contributes id+usage', async () => {
+    const res = makeSseResponse(buildHelloSse());
+    const raw = await consumeCodexStream(res);
+
+    // id from response.completed (which agrees with response.created here)
+    expect(raw.id).toBe('resp_abc');
+    // output assembled from incremental deltas, not from completed.output (empty)
+    expect(raw.output).toHaveLength(1);
+    expect(raw.output![0]).toMatchObject({ type: 'message', role: 'assistant' });
+    const content = (raw.output![0] as any).content;
+    expect(content).toEqual([{ type: 'output_text', text: 'Hello!' }]);
+    // usage from completed
+    expect(raw.usage).toEqual({ input_tokens: 12, output_tokens: 3, total_tokens: 15 });
+  });
+
+  test('end-to-end: stream → consumer → normalizeCodexResponse → AIResponse', async () => {
+    const res = makeSseResponse(buildHelloSse());
+    const raw = await consumeCodexStream(res);
+    const aiResp = normalizeCodexResponse(raw);
+    expect(aiResp.choices[0].message.content).toBe('Hello!');
+    expect(aiResp.choices[0].finish_reason).toBe('stop');
+    expect(aiResp.usage).toEqual({ prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 });
+  });
+});
+
+describe('consumeCodexStream — tool call deltas', () => {
+  test('function_call_arguments deltas concatenate into the call item', async () => {
+    const events = [
+      { event: 'response.created', data: { type: 'response.created', response: { id: 'r1' } } },
+      {
+        event: 'response.output_item.added',
+        data: {
+          type: 'response.output_item.added',
+          item: { id: 'fc_1', type: 'function_call', call_id: 'c1', name: 'web_search', arguments: '' },
+        },
+      },
+      { event: 'response.function_call_arguments.delta', data: { type: 'response.function_call_arguments.delta', item_id: 'fc_1', delta: '{"q":' } },
+      { event: 'response.function_call_arguments.delta', data: { type: 'response.function_call_arguments.delta', item_id: 'fc_1', delta: '"foo"}' } },
+      { event: 'response.completed', data: { type: 'response.completed', response: { id: 'r1', output: [] } } },
+    ];
+    const sse = events.map(e => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('');
+    const res = makeSseResponse(sse);
+    const raw = await consumeCodexStream(res);
+
+    expect(raw.output).toHaveLength(1);
+    const item = raw.output![0] as any;
+    expect(item.type).toBe('function_call');
+    expect(item.call_id).toBe('c1');
+    expect(item.name).toBe('web_search');
+    expect(item.arguments).toBe('{"q":"foo"}');
+
+    const aiResp = normalizeCodexResponse(raw);
+    expect(aiResp.choices[0].finish_reason).toBe('tool_calls');
+    expect(aiResp.choices[0].message.tool_calls).toEqual([
+      { id: 'c1', type: 'function', function: { name: 'web_search', arguments: '{"q":"foo"}' } },
+    ]);
+  });
+});
+
+describe('consumeCodexStream — tolerance + edge cases', () => {
+  test('falls back to incremental id when completed event missing', async () => {
+    const events = [
+      { event: 'response.created', data: { type: 'response.created', response: { id: 'fallback-id' } } },
+      {
+        event: 'response.output_item.added',
+        data: { type: 'response.output_item.added', item: { id: 'm', type: 'message', role: 'assistant', content: [] } },
+      },
+      { event: 'response.output_text.delta', data: { type: 'response.output_text.delta', item_id: 'm', delta: 'cut' } },
+    ]; // no response.completed (server hung up early)
+    const sse = events.map(e => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('');
+    const raw = await consumeCodexStream(makeSseResponse(sse));
+    expect(raw.id).toBe('fallback-id');
+    expect(raw.output).toHaveLength(1);
+  });
+
+  test('uses completed.output when incremental items[] is empty (api.openai.com pattern)', async () => {
+    // For backends that ship the full response in completed.output (rather
+    // than via deltas), the consumer falls back to that path.
+    const fullOutput = [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'from completed' }] }];
+    const events = [
+      { event: 'response.completed', data: { type: 'response.completed', response: { id: 'r', output: fullOutput } } },
+    ];
+    const sse = events.map(e => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('');
+    const raw = await consumeCodexStream(makeSseResponse(sse));
+    expect(raw.output).toEqual(fullOutput);
+  });
+
+  test('skips malformed JSON in event data without aborting the stream', async () => {
+    const goodEvents = [
+      `event: response.output_item.added\ndata: ${JSON.stringify({ type: 'response.output_item.added', item: { id: 'm', type: 'message', role: 'assistant', content: [] } })}\n\n`,
+      `event: response.output_text.delta\ndata: this is not json\n\n`,
+      `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'm', delta: 'kept' })}\n\n`,
+    ].join('');
+    const raw = await consumeCodexStream(makeSseResponse(goodEvents));
+    const item = raw.output![0] as any;
+    expect(item.content[0].text).toBe('kept');
+  });
+
+  test('throws when response has no body', async () => {
+    const empty = new Response(null);
+    await expect(consumeCodexStream(empty)).rejects.toThrow(/no body/);
+  });
+});
+
 
