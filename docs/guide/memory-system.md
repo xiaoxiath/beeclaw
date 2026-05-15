@@ -9,7 +9,8 @@ Beeclaw 的记忆系统基于文件系统，提供持久化存储和智能检索
 ## 核心特性
 
 - **持久化存储**: JSONL 格式存储在 `data/memory/`
-- **分类管理**: conversations, facts, decisions, skills
+- **Fact 分类**（`memory_record` 接受的 enum，源头 `src/domain/memory/tools.ts`）: `user`、`preferences`、`events`、`investments`、`lessons`
+- **目录结构**: `data/memory/` 下混合 markdown / JSONL（按子目录组织）+ SQLite vector index 用于语义搜索
 - **智能检索**: 基于重要性评分（recency, frequency, relevance）
 - **自动压缩**: 旧对话自动摘要以节省空间
 
@@ -67,10 +68,24 @@ memory_write(path: "facts/new-fact.md", content: "...", mode: "overwrite")
 ```
 
 ### memory_record
-记录新事实
+记录新事实（`category` 必须是合法 enum）
 ```bash
 memory_record(category: "lessons", fact: "用户喜欢简洁的回复")
+# 合法 category: user, preferences, events, investments, lessons
 ```
+
+### memory_search / memory_semantic_search
+基于关键词或向量的检索：
+```bash
+memory_search(query: "用户偏好")             # 关键词匹配 + i18n 同义词扩展
+memory_semantic_search(query: "用户偏好", topK: 5)  # 嵌入向量相似度
+```
+
+### 其他工具（场景化）
+- `memory_compress` — 触发分层压缩
+- `memory_score` / `memory_dedupe` — 评分与去重
+- `memory_knowledge_create` — 沉淀知识条目
+- `memory_index` — 重建索引
 
 ## 配置
 

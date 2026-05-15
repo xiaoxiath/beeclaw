@@ -2,9 +2,11 @@
 
 ## 执行时间
 
-两者**都在凌晨 3:00 执行**：
-- **Daily Memory Compression**: `cron: '0 3 * * *'`
-- **Daily Reflection**: `cron: '0 3 * * *'`
+两者**错开 30 分钟**避免资源竞争（文档下方有错开决策细节）：
+- **Daily Reflection**: `cron: '0 3 * * *'`（凌晨 3:00）
+- **Daily Memory Compression**: `cron: '30 3 * * *'`（凌晨 3:30）
+
+> 历史背景：早期两个任务被同时设到 3:00 导致 LLM 调用拥堵；commit `70e2729`（2026-03-19）改为错开。
 
 ---
 

@@ -1,5 +1,7 @@
 # Session 压缩性能优化总结
 
+> **历史文档**（2026-03-19 优化记录）。优化方向（async 后台压缩 + 用 fast tier 模型）已落实在代码中（`src/domain/agent/compression/`）。文中具体的 fast model 名称（如 `glm-4.7-flashx`）按写作时的配置举例，**当前 fast tier 模型以 `beeclaw.json` 的 `llmRouter.tiers.fast.models` 为准**；时延数字（"31s → 10-12s"）来自当时基线，未在最近版本复测。
+
 ## 问题描述
 
 从用户发送消息到收到第一个 Card V2 卡片响应，延迟高达 **31 秒**，其中 **18 秒**（60%）浪费在同步阻塞的 session 压缩上。
