@@ -2,13 +2,14 @@
  * Beeclaw TUI root component.
  *
  * Layout (top → bottom):
+ *   Banner                       fixed header
  *   <Static items={history}>     completed turns flushed to scrollback
  *   <MessageView active />        currently-streaming live region
  *   <Hint />                      transient banner (errors / unknown cmd)
- *   <InputArea />                 bottom-aligned input field
+ *   <InputEditor />               multi-line input with cursor + history
  *
  * Per-turn lifecycle:
- *   1. user submits a non-slash line
+ *   1. user submits a non-slash line via InputEditor
  *   2. push user message into a turn-local sequence (live)
  *   3. iterate agent.chatStream(line):
  *        content event       → append to streaming assistant text
@@ -16,6 +17,9 @@
  *        tool_result event   → resolve the matching pending tool by name
  *   4. on stream end, commit the whole turn sequence to history (Static
  *      flushes it to scrollback) and clear live state
+ *
+ * Ctrl+C lives in a separate top-level useInput so it works regardless
+ * of whether the InputEditor is disabled.
  */
 
 import React, { useState, useCallback, useRef } from 'react';
@@ -23,6 +27,7 @@ import { Box, Text, Static, useInput, useApp } from 'ink';
 import { theme } from './theme';
 import { getLogPath } from './logger-redirect';
 import { MessageView } from './MessageView';
+import { InputEditor } from './InputEditor';
 import type { ChatMessage } from './messages';
 import { nextMessageId } from './messages';
 
@@ -51,18 +56,12 @@ type Status = 'idle' | 'busy' | 'exiting';
 
 export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElement {
   const { exit } = useApp();
-  const [input, setInput] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [hint, setHint] = useState<string | null>(null);
-  // Committed history — Static flushes these to scrollback once each.
   const [history, setHistory] = useState<ChatMessage[]>([]);
-  // The currently-running turn's events. Held live until the turn ends,
-  // then appended wholesale to history. We keep tools + assistant text
-  // as separate entries so the order matches what the model emitted.
   const [liveTurn, setLiveTurn] = useState<ChatMessage[]>([]);
   const liveTurnRef = useRef<ChatMessage[]>([]);
 
-  // Local id allocator that combines history + live so no duplicates.
   const allocateId = useCallback((): number => {
     const all = [...history, ...liveTurnRef.current];
     return nextMessageId(all);
@@ -99,7 +98,6 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
       return;
     }
 
-    // Chat turn.
     setHint(null);
     setStatus('busy');
 
@@ -118,8 +116,6 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
         return;
       }
 
-      // Track the currently-streaming assistant message so we can
-      // append content deltas in place.
       let assistantId: number | null = null;
 
       for await (const ev of onSubmit(trimmed)) {
@@ -143,9 +139,6 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
         }
 
         if (ev.type === 'tool_call' && typeof ev.name === 'string') {
-          // A new tool call. If we already had a streaming assistant,
-          // close that off (a fresh assistant message can re-open after
-          // tool results — matches how multi-step agents emit text).
           assistantId = null;
           const tool: ChatMessage = {
             id: allocateId(),
@@ -159,9 +152,7 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
         }
 
         if (ev.type === 'tool_result' && typeof ev.name === 'string') {
-          // Resolve the most-recent pending tool with the matching name.
           updateLive(prev => {
-            // Walk backwards to find latest unresolved with matching name.
             let updated = false;
             const next = [...prev];
             for (let i = next.length - 1; i >= 0; i--) {
@@ -176,13 +167,11 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
           });
           continue;
         }
-        // Unknown event types are silently ignored.
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setHint(`error: ${msg}`);
     } finally {
-      // Commit the whole turn to history; scrollback flushes via Static.
       setHistory(prev => [...prev, ...liveTurnRef.current]);
       liveTurnRef.current = [];
       setLiveTurn([]);
@@ -190,66 +179,54 @@ export function App({ onSubmit, onExit, modelLabel }: AppProps): React.ReactElem
     }
   }, [allocateId, exit, onExit, onSubmit, updateLive]);
 
+  // Top-level useInput — handles Ctrl+C as graceful exit. The
+  // InputEditor's own useInput coexists; Ink dispatches to both, but
+  // they handle disjoint keys (InputEditor filters out ctrl combos).
   useInput((char, key) => {
-    if (status === 'exiting') return;
-    if (key.return) {
-      const value = input;
-      setInput('');
-      void handleSubmit(value);
-      return;
-    }
-    if (key.backspace || key.delete) {
-      setInput(prev => prev.slice(0, -1));
-      return;
-    }
-    if (key.ctrl && char === 'c') {
+    if (key.ctrl && char === 'c' && status !== 'exiting') {
       setStatus('exiting');
       void (async () => {
         if (onExit) await onExit();
         exit();
       })();
-      return;
-    }
-    if (char && !key.ctrl && !key.meta) {
-      setInput(prev => prev + char);
     }
   });
 
   return (
     <Box flexDirection="column">
-      {/* Banner — Ink renders this once at top, before <Static>. */}
       <Box flexDirection="column" marginBottom={1}>
         <Text bold color={theme.primary}>🐝 Beeclaw CLI</Text>
         <Text color={theme.dim}>
           {modelLabel ? `model: ${modelLabel}  ·  ` : ''}logs: {getLogPath()}
         </Text>
-        <Text color={theme.dim}>type /help for commands, /exit to quit</Text>
+        <Text color={theme.dim}>
+          type /help for commands, /exit to quit  ·  meta+enter or trailing \ for newline
+        </Text>
       </Box>
 
-      {/* Completed turns: flushed to scrollback, never re-rendered. */}
       <Static items={history}>
         {message => <MessageView key={message.id} message={message} />}
       </Static>
 
-      {/* Live turn (in-flight): re-renders per delta. */}
       {liveTurn.map(m => (
         <MessageView key={m.id} message={m} />
       ))}
 
-      {/* Transient hint line. */}
       {hint && (
         <Box marginBottom={1}>
           <Text color={theme.warn}>{hint}</Text>
         </Box>
       )}
 
-      {/* Input. */}
-      <Box>
-        <Text color={theme.user} bold>{'> '}</Text>
-        <Text>{input}</Text>
-        {status === 'idle' && <Text inverse> </Text>}
-        {status === 'busy' && <Text color={theme.dim}>  (working…)</Text>}
-        {status === 'exiting' && <Text color={theme.dim}>  (exiting…)</Text>}
+      {/* Input + status indicator on the same row when busy. */}
+      <Box flexDirection="column">
+        <InputEditor onSubmit={handleSubmit} disabled={status !== 'idle'} />
+        {status === 'busy' && (
+          <Text color={theme.dim}>(working…)</Text>
+        )}
+        {status === 'exiting' && (
+          <Text color={theme.dim}>(exiting…)</Text>
+        )}
       </Box>
     </Box>
   );
