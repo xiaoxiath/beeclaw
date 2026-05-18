@@ -27,9 +27,10 @@ import * as os from 'os';
 
 vi.unmock('fs');
 
-vi.mock('../../../infra/observability/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+vi.mock('../../../infra/observability/logger', () => {
+  const m = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { logger: m, getLogger: () => m };
+});
 
 import { MemoryStore } from '../store';
 

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-vi.mock('../../../infra/observability/logger', () => ({
-  logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+vi.mock('../../../infra/observability/logger', () => {
+  const m = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  return { logger: m, getLogger: () => m };
+});
 
 vi.mock('../types', () => ({}));
 

@@ -25,7 +25,13 @@ import { resolveUserLocation, resolveUserTimezone } from '../tools/timezone';
 // Feishu tools are now handled by feishu-cli-toolkit skill
 // Task 3: Use port interfaces instead of direct adapter imports
 import { getMCPManagerPort, getPluginRegistryPort } from '../ports';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+// Two namespaces: `agent.tools` for the registry/loader chatter and
+// `memory.prompt` for the per-turn prompt-budget tracing (much higher
+// volume — INFOs demoted to DEBUG below).
+const logger = getLogger('agent.tools');
+const promptLogger = getLogger('memory.prompt');
 import { getConfig } from '../../infra/config';
 import { adapterRegistry } from '../../infra/entry';
 import { estimateTokens } from './context';
@@ -551,7 +557,7 @@ export function buildSystemPromptWithBudget(
   // Layer 6: Skills list (medium priority — trimmable)
   if (coreContext?.skills && coreContext.skills.trim().length > 10) {
     const skillsTokens = estimateTokens(coreContext.skills);
-    logger.info('[PromptBudget] 📚 Adding skills layer:', {
+    promptLogger.debug('Adding skills layer:', {
       contentLength: coreContext.skills.length,
       estimatedTokens: skillsTokens,
       priority: LAYER_PRIORITIES.SKILLS,
@@ -565,7 +571,7 @@ export function buildSystemPromptWithBudget(
       trimmable: true,
     });
   } else {
-    logger.warn('[PromptBudget] ⚠️  Skills layer NOT added:', {
+    promptLogger.warn('Skills layer NOT added:', {
       hasContext: !!coreContext?.skills,
       contentLength: coreContext?.skills?.length || 0,
       trimmedLength: coreContext?.skills?.trim().length || 0,
@@ -627,7 +633,7 @@ export function buildSystemPromptWithBudget(
   const result = assembleBudgetedPrompt(layers, budgetConfig);
 
   // Log final result
-  logger.info('[PromptBudget] 📊 Final prompt assembly:', {
+  promptLogger.debug('Final prompt assembly:', {
     totalLayers: layers.length,
     totalTokens: result.totalTokens,
     budget: budgetConfig.maxSystemPromptTokens,

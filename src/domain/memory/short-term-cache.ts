@@ -10,7 +10,9 @@
  * - 缓存命中率统计
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('memory.cache');
 import type { ConversationEntry } from './types';
 
 // ---------------------------------------------------------------------------
@@ -84,7 +86,7 @@ export class ShortTermMemoryCache {
       this.cleanupExpired();
     }, 10 * 60 * 1000);
 
-    logger.info('[ShortTermCache] Initialized', {
+    logger.debug('Initialized', {
       maxUsers: this.config.maxUsers,
       conversationsPerUser: this.config.conversationsPerUser,
       ttl: `${this.config.ttl / 1000 / 60} minutes`,

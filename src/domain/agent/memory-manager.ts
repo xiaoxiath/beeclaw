@@ -11,7 +11,9 @@ import { getLifecycleManager } from '../memory/lifecycle-manager';
 import { getSkillStore } from '../skills/store';
 import { buildSystemPrompt, formatSkillsForPrompt } from './tools';
 import { estimateMessageTokens } from './context';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('memory.manager');
 import type { ChatMessage } from './types';
 import type { IHookRunner } from '../ports';
 import { fenceMemoryContent } from '@bee';
@@ -66,7 +68,7 @@ export class MemoryManager {
             triggers: s.triggers,
           }));
 
-          logger.info('[MemoryManager] Injecting skills metadata:', {
+          logger.debug('Injecting skills metadata:', {
             count: skillsForPrompt.length,
             sample: skillsForPrompt.slice(0, 3).map((s: any) => ({
               name: s.name,
@@ -121,7 +123,7 @@ export class MemoryManager {
         tokenDelta = estimateMessageTokens(msg);
       }
 
-      logger.info('[MemoryManager] Memory refreshed — stable system prompt updated');
+      logger.debug('Memory refreshed — stable system prompt updated');
       return tokenDelta;
     } catch (error) {
       logger.warn('[MemoryManager] Failed to refresh memory:', error);

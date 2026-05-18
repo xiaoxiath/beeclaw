@@ -31,7 +31,9 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from './theme';
 import { getLogPath } from './logger-redirect';
-import { logger } from '../../../infra/observability/logger';
+import { getLogger } from '../../../infra/observability/logger';
+
+const logger = getLogger('tui.app');
 import { MessageView } from './MessageView';
 import { InputEditor } from './InputEditor';
 import { Footer } from './Footer';
@@ -185,18 +187,18 @@ export function App({
   const runChat = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.trim();
     if (!trimmed) {
-      logger.info('[TUI/App] runChat aborted — empty trimmed line');
+      logger.debug('runChat aborted — empty trimmed line');
       return;
     }
 
-    logger.info(`[TUI/App] runChat START (len=${trimmed.length})`);
+    logger.debug(`runChat START (len=${trimmed.length})`);
     setHint(null);
     setStatus('busy');
     setPhase('thinking…');
 
     const userMsg: ChatMessage = { id: allocateId(), kind: 'user', content: trimmed };
     updateLive(() => [userMsg]);
-    logger.info(`[TUI/App] user message added to liveTurn (id=${userMsg.id})`);
+    logger.debug(`user message added to liveTurn (id=${userMsg.id})`);
 
     try {
       if (!onSubmit) {
@@ -212,10 +214,10 @@ export function App({
       let assistantId: number | null = null;
       let eventCount = 0;
 
-      logger.info('[TUI/App] entering for-await loop on onSubmit()');
+      logger.debug('entering for-await loop on onSubmit()');
       for await (const ev of onSubmit(trimmed)) {
         eventCount++;
-        logger.info(`[TUI/App] event #${eventCount} type=${ev.type} contentLen=${ev.content?.length ?? 'n/a'}`);
+        logger.debug(`event #${eventCount} type=${ev.type} contentLen=${ev.content?.length ?? 'n/a'}`);
         if (ev.type === 'content' && typeof ev.content === 'string') {
           setPhase('writing…');
           if (assistantId === null) {
@@ -295,7 +297,7 @@ export function App({
       // vanished, history never grew, allocateId kept returning 1.)
       const flushed = liveTurnRef.current;
       liveTurnRef.current = [];
-      logger.info(`[TUI/App] runChat FINALLY — flushing ${flushed.length} liveTurn messages to history`);
+      logger.debug(`runChat FINALLY — flushing ${flushed.length} liveTurn messages to history`);
       setHistory(prev => [...prev, ...flushed]);
       setLiveTurn([]);
       setStatus('idle');
@@ -308,7 +310,7 @@ export function App({
 
   const handleSubmit = useCallback(async (line: string) => {
     const isSlash = line.trim().startsWith('/');
-    logger.info(`[TUI/App] handleSubmit (isSlash=${isSlash}, hasHitl=${!!pendingHitl}, status=${status})`);
+    logger.debug(`handleSubmit (isSlash=${isSlash}, hasHitl=${!!pendingHitl}, status=${status})`);
     if (isSlash) {
       // Slash commands work even mid-HITL — they cancel the prompt.
       setPendingHitl(null);

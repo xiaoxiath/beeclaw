@@ -41,9 +41,10 @@ vi.mock('../context', () => ({
   }),
 }));
 
-vi.mock('../../../infra/observability/logger', () => ({
-  logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
-}));
+vi.mock('../../../infra/observability/logger', () => {
+  const m = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
+  return { logger: m, getLogger: () => m };
+});
 
 import { MemoryManager } from '../memory-manager';
 

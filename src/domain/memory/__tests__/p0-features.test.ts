@@ -56,14 +56,10 @@ vi.mock('../../agent/judgment-stats', () => ({
   },
 }));
 
-vi.mock('../../../infra/observability/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock('../../../infra/observability/logger', () => {
+  const m = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  return { logger: m, getLogger: () => m };
+});
 
 import { ShortTermMemoryCache, resetShortTermCache, getShortTermCache } from '../short-term-cache';
 import {

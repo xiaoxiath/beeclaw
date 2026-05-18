@@ -128,6 +128,7 @@ vi.mock('@domain/ports', () => ({
 }));
 vi.mock('@infra/observability/logger', () => ({
   logger: mocks.mockLogger,
+  getLogger: () => mocks.mockLogger,
 }));
 vi.mock('@domain/agent/context', () => ({
   estimateTokens: mocks.mockEstimateTokens,
@@ -682,7 +683,8 @@ describe('Agent tools.ts coverage - uncovered lines', () => {
       const skillsLayer = layers.find((l: any) => l.name === 'skills');
       expect(skillsLayer).toBeDefined();
       expect(skillsLayer.content).toContain('Available Skills');
-      expect(mocks.mockLogger.info).toHaveBeenCalledWith(
+      // Demoted from info → debug in P2 logger cleanup (memory.prompt ns).
+      expect(mocks.mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining('Adding skills layer'),
         expect.any(Object),
       );

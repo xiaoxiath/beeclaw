@@ -21,7 +21,9 @@ import {
   estimateMessageTokens,
   type AgentContextConfig,
 } from './context';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('agent.stream');
 import { getHybridToolSelector } from './hybrid-tool-selector';
 import { SkillEnforcementEngine } from '../skills/enforcement';
 import type { IHookRunner, IHealthMonitor } from '../ports';
