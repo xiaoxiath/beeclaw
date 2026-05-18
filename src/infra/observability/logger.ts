@@ -129,11 +129,16 @@ function buildPino(): PinoLogger {
   if (activeFormat === 'pretty') {
     // Direct stream (no worker transport) — bun + transport workers can be
     // flaky and we're not throughput-bound.
+    //
+    // We deliberately don't put `ns` into messageFormat: pino-pretty already
+    // surfaces it as an indented key below the message, and most legacy log
+    // lines still carry a `[Subsystem]` prefix in the message body. Putting
+    // ns inline would produce `[session] [Session] Loaded …`.
     const stream = pretty({
       colorize: true,
       translateTime: 'SYS:HH:MM:ss.l',
-      ignore: 'pid,hostname',
-      messageFormat: '{if ns}[{ns}] {end}{msg}',
+      ignore: 'pid,hostname,ns',
+      messageFormat: '{if ns}({ns}){end} {msg}',
     });
     return pino(opts, stream);
   }

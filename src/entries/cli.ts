@@ -17,6 +17,7 @@ import { adapterRegistry } from '../infra/entry';
 import { initApp, getAgent, getConfig_ } from '../app';
 import { GracefulShutdown } from '../infra/utils/graceful-shutdown';
 import { runTui, canRunTui } from '../adapter/cli/tui';
+import { activateLoggerRedirect } from '../adapter/cli/tui/logger-redirect';
 
 function showHelp(): void {
   // Direct console output — logger is replaced by the TUI's redirect
@@ -51,6 +52,20 @@ async function main() {
 
   if (args.includes('--help') || args.includes('-h')) {
     showHelp();
+  }
+
+  // Activate the logger-redirect BEFORE initApp so every boot line goes
+  // to logs/cli-debug.log instead of corrupting Ink's render area.
+  // Without this, ~50 INFO lines (config, sessions, skills, providers)
+  // scroll past stdout and the TUI starts mid-stream looking broken.
+  // Only do this when we're actually going to run the TUI; piped /
+  // scripted runs fail later anyway with a clear error.
+  if (canRunTui()) {
+    activateLoggerRedirect();
+    // One-line breadcrumb on stderr so the user knows something's
+    // happening during the ~1-2s boot (logger now writes to file).
+    // eslint-disable-next-line no-console
+    console.error('🐝 Starting Beeclaw CLI… (boot logs → logs/cli-debug.log)');
   }
 
   logger.info('🐝 Starting Beeclaw CLI...\n');
