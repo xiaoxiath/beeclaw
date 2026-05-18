@@ -51,6 +51,10 @@ const mockExtractToolCalls = vi.fn(() => []);
 const mockExtractContent = vi.fn(() => 'AI response');
 vi.mock('@domain/agent/api', () => ({
   callAI: (...args: any[]) => mockCallAI(...args),
+  // callAIWithFallback delegates to callAI when no fallback is set.
+  // Tests don't exercise the fallback path here, so the simple delegation
+  // keeps existing mockCallAI assertions valid.
+  callAIWithFallback: (...args: any[]) => mockCallAI(args[0]),
   hasToolCalls: (...args: any[]) => mockHasToolCalls(...args),
   extractToolCalls: (...args: any[]) => mockExtractToolCalls(...args),
   extractContent: (...args: any[]) => mockExtractContent(...args),

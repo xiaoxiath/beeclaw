@@ -322,6 +322,26 @@ export async function initApp(options: InitOptions = {}): Promise<{
   logger.debug(`   🤖 Provider: ${defaultProvider.name} (${defaultProvider.type})`);
   logger.debug(`   🎯 Model: ${model}`);
 
+  // Resolve optional role fallback (single hop, primary throws after retry
+  // → try alternate once). Misconfigured fallbacks are non-fatal: warn and
+  // skip so the agent still boots without fallback rather than crashing.
+  let resolvedFallback: { provider: AIProvider; model: string; temperature?: number; topP?: number; maxTokens?: number } | undefined;
+  if (roleDef.fallback) {
+    const fp = config.providers.find(p => p.name === roleDef.fallback!.provider);
+    if (!fp) {
+      logger.warn(`[App] Fallback provider "${roleDef.fallback.provider}" not found — fallback disabled for role "${roleName}"`);
+    } else {
+      resolvedFallback = {
+        provider: fp,
+        model: roleDef.fallback.model,
+        temperature: roleDef.fallback.params?.temperature,
+        topP: (roleDef.fallback.params as Record<string, unknown> | undefined)?.top_p as number | undefined,
+        maxTokens: roleDef.fallback.params?.max_tokens,
+      };
+      logger.info(`   🪂 Fallback: ${fp.name} / ${roleDef.fallback.model}`);
+    }
+  }
+
   // Merge role params with agent params (agent overrides role)
   const resolvedParams = { ...roleDef.params, ...agentConfig.params };
   if (resolvedParams && Object.keys(resolvedParams).length > 0) {
@@ -582,6 +602,7 @@ export async function initApp(options: InitOptions = {}): Promise<{
     loadCoreMemory: true,
     autoRefreshMemory: true,
     tokenStatsConfig: getTokenStatsConfig(),
+    fallback: resolvedFallback,
   });
   appState.agent = agent;
 

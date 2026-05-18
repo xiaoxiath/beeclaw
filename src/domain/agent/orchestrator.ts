@@ -29,7 +29,7 @@ const FALLBACK_TOKEN_BUDGET_DEFAULT =
   '处理过程中消耗了过多 Token，已提前终止。请尝试简化问题或拆分为多个步骤。';
 const FALLBACK_MAX_ITERATIONS_DEFAULT =
   '抱歉，处理您的请求时达到了工具调用次数限制。请尝试简化您的问题。';
-import { callAI, hasToolCalls, extractToolCalls, extractContent } from './api';
+import { callAIWithFallback, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, buildVolatileContext } from './tools';
 import { logger } from '../../infra/observability/logger';
 import { getDynamicMemoryInjector } from '../memory';
@@ -689,7 +689,7 @@ export class Agent {
         });
       }
 
-      const response = await callAI(aiCallParams);
+      const response = await callAIWithFallback(aiCallParams, this.options.fallback);
 
       if (this.hookRunner) {
         await this.hookRunner.runLlmOutput({
@@ -1008,7 +1008,7 @@ export class Agent {
 
           // One more LLM call for completeness
           try {
-            const retryResponse = await callAI({
+            const retryResponse = await callAIWithFallback({
               provider: this.options.provider,
               model: this.options.model,
               messages: this.getMessagesForAPI(),
@@ -1016,7 +1016,7 @@ export class Agent {
               temperature: this.options.temperature,
               topP: this.options.topP,
               maxTokens: this.options.maxTokens,
-            });
+            }, this.options.fallback);
 
             const retryContent = extractContent(retryResponse);
             if (retryContent && retryContent.length > finalContent.length) {

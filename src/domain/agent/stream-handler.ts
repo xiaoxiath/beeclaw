@@ -10,7 +10,7 @@
  */
 
 import type { ChatMessage, OpenAITool, MultimodalContent, UserContext } from './types';
-import { callAI, hasToolCalls, extractToolCalls } from './api';
+import { callAIWithFallback, hasToolCalls, extractToolCalls } from './api';
 
 // Inlined for the same reason as orchestrator.ts — keep tests that mock
 // './types' from needing to re-list every named export.
@@ -64,6 +64,7 @@ export interface StreamHandlerDeps {
     tokenBudgetPctPerTurn?: number;
     maxTokensPerTurn?: number;
     fallbackMessages?: { tokenBudgetExceeded?: string; maxIterationsReached?: string };
+    fallback?: { provider: any; model: string; temperature?: number; topP?: number; maxTokens?: number };
   };
   messages: ChatMessage[];
   estimatedTokens: number;
@@ -238,7 +239,7 @@ export async function* chatStream(
       break;
     }
 
-    const response = await callAI({
+    const response = await callAIWithFallback({
       provider: deps.options.provider,
       model: deps.options.model,
       // [P0 FIX] Strip metadata before sending to API
@@ -247,10 +248,15 @@ export async function* chatStream(
       temperature: deps.options.temperature,
       topP: deps.options.topP,
       maxTokens: deps.options.maxTokens,
-    });
+    }, deps.options.fallback);
 
     const assistantMessage = response.choices[0].message;
     const finishReason = response.choices[0].finish_reason;
+    // Cache the tool-calls predicate — the empty-content branch and the
+    // tool-execution branch both consult it. Calling hasToolCalls twice
+    // would silently double-consume mockReturnValueOnce setups in tests
+    // (real impl is idempotent, but the cached form is cleaner anyway).
+    const responseHasToolCalls = hasToolCalls(response);
 
     // Yield content. If the provider returned no visible text AND no
     // tool calls (Codex reasoning-only responses do this with
@@ -260,7 +266,7 @@ export async function* chatStream(
       logger.debug(`[Agent.chatStream] yield content (${assistantMessage.content.length} chars, finish=${finishReason})`);
       yield { type: 'content', content: assistantMessage.content };
       finalContent = assistantMessage.content;
-    } else if (!hasToolCalls(response)) {
+    } else if (!responseHasToolCalls) {
       const note = finishReason === 'incomplete'
         ? '(no visible text — model returned only internal reasoning. Try rephrasing or asking a more concrete question.)'
         : '(empty response)';
@@ -285,7 +291,7 @@ export async function* chatStream(
     // Handle tool calls
     // [P0 FIX] chatStream now mirrors chat() with parallel tool execution,
     // loop detection, hookRunner integration, and content block callbacks.
-    if (hasToolCalls(response)) {
+    if (responseHasToolCalls) {
       const toolCalls = extractToolCalls(response);
 
       // [P0 FIX] Use batched parallel execution (same as chat())

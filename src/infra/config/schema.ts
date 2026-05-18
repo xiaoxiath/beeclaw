@@ -72,10 +72,18 @@ export const ModelDefinitionSchema = z.object({
 });
 
 // Role definition schema (v6: roles are global, explicitly specify provider)
+// `fallback` lets a role degrade to a second provider/model when the primary
+// throws after the retry engine exhausts (e.g. Codex OAuth revoked, 5xx,
+// quota). One level deep — fallback itself cannot nest a fallback.
 export const RoleDefinitionSchema = z.object({
   provider: z.string(),  // v6: explicit provider reference
   model: z.string(),
   params: ModelParamsSchema.optional(),
+  fallback: z.object({
+    provider: z.string(),
+    model: z.string(),
+    params: ModelParamsSchema.optional(),
+  }).optional(),
 });
 
 // AI Provider schema (v6: roles moved to top level)

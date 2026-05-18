@@ -247,6 +247,18 @@ export interface AgentOptions {
     tokenBudgetExceeded?: string;
     maxIterationsReached?: string;
   };
+  /**
+   * Alternate provider/model to try when the primary callAI throws
+   * after its retry engine exhausts (e.g. Codex OAuth revoked, 5xx,
+   * quota). One level deep — no chained fallbacks.
+   */
+  fallback?: {
+    provider: AIProvider;
+    model: string;
+    temperature?: number;
+    topP?: number;
+    maxTokens?: number;
+  };
 }
 
 /**

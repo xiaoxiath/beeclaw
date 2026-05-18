@@ -50,6 +50,14 @@ export function createAgent(options: {
   };
   /** Tools that should be blocked from execution */
   blockedTools?: string[];
+  /** Alternate provider/model for callAI hard failures. See AgentOptions.fallback. */
+  fallback?: {
+    provider: AIProvider;
+    model: string;
+    temperature?: number;
+    topP?: number;
+    maxTokens?: number;
+  };
 }): Agent {
   const systemPrompt = assembleSystemPrompt({
     systemPrompt: options.systemPrompt || SYSTEM_PROMPTS.default,

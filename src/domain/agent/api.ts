@@ -434,6 +434,88 @@ export async function callAI(options: CallAIOptions): Promise<AIResponse> {
   return limiter.execute(() => _callAIRaw(aiOptions), acquireOpts);
 }
 
+// ============================================================================
+// Fallback wrapper — try primary, on hard failure try a single alternate
+// ============================================================================
+
+/** Subset of CallAIOptions a fallback needs — provider/model/params only. */
+export interface FallbackTarget {
+  provider: AIProvider;
+  model: string;
+  /** Optional param overrides (temperature/maxTokens). Merged shallow. */
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+}
+
+/**
+ * Decide whether a thrown error from a primary call is worth a fallback
+ * attempt. Returns false for cancellations and 4xx client errors that a
+ * different model would also reject (bad request, model-not-found).
+ *
+ * We DO retry on:
+ *   - OAuth / auth (401 + reloginRequired)
+ *   - quota (429 after retries)
+ *   - server errors (5xx)
+ *   - network / timeout
+ *   - SSE stream aborts mid-response
+ */
+export function shouldFallback(err: unknown): boolean {
+  if (!err) return false;
+  if (err instanceof Error && err.name === 'AbortError') return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  // Bad request / unsupported parameter / context length — fallback model
+  // would hit the same logical issue. Don't waste a second call.
+  if (/\b400\b|context_length_exceeded|invalid_request_error/i.test(msg)) {
+    return false;
+  }
+  // Everything else (including 401/403/429/5xx/timeout/network/auth/stream
+  // abort) is fair game for the fallback hop.
+  return true;
+}
+
+/**
+ * Call primary; on a fallback-worthy failure, call the alternate once.
+ *
+ * Latency note: the primary's retry engine has already exhausted by the
+ * time we get here (callAI wraps RETRY_STRATEGIES.agent internally), so
+ * "fall through to alternate" can add 10–20s on top of the failed retry
+ * window. A per-provider circuit breaker would short-circuit that —
+ * worth doing as a follow-up if the primary stays flaky.
+ */
+export async function callAIWithFallback(
+  options: CallAIOptions,
+  fallback: FallbackTarget | undefined,
+  // Testing seam: injectable callAI impl. Defaults to the real one in prod.
+  // ESM same-file spies don't intercept internal calls, so we expose a
+  // parameter rather than rely on vi.spyOn(api, 'callAI').
+  callImpl: (o: CallAIOptions) => Promise<AIResponse> = callAI,
+): Promise<AIResponse> {
+  if (!fallback) return callImpl(options);
+
+  try {
+    return await callImpl(options);
+  } catch (err) {
+    if (!shouldFallback(err)) throw err;
+    const primaryName = options.provider.name;
+    const primaryModel = options.model;
+    const fallbackName = fallback.provider.name;
+    const fallbackModel = fallback.model;
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      `[callAI] primary ${primaryName}/${primaryModel} failed — falling back to ${fallbackName}/${fallbackModel}: ${msg}`,
+    );
+    return callImpl({
+      ...options,
+      provider: fallback.provider,
+      model: fallback.model,
+      ...(fallback.temperature !== undefined ? { temperature: fallback.temperature } : {}),
+      ...(fallback.topP !== undefined ? { topP: fallback.topP } : {}),
+      ...(fallback.maxTokens !== undefined ? { maxTokens: fallback.maxTokens } : {}),
+    });
+  }
+}
+
 /**
  * Stream AI response with concurrency control.
  *
