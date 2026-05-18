@@ -30,7 +30,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Box, Static, Text, useInput, useApp } from 'ink';
 import { theme } from './theme';
-import { getLogPath } from './logger-redirect';
 import { getLogger } from '../../../infra/observability/logger';
 
 const logger = getLogger('tui.app');
@@ -344,25 +343,24 @@ export function App({
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="column" marginBottom={1}>
-        <Text bold color={theme.primary}>🐝 Beeclaw CLI</Text>
-        <Text color={theme.dim}>
-          {modelLabel ? `model: ${modelLabel}  ·  ` : ''}logs: {getLogPath()}
-        </Text>
-        <Text color={theme.dim}>
-          type / for commands, /exit to quit  ·  meta+enter or trailing \ for newline
-        </Text>
-      </Box>
+      {/*
+        Banner deliberately NOT inside this tree — the entry point
+        (src/adapter/cli/tui/index.ts) writes it to stdout BEFORE
+        Ink's render() mounts, so it sits in scrollback as a one-time
+        header. Keeping it in the React tree caused it to stack on
+        every turn: each <Static> commit pushes the dynamic region
+        down in real terminal coordinates, but Ink still erases at
+        its OLD tracked position — leaving the previous banner line
+        orphaned in scrollback.
+      */}
 
       {/*
         History is committed to Ink's <Static> region — items render
         ONCE per key and become permanent scrollback. The live region
         below (liveTurn, input, footer) re-renders on every state
         change; without Static there, a tall App would push the
-        banner off-screen each turn and Ink (unable to erase
-        scrolled-out lines) would re-print everything below, causing
-        the banner to stack visibly on subsequent turns. The earlier
-        ref-clear race that made me drop Static is fixed in ef23fc8.
+        live area off-screen each turn and Ink (unable to erase
+        scrolled-out lines) would re-print everything below.
       */}
       <Static items={history}>
         {(m) => <MessageView key={m.id} message={m} />}
