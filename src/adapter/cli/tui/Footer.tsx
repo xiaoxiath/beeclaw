@@ -3,17 +3,21 @@
  *
  * Layout (single line, full terminal width):
  *
- *   model: openai-codex / gpt-5.3-codex      ⠹ working…       12.3k tokens
+ *   model: openai-codex / gpt-5.3-codex      ⏳ working…       12.3k tokens
  *   └─ left ─────────────────────────────────┘└ center ─┘└── right ──┘
  *
- * Centered region shows the spinner + phase label only when busy.
- * Token count snapshot is supplied via prop so the Footer stays pure
- * (App handles polling — re-renders on every turn-end).
+ * Centered region shows a STATIC busy marker + phase label only when busy.
+ * We deliberately do NOT use ink-spinner's animated spinner — its internal
+ * setInterval triggers a setState every ~80ms, which forces Ink to re-render
+ * the dynamic region on every tick. During a 3-second turn that's ~37
+ * re-renders, and each one risks leaving a `> ` tombstone in scrollback
+ * after a recent <Static> commit shifted the dynamic region's tracked
+ * position. A static glyph + text gives the same "something is happening"
+ * signal at zero render cost.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import Spinner from 'ink-spinner';
 import { theme } from './theme';
 import { formatTokenCount } from './format-tokens';
 
@@ -42,15 +46,12 @@ export function Footer({ modelLabel, totalTokens, status, phase }: FooterProps):
         </Text>
       </Box>
 
-      {/* Center: spinner + phase. flexGrow lets it absorb the middle. */}
+      {/* Center: static busy marker + phase. flexGrow absorbs the middle. */}
       <Box flexGrow={1} justifyContent="center">
         {status !== 'idle' && phaseLabel && (
-          <>
-            <Text color={theme.primary}>
-              <Spinner type="dots" />
-            </Text>
-            <Text color={theme.dim}>{` ${phaseLabel}`}</Text>
-          </>
+          <Text color={theme.dim}>
+            <Text color={theme.primary}>⏳</Text>{` ${phaseLabel}`}
+          </Text>
         )}
       </Box>
 
