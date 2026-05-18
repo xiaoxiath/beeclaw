@@ -28,7 +28,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Box, Text, useInput, useApp } from 'ink';
+import { Box, Static, Text, useInput, useApp } from 'ink';
 import { theme } from './theme';
 import { getLogPath } from './logger-redirect';
 import { getLogger } from '../../../infra/observability/logger';
@@ -355,17 +355,18 @@ export function App({
       </Box>
 
       {/*
-        Render history + liveTurn inline (no Static). The earlier
-        Static-based scrollback flush had a timing race: the finally
-        block pushed liveTurn → history AND cleared liveTurn in one
-        tick, so Ink saw the live region empty BEFORE Static had
-        flushed the new items to scrollback. Result: assistant text
-        flashed and disappeared. Inline rendering is O(messages) per
-        re-render but for a typical interactive session that's fine.
+        History is committed to Ink's <Static> region — items render
+        ONCE per key and become permanent scrollback. The live region
+        below (liveTurn, input, footer) re-renders on every state
+        change; without Static there, a tall App would push the
+        banner off-screen each turn and Ink (unable to erase
+        scrolled-out lines) would re-print everything below, causing
+        the banner to stack visibly on subsequent turns. The earlier
+        ref-clear race that made me drop Static is fixed in ef23fc8.
       */}
-      {history.map(m => (
-        <MessageView key={m.id} message={m} />
-      ))}
+      <Static items={history}>
+        {(m) => <MessageView key={m.id} message={m} />}
+      </Static>
       {liveTurn.map(m => (
         <MessageView key={m.id} message={m} />
       ))}
