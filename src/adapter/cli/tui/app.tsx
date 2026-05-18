@@ -27,7 +27,7 @@
  * of whether the InputEditor is disabled.
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Static, Text, useInput, useApp } from 'ink';
 import { theme } from './theme';
 import { getLogger } from '../../../infra/observability/logger';
@@ -39,7 +39,6 @@ import { Footer } from './Footer';
 import { HitlPrompt, type HitlSignal } from './HitlPrompt';
 import { expandHitlAnswer } from './hitl-expand';
 import type { ChatMessage } from './messages';
-import { nextMessageId } from './messages';
 import {
   composeRegistry,
   parseCommandLine,
@@ -118,9 +117,21 @@ export function App({
     [skills],
   );
 
-  const allocateId = useCallback((): number => {
-    const all = [...history, ...liveTurnRef.current];
-    return nextMessageId(all);
+  // Monotonic id counter. Previously we derived ids from `[...history,
+  // ...liveTurnRef.current]` which broke when we started pushing user
+  // msgs to history mid-turn (history is async via setHistory, so the
+  // counter wouldn't see in-flight items and we'd recycle ids).
+  const idCounterRef = useRef(0);
+  const allocateId = useCallback((): number => ++idCounterRef.current, []);
+  // Keep the counter strictly above the largest existing id (handles
+  // future reseed from /clear etc).
+  useEffect(() => {
+    const maxId = Math.max(
+      0,
+      ...history.map(m => m.id),
+      ...liveTurnRef.current.map(m => m.id),
+    );
+    if (maxId >= idCounterRef.current) idCounterRef.current = maxId;
   }, [history]);
 
   const updateLive = useCallback((updater: (prev: ChatMessage[]) => ChatMessage[]) => {
@@ -210,8 +221,16 @@ export function App({
     setPhase('thinking…');
 
     const userMsg: ChatMessage = { id: allocateId(), kind: 'user', content: trimmed };
-    updateLive(() => [userMsg]);
-    logger.debug(`user message added to liveTurn (id=${userMsg.id})`);
+    // CRITICAL: push user msg directly to history (Static), NOT liveTurn.
+    // If user msg lives in liveTurn during the turn, every re-render
+    // (including ones triggered by InputEditor's own setStates when the
+    // user mashes Enter) redraws the dynamic region with that msg in it
+    // — and Ink's diff leaves a tombstone in scrollback each time the
+    // region grows. Committing to Static at submit time makes it appear
+    // exactly once in scrollback and keeps liveTurn small (only the
+    // streaming assistant or in-progress tool card).
+    setHistory(prev => [...prev, userMsg]);
+    logger.debug(`user message committed to history (id=${userMsg.id})`);
 
     try {
       if (!onSubmit) {
