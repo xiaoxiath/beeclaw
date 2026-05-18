@@ -287,10 +287,16 @@ export function App({
       logger.error(`[TUI/App] runChat error: ${msg}`, err);
       setHint(`error: ${msg}`);
     } finally {
-      const flushCount = liveTurnRef.current.length;
-      logger.info(`[TUI/App] runChat FINALLY — flushing ${flushCount} liveTurn messages to history`);
-      setHistory(prev => [...prev, ...liveTurnRef.current]);
+      // CRITICAL: snapshot the ref BEFORE clearing it. setHistory takes
+      // an updater function that React runs asynchronously; if the
+      // updater reads liveTurnRef.current at that point, the ref has
+      // already been emptied below and the flush drops the entire turn.
+      // (Symptom: user/assistant messages flashed in liveTurn then
+      // vanished, history never grew, allocateId kept returning 1.)
+      const flushed = liveTurnRef.current;
       liveTurnRef.current = [];
+      logger.info(`[TUI/App] runChat FINALLY — flushing ${flushed.length} liveTurn messages to history`);
+      setHistory(prev => [...prev, ...flushed]);
       setLiveTurn([]);
       setStatus('idle');
       setPhase(undefined);
