@@ -46,6 +46,16 @@ export interface InputEditorProps {
   onSubmit: (line: string) => void;
   /** Disables key handling (e.g. while a turn is busy). */
   disabled?: boolean;
+  /**
+   * SYNCHRONOUS busy check (callback, not state). React state-driven
+   * `disabled` only flips on the next commit, so Enter spam during the
+   * ~ms gap between submit and commit slips through. Callback reads a
+   * ref, so it sees the truth instantly. When it returns true, submit
+   * skips ALL its side-effects (no dispatch, no setHistory, no picker
+   * resets) — those setStates re-render the editor and leave `> `
+   * tombstones in scrollback on every Ink mis-diff.
+   */
+  isBusy?: () => boolean;
   /** Override path for testing — defaults to ~/.beeclaw_history. */
   historyPath?: string;
   /** When set, enables slash-command picker. */
@@ -58,7 +68,7 @@ function reducer(state: EditorState, action: EditorAction): EditorState {
 
 const PICKER_LIMIT = 5;
 
-export function InputEditor({ onSubmit, disabled, historyPath, commands }: InputEditorProps): React.ReactElement {
+export function InputEditor({ onSubmit, disabled, isBusy, historyPath, commands }: InputEditorProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, initialEditorState);
   const [history, setHistory] = useState<readonly string[]>([]);
   const [pickerSelectedIdx, setPickerSelectedIdx] = useState(0);
@@ -87,6 +97,17 @@ export function InputEditor({ onSubmit, disabled, historyPath, commands }: Input
   }, [pickerMatches]);
 
   const submit = useCallback((line: string): void => {
+    // SYNCHRONOUS guard: skip every side-effect when a chat turn is
+    // already running. The setStates below (setHistory, dispatch reset,
+    // picker resets) all trigger an editor re-render even when their
+    // input is identical — each render redraws the `> ` prompt and Ink
+    // leaves a scrollback tombstone on each repaint while a Static
+    // commit (the user msg from the live turn) has just shifted the
+    // dynamic region's tracked position.
+    if (isBusy?.()) {
+      logger.debug('submit ignored — chat turn busy');
+      return;
+    }
     logger.debug(`submit fired (len=${line.length}, preview=${JSON.stringify(line.slice(0, 60))})`);
     if (line.length === 0) {
       logger.debug('submit aborted — empty line');
@@ -102,7 +123,7 @@ export function InputEditor({ onSubmit, disabled, historyPath, commands }: Input
     dispatch({ type: 'reset' });
     onSubmit(line);
     logger.debug('onSubmit returned (sync portion done)');
-  }, [historyPath, onSubmit]);
+  }, [historyPath, isBusy, onSubmit]);
 
   /**
    * Replace the entire buffer with the picked command + trailing space,

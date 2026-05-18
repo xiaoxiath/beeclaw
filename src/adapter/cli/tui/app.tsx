@@ -416,6 +416,7 @@ export function App({
       <InputEditor
         onSubmit={handleSubmit}
         disabled={status !== 'idle'}
+        isBusy={() => isRunningRef.current}
         commands={registry}
       />
 
