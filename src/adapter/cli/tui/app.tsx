@@ -101,6 +101,13 @@ export function App({
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [liveTurn, setLiveTurn] = useState<ChatMessage[]>([]);
   const liveTurnRef = useRef<ChatMessage[]>([]);
+  // Synchronous re-entry guard. setStatus('busy') schedules a re-render
+  // that flips InputEditor.disabled, but that only takes effect on
+  // React's next commit. If the user mashes Enter during the ~ms gap
+  // between submit and commit, useInput fires multiple times with
+  // isActive=true (stale) and we'd end up running N concurrent chat
+  // turns. The ref blocks the second-to-Nth submission immediately.
+  const isRunningRef = useRef(false);
   // PR7: HITL state. Set when a tool_result arrives with needsUserInput=true.
   // The next user submission becomes the answer (auto-submitted via runChat).
   const [pendingHitl, setPendingHitl] = useState<HitlSignal | null>(null);
@@ -189,6 +196,13 @@ export function App({
       logger.debug('runChat aborted — empty trimmed line');
       return;
     }
+
+    // Synchronous re-entry guard. See isRunningRef declaration above.
+    if (isRunningRef.current) {
+      logger.debug('runChat ignored — turn already in progress');
+      return;
+    }
+    isRunningRef.current = true;
 
     logger.debug(`runChat START (len=${trimmed.length})`);
     setHint(null);
@@ -304,6 +318,9 @@ export function App({
       // Refresh the footer's token count snapshot now that the turn
       // emitted at least one usage event.
       if (getTotalTokens) setTotalTokens(getTotalTokens());
+      // Re-enable submissions. Done LAST so any Enter racing the final
+      // setState commit still hits the guard.
+      isRunningRef.current = false;
     }
   }, [allocateId, onSubmit, updateLive, getTotalTokens]);
 
