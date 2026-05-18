@@ -25,6 +25,7 @@ const { mockLogger, mockScheduler } = vi.hoisted(() => ({
 
 vi.mock('../../../../infra/observability/logger', () => ({
   logger: mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../../../proactive', () => ({

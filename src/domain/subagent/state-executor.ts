@@ -5,7 +5,9 @@
  */
 
 import { getSharedState } from './state';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('subagent.state');
 import type {
   StateSetParams,
   StateGetParams,

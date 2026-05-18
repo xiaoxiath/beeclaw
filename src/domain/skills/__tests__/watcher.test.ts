@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: { info: vi.fn(() => {}), warn: vi.fn(() => {}), error: vi.fn(() => {}) },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 // Mock fs.watch

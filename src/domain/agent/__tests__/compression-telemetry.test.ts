@@ -20,6 +20,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     info: (...args: unknown[]) => mockLoggerInfo(...args),
     warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 const mockCompressResult = {

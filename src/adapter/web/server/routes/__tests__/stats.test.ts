@@ -4,6 +4,7 @@ import { getCircuitBreakerRegistry } from '@/infra/resilience/circuit-breaker';
 
 vi.mock('../../../../../infra/observability/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 // Mock SQLite connection so stats route can import getSQLite without

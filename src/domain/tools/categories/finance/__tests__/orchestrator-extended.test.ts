@@ -14,6 +14,7 @@ vi.mock('@infra/observability/logger', () => ({
     error: vi.fn(),
     info: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../providers/tushare', () => ({

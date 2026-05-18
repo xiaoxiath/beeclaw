@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: { info: vi.fn(() => {}), debug: vi.fn(() => {}) },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { beeclawInfoTool, executeBeeclawInfo } from '../info-tools';

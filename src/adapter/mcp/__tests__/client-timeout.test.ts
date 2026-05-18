@@ -51,7 +51,7 @@ vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
 
 vi.mock('@modelcontextprotocol/sdk/types.js', () => ({}));
 
-vi.mock('../../../infra/observability/logger', () => ({ logger: mocks.mockLogger }));
+vi.mock('../../../infra/observability/logger', () => ({ logger: mocks.mockLogger , getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }) }));
 
 import { MCPClientManager, type MCPServerConfig } from '../client';
 

@@ -8,7 +8,9 @@
  */
 
 import type { Session, MessageProcessingState } from './index';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('session.dedup');
 
 /** Maximum retries for a failed message before permanently giving up */
 export const MAX_MESSAGE_RETRY_COUNT = 2;

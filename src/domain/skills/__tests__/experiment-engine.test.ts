@@ -18,6 +18,7 @@ const MockExperimentBudget = vi.hoisted(() =>
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../store', () => ({

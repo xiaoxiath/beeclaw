@@ -23,6 +23,7 @@ vi.mock('fs', () => ({
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import {

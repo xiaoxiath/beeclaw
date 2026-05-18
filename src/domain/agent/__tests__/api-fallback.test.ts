@@ -11,6 +11,7 @@ import type { AIResponse, ChatMessage } from '../types';
 
 vi.mock('@infra/observability/logger', () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { callAIWithFallback, shouldFallback } from '../api';

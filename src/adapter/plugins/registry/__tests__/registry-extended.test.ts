@@ -8,6 +8,7 @@ vi.mock('@infra/observability/logger', () => ({
     error: vi.fn(),
     info: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import {

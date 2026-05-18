@@ -56,6 +56,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { DynamicMemoryInjector } from '../dynamic-injector';

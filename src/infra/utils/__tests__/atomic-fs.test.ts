@@ -8,6 +8,7 @@ vi.mock('../../observability/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 // Use vi.hoisted to create mock functions that can be referenced inside vi.mock factories

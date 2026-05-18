@@ -98,6 +98,7 @@ vi.mock('../../../adapter/feishu', () => ({
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: mocks.mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../../../domain/agent/evolution', () => ({

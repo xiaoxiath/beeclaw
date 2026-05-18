@@ -21,6 +21,7 @@ const { mockHandleHITLResponse, mockHookRunner, mockAgent, mockExtractionManager
 // Heavy mocking for the session index module
 vi.mock('../../../infra/observability/logger', () => ({
   logger: { info: vi.fn(() => {}), error: vi.fn(() => {}), warn: vi.fn(() => {}), debug: vi.fn(() => {}) },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 vi.mock('../../../infra/utils/atomic-fs', () => ({
   writeFileAtomic: vi.fn(() => {}), readFileWithRecovery: vi.fn(() => null), cleanupTempFiles: vi.fn(() => {}),

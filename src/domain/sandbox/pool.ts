@@ -11,7 +11,9 @@
  * - Graceful shutdown support
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('sandbox.pool');
 import type { SandboxConfig } from './types';
 
 // Lazy-import dockerode (optional dependency for container environments)

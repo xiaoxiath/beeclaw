@@ -6,7 +6,9 @@
 
 import type { PendingNotification, NotificationPriority } from '../proactive/types';
 import { getNotificationsLazy } from './notifications';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('proactive.pusher');
 
 export type PusherChannel = 'cli' | 'feishu' | 'webhook';
 type StorageChannel = 'cli' | 'websocket' | 'email';

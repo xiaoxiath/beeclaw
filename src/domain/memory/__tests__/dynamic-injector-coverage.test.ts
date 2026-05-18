@@ -69,6 +69,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     warn: mocks.logWarn,
     error: mocks.logError,
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import {

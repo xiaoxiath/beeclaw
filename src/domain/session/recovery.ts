@@ -18,7 +18,9 @@ import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { Session } from './index';
 import { confirmDelivery, MAX_RECOVERY_ATTEMPTS } from './index';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('session.recovery');
 
 export interface RecoveryConfig {
   /** Enable recovery feature (default: true) */

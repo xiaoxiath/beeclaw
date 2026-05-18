@@ -7,7 +7,9 @@
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { FeishuAuthConfig } from './types';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('feishu.ws');
 import { sendPostMessage, sendMarkdownMessage, sendMarkdownCard } from './send';
 import type {
   FeishuSender,

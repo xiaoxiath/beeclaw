@@ -157,6 +157,7 @@ vi.mock('../../infra/db/connection', () => ({
 }));
 vi.mock('../../infra/observability/logger', () => ({
   logger: mocks.mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 vi.mock('../../infra/observability/metrics', () => ({
   Observability: { configure: vi.fn() },

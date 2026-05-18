@@ -14,7 +14,9 @@
 
 import { mkdirSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('sandbox.manager');
 import { VirtualPathMapper } from './path-mapper';
 import { LocalSandboxProvider } from './providers/local';
 import { DockerSandboxProvider } from './providers/docker';

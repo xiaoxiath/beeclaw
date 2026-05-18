@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 vi.mock('../../observability/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { TaskRepo, type NewPersistedTask, type SqlDatabase } from '../task-repo';

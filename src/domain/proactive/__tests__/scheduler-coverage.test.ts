@@ -37,14 +37,15 @@ vi.mock('../../../infra/config', () => ({
   getConfig: mocks.getConfig,
 }));
 
-vi.mock('../../../infra/observability/logger', () => ({
-  logger: {
+vi.mock('../../../infra/observability/logger', () => {
+  const m = {
     info: mocks.logInfo,
     warn: mocks.logWarn,
     error: mocks.logError,
     debug: mocks.logDebug,
-  },
-}));
+  };
+  return { logger: m, getLogger: () => m };
+});
 
 import { Scheduler, resetScheduler } from '../scheduler';
 

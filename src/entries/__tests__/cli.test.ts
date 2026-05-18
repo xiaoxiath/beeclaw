@@ -32,6 +32,7 @@ const MockCLIAdapter = vi.fn(() => mockCLIAdapterInstance);
 
 vi.mock('../../infra/observability/logger', () => ({
   logger: mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../../app', () => ({

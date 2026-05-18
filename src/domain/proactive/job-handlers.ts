@@ -11,7 +11,9 @@
  */
 
 import type { ProactiveJobData } from './types';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('proactive.jobs');
 import { getCompressionEngine } from '../memory/compression';
 import { getMemoryStore } from '../memory';
 import { getReflectionEngine } from '../agent/reflection-engine';

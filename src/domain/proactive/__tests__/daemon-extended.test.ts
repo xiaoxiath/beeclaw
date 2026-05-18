@@ -41,6 +41,7 @@ vi.mock('fs', async () => {
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../scheduler', () => ({

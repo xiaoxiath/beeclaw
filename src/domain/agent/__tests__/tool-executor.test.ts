@@ -80,6 +80,7 @@ vi.mock('../../ports', () => ({
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 // ---------------------------------------------------------------------------

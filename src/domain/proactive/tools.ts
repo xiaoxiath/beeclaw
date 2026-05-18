@@ -4,7 +4,9 @@
  * AI tool definitions for proactive scheduling
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('proactive.tools');
 import { z } from 'zod';
 import type { ProactiveToolResult, CreateScheduleOptions } from './types';
 import { getSchedulerLazy } from './scheduler';

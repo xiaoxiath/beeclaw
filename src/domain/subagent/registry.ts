@@ -5,7 +5,9 @@
  * 支持持久化、生命周期管理、深度限制
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('subagent.registry');
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import type { SubagentPermissionProfile, SubagentRole } from './types';

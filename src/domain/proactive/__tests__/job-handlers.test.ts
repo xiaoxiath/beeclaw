@@ -28,7 +28,7 @@ const {
 }));
 
 // Mock all dependencies
-vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger }));
+vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger, getLogger: () => mockLogger }));
 
 vi.mock('../../../infra/config', () => ({ getConfig: mockGetConfig }));
 

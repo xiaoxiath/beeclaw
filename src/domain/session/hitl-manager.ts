@@ -5,7 +5,9 @@
  */
 
 import { getSession, saveSession } from './index';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('session.hitl');
 
 /**
  * 处理用户的 HITL 响应

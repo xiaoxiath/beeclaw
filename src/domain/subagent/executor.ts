@@ -4,7 +4,9 @@
  * Execute subagent tools from the builtin tools system
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('subagent.executor');
 import { spawnSubagent, spawnParallelSubagents } from './runtime';
 import { formatSubagentResult, formatParallelResults } from './tools';
 import type { SpawnSubagentParams, SpawnParallelParams } from './tools';

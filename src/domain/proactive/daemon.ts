@@ -4,7 +4,9 @@
  * Background process for autonomous task execution
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('proactive.daemon');
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { DaemonState, Schedule, ProactiveJobData } from './types';

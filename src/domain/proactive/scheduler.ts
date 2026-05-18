@@ -8,7 +8,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from '
 import { writeFileAtomic } from '../../infra/utils/atomic-fs';
 import { join } from 'path';
 import { getConfig } from '../../infra/config';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('proactive.scheduler');
 import type {
   Schedule,
   Pattern,

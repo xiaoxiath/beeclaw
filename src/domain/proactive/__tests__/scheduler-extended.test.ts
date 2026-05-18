@@ -35,6 +35,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';

@@ -37,6 +37,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 // Use 'function' keyword (NOT arrow) so `new` works correctly in vitest 4.x

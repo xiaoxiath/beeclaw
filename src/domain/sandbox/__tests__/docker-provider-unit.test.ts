@@ -17,6 +17,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     warn: vi.fn(),
     debug: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 // ── Mock Bun.spawn ─────────────────────────────────────────────────────────

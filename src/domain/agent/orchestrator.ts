@@ -31,7 +31,9 @@ const FALLBACK_MAX_ITERATIONS_DEFAULT =
   '抱歉，处理您的请求时达到了工具调用次数限制。请尝试简化您的问题。';
 import { callAIWithFallback, hasToolCalls, extractToolCalls, extractContent } from './api';
 import { getAllToolsForAI, buildVolatileContext } from './tools';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('agent.orchestrator');
 import { getDynamicMemoryInjector } from '../memory';
 import { getSkillStore } from '../skills/store';
 // Task 3: Use port interfaces instead of direct adapter imports

@@ -15,7 +15,9 @@
  * Supports locking, expiration, and change notifications.
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('subagent.state');
 import { AsyncMutex } from '../../infra/utils/async-mutex';
 
 /**

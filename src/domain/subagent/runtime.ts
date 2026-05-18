@@ -22,7 +22,9 @@ import {
   type SubagentType,
 } from './types';
 import { getSubagentRegistry } from './registry';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('subagent.runtime');
 import { createAgent, createDefaultToolExecutor, getAllToolsForAI } from '../agent';
 import type { ToolExecutor } from '../agent/types';
 import { buildSubagentSystemPrompt } from './prompts';

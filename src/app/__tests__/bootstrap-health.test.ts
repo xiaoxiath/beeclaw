@@ -111,6 +111,7 @@ vi.mock('../../domain/search', () => ({
 
 vi.mock('../../infra/observability/logger', () => ({
   logger: mocks.mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../../domain/ports', () => ({

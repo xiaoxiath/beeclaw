@@ -9,7 +9,9 @@
  * skipped and running subtasks are aborted.
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('subagent.orchestrator');
 import type { AIProvider } from '../../infra/config/schema';
 import { decomposeTask } from './decompose';
 import { DAGScheduler } from './scheduler';

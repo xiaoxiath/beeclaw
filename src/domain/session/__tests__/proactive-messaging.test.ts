@@ -6,6 +6,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     warn: vi.fn(() => {}),
     debug: vi.fn(() => {}),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { injectProactiveResult, getRecentSessionHistory } from '../proactive-messaging';

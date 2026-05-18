@@ -6,7 +6,9 @@
  * instead of simply replacing all images with '[图片]' placeholder.
  */
 
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('feishu.channel');
 import type {
   MessageChannel,
   ChannelType,

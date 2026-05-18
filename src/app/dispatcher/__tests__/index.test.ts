@@ -88,6 +88,7 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { TaskDispatcher, getTaskDispatcher, resetTaskDispatcher } from '../index';

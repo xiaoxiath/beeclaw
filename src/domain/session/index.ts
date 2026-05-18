@@ -32,7 +32,9 @@ import {
 // [CR-Layer] Domain ports replace direct adapter imports
 import { getHookRunnerPort, getChannelClientPort, getMessageControllerFactory } from '../ports';
 import type { IMessageController } from '../ports';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('session');
 import { SessionMessageQueue } from '../../infra/resilience/session-lock';
 import { isSessionIdle, buildTemporalMarker } from './idle-rotation';
 import type { SessionMessageQueueOptions } from '../../infra/resilience/session-lock';

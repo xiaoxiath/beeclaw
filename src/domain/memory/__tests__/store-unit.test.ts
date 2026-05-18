@@ -71,6 +71,7 @@ vi.mock('../../../infra/observability/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 import { MemoryStore, getMemoryStore, resetMemoryStore } from '../store';

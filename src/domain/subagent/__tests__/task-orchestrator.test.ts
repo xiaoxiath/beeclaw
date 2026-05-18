@@ -45,7 +45,7 @@ const MockDAGScheduler = vi.hoisted(() =>
   vi.fn().mockImplementation(function() { return mockSchedulerInstance; })
 );
 
-vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger }));
+vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger, getLogger: () => mockLogger }));
 vi.mock('../decompose', () => ({ decomposeTask: mockDecomposeTask }));
 vi.mock('../runtime', () => ({ spawnSubagent: mockSpawnSubagent }));
 vi.mock('../scheduler', () => ({ DAGScheduler: MockDAGScheduler }));

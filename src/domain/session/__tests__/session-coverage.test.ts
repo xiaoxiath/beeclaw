@@ -67,6 +67,7 @@ vi.mock('path', () => ({ join: (...args: string[]) => args.join('/') }));
 
 vi.mock('../../../infra/observability/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 vi.mock('../../../infra/utils/atomic-fs', () => ({
   writeFileAtomic: vi.fn(), readFileWithRecovery: vi.fn(() => null), cleanupTempFiles: vi.fn(),

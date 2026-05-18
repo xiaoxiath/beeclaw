@@ -15,6 +15,7 @@ vi.mock('../hitl-renderer', () => ({
 
 vi.mock('../../../../infra/observability/logger', () => ({
   logger: mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../../utils', () => ({

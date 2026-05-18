@@ -8,7 +8,9 @@ import type { Pattern } from './types';
 import { getSchedulerLazy } from './scheduler';
 import { pushNotification } from './pusher';
 import { getGoalStore } from '../agent/goal/store';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('proactive.triggers');
 
 export interface TriggerContext {
   now: Date;

@@ -37,6 +37,7 @@ vi.mock('fs/promises', () => ({
 
 vi.mock('../../observability/logger', () => ({
   logger: mocks.mockLogger,
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 vi.mock('../schema', () => ({

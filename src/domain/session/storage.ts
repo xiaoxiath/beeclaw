@@ -8,7 +8,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { Session, SessionMessage } from './index';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('session.storage');
 import { isSessionIdle } from './idle-rotation';
 import { writeFileAtomic, readFileWithRecovery, cleanupTempFiles } from '../../infra/utils/atomic-fs';
 import { getDataConnection } from '../../infra/db';

@@ -6,7 +6,9 @@
  */
 
 import type { FeishuWSClient } from './ws-client';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('feishu.card');
 import * as HITLManager from '../../domain/session/hitl-manager';
 
 /**

@@ -11,6 +11,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 vi.mock('../../observability/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+getLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
 }));
 
 // Capture the wrapped handler so the test can fire jobs through it directly.

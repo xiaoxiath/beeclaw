@@ -54,7 +54,7 @@ const {
   mockRecord: vi.fn(),
 }));
 
-vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger }));
+vi.mock('../../../infra/observability/logger', () => ({ logger: mockLogger, getLogger: () => mockLogger }));
 vi.mock('../../../infra/config', () => ({ getConfig: mockGetConfig }));
 vi.mock('../../session', () => ({
   sendProactiveMessage: (...a: any[]) => mockSendProactiveMessage(...a),

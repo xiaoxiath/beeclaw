@@ -13,7 +13,9 @@
  */
 
 import type { Session, SessionMessage } from './index';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('session.proactive');
 
 /**
  * [AUDIT FIX M-02] Inject proactive task result into a user's active session.

@@ -7,7 +7,9 @@
 import type { EntryAdapter, EntryContext, AdapterStatus } from '../../infra/entry/types';
 import { FeishuChannel } from './channel';
 import { getFeishuWSClient } from './ws-client';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('feishu.adapter');
 
 export class FeishuAdapter implements EntryAdapter {
   readonly name = 'feishu';

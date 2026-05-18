@@ -8,7 +8,9 @@ import { getFastLLMJudge } from '../agent/fast-llm-judge';
 import type { AIProvider } from '../../infra/config/schema';
 import type { TaskDecomposition, SubTask } from './orchestration-types';
 import { SUBAGENT_TYPE_VALUES } from './types';
-import { logger } from '../../infra/observability/logger';
+import { getLogger } from '../../infra/observability/logger';
+
+const logger = getLogger('subagent.decompose');
 
 /**
  * Decomposition prompt template
