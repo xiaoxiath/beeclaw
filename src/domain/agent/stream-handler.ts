@@ -250,11 +250,23 @@ export async function* chatStream(
     });
 
     const assistantMessage = response.choices[0].message;
+    const finishReason = response.choices[0].finish_reason;
 
-    // Yield content
+    // Yield content. If the provider returned no visible text AND no
+    // tool calls (Codex reasoning-only responses do this with
+    // finish_reason: 'incomplete'), surface a one-line placeholder so
+    // the UI shows something instead of silently flushing the turn.
     if (assistantMessage.content) {
+      logger.debug(`[Agent.chatStream] yield content (${assistantMessage.content.length} chars, finish=${finishReason})`);
       yield { type: 'content', content: assistantMessage.content };
       finalContent = assistantMessage.content;
+    } else if (!hasToolCalls(response)) {
+      const note = finishReason === 'incomplete'
+        ? '(no visible text — model returned only internal reasoning. Try rephrasing or asking a more concrete question.)'
+        : '(empty response)';
+      logger.warn(`[Agent.chatStream] empty content (finish=${finishReason}) — yielding placeholder`);
+      yield { type: 'content', content: note };
+      finalContent = note;
     }
 
     // Add to history with token tracking

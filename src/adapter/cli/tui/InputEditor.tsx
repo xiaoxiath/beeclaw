@@ -37,6 +37,7 @@ import { loadHistory, appendHistory } from './history';
 import { CommandPicker } from './CommandPicker';
 import { rankCommands } from './command-scorer';
 import type { Command } from './commands';
+import { logger } from '../../../infra/observability/logger';
 
 export interface InputEditorProps {
   /** Called with the buffer contents when the user submits with Enter. */
@@ -84,7 +85,11 @@ export function InputEditor({ onSubmit, disabled, historyPath, commands }: Input
   }, [pickerMatches]);
 
   const submit = useCallback((line: string): void => {
-    if (line.length === 0) return;
+    logger.info(`[TUI/InputEditor] submit fired (len=${line.length}, preview=${JSON.stringify(line.slice(0, 60))})`);
+    if (line.length === 0) {
+      logger.info('[TUI/InputEditor] submit aborted — empty line');
+      return;
+    }
     appendHistory(line, historyPath);
     setHistory(prev => {
       if (prev[0] === line) return prev;
@@ -94,6 +99,7 @@ export function InputEditor({ onSubmit, disabled, historyPath, commands }: Input
     setPickerSelectedIdx(0);
     dispatch({ type: 'reset' });
     onSubmit(line);
+    logger.info('[TUI/InputEditor] onSubmit returned (sync portion done)');
   }, [historyPath, onSubmit]);
 
   /**

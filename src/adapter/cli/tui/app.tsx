@@ -31,6 +31,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from './theme';
 import { getLogPath } from './logger-redirect';
+import { logger } from '../../../infra/observability/logger';
 import { MessageView } from './MessageView';
 import { InputEditor } from './InputEditor';
 import { Footer } from './Footer';
@@ -183,14 +184,19 @@ export function App({
 
   const runChat = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      logger.info('[TUI/App] runChat aborted — empty trimmed line');
+      return;
+    }
 
+    logger.info(`[TUI/App] runChat START (len=${trimmed.length})`);
     setHint(null);
     setStatus('busy');
     setPhase('thinking…');
 
     const userMsg: ChatMessage = { id: allocateId(), kind: 'user', content: trimmed };
     updateLive(() => [userMsg]);
+    logger.info(`[TUI/App] user message added to liveTurn (id=${userMsg.id})`);
 
     try {
       if (!onSubmit) {
@@ -204,8 +210,12 @@ export function App({
       }
 
       let assistantId: number | null = null;
+      let eventCount = 0;
 
+      logger.info('[TUI/App] entering for-await loop on onSubmit()');
       for await (const ev of onSubmit(trimmed)) {
+        eventCount++;
+        logger.info(`[TUI/App] event #${eventCount} type=${ev.type} contentLen=${ev.content?.length ?? 'n/a'}`);
         if (ev.type === 'content' && typeof ev.content === 'string') {
           setPhase('writing…');
           if (assistantId === null) {
@@ -274,8 +284,11 @@ export function App({
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[TUI/App] runChat error: ${msg}`, err);
       setHint(`error: ${msg}`);
     } finally {
+      const flushCount = liveTurnRef.current.length;
+      logger.info(`[TUI/App] runChat FINALLY — flushing ${flushCount} liveTurn messages to history`);
       setHistory(prev => [...prev, ...liveTurnRef.current]);
       liveTurnRef.current = [];
       setLiveTurn([]);
@@ -288,7 +301,9 @@ export function App({
   }, [allocateId, onSubmit, updateLive, getTotalTokens]);
 
   const handleSubmit = useCallback(async (line: string) => {
-    if (line.trim().startsWith('/')) {
+    const isSlash = line.trim().startsWith('/');
+    logger.info(`[TUI/App] handleSubmit (isSlash=${isSlash}, hasHitl=${!!pendingHitl}, status=${status})`);
+    if (isSlash) {
       // Slash commands work even mid-HITL — they cancel the prompt.
       setPendingHitl(null);
       await dispatchCommand(line);
@@ -305,7 +320,7 @@ export function App({
       return;
     }
     await runChat(line);
-  }, [dispatchCommand, runChat, pendingHitl]);
+  }, [dispatchCommand, runChat, pendingHitl, status]);
 
   // Top-level useInput — handles Ctrl+C as graceful exit. The
   // InputEditor's own useInput coexists; Ink dispatches to both.
