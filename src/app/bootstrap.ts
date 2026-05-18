@@ -206,10 +206,12 @@ export async function initApp(options: InitOptions = {}): Promise<{
   const config = await loadConfig();
   appState.config = config;
 
-  // 2. Configure logger
+  // 2. Configure logger (pino-backed). `namespaces` enables per-subsystem
+  // level dial: { "agent": "info", "memory.*": "error" } etc.
   logger.configure({
     level: config.logging.level,
     format: config.logging.format,
+    namespaces: config.logging.namespaces,
   });
 
   // 2.5. Initialize observability system (D-P0-01)

@@ -110,6 +110,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   logging: {
     level: 'info',
     format: 'pretty',
+    namespaces: {},
   },
 
   // Feishu (disabled by default, requires credentials)

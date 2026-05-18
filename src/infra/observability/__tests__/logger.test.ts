@@ -1,263 +1,204 @@
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { setupMockConsole, restoreConsole, getConsoleCalls, getConsoleCallsFor, consoleCalledWith } from '../../testing/mocks/console';
+/**
+ * Logger behavior tests — uses a memory destination stream so we assert
+ * on the actual JSON-line pino emits rather than mocking console.{info,...}
+ * (pino doesn't go through console at all).
+ */
 
-// Re-import logger to get a fresh instance for testing
-// Since logger is a singleton, we need to work with it directly
-import { logger } from '../logger';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import {
+  logger,
+  getLogger,
+  setLoggerDestination,
+  type LoggerConfig,
+} from '../logger';
 
-describe('Logger', () => {
+function memDestination() {
+  const lines: string[] = [];
+  return {
+    stream: { write: (chunk: string) => { lines.push(chunk.trimEnd()); } } as any,
+    lines,
+    parsed(): any[] {
+      return lines.map(l => { try { return JSON.parse(l); } catch { return { raw: l }; } });
+    },
+    clear(): void { lines.length = 0; },
+  };
+}
+
+describe('Logger — configure', () => {
+  let mem: ReturnType<typeof memDestination>;
+
   beforeEach(() => {
-    setupMockConsole(['debug', 'info', 'warn', 'error'], true);
-    // Reset logger to default state
-    logger.configure({ level: 'info', format: 'pretty' });
+    mem = memDestination();
+    logger.configure({ level: 'info', format: 'json', namespaces: {} } as LoggerConfig);
+    setLoggerDestination(mem.stream);
   });
-
   afterEach(() => {
-    restoreConsole();
+    setLoggerDestination(undefined);
+    logger.configure({ level: 'info', format: 'pretty', namespaces: {} } as LoggerConfig);
   });
 
-  describe('configure', () => {
-    test('sets log level', () => {
-      logger.configure({ level: 'debug' });
-      logger.debug('test debug message');
-      expect(consoleCalledWith('debug', 'test debug message')).toBe(true);
-    });
-
-    test('sets format to json', () => {
-      logger.configure({ level: 'info', format: 'json' });
-      logger.info('test json message');
-
-      const calls = getConsoleCallsFor('info');
-      expect(calls.length).toBeGreaterThan(0);
-
-      // Parse the JSON output
-      const logOutput = calls[0].args[0] as string;
-      const parsed = JSON.parse(logOutput);
-      expect(parsed.level).toBe('info');
-      expect(parsed.message).toBe('test json message');
-      expect(parsed.timestamp).toBeDefined();
-    });
-
-    test('sets format to pretty', () => {
-      logger.configure({ level: 'info', format: 'pretty' });
-      logger.info('test pretty message');
-
-      const calls = getConsoleCallsFor('info');
-      expect(calls.length).toBeGreaterThan(0);
-
-      const logOutput = calls[0].args[0] as string;
-      expect(logOutput).toContain('test pretty message');
-      // INFO is colorized, so check for INFO text (may have ANSI codes)
-      expect(logOutput).toContain('INFO');
-    });
-
-    test('partial configuration updates only specified fields', () => {
-      logger.configure({ level: 'debug', format: 'json' });
-      logger.configure({ level: 'warn' }); // Only change level, keep json format
-
-      logger.info('should not appear');
-      logger.warn('should appear');
-
-      const warnCalls = getConsoleCallsFor('warn');
-      const infoCalls = getConsoleCallsFor('info');
-
-      expect(warnCalls.length).toBeGreaterThan(0);
-      expect(infoCalls.length).toBe(0);
-    });
+  test('sets log level — debug enables debug output', () => {
+    logger.configure({ level: 'debug' });
+    logger.debug('a debug message');
+    const parsed = mem.parsed();
+    expect(parsed.length).toBe(1);
+    expect(parsed[0].msg).toBe('a debug message');
   });
 
-  describe('log levels', () => {
-    test('debug level logs all messages', () => {
-      logger.configure({ level: 'debug' });
-
-      logger.debug('debug msg');
-      logger.info('info msg');
-      logger.warn('warn msg');
-      logger.error('error msg');
-
-      expect(getConsoleCallsFor('debug').length).toBeGreaterThan(0);
-      expect(getConsoleCallsFor('info').length).toBeGreaterThan(0);
-      expect(getConsoleCallsFor('warn').length).toBeGreaterThan(0);
-      expect(getConsoleCallsFor('error').length).toBeGreaterThan(0);
-    });
-
-    test('info level filters out debug', () => {
-      logger.configure({ level: 'info' });
-
-      logger.debug('debug msg');
-      logger.info('info msg');
-
-      expect(getConsoleCallsFor('debug').length).toBe(0);
-      expect(getConsoleCallsFor('info').length).toBeGreaterThan(0);
-    });
-
-    test('warn level filters out debug and info', () => {
-      logger.configure({ level: 'warn' });
-
-      logger.debug('debug msg');
-      logger.info('info msg');
-      logger.warn('warn msg');
-
-      expect(getConsoleCallsFor('debug').length).toBe(0);
-      expect(getConsoleCallsFor('info').length).toBe(0);
-      expect(getConsoleCallsFor('warn').length).toBeGreaterThan(0);
-    });
-
-    test('error level only logs errors', () => {
-      logger.configure({ level: 'error' });
-
-      logger.debug('debug msg');
-      logger.info('info msg');
-      logger.warn('warn msg');
-      logger.error('error msg');
-
-      expect(getConsoleCallsFor('debug').length).toBe(0);
-      expect(getConsoleCallsFor('info').length).toBe(0);
-      expect(getConsoleCallsFor('warn').length).toBe(0);
-      expect(getConsoleCallsFor('error').length).toBeGreaterThan(0);
-    });
+  test('JSON format produces parseable lines with level + time + msg', () => {
+    logger.info('hello');
+    const [line] = mem.parsed();
+    expect(line.msg).toBe('hello');
+    expect(line.level).toBe(30); // pino: info=30
+    expect(typeof line.time).toBe('string');
   });
 
-  describe('log methods', () => {
-    test('debug logs with correct method', () => {
-      logger.configure({ level: 'debug' });
-      logger.debug('test message');
-      expect(consoleCalledWith('debug', 'test message')).toBe(true);
-    });
+  test('partial configuration updates only specified fields', () => {
+    logger.configure({ level: 'warn' }); // namespaces stays empty, format stays json
+    logger.info('hidden');
+    logger.warn('shown');
+    const parsed = mem.parsed();
+    expect(parsed.length).toBe(1);
+    expect(parsed[0].msg).toBe('shown');
+  });
+});
 
-    test('info logs with correct method', () => {
-      logger.configure({ level: 'info' });
-      logger.info('test message');
-      expect(consoleCalledWith('info', 'test message')).toBe(true);
-    });
+describe('Logger — level filtering', () => {
+  let mem: ReturnType<typeof memDestination>;
 
-    test('warn logs with correct method', () => {
-      logger.configure({ level: 'warn' });
-      logger.warn('test message');
-      expect(consoleCalledWith('warn', 'test message')).toBe(true);
-    });
+  beforeEach(() => {
+    mem = memDestination();
+    logger.configure({ level: 'info', format: 'json', namespaces: {} } as LoggerConfig);
+    setLoggerDestination(mem.stream);
+  });
+  afterEach(() => setLoggerDestination(undefined));
 
-    test('error logs with correct method', () => {
-      logger.configure({ level: 'error' });
-      logger.error('test message');
-      expect(consoleCalledWith('error', 'test message')).toBe(true);
-    });
+  test('info level filters out debug', () => {
+    logger.debug('x'); logger.info('y'); logger.warn('z'); logger.error('w');
+    const msgs = mem.parsed().map(l => l.msg);
+    expect(msgs).toEqual(['y', 'z', 'w']);
   });
 
-  describe('formatMessage', () => {
-    test('includes timestamp in pretty format', () => {
-      logger.configure({ level: 'info', format: 'pretty' });
-      logger.info('test');
-
-      const output = getConsoleCallsFor('info')[0].args[0] as string;
-      expect(output).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
-    });
-
-    test('includes level in output', () => {
-      logger.configure({ level: 'info', format: 'pretty' });
-      logger.info('test');
-
-      const output = getConsoleCallsFor('info')[0].args[0] as string;
-      expect(output).toContain('INFO');
-    });
-
-    test('includes additional args in output', () => {
-      logger.configure({ level: 'info', format: 'pretty' });
-      logger.info('test', { key: 'value' }, 'extra');
-
-      const output = getConsoleCallsFor('info')[0].args[0] as string;
-      expect(output).toContain('test');
-      expect(output).toContain('key');
-      expect(output).toContain('extra');
-    });
-
-    test('json format includes args array', () => {
-      logger.configure({ level: 'info', format: 'json' });
-      logger.info('test', { key: 'value' });
-
-      const output = getConsoleCallsFor('info')[0].args[0] as string;
-      const parsed = JSON.parse(output);
-      expect(parsed.args).toBeDefined();
-      expect(parsed.args[0]).toEqual({ key: 'value' });
-    });
-
-    test('json format omits args when empty', () => {
-      logger.configure({ level: 'info', format: 'json' });
-      logger.info('test');
-
-      const output = getConsoleCallsFor('info')[0].args[0] as string;
-      const parsed = JSON.parse(output);
-      expect(parsed.args).toBeUndefined();
-    });
+  test('warn level filters out debug and info', () => {
+    logger.configure({ level: 'warn' });
+    logger.debug('x'); logger.info('y'); logger.warn('z'); logger.error('w');
+    const msgs = mem.parsed().map(l => l.msg);
+    expect(msgs).toEqual(['z', 'w']);
   });
 
-  describe('colorize', () => {
-    test('applies cyan color to debug level', () => {
-      logger.configure({ level: 'debug', format: 'pretty' });
-      logger.debug('test');
+  test('error level only logs errors', () => {
+    logger.configure({ level: 'error' });
+    logger.debug('x'); logger.info('y'); logger.warn('z'); logger.error('w');
+    const msgs = mem.parsed().map(l => l.msg);
+    expect(msgs).toEqual(['w']);
+  });
+});
 
-      const output = getConsoleCallsFor('debug')[0].args[0] as string;
-      expect(output).toContain('\x1b[36m'); // cyan
-    });
+describe('Logger — log methods', () => {
+  let mem: ReturnType<typeof memDestination>;
 
-    test('applies green color to info level', () => {
-      logger.configure({ level: 'info', format: 'pretty' });
-      logger.info('test');
+  beforeEach(() => {
+    mem = memDestination();
+    logger.configure({ level: 'debug', format: 'json', namespaces: {} } as LoggerConfig);
+    setLoggerDestination(mem.stream);
+  });
+  afterEach(() => setLoggerDestination(undefined));
 
-      const output = getConsoleCallsFor('info')[0].args[0] as string;
-      expect(output).toContain('\x1b[32m'); // green
-    });
-
-    test('applies yellow color to warn level', () => {
-      logger.configure({ level: 'warn', format: 'pretty' });
-      logger.warn('test');
-
-      const output = getConsoleCallsFor('warn')[0].args[0] as string;
-      expect(output).toContain('\x1b[33m'); // yellow
-    });
-
-    test('applies red color to error level', () => {
-      logger.configure({ level: 'error', format: 'pretty' });
-      logger.error('test');
-
-      const output = getConsoleCallsFor('error')[0].args[0] as string;
-      expect(output).toContain('\x1b[31m'); // red
-    });
+  test.each([
+    ['debug', 20],
+    ['info', 30],
+    ['warn', 40],
+    ['error', 50],
+  ] as const)('%s logs at pino level %s', (method, expectedLevel) => {
+    (logger as any)[method]('the message');
+    const [line] = mem.parsed();
+    expect(line.level).toBe(expectedLevel);
+    expect(line.msg).toBe('the message');
   });
 
-  describe('child logger', () => {
-    test('creates child logger with context', () => {
-      logger.configure({ level: 'info', format: 'json' });
-      const childLogger = logger.child({ module: 'test-module' });
+  test('single-object arg is lifted to top-level fields', () => {
+    logger.info('config', { provider: 'openai', model: 'gpt-5.5' });
+    const [line] = mem.parsed();
+    expect(line.provider).toBe('openai');
+    expect(line.model).toBe('gpt-5.5');
+  });
 
-      childLogger.info('child message');
+  test('multi-arg lands under args[]', () => {
+    logger.info('multi', 'second', 42, true);
+    const [line] = mem.parsed();
+    expect(line.args).toEqual(['second', 42, true]);
+  });
+});
 
-      const output = getConsoleCallsFor('info')[0].args[0] as string;
-      const parsed = JSON.parse(output);
-      expect(parsed.args[0]).toEqual({ module: 'test-module' });
+describe('Logger — namespace levels', () => {
+  let mem: ReturnType<typeof memDestination>;
+
+  beforeEach(() => {
+    mem = memDestination();
+    logger.configure({
+      level: 'warn',
+      format: 'json',
+      namespaces: { 'agent': 'info', 'memory.*': 'error' },
     });
+    setLoggerDestination(mem.stream);
+  });
+  afterEach(() => {
+    setLoggerDestination(undefined);
+    logger.configure({ level: 'info', namespaces: {} });
+  });
 
-    test('child logger inherits parent level', () => {
-      logger.configure({ level: 'warn' });
-      const childLogger = logger.child({ module: 'test' });
+  test('namespaced logger uses per-ns override (info, looser than default warn)', () => {
+    const log = getLogger('agent');
+    log.info('agent info should appear');
+    const parsed = mem.parsed();
+    expect(parsed.length).toBe(1);
+    expect(parsed[0].ns).toBe('agent');
+    expect(parsed[0].msg).toBe('agent info should appear');
+  });
 
-      childLogger.debug('should not appear');
-      childLogger.warn('should appear');
+  test('glob-matched ns uses override (error, stricter than default warn)', () => {
+    const log = getLogger('memory.injector');
+    log.warn('warn-level should be filtered');
+    log.error('error-level passes');
+    const msgs = mem.parsed().map(l => l.msg);
+    expect(msgs).toEqual(['error-level passes']);
+  });
 
-      expect(getConsoleCallsFor('debug').length).toBe(0);
-      expect(getConsoleCallsFor('warn').length).toBeGreaterThan(0);
+  test('unmatched ns falls back to default level', () => {
+    const log = getLogger('other.thing');
+    log.info('info filtered by default warn');
+    log.warn('warn passes');
+    const msgs = mem.parsed().map(l => l.msg);
+    expect(msgs).toEqual(['warn passes']);
+  });
+
+  test('exact match wins over glob', () => {
+    logger.configure({
+      level: 'warn',
+      namespaces: { 'memory.injector': 'debug', 'memory.*': 'error' },
     });
+    const log = getLogger('memory.injector');
+    log.debug('exact match wins → debug passes');
+    expect(mem.parsed().length).toBe(1);
+  });
+});
 
-    test('child logger all methods work', () => {
-      logger.configure({ level: 'debug' });
-      const childLogger = logger.child({ module: 'test' });
+describe('Logger — child bindings', () => {
+  let mem: ReturnType<typeof memDestination>;
 
-      childLogger.debug('debug');
-      childLogger.info('info');
-      childLogger.warn('warn');
-      childLogger.error('error');
+  beforeEach(() => {
+    mem = memDestination();
+    logger.configure({ level: 'info', format: 'json', namespaces: {} });
+    setLoggerDestination(mem.stream);
+  });
+  afterEach(() => setLoggerDestination(undefined));
 
-      expect(getConsoleCalls().length).toBe(4);
-    });
+  test('child() attaches bindings to every line', () => {
+    const c = logger.child({ requestId: 'req-1', userId: 'u-7' });
+    c.info('something happened');
+    const [line] = mem.parsed();
+    expect(line.requestId).toBe('req-1');
+    expect(line.userId).toBe('u-7');
+    expect(line.msg).toBe('something happened');
   });
 });

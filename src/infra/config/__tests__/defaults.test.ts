@@ -166,7 +166,7 @@ describe('defaults', () => {
     });
 
     it('should return true for default logging', () => {
-      expect(isDefaultValue('logging', { level: 'info', format: 'pretty' })).toBe(true);
+      expect(isDefaultValue('logging', { level: 'info', format: 'pretty', namespaces: {} })).toBe(true);
     });
 
     it('should return false when value differs', () => {

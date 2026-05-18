@@ -606,15 +606,19 @@ describe('VectorMemoryStore (deep)', () => {
       };
       setEmbeddingProvider(bigProvider);
 
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const store2 = new VectorMemoryStore({ basePath: tmpDir, autoPersist: false });
-      const loaded = await store2.load();
-      expect(loaded).toBe(false);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Dimension mismatch'),
-        // Possibly more args
-      );
-      warnSpy.mockRestore();
+      // Pino writes via its own destination — capture it via setLoggerDestination
+      // rather than console.warn (the pre-pino impl used console under the hood).
+      const { setLoggerDestination } = await import('../../../infra/observability/logger');
+      const captured: string[] = [];
+      setLoggerDestination({ write: (chunk: string) => { captured.push(chunk); } } as any);
+      try {
+        const store2 = new VectorMemoryStore({ basePath: tmpDir, autoPersist: false });
+        const loaded = await store2.load();
+        expect(loaded).toBe(false);
+        expect(captured.join('\n')).toContain('Dimension mismatch');
+      } finally {
+        setLoggerDestination(undefined);
+      }
       setEmbeddingProvider(provider); // restore
     });
 

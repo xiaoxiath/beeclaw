@@ -103,22 +103,28 @@ describe('EastmoneyProvider - extended coverage', () => {
     });
 
     it('catches per-symbol errors and continues', async () => {
-      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      fetchSpy
-        .mockRejectedValueOnce(new Error('network fail'))
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            data: { f57: '000001', f58: 'Test', f43: 500, f44: 500, f45: 500, f46: 100, f47: 100, f48: 100, f49: 100, f50: 100, f51: 0, f52: 0, f55: 500, f60: 500, f170: 100, f171: 100 },
-          }),
-        });
+      // Pino destination capture — logger.warn no longer goes through console.warn.
+      const { setLoggerDestination } = await import('../../../../../../infra/observability/logger');
+      const captured: string[] = [];
+      setLoggerDestination({ write: (chunk: string) => { captured.push(chunk); } } as any);
+      try {
+        fetchSpy
+          .mockRejectedValueOnce(new Error('network fail'))
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({
+              data: { f57: '000001', f58: 'Test', f43: 500, f44: 500, f45: 500, f46: 100, f47: 100, f48: 100, f49: 100, f50: 100, f51: 0, f52: 0, f55: 500, f60: 500, f170: 100, f171: 100 },
+            }),
+          });
 
-      const result = await provider.getQuote({ symbol: '600000', symbols: ['600000', '000001'] });
-      expect(result).toHaveLength(1);
-      expect(result[0].symbol).toBe('000001');
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
+        const result = await provider.getQuote({ symbol: '600000', symbols: ['600000', '000001'] });
+        expect(result).toHaveLength(1);
+        expect(result[0].symbol).toBe('000001');
+        expect(captured.length).toBeGreaterThan(0); // warn was emitted
+      } finally {
+        setLoggerDestination(undefined);
+      }
     });
 
     it('uses SZ market for 0xxxxx codes', async () => {

@@ -3,23 +3,20 @@
  * blob, response body, or auth header, the logger must mask common
  * secret shapes before stdout / log files / Feishu cards.
  *
- * Tests both branches:
- *   - pretty format → goes through safeStringify (key-name & string-value masking)
- *   - json format   → goes through redactValue (recursive object walk)
+ * Three layers tested separately:
+ *   1. redactString  — pure string-pattern masking (sk-*, Bearer *, etc.)
+ *   2. redactValue   — recursive object walk masking by key + nested strings
+ *   3. logger.info() — end-to-end: log goes through pino, JSON line is captured
+ *      via setLoggerDestination(), parsed, and asserted against.
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import {
-  setupMockConsole,
-  restoreConsole,
-  getConsoleCallsFor,
-} from '../../testing/mocks/console';
-import { logger, redactString } from '../logger';
-
-function lastInfoOutput(): string {
-  const calls = getConsoleCallsFor('info');
-  return String(calls[calls.length - 1].args[0]);
-}
+  logger,
+  redactString,
+  redactValue,
+  setLoggerDestination,
+} from '../logger';
 
 describe('redactString — string-pattern masking', () => {
   test('masks sk-XXXX style keys', () => {
@@ -27,8 +24,8 @@ describe('redactString — string-pattern masking', () => {
   });
 
   test('masks Bearer tokens', () => {
-    const out = redactString('Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig');
-    expect(out).toBe('Authorization: Bearer [REDACTED]');
+    expect(redactString('Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig'))
+      .toBe('Authorization: Bearer [REDACTED]');
   });
 
   test('masks api_key= in query strings', () => {
@@ -50,138 +47,125 @@ describe('redactString — string-pattern masking', () => {
   });
 });
 
-describe('Logger — pretty format key-name masking', () => {
-  beforeEach(() => {
-    setupMockConsole(['debug', 'info', 'warn', 'error'], true);
-    logger.configure({ level: 'info', format: 'pretty' });
-  });
-  afterEach(() => restoreConsole());
-
-  test('masks apiKey field value in object args', () => {
-    logger.info('config loaded', { apiKey: 'sk-realsecretvalue1234567890', model: 'gpt-4' });
-    const out = lastInfoOutput();
-    expect(out).not.toContain('realsecretvalue');
-    expect(out).toContain('[REDACTED]');
-    expect(out).toContain('"model": "gpt-4"');
-  });
-
-  test('masks api_key (snake_case) and api-key (kebab-case) variants', () => {
-    logger.info('a', { api_key: 'snakecase-secret' });
-    expect(lastInfoOutput()).toContain('[REDACTED]');
-    logger.info('b', { 'api-key': 'kebab-secret' });
-    expect(lastInfoOutput()).toContain('[REDACTED]');
+describe('redactValue — recursive object walk', () => {
+  test('masks apiKey, api_key, api-key variants', () => {
+    expect((redactValue({ apiKey: 'sk-secret1234567890abc' }) as any).apiKey).toBe('[REDACTED]');
+    expect((redactValue({ api_key: 'snakey' }) as any).api_key).toBe('[REDACTED]');
+    expect((redactValue({ 'api-key': 'kebabby' }) as any)['api-key']).toBe('[REDACTED]');
   });
 
   test('masks token / password / secret / authorization fields', () => {
-    logger.info('multi', {
-      token: 'abc',
-      password: 'pw',
-      secret: 'shh',
-      Authorization: 'Bearer xyz',
-    });
-    const out = lastInfoOutput();
-    expect(out).not.toContain('"token": "abc"');
-    expect(out).not.toContain('"password": "pw"');
-    expect(out).not.toContain('"secret": "shh"');
-    // Authorization key value masked too
-    expect(out.match(/\[REDACTED\]/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+    const out = redactValue({
+      token: 'abc', password: 'pw', secret: 'shh', Authorization: 'Bearer xyz',
+    }) as any;
+    expect(out.token).toBe('[REDACTED]');
+    expect(out.password).toBe('[REDACTED]');
+    expect(out.secret).toBe('[REDACTED]');
+    expect(out.Authorization).toBe('[REDACTED]');
   });
 
-  test('passes through empty / null secret values (preserves debuggability)', () => {
-    logger.info('empty', { apiKey: '', token: null, password: undefined });
-    const out = lastInfoOutput();
-    // Empty string and null/undefined should NOT show [REDACTED] — they're already safe
-    // and seeing the absence helps debug "did you forget to set the env var?"
-    expect(out).not.toContain('[REDACTED]');
-  });
-
-  test('masks sk-* in plain message string', () => {
-    logger.info('connecting with sk-livesecret1234567890ABC to provider');
-    const out = lastInfoOutput();
-    expect(out).not.toContain('livesecret1234567890ABC');
-    expect(out).toContain('sk-[REDACTED]');
-  });
-
-  test('masks sk-* nested deep inside object string values (non-secret keys)', () => {
-    // Parent keys are NOT secret-named, so string-pattern masking applies.
-    logger.info('cfg', { request: { headers: ['Authorization: Bearer eyJlongtokenstring1234'] } });
-    const out = lastInfoOutput();
-    expect(out).not.toContain('eyJlongtokenstring1234');
-    expect(out).toContain('Bearer [REDACTED]');
+  test('passes through empty / null / undefined secret values', () => {
+    const out = redactValue({ apiKey: '', token: null, password: undefined }) as any;
+    expect(out.apiKey).toBe('');
+    expect(out.token).toBeNull();
+    expect(out.password).toBeUndefined();
   });
 
   test('safer-by-default: secret-named parent key masks ENTIRE subtree', () => {
-    // Even if we don't know what's inside, masking is the right call.
-    logger.info('cfg', { auth: { headerValue: 'Bearer eyJlongtokenstring1234', x: 1 } });
-    const out = lastInfoOutput();
-    expect(out).not.toContain('eyJlongtokenstring1234');
-    expect(out).not.toContain('"x": 1');
-    expect(out).toContain('[REDACTED]');
+    const out = redactValue({ auth: { headerValue: 'Bearer eyJlong', x: 1 } }) as any;
+    expect(out.auth).toBe('[REDACTED]');
+  });
+
+  test('masks secret-shaped strings inside non-secret keys', () => {
+    const out = redactValue({ request: { headers: ['Authorization: Bearer eyJlongtoken1234567890'] } }) as any;
+    expect(out.request.headers[0]).toBe('Authorization: Bearer [REDACTED]');
   });
 
   test('preserves non-secret fields untouched', () => {
-    logger.info('mixed', { provider: 'openai', apiKey: 'sk-x123456789012345', maxTokens: 4096 });
-    const out = lastInfoOutput();
-    expect(out).toContain('"provider": "openai"');
-    expect(out).toContain('"maxTokens": 4096');
-    expect(out).not.toContain('x123456789012345');
+    const out = redactValue({ provider: 'openai', apiKey: 'sk-x123456789012345', maxTokens: 4096 }) as any;
+    expect(out.provider).toBe('openai');
+    expect(out.maxTokens).toBe(4096);
+    expect(out.apiKey).toBe('[REDACTED]');
   });
 
-  test('still handles circular references safely', () => {
+  test('handles circular references safely', () => {
     const obj: any = { name: 'cycle' };
     obj.self = obj;
-    logger.info('circular', obj);
-    const out = lastInfoOutput();
-    expect(out).toContain('[Circular]');
-    expect(out).toContain('"name": "cycle"');
+    const out = redactValue(obj) as any;
+    expect(out.name).toBe('cycle');
+    expect(out.self).toBe('[Circular]');
+  });
+
+  test('redacts Error.message and stack', () => {
+    const err = new Error('failed sk-realkey1234567890ABCDEF');
+    const out = redactValue(err) as any;
+    expect(out.message).toBe('failed sk-[REDACTED]');
+    expect(typeof out.stack).toBe('string');
   });
 });
 
-describe('Logger — json format recursive redaction', () => {
+/**
+ * Memory destination — captures every line pino emits as a JSON string.
+ * Pino calls .write(chunk) where chunk is the formatted line (\n-suffixed).
+ */
+function createMemoryDestination() {
+  const lines: string[] = [];
+  return {
+    write(chunk: string): void {
+      lines.push(chunk.trimEnd());
+    },
+    lines,
+    parsed(): any[] {
+      return lines.map(l => {
+        try { return JSON.parse(l); } catch { return { raw: l }; }
+      });
+    },
+  };
+}
+
+describe('logger.info() end-to-end → pino destination', () => {
+  let mem: ReturnType<typeof createMemoryDestination>;
+
   beforeEach(() => {
-    setupMockConsole(['debug', 'info', 'warn', 'error'], true);
+    mem = createMemoryDestination();
+    // Force json (raw) format so we don't drag pino-pretty into the test.
     logger.configure({ level: 'info', format: 'json' });
+    setLoggerDestination(mem as any);
   });
+
   afterEach(() => {
-    restoreConsole();
+    setLoggerDestination(undefined);
     logger.configure({ format: 'pretty' });
   });
 
+  test('redacts apiKey in single-object arg (lifted to top level)', () => {
+    logger.info('config loaded', { apiKey: 'sk-realsecret1234567890', model: 'gpt-4' });
+    const [line] = mem.parsed();
+    expect(line.apiKey).toBe('[REDACTED]');
+    expect(line.model).toBe('gpt-4');
+    expect(line.msg).toBe('config loaded');
+  });
+
+  test('redacts sk-* in plain message string', () => {
+    logger.info('connecting with sk-livesecret1234567890ABC to provider');
+    const [line] = mem.parsed();
+    expect(line.msg).toBe('connecting with sk-[REDACTED] to provider');
+  });
+
   test('redacts nested apiKey via object walk', () => {
-    logger.info('boot', { providers: [{ name: 'zhipu', apiKey: 'sk-zhipu-secretvalue1234567890' }] });
-    const raw = lastInfoOutput();
-    const parsed = JSON.parse(raw);
-    expect(parsed.args[0].providers[0].name).toBe('zhipu');
-    expect(parsed.args[0].providers[0].apiKey).toBe('[REDACTED]');
+    logger.info('boot', { providers: [{ name: 'zhipu', apiKey: 'sk-zhipu-secret1234567890' }] });
+    const [line] = mem.parsed();
+    expect(line.providers[0].name).toBe('zhipu');
+    expect(line.providers[0].apiKey).toBe('[REDACTED]');
   });
-
-  test('redacts sk-* in message string in json mode', () => {
-    logger.info('using sk-abcdefghijklmnopqrstuv now');
-    const parsed = JSON.parse(lastInfoOutput());
-    expect(parsed.message).toBe('using sk-[REDACTED] now');
-  });
-
-  test('handles circular refs in json mode', () => {
-    const a: any = { x: 1 };
-    a.cycle = a;
-    logger.info('msg', a);
-    const parsed = JSON.parse(lastInfoOutput());
-    expect(parsed.args[0].cycle).toBe('[Circular]');
-  });
-});
-
-describe('Logger — Error redaction', () => {
-  beforeEach(() => {
-    setupMockConsole(['debug', 'info', 'warn', 'error'], true);
-    logger.configure({ level: 'error', format: 'pretty' });
-  });
-  afterEach(() => restoreConsole());
 
   test('redacts secrets in Error.message', () => {
     const err = new Error('failed to call api with sk-realkey1234567890ABCDEF: 401');
     logger.error('api error', err);
-    const out = String(getConsoleCallsFor('error').slice(-1)[0].args[0]);
-    expect(out).not.toContain('realkey1234567890ABCDEF');
-    expect(out).toContain('sk-[REDACTED]');
+    const [line] = mem.parsed();
+    // Errors land under args[0] (we deliberately don't lift them — pino
+    // has its own special `err` handling we'd collide with).
+    expect(line.args[0].message).toBe('failed to call api with sk-[REDACTED]: 401');
+    expect(line.msg).toBe('api error');
   });
 });

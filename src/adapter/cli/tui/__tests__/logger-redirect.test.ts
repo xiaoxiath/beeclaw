@@ -43,29 +43,37 @@ describe('activateLoggerRedirect', () => {
     logger.error('boom');
 
     expect(stdoutSpy).not.toHaveBeenCalled();
-    const written = fs.readFileSync(getLogPath(), 'utf-8');
-    expect(written).toContain('[INFO] test info');
-    expect(written).toContain('"foo":"bar"');
-    expect(written).toContain('[WARN] test warn');
-    expect(written).toContain('[ERROR] boom');
-
-    stdoutSpy.mockRestore();
+    // Pino emits JSON-line; parse and assert on shape rather than
+    // diffing exact strings (pino field order / additions may shift).
+    const written = fs.readFileSync(getLogPath(), 'utf-8').trim();
+    const lines = written.split('\n').map(l => JSON.parse(l));
+    expect(lines.length).toBe(3);
+    expect(lines[0].msg).toBe('test info');
+    expect(lines[0].foo).toBe('bar');
+    expect(lines[0].level).toBe(30);
+    expect(lines[1].msg).toBe('test warn');
+    expect(lines[1].level).toBe(40);
+    expect(lines[2].msg).toBe('boom');
+    expect(lines[2].level).toBe(50);
   });
 
   test('idempotent — second call is a no-op', () => {
     activateLoggerRedirect();
-    const firstFn = logger.info;
+    const path1 = getLogPath();
     activateLoggerRedirect();
-    expect(logger.info).toBe(firstFn);
+    const path2 = getLogPath();
+    expect(path1).toBe(path2);
   });
 
   test('Error objects serialize message + stack to the log', () => {
     activateLoggerRedirect();
     const err = new Error('something broke');
     logger.error('caught', err);
-    const written = fs.readFileSync(getLogPath(), 'utf-8');
-    expect(written).toContain('something broke');
-    expect(written).toMatch(/at /); // stack frame marker
+    const lines = fs.readFileSync(getLogPath(), 'utf-8').trim().split('\n').map(l => JSON.parse(l));
+    const errArg = lines[0].args[0];
+    expect(errArg.message).toBe('something broke');
+    expect(typeof errArg.stack).toBe('string');
+    expect(errArg.stack).toMatch(/at /);
   });
 
   test('creates logs/ directory if absent', () => {

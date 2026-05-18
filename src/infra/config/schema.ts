@@ -317,11 +317,17 @@ export const ToolPluginConfigSchema = PluginConfigSchema.extend({
   type: z.enum(['http', 'function', 'mcp']).default('http'),
 });
 
-// Logging schema
+// Logging schema. `namespaces` is the per-subsystem level dial: keys
+// match the string passed to getLogger(ns), trailing `*` is a prefix
+// glob. Example:
+//   "namespaces": { "agent": "info", "memory.*": "error", "feishu.ws": "debug" }
+// Recommended default is `level: "warn"` once high-frequency INFO
+// chatter is migrated to debug — keep "info" for now for compatibility.
 export const LoggingConfigSchema = z.object({
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   format: z.enum(['json', 'pretty']).default('pretty'),
   file: z.string().optional(),
+  namespaces: z.record(z.string(), z.enum(['debug', 'info', 'warn', 'error'])).default({}),
 });
 
 // Feishu configuration schema
