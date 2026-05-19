@@ -88,6 +88,23 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
   // Static-flushed lines have pushed everything down.
   printBanner(opts.modelLabel);
 
+  // Belt-and-suspenders raw-mode pin. Ink toggles setRawMode as useInput
+  // hooks register / unregister, but under Bun we've seen Enter keypresses
+  // leak through and produce blank lines in the visible output during a
+  // busy turn — suggesting the kernel briefly fell back to cooked mode
+  // between Ink's bookkeeping calls. We pin it on once before render and
+  // restore on exit; Ink's own toggles still work, but they can't drop us
+  // below "raw on" while we're alive.
+  let restoreRaw: (() => void) | null = null;
+  if (process.stdin.isTTY && typeof process.stdin.setRawMode === 'function') {
+    const wasRaw = (process.stdin as { isRaw?: boolean }).isRaw === true;
+    process.stdin.setRawMode(true);
+    if (!process.stdin.isPaused()) process.stdin.resume();
+    restoreRaw = () => {
+      try { process.stdin.setRawMode(wasRaw); } catch { /* ignore */ }
+    };
+  }
+
   const handleSubmit = (line: string) => {
     return opts.agent.chatStream(line) as AsyncIterable<{ type: string; content?: string }>;
   };
@@ -95,6 +112,7 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
   const handleExit = async (): Promise<void> => {
     if (opts.onExit) await opts.onExit();
     restoreLogger();
+    if (restoreRaw) restoreRaw();
   };
 
   const instance = render(
