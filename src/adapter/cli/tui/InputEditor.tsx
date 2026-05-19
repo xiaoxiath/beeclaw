@@ -137,8 +137,13 @@ export function InputEditor({ onSubmit, disabled, isBusy, historyPath, commands 
     dispatch({ type: 'insert', text: `/${picked.name} ` });
   }, [pickerMatches, pickerSelectedIdx]);
 
+  // useInput stays ACTIVE even when "disabled" — when isActive flips false
+  // Ink stops reading stdin in raw mode, and Bun's terminal layer then
+  // echoes incoming keystrokes itself (each Enter prints a blank line).
+  // We consume keys here and reject them internally instead, so the
+  // terminal never sees them.
   useInput((char, key) => {
-    if (disabled) return;
+    if (disabled || isBusy?.()) return;
 
     // Picker-aware navigation when visible.
     if (pickerActive && pickerMatches.length > 0) {
@@ -222,7 +227,7 @@ export function InputEditor({ onSubmit, disabled, isBusy, historyPath, commands 
       setPickerDismissed(false);
       dispatch({ type: 'insert', text: char });
     }
-  }, { isActive: !disabled });
+  });  // intentionally always active — see comment above the handler
 
   // Render. For single-line, show inline; for multi-line, render each
   // line on its own row. Cursor is the inverted character at state.cursor.
