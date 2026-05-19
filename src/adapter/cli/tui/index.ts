@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { execSync } from 'child_process';
 import { render } from 'ink';
 import type { Agent } from '../../../domain/agent';
 import { activateLoggerRedirect, restoreLogger, getLogPath } from './logger-redirect';
@@ -88,19 +89,38 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
   // Static-flushed lines have pushed everything down.
   printBanner(opts.modelLabel);
 
-  // Belt-and-suspenders raw-mode pin. Ink toggles setRawMode as useInput
-  // hooks register / unregister, but under Bun we've seen Enter keypresses
-  // leak through and produce blank lines in the visible output during a
-  // busy turn — suggesting the kernel briefly fell back to cooked mode
-  // between Ink's bookkeeping calls. We pin it on once before render and
-  // restore on exit; Ink's own toggles still work, but they can't drop us
-  // below "raw on" while we're alive.
+  // Belt-and-suspenders raw-mode + echo suppression. Ink toggles
+  // setRawMode internally, and under Bun the kernel evidently slips
+  // back to cooked mode briefly during a busy turn — letting Enter
+  // (and typed letters!) echo into the visible scrollback. We pin
+  // raw mode at three layers:
+  //   1. setRawMode(true) here once
+  //   2. `stty -echo` via the OS TTY (in case Bun's setRawMode is
+  //      racy with cooked mode)
+  //   3. an interval that re-asserts setRawMode every 200ms in case
+  //      Ink toggles it off mid-turn
+  // All three are restored on exit.
   let restoreRaw: (() => void) | null = null;
   if (process.stdin.isTTY && typeof process.stdin.setRawMode === 'function') {
     const wasRaw = (process.stdin as { isRaw?: boolean }).isRaw === true;
     process.stdin.setRawMode(true);
     if (!process.stdin.isPaused()) process.stdin.resume();
+
+    // Layer 2: stty -echo directly. We try it but don't fail TUI startup
+    // if it's missing — setRawMode + interval are the primary defense.
+    try { execSync('stty -echo', { stdio: 'ignore' }); } catch { /* no stty? continue */ }
+
+    // Layer 3: periodically re-assert. 200ms is fast enough that even
+    // if Ink toggles off after each render, the gap is invisible.
+    const interval = setInterval(() => {
+      if ((process.stdin as { isRaw?: boolean }).isRaw !== true) {
+        try { process.stdin.setRawMode(true); } catch { /* ignore */ }
+      }
+    }, 200);
+
     restoreRaw = () => {
+      clearInterval(interval);
+      try { execSync('stty echo', { stdio: 'ignore' }); } catch { /* ignore */ }
       try { process.stdin.setRawMode(wasRaw); } catch { /* ignore */ }
     };
   }
