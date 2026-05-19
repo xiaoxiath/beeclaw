@@ -44,16 +44,12 @@ const logger = getLogger('tui.input');
 export interface InputEditorProps {
   /** Called with the buffer contents when the user submits with Enter. */
   onSubmit: (line: string) => void;
-  /** Disables key handling (e.g. while a turn is busy). */
-  disabled?: boolean;
   /**
-   * SYNCHRONOUS busy check (callback, not state). React state-driven
-   * `disabled` only flips on the next commit, so Enter spam during the
-   * ~ms gap between submit and commit slips through. Callback reads a
-   * ref, so it sees the truth instantly. When it returns true, submit
-   * skips ALL its side-effects (no dispatch, no setHistory, no picker
-   * resets) — those setStates re-render the editor and leave `> `
-   * tombstones in scrollback on every Ink mis-diff.
+   * SYNCHRONOUS busy check (callback, not state). When it returns true,
+   * submit() and the keyboard handler skip ALL side-effects so the
+   * editor doesn't re-render on Enter spam during a busy turn. Reads a
+   * ref in the parent, so it sees the truth without waiting for React
+   * to commit a `disabled` prop.
    */
   isBusy?: () => boolean;
   /** Override path for testing — defaults to ~/.beeclaw_history. */
@@ -68,7 +64,7 @@ function reducer(state: EditorState, action: EditorAction): EditorState {
 
 const PICKER_LIMIT = 5;
 
-export function InputEditor({ onSubmit, disabled, isBusy, historyPath, commands }: InputEditorProps): React.ReactElement {
+export function InputEditor({ onSubmit, isBusy, historyPath, commands }: InputEditorProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, initialEditorState);
   const [history, setHistory] = useState<readonly string[]>([]);
   const [pickerSelectedIdx, setPickerSelectedIdx] = useState(0);
@@ -137,13 +133,11 @@ export function InputEditor({ onSubmit, disabled, isBusy, historyPath, commands 
     dispatch({ type: 'insert', text: `/${picked.name} ` });
   }, [pickerMatches, pickerSelectedIdx]);
 
-  // useInput stays ACTIVE even when "disabled" — when isActive flips false
-  // Ink stops reading stdin in raw mode, and Bun's terminal layer then
-  // echoes incoming keystrokes itself (each Enter prints a blank line).
-  // We consume keys here and reject them internally instead, so the
-  // terminal never sees them.
+  // useInput is permanently active so Ink always reads stdin in raw
+  // mode (preventing terminal echo). Busy-state rejection happens
+  // inside the handler via isBusy.
   useInput((char, key) => {
-    if (disabled || isBusy?.()) return;
+    if (isBusy?.()) return;
 
     // Picker-aware navigation when visible.
     if (pickerActive && pickerMatches.length > 0) {
@@ -252,7 +246,7 @@ export function InputEditor({ onSubmit, disabled, isBusy, historyPath, commands 
       )}
 
       {lines.map((line, rowIdx) => {
-        const isCursorRow = rowIdx === cursorRow && !disabled;
+        const isCursorRow = rowIdx === cursorRow;
         const prefix = rowIdx === 0
           ? <Text color={theme.user} bold>{'> '}</Text>
           : <Text color={theme.dim}>{'  '}</Text>;
