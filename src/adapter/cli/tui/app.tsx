@@ -39,6 +39,9 @@ import { InputEditor } from './InputEditor';
 import { Footer } from './Footer';
 import { HitlPrompt, type HitlSignal } from './HitlPrompt';
 import { expandHitlAnswer } from './hitl-expand';
+import { StreamingIndicator } from './StreamingIndicator';
+import { WelcomeBanner } from './WelcomeBanner';
+import { getLogPath } from './logger-redirect';
 import type { ChatMessage } from './messages';
 import {
   composeRegistry,
@@ -375,12 +378,22 @@ export function App({
   // the most recent message inline alongside the indicator + input.
   // ──────────────────────────────────────────────────────────────────
   const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const isEmpty = messages.length === 0;
 
   return (
     <Box flexDirection="column">
+      {/* Empty-state welcome: shown only before any messages. Disappears
+          from the tree once chat starts, replaced by the streaming
+          MessageView. */}
+      {isEmpty && (
+        <WelcomeBanner modelLabel={modelLabel} logsPath={getLogPath()} />
+      )}
+
       {latestMessage && (
         <MessageView key={`live:${latestMessage.id}`} message={latestMessage} />
       )}
+
+      <StreamingIndicator active={status === 'busy'} phase={phase} />
 
       {hint && (
         <Box marginBottom={1}>

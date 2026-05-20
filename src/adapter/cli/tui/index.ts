@@ -6,39 +6,12 @@
 import React from 'react';
 import { render } from 'ink';
 import type { Agent } from '../../../domain/agent';
-import { activateLoggerRedirect, restoreLogger, getLogPath } from './logger-redirect';
+import { activateLoggerRedirect, restoreLogger } from './logger-redirect';
 import { App } from './app';
-import { theme } from './theme';
 
-// ANSI helpers — we render the banner directly (not via Ink) so it
-// sits in scrollback ONCE, above the live region. See the comment in
-// App.tsx for why putting the banner in the React tree caused it to
-// stack on every <Static> commit.
-const ansi = {
-  bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
-  color: (hex: string, s: string) => {
-    // Crude hex → 24-bit ANSI; fine for our 3-color theme.
-    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-    if (!m) return s;
-    const [, r, g, b] = m;
-    return `\x1b[38;2;${parseInt(r, 16)};${parseInt(g, 16)};${parseInt(b, 16)}m${s}\x1b[0m`;
-  },
-};
-
-function printBanner(modelLabel?: string): void {
-  // eslint-disable-next-line no-console
-  console.log(ansi.bold(ansi.color(theme.primary, '🐝 Beeclaw CLI')));
-  // eslint-disable-next-line no-console
-  console.log(ansi.color(theme.dim,
-    `${modelLabel ? `model: ${modelLabel}  ·  ` : ''}logs: ${getLogPath()}`,
-  ));
-  // eslint-disable-next-line no-console
-  console.log(ansi.color(theme.dim,
-    'type / for commands, /exit to quit  ·  meta+enter or trailing \\ for newline',
-  ));
-  // eslint-disable-next-line no-console
-  console.log('');
-}
+// Banner is now rendered inside Ink by <WelcomeBanner/> when messages
+// are empty — see app.tsx. After the first turn it disappears from
+// the tree (cleaner than a persistent header).
 
 export interface RunTuiOptions {
   agent: Agent;
@@ -86,8 +59,6 @@ export async function runTui(opts: RunTuiOptions): Promise<void> {
   // <Static>) caused it to re-appear in scrollback on every Static
   // commit, because Ink erases at its OLD tracked position while
   // Static-flushed lines have pushed everything down.
-  printBanner(opts.modelLabel);
-
   // No stty / setRawMode acrobatics needed any more: App.tsx now
   // architecturally avoids the situations where Ink would toggle
   // raw mode off (App-level + InputEditor useInput are BOTH always

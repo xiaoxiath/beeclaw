@@ -21,9 +21,25 @@ const RESET = `${ESC}0m`;
 const BOLD = `${ESC}1m`;
 const DIM = `${ESC}2m`;
 
-// 24-bit ANSI; falls back to plain text if hex is malformed.
-function color(hex: string, s: string): string {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+// Map common ANSI color names (theme uses chalk-style names like "cyan").
+// Hex strings get the 24-bit ANSI treatment. Anything else passes through.
+const NAMED: Record<string, string> = {
+  black: `${ESC}30m`,
+  red: `${ESC}31m`,
+  green: `${ESC}32m`,
+  yellow: `${ESC}33m`,
+  blue: `${ESC}34m`,
+  magenta: `${ESC}35m`,
+  cyan: `${ESC}36m`,
+  white: `${ESC}37m`,
+  gray: `${ESC}90m`,
+  grey: `${ESC}90m`,
+};
+
+function color(spec: string, s: string): string {
+  const named = NAMED[spec.toLowerCase()];
+  if (named) return `${named}${s}${RESET}`;
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(spec);
   if (!m) return s;
   const [, r, g, b] = m;
   return `${ESC}38;2;${parseInt(r, 16)};${parseInt(g, 16)};${parseInt(b, 16)}m${s}${RESET}`;

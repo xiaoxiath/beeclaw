@@ -245,33 +245,45 @@ export function InputEditor({ onSubmit, isBusy, historyPath, commands }: InputEd
         <CommandPicker matches={pickerMatches} selectedIndex={pickerSelectedIdx} />
       )}
 
-      {lines.map((line, rowIdx) => {
-        const isCursorRow = rowIdx === cursorRow;
-        const prefix = rowIdx === 0
-          ? <Text color={theme.user} bold>{'> '}</Text>
-          : <Text color={theme.dim}>{'  '}</Text>;
+      {/* Bordered input box, top + bottom only — Helixent style. The
+          border gives the input area clear visual weight without
+          drowning out the chat content above. */}
+      <Box
+        borderStyle="single"
+        borderColor={theme.border}
+        borderLeft={false}
+        borderRight={false}
+        flexDirection="column"
+        paddingX={1}
+      >
+        {lines.map((line, rowIdx) => {
+          const isCursorRow = rowIdx === cursorRow;
+          const prefix = rowIdx === 0
+            ? <Text color={theme.primary} bold>{'❯ '}</Text>
+            : <Text color={theme.dim}>{'  '}</Text>;
 
-        if (!isCursorRow) {
+          if (!isCursorRow) {
+            return (
+              <Box key={rowIdx} flexDirection="row">
+                {prefix}
+                <Text>{line}</Text>
+              </Box>
+            );
+          }
+
+          const before = line.slice(0, cursorCol);
+          const at = line.slice(cursorCol, cursorCol + 1);
+          const after = line.slice(cursorCol + 1);
           return (
             <Box key={rowIdx} flexDirection="row">
               {prefix}
-              <Text>{line}</Text>
+              <Text>{before}</Text>
+              <Text inverse>{at || ' '}</Text>
+              <Text>{after}</Text>
             </Box>
           );
-        }
-
-        const before = line.slice(0, cursorCol);
-        const at = line.slice(cursorCol, cursorCol + 1);
-        const after = line.slice(cursorCol + 1);
-        return (
-          <Box key={rowIdx} flexDirection="row">
-            {prefix}
-            <Text>{before}</Text>
-            <Text inverse>{at || ' '}</Text>
-            <Text>{after}</Text>
-          </Box>
-        );
-      })}
+        })}
+      </Box>
     </Box>
   );
 }
